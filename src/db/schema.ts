@@ -1,0 +1,276 @@
+import { sql } from "drizzle-orm";
+import {
+  index,
+  integer,
+  pgEnum,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
+
+/* ------------------------------------------------------------------ enums */
+
+export const roleEnum = pgEnum("role", ["admin", "member"]);
+
+export const religionEnum = pgEnum("religion", [
+  "buddhist",
+  "christian",
+  "hindu",
+  "freethinker",
+  "others",
+]);
+
+export const interestLevelEnum = pgEnum("interest_level", ["low", "medium", "high", "no_response"]);
+
+export const sessionStatusEnum = pgEnum("session_status", ["draft", "active", "ended"]);
+
+/* ------------------------------------------------------------------ users */
+
+export const users = pgTable("users", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: text("name"),
+  email: text("email").notNull().unique(),
+  emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
+  image: text("image"),
+  // Null for Google-only accounts; only credentials users carry a hash.
+  passwordHash: text("password_hash"),
+  role: roleEnum("role").notNull().default("member"),
+  // Deactivated users cannot sign in, but their records stay attributed to
+  // them - history must survive someone leaving the team.
+  deactivatedAt: timestamp("deactivated_at", { withTimezone: true, mode: "date" }),
+  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
+
+/* ------------------------------------------------- Auth.js adapter tables */
+
+export const accounts = pgTable(
+  "accounts",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull(),
+    provider: text("provider").notNull(),
+    providerAccountId: text("provider_account_id").notNull(),
+    refresh_token: text("refresh_token"),
+    access_token: text("access_token"),
+    expires_at: integer("expires_at"),
+    token_type: text("token_type"),
+    scope: text("scope"),
+    id_token: text("id_token"),
+    session_state: text("session_state"),
+  },
+  (table) => [primaryKey({ columns: [table.provider, table.providerAccountId] })],
+);
+
+/*
+ * Auth.js uses JWT sessions here (the Credentials provider cannot use database
+ * sessions), so this table is unused at runtime. It exists because the Drizzle
+ * adapter's schema contract requires it.
+ */
+export const authSessions = pgTable("auth_sessions", {
+  sessionToken: text("session_token").primaryKey(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  expires: timestamp("expires", { withTimezone: true, mode: "date" }).notNull(),
+});
+
+export const verificationTokens = pgTable(
+  "verification_tokens",
+  {
+    identifier: text("identifier").notNull(),
+    token: text("token").notNull(),
+    expires: timestamp("expires", { withTimezone: true, mode: "date" }).notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.identifier, table.token] })],
+);
+
+/* ----------------------------------------------------------------- blocks */
+
+export const blocks = pgTable(
+  "blocks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name").notNull(),
+    street: text("street").notNull(),
+    postalCode: text("postal_code"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("blocks_name_street_unique").on(table.name, table.street),
+    index("blocks_street_idx").on(table.street),
+  ],
+);
+
+/* --------------------------------------------------------------- sessions */
+
+export const outingSessions = pgTable(
+  "outing_sessions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    title: text("title").notNull(),
+    status: sessionStatusEnum("status").notNull().default("draft"),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
+    endedAt: timestamp("ended_at", { withTimezone: true, mode: "date" }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    /*
+     * At most one active session app-wide. Enforced in the database rather
+     * than in application code so two concurrent start requests cannot both
+     * win - a race the API layer alone cannot close.
+     */
+    uniqueIndex("one_active_session_idx")
+      .on(table.status)
+      .where(sql`${table.status} = 'active'`),
+    index("outing_sessions_status_idx").on(table.status),
+  ],
+);
+
+export const sessionBlocks = pgTable(
+  "session_blocks",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "cascade" }),
+    blockId: uuid("block_id")
+      .notNull()
+      .references(() => blocks.id, { onDelete: "restrict" }),
+    addedAt: timestamp("added_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.blockId] }),
+    index("session_blocks_block_idx").on(table.blockId),
+  ],
+);
+
+/* ------------------------------------------------------------- households */
+
+/*
+ * A household is a unit in a block, identified by (block_id, unit_number).
+ * Identity fields are "latest known" and are only ever updated with non-null
+ * values, so a later visit that learns nothing cannot erase what an earlier
+ * visit recorded.
+ */
+export const households = pgTable(
+  "households",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    blockId: uuid("block_id")
+      .notNull()
+      .references(() => blocks.id, { onDelete: "restrict" }),
+    unitNumber: text("unit_number").notNull(),
+    name: text("name"),
+    contact: text("contact"),
+    religion: religionEnum("religion"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    unique("households_block_unit_unique").on(table.blockId, table.unitNumber),
+    index("households_block_idx").on(table.blockId),
+  ],
+);
+
+/* ----------------------------------------------------------------- visits */
+
+/*
+ * One knock. interest_level and description belong here and are never
+ * overwritten by a later visit, so the interest trajectory over time stays
+ * visible.
+ *
+ * `id` is supplied by the client (UUIDv7), not defaulted by the database.
+ * That is what makes the offline queue idempotent: replaying a queued write
+ * upserts the same row instead of creating a duplicate. Do not add a default.
+ */
+export const visits = pgTable(
+  "visits",
+  {
+    id: uuid("id").primaryKey(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "restrict" }),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    interestLevel: interestLevelEnum("interest_level").notNull(),
+    description: text("description").notNull().default(""),
+    // When the device recorded it, which can be well before it reached us.
+    clientCreatedAt: timestamp("client_created_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    // Drives last-write-wins when a queued offline edit arrives out of order.
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+  },
+  (table) => [
+    index("visits_household_created_idx").on(table.householdId, table.createdAt),
+    index("visits_session_idx").on(table.sessionId),
+    index("visits_member_idx").on(table.memberId),
+  ],
+);
+
+/* -------------------------------------------------------------- follow-ups */
+
+/*
+ * Attached to the household, not the session, so a note written in January is
+ * still there when someone knocks on that door in August.
+ */
+export const followUps = pgTable(
+  "follow_ups",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    visitId: uuid("visit_id").references(() => visits.id, { onDelete: "set null" }),
+    authorId: uuid("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    note: text("note").notNull(),
+    dueDate: timestamp("due_date", { withTimezone: true, mode: "date" }),
+    doneAt: timestamp("done_at", { withTimezone: true, mode: "date" }),
+    doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("follow_ups_household_idx").on(table.householdId),
+    // Outstanding notes are the actionable list; this is the query behind it.
+    index("follow_ups_outstanding_idx").on(table.doneAt, table.dueDate),
+  ],
+);
+
+/* ------------------------------------------------------------------ types */
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Block = typeof blocks.$inferSelect;
+export type NewBlock = typeof blocks.$inferInsert;
+export type OutingSession = typeof outingSessions.$inferSelect;
+export type NewOutingSession = typeof outingSessions.$inferInsert;
+export type Household = typeof households.$inferSelect;
+export type NewHousehold = typeof households.$inferInsert;
+export type Visit = typeof visits.$inferSelect;
+export type NewVisit = typeof visits.$inferInsert;
+export type FollowUp = typeof followUps.$inferSelect;
+export type NewFollowUp = typeof followUps.$inferInsert;
+
+export type Role = (typeof roleEnum.enumValues)[number];
+export type Religion = (typeof religionEnum.enumValues)[number];
+export type InterestLevel = (typeof interestLevelEnum.enumValues)[number];
+export type SessionStatus = (typeof sessionStatusEnum.enumValues)[number];
