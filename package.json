@@ -25,7 +25,8 @@
     "db:reset": "tsx scripts/migrate.ts && tsx scripts/seed.ts",
     "test:all": "vitest run",
     "spec:lint": "redocly lint openapi.yaml",
-    "spec:preview": "redocly preview-docs openapi.yaml"
+    "spec:preview": "redocly preview-docs openapi.yaml",
+    "generate:api": "openapi-ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.1.0",
@@ -33,9 +34,11 @@
     "next": "16.3.3",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@hey-api/openapi-ts": "^0.99.0",
     "@redocly/cli": "^2.48.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",

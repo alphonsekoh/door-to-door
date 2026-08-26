@@ -293,7 +293,11 @@ components:
           maxLength: 160
           description: Latest known. Only ever updated with a non-null value.
         contact: { type: [string, "null"], maxLength: 64 }
-        religion: { $ref: "#/components/schemas/Religion" }
+        religion:
+          description: Null until someone answers the door and says.
+          oneOf:
+            - $ref: "#/components/schemas/Religion"
+            - type: "null"
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 

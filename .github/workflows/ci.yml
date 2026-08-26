@@ -42,6 +42,19 @@ jobs:
       - name: Lint the OpenAPI contract
         run: npm run spec:lint
 
+      # Types and Zod validators are generated from openapi.yaml. A spec change
+      # without regenerating, or a hand-edited generated file, would let the
+      # contract and the code enforcing it drift apart.
+      - name: Generated API code matches the contract
+        run: |
+          npm run generate:api
+          if [ -n "$(git status --porcelain -- src/generated)" ]; then
+            echo "::error::Generated API code is stale. Run 'npm run generate:api' and commit the result."
+            git status --short -- src/generated
+            git diff -- src/generated | head -60
+            exit 1
+          fi
+
       # Migrations are generated from the schema; a hand-edited migration or a
       # schema change without one would silently diverge from the database.
       - name: Migrations match the schema
