@@ -105,7 +105,7 @@ You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`
 | `npm run spec:lint` | Lint `openapi.yaml` |
 | `npm run spec:preview` | Browse the API docs locally |
 
-_(not yet)_ `npm run generate:api` (#11)
+| `npm run generate:api` | Regenerate types and Zod schemas from the contract |
 
 ## Environment variables
 
@@ -200,8 +200,13 @@ schema edit without a committed migration, or a hand-edited migration, turns CI 
 ## How the API is built
 
 [`openapi.yaml`](./openapi.yaml) is the source of truth. Types, Zod validators and the
-frontend client are generated from it with `@hey-api/openapi-ts` _(#11)_; CI fails if the
-generated output drifts from the spec.
+Zod validators are generated from it with `@hey-api/openapi-ts` into `src/generated`; CI
+regenerates on every push and fails if the result differs, so neither a stale spec change
+nor a hand-edited generated file can slip through.
+
+Only types and validators are generated — the SDK/client plugins are off because their HTTP
+runtime does not satisfy `exactOptionalPropertyTypes`. Call the API with `fetch`, typed and
+validated by the generated output.
 
 Run `npm run spec:preview` to browse the documented API. CI lints the spec on every push,
 and a test asserts its enums match the Drizzle `pgEnum` values exactly — a value valid in

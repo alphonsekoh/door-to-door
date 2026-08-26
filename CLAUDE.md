@@ -64,8 +64,14 @@ test. Coverage is the proxy; working software is the goal.
 **[CI]** `openapi.yaml` is the source of truth. Change the spec first, run
 `npm run generate:api`, then implement. CI fails if generated output is stale.
 
-**[CI]** Never hand-edit anything in `src/generated/**`. It is excluded from lint and
-formatting precisely so an edit there stands out.
+**[CI]** Never hand-edit anything in `src/generated/**`. CI regenerates and fails if the
+result differs, so a hand edit and a stale spec change are both caught. It is excluded from
+lint and formatting precisely so an edit there stands out.
+
+**[convention]** Only types and Zod validators are generated — the `@hey-api/sdk` and
+client plugins are off because their HTTP runtime does not satisfy
+`exactOptionalPropertyTypes`. Call the API with `fetch`, typed by `types.gen.ts` and
+validated by `zod.gen.ts`.
 
 **[CI]** Every route handler is wrapped in `withContract()`, which validates the request
 _and the response_ against the generated Zod schemas. A response that drifts from the spec
