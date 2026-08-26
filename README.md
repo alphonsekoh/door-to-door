@@ -81,17 +81,38 @@ docker compose up
 | `npm run test:components` | Component project only |
 | `npm run test:coverage` | Run tests and enforce coverage thresholds |
 
-_(not yet)_ `npm run db:migrate`, `npm run db:seed` (#8, #9) · `npm run generate:api` (#11)
+| `npm run db:generate` | Generate a migration from schema changes |
+| `npm run db:migrate` | Apply pending migrations |
+| `npm run db:push` | Push schema straight to the database (dev only) |
+| `npm run db:studio` | Open Drizzle Studio |
+
+_(not yet)_ `npm run db:seed` (#9) · `npm run generate:api` (#11)
 
 ## Environment variables
-
-None are required yet. As features land, copy `.env.example` to `.env` and fill it in.
 
 | Variable                                | Used by                   | Arrives in |
 | --------------------------------------- | ------------------------- | ---------- |
 | `DATABASE_URL`                          | Drizzle, migrations, seed | #7, #8     |
 | `AUTH_SECRET`                           | Auth.js session signing   | #13        |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google SSO                | #14        |
+
+## Database
+
+```bash
+cp .env.example .env          # set DATABASE_URL
+npm run db:migrate            # apply migrations
+```
+
+Migrations live in `drizzle/` and are **always generated**, never hand-written:
+
+```bash
+# edit src/db/schema.ts, then:
+npm run db:generate -- --name describe_the_change
+npm run db:migrate
+```
+
+Never edit a migration that has been applied — add a new one. Drizzle records what it has
+run, so `db:migrate` is safe to re-run.
 
 ## Project structure
 
