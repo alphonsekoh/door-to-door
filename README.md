@@ -1,34 +1,126 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Door to Door
 
-## Getting Started
+Mobile-first PWA for recording door-to-door visits and following them up later.
 
-First, run the development server:
+Members knock on units in a block and record what they learn — name, contact, unit number,
+religion, interest level and notes. Months later the team returns and sees the full history
+for that unit, so a follow-up starts from what the last person learned rather than from
+nothing.
+
+> **Status: early development.** The application shell and tooling are in place; the
+> database, API and screens are being built issue by issue. Sections below marked
+> _(not yet)_ describe commands that do not exist yet, and name the issue that adds them.
+> Everything not marked works today.
+
+## Features
+
+**Members**
+
+- Record visits against units in the block they pick from the active session
+- Amend their own records during a session
+- Review their own history, with the blocks and sessions they worked
+
+**Admins**
+
+- Create a session, attach blocks to it, and start it
+- Add blocks to a session that is already running, without ending it
+- End a session — and reopen one ended by mistake, so nobody loses work in progress
+- View and amend every record, current and historical
+
+**In the field**
+
+- Installable on a phone, works offline, and syncs when signal returns _(not yet — #32, #33)_
+
+## Requirements
+
+- Node.js 20+ (developed on 24)
+- npm 10+
+- Docker Desktop — for PostgreSQL _(not yet — #5)_
+
+## Quick start
 
 ```bash
+git clone https://github.com/alphonsekoh/door-to-door.git
+cd door-to-door
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+There is no database or login yet, so the app runs as a navigable shell with placeholder
+screens. Each placeholder names the issue that replaces it.
 
-## Learn More
+### With Docker _(not yet — #5)_
 
-To learn more about Next.js, take a look at the following resources:
+Once the database lands, this becomes the one-command path — it starts PostgreSQL, applies
+migrations, seeds demo data and runs the app:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+cp .env.example .env
+docker compose up
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Scripts
 
-## Deploy on Vercel
+| Script                 | What it does                      |
+| ---------------------- | --------------------------------- |
+| `npm run dev`          | Start the dev server on port 3000 |
+| `npm run build`        | Production build                  |
+| `npm start`            | Serve a production build          |
+| `npm run lint`         | ESLint (type-aware)               |
+| `npm run lint:fix`     | ESLint with autofix               |
+| `npm run typecheck`    | `tsc --noEmit`                    |
+| `npm run format`       | Prettier write                    |
+| `npm run format:check` | Prettier check, no writes         |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+_(not yet)_ `npm test`, `npm run test:coverage` (#4) · `npm run db:migrate`, `npm run db:seed` (#8, #9) · `npm run generate:api` (#11)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Environment variables
+
+None are required yet. As features land, copy `.env.example` to `.env` and fill it in.
+
+| Variable                                | Used by                   | Arrives in |
+| --------------------------------------- | ------------------------- | ---------- |
+| `DATABASE_URL`                          | Drizzle, migrations, seed | #7, #8     |
+| `AUTH_SECRET`                           | Auth.js session signing   | #13        |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google SSO                | #14        |
+
+## Project structure
+
+```
+src/
+  app/          routes; app/api/** holds route handlers
+  components/   React components
+  lib/          framework-free helpers
+  server/       server-only services and data access
+  db/           Drizzle schema and client
+  generated/    generated from openapi.yaml - never edit by hand
+drizzle/        generated migrations - never edit by hand
+```
+
+## Testing _(not yet — #4)_
+
+Vitest runs three projects — `unit`, `integration` (against a real PostgreSQL) and
+`components` (jsdom + Testing Library). Coverage is enforced per-glob: **100%** for
+`src/server/**`, `src/lib/**`, `src/app/api/**` and `src/db/**`; **90%** for
+`src/components/**` and `src/app/**`. Generated output and migrations are excluded.
+
+## How the API is built
+
+`openapi.yaml` is the source of truth _(arrives in #10)_. Types, Zod validators and the
+frontend client are generated from it with `@hey-api/openapi-ts`; CI fails if the generated
+output drifts from the spec. Every route handler validates both its request **and its
+response** against the contract, so a response that diverges fails a test rather than
+shipping.
+
+The workflow is: **edit the spec → regenerate → implement.** Never the other way round.
+
+## Contributing
+
+Read [CLAUDE.md](./CLAUDE.md) — it holds the domain model and the working rules, each
+marked as CI-enforced or convention.
+
+Branches are stacked: a feature branch bases off the previous one and its PR targets that
+branch rather than `main`. Merge top-down, and squash or rebase rather than creating a
+merge commit.
