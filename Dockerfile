@@ -1,0 +1,46 @@
+# syntax=docker/dockerfile:1
+
+# Alpine keeps the image small. @node-rs/argon2 ships musl prebuilds, so no
+# native toolchain is needed for the password hashing in #9.
+FROM node:24-alpine AS base
+WORKDIR /app
+ENV NEXT_TELEMETRY_DISABLED=1
+
+# ---------------------------------------------------------------- deps
+FROM base AS deps
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# ----------------------------------------------------------------- dev
+# Source is bind-mounted at runtime, so this stage only carries dependencies.
+FROM base AS dev
+ENV NODE_ENV=development
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+EXPOSE 3000
+CMD ["npm", "run", "dev"]
+
+# ------------------------------------------------------------- builder
+FROM base AS builder
+ENV NODE_ENV=production
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npm run build
+
+# -------------------------------------------------------------- runner
+FROM base AS runner
+ENV NODE_ENV=production
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001
+
+COPY --from=builder /app/public ./public
+# Standalone output carries only the dependencies actually reached at runtime.
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Migrations and their runner, so a production container can migrate itself.
+COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
+
+USER nextjs
+EXPOSE 3000
+ENV PORT=3000 HOSTNAME=0.0.0.0
+CMD ["node", "server.js"]
