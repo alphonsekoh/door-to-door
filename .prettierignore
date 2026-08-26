@@ -1,0 +1,11 @@
+.next
+out
+build
+coverage
+node_modules
+package-lock.json
+next-env.d.ts
+
+# Generated from openapi.yaml (#11) and drizzle-kit (#8).
+src/generated
+drizzle

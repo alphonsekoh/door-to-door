@@ -7,9 +7,7 @@ export default function AccountPage() {
   return (
     <>
       <PageHeader title="Account" subtitle="Your profile and sign-in details." />
-      <Placeholder issue={15}>
-        Profile details, password change, and sign out.
-      </Placeholder>
+      <Placeholder issue={15}>Profile details, password change, and sign out.</Placeholder>
     </>
   );
 }
