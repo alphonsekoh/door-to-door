@@ -74,7 +74,14 @@ docker compose up
 | `npm run format`       | Prettier write                    |
 | `npm run format:check` | Prettier check, no writes         |
 
-_(not yet)_ `npm test`, `npm run test:coverage` (#4) · `npm run db:migrate`, `npm run db:seed` (#8, #9) · `npm run generate:api` (#11)
+| `npm test` | Run all three test projects |
+| `npm run test:watch` | Vitest watch mode |
+| `npm run test:unit` | Unit project only |
+| `npm run test:integration` | Integration project only |
+| `npm run test:components` | Component project only |
+| `npm run test:coverage` | Run tests and enforce coverage thresholds |
+
+_(not yet)_ `npm run db:migrate`, `npm run db:seed` (#8, #9) · `npm run generate:api` (#11)
 
 ## Environment variables
 
@@ -99,12 +106,21 @@ src/
 drizzle/        generated migrations - never edit by hand
 ```
 
-## Testing _(not yet — #4)_
+## Testing
 
-Vitest runs three projects — `unit`, `integration` (against a real PostgreSQL) and
-`components` (jsdom + Testing Library). Coverage is enforced per-glob: **100%** for
-`src/server/**`, `src/lib/**`, `src/app/api/**` and `src/db/**`; **90%** for
-`src/components/**` and `src/app/**`. Generated output and migrations are excluded.
+```bash
+npm test              # all three projects
+npm run test:coverage # with thresholds enforced
+```
+
+Vitest runs three projects — `unit` (node), `integration` (node, against a real PostgreSQL
+once #7 lands) and `components` (jsdom + Testing Library). Test files are picked up by
+suffix: `*.test.ts` is a unit test, `*.integration.test.ts` an integration test, and
+`*.test.tsx` a component test.
+
+Coverage is enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`
+and `src/db/**`; **90%** for `src/components/**` and `src/app/**`. Generated output,
+migrations and `layout.tsx` are excluded.
 
 ## How the API is built
 
