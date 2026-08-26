@@ -29,6 +29,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Runs `next typegen` first: LayoutProps and PageProps are generated into
+      # .next/types, which does not exist on a fresh checkout.
       - name: Typecheck
         run: npm run typecheck
 
