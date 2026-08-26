@@ -35,31 +35,44 @@ nothing.
 
 - Node.js 20+ (developed on 24)
 - npm 10+
-- Docker Desktop — for PostgreSQL _(not yet — #5)_
+- Docker Desktop — for PostgreSQL
 
 ## Quick start
 
 ```bash
 git clone https://github.com/alphonsekoh/door-to-door.git
 cd door-to-door
+docker compose up
+```
+
+Open http://localhost:3000. That is the whole setup — Compose starts PostgreSQL, waits for
+it to be healthy, applies migrations, seeds demo data, then starts the dev server. Editing a
+source file hot-reloads in the container.
+
+| Service   | Port | What it is                                           |
+| --------- | ---- | ---------------------------------------------------- |
+| `web`     | 3000 | Next.js dev server                                   |
+| `db`      | 5432 | PostgreSQL, persisted in a named volume              |
+| `db-test` | 5433 | Scratch database for integration tests, tmpfs-backed |
+| `migrate` | —    | Runs migrations and the seed once, then exits        |
+
+`web` waits for `migrate` to complete successfully, so the app never starts against an
+unmigrated database.
+
+```bash
+docker compose down -v    # tear down, including data
+docker compose up         # back to a freshly seeded install
+```
+
+### Without Docker
+
+```bash
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
-
-There is no database or login yet, so the app runs as a navigable shell with placeholder
-screens. Each placeholder names the issue that replaces it.
-
-### With Docker _(not yet — #5)_
-
-Once the database lands, this becomes the one-command path — it starts PostgreSQL, applies
-migrations, seeds demo data and runs the app:
-
-```bash
-cp .env.example .env
-docker compose up
-```
+You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`; see
+[Database](#database).
 
 ## Scripts
 
