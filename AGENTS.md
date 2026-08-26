@@ -1,3 +1,9 @@
+# Agent guide
+
+Project architecture, domain model and working rules live in **CLAUDE.md**. Read it first.
+
+The block below is generated and re-added by `next dev`; leave it alone.
+
 <!-- BEGIN:nextjs-agent-rules -->
 
 # This is NOT the Next.js you know
