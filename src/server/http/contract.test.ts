@@ -1,0 +1,274 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
+import {
+  ResponseContractError,
+  searchParamsToObject,
+  toErrorResponse,
+  withContract,
+} from "@/server/http/contract";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  UnauthenticatedError,
+} from "@/server/http/errors";
+
+const zWidget = z.object({ id: z.string(), size: z.number() });
+const widget = { id: "w1", size: 3 };
+
+const post = (body: unknown, url = "https://test.local/api/widgets") =>
+  new Request(url, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+  });
+
+const get = (url: string) => new Request(url);
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+describe("request validation", () => {
+  const route = withContract(
+    {
+      operationId: "createWidget",
+      body: z.object({ name: z.string().min(1), size: z.number().int() }),
+      responses: { 201: zWidget },
+    },
+    ({ body }) => Promise.resolve({ status: 201, body: { id: body.name, size: body.size } }),
+  );
+
+  it("passes a valid body to the handler", async () => {
+    const response = await route(post({ name: "w1", size: 3 }));
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual(widget);
+  });
+
+  it("rejects a missing required field with 400 and a useful message", async () => {
+    const response = await route(post({ size: 3 }));
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as {
+      error: { code: string; details: { path: string }[] };
+    };
+    expect(payload.error.code).toBe("validation_failed");
+    expect(payload.error.details.map((d) => d.path)).toContain("/name");
+  });
+
+  it("names every offending field, not just the first", async () => {
+    const response = await route(post({ name: "", size: 1.5 }));
+    const payload = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(payload.error.details.map((d) => d.path).sort()).toEqual(["/name", "/size"]);
+  });
+
+  it("rejects a body that is not valid JSON", async () => {
+    const response = await route(
+      new Request("https://test.local/api/widgets", { method: "POST", body: "{oops" }),
+    );
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { message: string } };
+    expect(payload.error.message).toMatch(/not valid JSON/);
+  });
+
+  it("treats an empty body as absent rather than as invalid JSON", async () => {
+    const response = await route(new Request("https://test.local/api/widgets", { method: "POST" }));
+    expect(response.status).toBe(400);
+    const payload = (await response.json()) as { error: { message: string } };
+    expect(payload.error.message).toMatch(/request body/i);
+  });
+});
+
+describe("query and path validation", () => {
+  it("parses query parameters", async () => {
+    const route = withContract(
+      {
+        operationId: "listWidgets",
+        query: z.object({ limit: z.coerce.number().int().max(100) }),
+        responses: { 200: z.object({ limit: z.number() }) },
+      },
+      ({ query }) => Promise.resolve({ status: 200, body: { limit: query.limit } }),
+    );
+    const response = await route(get("https://test.local/api/widgets?limit=25"));
+    expect(await response.json()).toEqual({ limit: 25 });
+  });
+
+  it("rejects an out-of-range query parameter", async () => {
+    const route = withContract(
+      {
+        operationId: "listWidgets",
+        query: z.object({ limit: z.coerce.number().int().max(100) }),
+        responses: { 200: z.object({ limit: z.number() }) },
+      },
+      ({ query }) => Promise.resolve({ status: 200, body: { limit: query.limit } }),
+    );
+    const response = await route(get("https://test.local/api/widgets?limit=5000"));
+    expect(response.status).toBe(400);
+  });
+
+  it("parses path parameters", async () => {
+    const route = withContract(
+      {
+        operationId: "getWidget",
+        path: z.object({ id: z.uuid() }),
+        responses: { 200: z.object({ id: z.string() }) },
+      },
+      ({ path }) => Promise.resolve({ status: 200, body: { id: path.id } }),
+    );
+    const id = "00000000-0000-4000-8000-000000000001";
+    const response = await route(get("https://test.local/api/widgets/x"), {
+      params: Promise.resolve({ id }),
+    });
+    expect(await response.json()).toEqual({ id });
+  });
+
+  it("rejects a malformed path parameter with 400, not 500", async () => {
+    const route = withContract(
+      {
+        operationId: "getWidget",
+        path: z.object({ id: z.uuid() }),
+        responses: { 200: z.object({ id: z.string() }) },
+      },
+      ({ path }) => Promise.resolve({ status: 200, body: { id: path.id } }),
+    );
+    const response = await route(get("https://test.local/api/widgets/nope"), {
+      params: Promise.resolve({ id: "not-a-uuid" }),
+    });
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("searchParamsToObject", () => {
+  it("reads a single value as a scalar", () => {
+    expect(searchParamsToObject(new URLSearchParams("a=1"))).toEqual({ a: "1" });
+  });
+
+  it("collects repeated keys into an array", () => {
+    // ?id=a&id=b must reach the schema as a list, not silently lose one.
+    expect(searchParamsToObject(new URLSearchParams("id=a&id=b"))).toEqual({ id: ["a", "b"] });
+  });
+
+  it("returns an empty object for no parameters", () => {
+    expect(searchParamsToObject(new URLSearchParams(""))).toEqual({});
+  });
+});
+
+describe("response validation", () => {
+  /*
+   * The half that makes the contract real. A handler returning something the
+   * spec does not describe must fail, not ship.
+   */
+  const routeReturning = (body: unknown, status = 200) =>
+    withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
+      Promise.resolve({ status, body }),
+    );
+
+  it("returns a conforming response", async () => {
+    const response = await routeReturning(widget)(get("https://test.local/api/widgets/1"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual(widget);
+  });
+
+  it("throws when the handler omits a documented field", async () => {
+    await expect(
+      routeReturning({ id: "w1" })(get("https://test.local/api/widgets/1")),
+    ).rejects.toThrow(ResponseContractError);
+  });
+
+  it("throws when the handler returns a field the spec does not describe", async () => {
+    // The acceptance criterion: undocumented output fails its test.
+    await expect(
+      routeReturning({ ...widget, secret: "leaked" })(get("https://test.local/api/widgets/1")),
+    ).rejects.toThrow(ResponseContractError);
+  });
+
+  it("throws when the handler returns an undocumented status", async () => {
+    await expect(
+      routeReturning(widget, 418)(get("https://test.local/api/widgets/1")),
+    ).rejects.toThrow(/not documented/);
+  });
+
+  it("names the operation and status in the message", async () => {
+    await expect(
+      routeReturning({ id: "w1" })(get("https://test.local/api/widgets/1")),
+    ).rejects.toThrow(/getWidget returned a 200/);
+  });
+
+  it("supports a documented 204 with no body", async () => {
+    const route = withContract(
+      { operationId: "deleteWidget", responses: { 204: z.undefined() } },
+      () => Promise.resolve({ status: 204 }),
+    );
+    const response = await route(get("https://test.local/api/widgets/1"));
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+  });
+
+  describe("in production", () => {
+    it("returns 500 rather than leaking a malformed payload", async () => {
+      // Drift must not reach a user, but nor should the process crash.
+      vi.stubEnv("NODE_ENV", "production");
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const response = await routeReturning({ id: "w1" })(get("https://test.local/api/widgets/1"));
+      expect(response.status).toBe(500);
+      const payload = (await response.json()) as { error: { code: string } };
+      expect(payload.error.code).toBe("internal_error");
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("returns 500 for an undocumented status too", async () => {
+      vi.stubEnv("NODE_ENV", "production");
+      vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const response = await routeReturning(widget, 418)(get("https://test.local/api/widgets/1"));
+      expect(response.status).toBe(500);
+    });
+  });
+});
+
+describe("errors thrown by handlers", () => {
+  const routeThrowing = (error: Error) =>
+    withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () => {
+      throw error;
+    });
+
+  it.each([
+    [new UnauthenticatedError(), 401, "unauthenticated"],
+    [new ForbiddenError(), 403, "forbidden"],
+    [new NotFoundError(), 404, "not_found"],
+    [new ConflictError(), 409, "conflict"],
+    [
+      new ConflictError("session_already_active", "Another session is active."),
+      409,
+      "session_already_active",
+    ],
+  ])("maps %s to its documented status", async (error, status, code) => {
+    const response = await routeThrowing(error)(get("https://test.local/api/widgets/1"));
+    expect(response.status).toBe(status);
+    const payload = (await response.json()) as { error: { code: string } };
+    expect(payload.error.code).toBe(code);
+  });
+
+  it("turns an unexpected error into 500 without echoing it", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await routeThrowing(new Error("connection string user:hunter2"))(
+      get("https://test.local/api/widgets/1"),
+    );
+    expect(response.status).toBe(500);
+    const payload = (await response.json()) as { error: { message: string } };
+    expect(payload.error.message).not.toMatch(/hunter2/);
+    expect(spy).toHaveBeenCalled();
+  });
+});
+
+describe("toErrorResponse", () => {
+  it("rethrows a contract error so it surfaces rather than becoming a 500", () => {
+    const drift = new ResponseContractError("getWidget", 200, "detail");
+    expect(() => toErrorResponse(drift)).toThrow(ResponseContractError);
+  });
+
+  it("includes details only when there are any", async () => {
+    const response = toErrorResponse(new NotFoundError());
+    const payload = (await response.json()) as { error: Record<string, unknown> };
+    expect(payload.error).not.toHaveProperty("details");
+  });
+});
