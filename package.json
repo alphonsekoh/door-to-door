@@ -29,9 +29,11 @@
     "generate:api": "openapi-ts"
   },
   "dependencies": {
+    "@auth/drizzle-adapter": "^1.11.3",
     "@node-rs/argon2": "^2.1.0",
     "drizzle-orm": "^0.45.2",
     "next": "16.3.3",
+    "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
