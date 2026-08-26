@@ -74,10 +74,11 @@ docker compose up
 | `npm run format`       | Prettier write                    |
 | `npm run format:check` | Prettier check, no writes         |
 
-| `npm test` | Run all three test projects |
+| `npm test` | Unit and component tests (no database needed) |
 | `npm run test:watch` | Vitest watch mode |
 | `npm run test:unit` | Unit project only |
-| `npm run test:integration` | Integration project only |
+| `npm run test:integration` | Integration tests (**requires `DATABASE_URL`**) |
+| `npm run test:all` | Every project |
 | `npm run test:components` | Component project only |
 | `npm run test:coverage` | Run tests and enforce coverage thresholds |
 
@@ -149,9 +150,14 @@ drizzle/        generated migrations - never edit by hand
 ## Testing
 
 ```bash
-npm test              # all three projects
-npm run test:coverage # with thresholds enforced
+npm test               # unit + components, no database required
+npm run test:integration   # needs DATABASE_URL
+npm run test:coverage      # everything, with thresholds enforced
 ```
+
+`npm test` deliberately excludes integration tests so the common case stays fast and
+offline. Integration tests fail loudly when `DATABASE_URL` is unset rather than skipping —
+a suite that quietly runs nothing is worse than one that does not run.
 
 Vitest runs three projects — `unit` (node), `integration` (node, against a real PostgreSQL
 once #7 lands) and `components` (jsdom + Testing Library). Test files are picked up by
@@ -161,6 +167,19 @@ suffix: `*.test.ts` is a unit test, `*.integration.test.ts` an integration test,
 Coverage is enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`
 and `src/db/**`; **90%** for `src/components/**` and `src/app/**`. Generated output,
 migrations and `layout.tsx` are excluded.
+
+## CI
+
+Every push to `main` and every pull request runs three jobs:
+
+| Job        | Checks                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------- |
+| **Static** | lint · typecheck · format · migrations match the schema                                 |
+| **Tests**  | unit, component and integration tests against a real PostgreSQL, then the coverage gate |
+| **Build**  | production `next build`                                                                 |
+
+The migration drift check regenerates from the schema and fails if anything changed — so a
+schema edit without a committed migration, or a hand-edited migration, turns CI red.
 
 ## How the API is built
 

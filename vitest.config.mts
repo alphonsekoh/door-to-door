@@ -22,6 +22,10 @@ export default defineConfig({
           name: { label: "integration", color: "yellow" },
           environment: "node",
           include: ["src/**/*.integration.test.ts"],
+          globalSetup: ["./vitest.globalSetup.integration.ts"],
+          // Shared scratch database: parallel files would truncate each other.
+          fileParallelism: false,
+          testTimeout: 20_000,
         },
       },
       {
@@ -43,6 +47,7 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/generated/**",
+        "src/db/testing.ts",
         "drizzle/**",
         "src/**/*.test.{ts,tsx}",
         "src/**/*.d.ts",
