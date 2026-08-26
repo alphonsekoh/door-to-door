@@ -85,8 +85,10 @@ docker compose up
 | `npm run db:migrate` | Apply pending migrations |
 | `npm run db:push` | Push schema straight to the database (dev only) |
 | `npm run db:studio` | Open Drizzle Studio |
+| `npm run db:seed` | Seed deterministic demo data |
+| `npm run db:reset` | Migrate then seed |
 
-_(not yet)_ `npm run db:seed` (#9) · `npm run generate:api` (#11)
+_(not yet)_ `npm run generate:api` (#11)
 
 ## Environment variables
 
@@ -101,7 +103,24 @@ _(not yet)_ `npm run db:seed` (#9) · `npm run generate:api` (#11)
 ```bash
 cp .env.example .env          # set DATABASE_URL
 npm run db:migrate            # apply migrations
+npm run db:seed               # load demo data
 ```
+
+### Seeded logins
+
+Development only. The seed is deterministic and idempotent — re-running it changes nothing.
+
+| Email               | Role   | Password      |
+| ------------------- | ------ | ------------- |
+| `admin@example.com` | admin  | `password123` |
+| `alice@example.com` | member | `password123` |
+| `ben@example.com`   | member | `password123` |
+| `cara@example.com`  | member | `password123` |
+
+It creates four blocks, two ended sessions with visits across them, a draft session ready to
+start, and follow-up notes both outstanding and resolved. Several units are visited twice so
+the history screens have a real trajectory to show — `123 #05-123` goes from `low` to
+`medium` between March and June.
 
 Migrations live in `drizzle/` and are **always generated**, never hand-written:
 
