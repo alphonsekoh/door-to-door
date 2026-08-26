@@ -37,6 +37,11 @@ jobs:
       - name: Format check
         run: npm run format:check
 
+      # openapi.yaml is the source of truth for types, Zod validators and the
+      # frontend client (#11), so it is linted like source code.
+      - name: Lint the OpenAPI contract
+        run: npm run spec:lint
+
       # Migrations are generated from the schema; a hand-edited migration or a
       # schema change without one would silently diverge from the database.
       - name: Migrations match the schema

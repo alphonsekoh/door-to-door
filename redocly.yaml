@@ -1,0 +1,19 @@
+# Lint rules for openapi.yaml. The spec is the source of truth for types, Zod
+# validators and the frontend client (#11), so it is linted like source code.
+apis:
+  main:
+    root: ./openapi.yaml
+
+extends:
+  - recommended
+
+rules:
+  operation-operationId: error
+  operation-operationId-unique: error
+  operation-summary: error
+  operation-4xx-response: error
+  operation-2xx-response: error
+  no-unused-components: error
+  security-defined: error
+  no-server-example.com: off
+  info-license: off

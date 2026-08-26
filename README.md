@@ -102,6 +102,9 @@ You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`
 | `npm run db:seed` | Seed deterministic demo data |
 | `npm run db:reset` | Migrate then seed |
 
+| `npm run spec:lint` | Lint `openapi.yaml` |
+| `npm run spec:preview` | Browse the API docs locally |
+
 _(not yet)_ `npm run generate:api` (#11)
 
 ## Environment variables
@@ -196,9 +199,13 @@ schema edit without a committed migration, or a hand-edited migration, turns CI 
 
 ## How the API is built
 
-`openapi.yaml` is the source of truth _(arrives in #10)_. Types, Zod validators and the
-frontend client are generated from it with `@hey-api/openapi-ts`; CI fails if the generated
-output drifts from the spec. Every route handler validates both its request **and its
+[`openapi.yaml`](./openapi.yaml) is the source of truth. Types, Zod validators and the
+frontend client are generated from it with `@hey-api/openapi-ts` _(#11)_; CI fails if the
+generated output drifts from the spec.
+
+Run `npm run spec:preview` to browse the documented API. CI lints the spec on every push,
+and a test asserts its enums match the Drizzle `pgEnum` values exactly — a value valid in
+one layer but not the other would otherwise pass both in isolation. Every route handler validates both its request **and its
 response** against the contract, so a response that diverges fails a test rather than
 shipping.
 
