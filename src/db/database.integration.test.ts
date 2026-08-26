@@ -1,5 +1,6 @@
 import type { Pool } from "pg";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { interestLevelEnum, religionEnum, roleEnum, sessionStatusEnum } from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 
 /*
@@ -57,6 +58,31 @@ describe("migrations", () => {
       "verification_tokens",
       "visits",
     ]);
+  });
+});
+
+describe("enums in the database match the schema", () => {
+  /*
+   * The migration drift check compares schema.ts to the drizzle snapshot, so
+   * it cannot see a hand-edit to an already-committed .sql file. This does:
+   * it reads what the migration actually created and compares it to what the
+   * application believes exists.
+   */
+  it.each([
+    ["role", roleEnum],
+    ["religion", religionEnum],
+    ["interest_level", interestLevelEnum],
+    ["session_status", sessionStatusEnum],
+  ])("%s has exactly the values the schema declares", async (typeName, pgEnum) => {
+    const { rows } = await pool.query<{ label: string }>(
+      `SELECT e.enumlabel AS label
+       FROM pg_enum e
+       JOIN pg_type t ON t.oid = e.enumtypid
+       WHERE t.typname = $1
+       ORDER BY e.enumsortorder`,
+      [typeName],
+    );
+    expect(rows.map((r) => r.label)).toEqual([...pgEnum.enumValues]);
   });
 });
 
