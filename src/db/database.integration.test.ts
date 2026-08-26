@@ -26,7 +26,7 @@ async function insertFixtures(): Promise<void> {
 }
 
 const insertSession = (title: string, status: string) =>
-  pool.query(
+  pool.query<{ id: string }>(
     `INSERT INTO outing_sessions (title, status, created_by) VALUES ($1, $2, $3) RETURNING id`,
     [title, status, ADMIN],
   );
