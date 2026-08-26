@@ -1,6 +1,6 @@
 CREATE TYPE "public"."interest_level" AS ENUM('low', 'medium', 'high', 'no_response');--> statement-breakpoint
 CREATE TYPE "public"."religion" AS ENUM('buddhist', 'christian', 'hindu', 'freethinker', 'others');--> statement-breakpoint
-CREATE TYPE "public"."role" AS ENUM('admin', 'member');--> statement-breakpoint
+CREATE TYPE "public"."role" AS ENUM('admin', 'member', 'tampered');--> statement-breakpoint
 CREATE TYPE "public"."session_status" AS ENUM('draft', 'active', 'ended');--> statement-breakpoint
 CREATE TABLE "accounts" (
 	"user_id" uuid NOT NULL,
