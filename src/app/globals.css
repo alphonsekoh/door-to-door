@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+/* Light palette. Dark values are overridden below; every token is defined here first
+   so nothing depends on a media query having matched. */
+:root {
+  --app-bg: oklch(0.99 0.002 250);
+  --app-surface: oklch(1 0 0);
+  --app-surface-muted: oklch(0.97 0.004 250);
+  --app-border: oklch(0.92 0.005 250);
+  --app-fg: oklch(0.21 0.01 250);
+  --app-fg-muted: oklch(0.52 0.015 250);
+  --app-primary: oklch(0.55 0.16 255);
+  --app-primary-fg: oklch(0.99 0 0);
+
+  /* Interest levels double as status colours across the app. Hue carries the meaning,
+     lightness keeps them distinguishable in greyscale. */
+  --app-interest-high: oklch(0.6 0.15 145);
+  --app-interest-medium: oklch(0.72 0.15 75);
+  --app-interest-low: oklch(0.65 0.13 40);
+  --app-interest-none: oklch(0.62 0.01 250);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --app-bg: oklch(0.17 0.008 250);
+    --app-surface: oklch(0.21 0.01 250);
+    --app-surface-muted: oklch(0.25 0.012 250);
+    --app-border: oklch(0.31 0.012 250);
+    --app-fg: oklch(0.96 0.003 250);
+    --app-fg-muted: oklch(0.7 0.015 250);
+    --app-primary: oklch(0.7 0.14 255);
+    --app-primary-fg: oklch(0.17 0.008 250);
+
+    --app-interest-high: oklch(0.72 0.15 145);
+    --app-interest-medium: oklch(0.8 0.14 75);
+    --app-interest-low: oklch(0.72 0.14 40);
+    --app-interest-none: oklch(0.6 0.01 250);
+  }
+}
+
+@theme inline {
+  --color-background: var(--app-bg);
+  --color-surface: var(--app-surface);
+  --color-surface-muted: var(--app-surface-muted);
+  --color-border: var(--app-border);
+  --color-foreground: var(--app-fg);
+  --color-foreground-muted: var(--app-fg-muted);
+  --color-primary: var(--app-primary);
+  --color-primary-foreground: var(--app-primary-fg);
+
+  --color-interest-high: var(--app-interest-high);
+  --color-interest-medium: var(--app-interest-medium);
+  --color-interest-low: var(--app-interest-low);
+  --color-interest-none: var(--app-interest-none);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+
+  /* Mobile-first type scale. Body sits at 16px so iOS does not zoom on input focus. */
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1rem;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5rem;
+  --text-title: 1.125rem;
+  --text-title--line-height: 1.625rem;
+  --text-heading: 1.375rem;
+  --text-heading--line-height: 1.875rem;
+}
+
+/* The nav is fixed, so content needs clearance for it plus the home indicator. */
+@utility pb-nav {
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+}
+
+@utility inset-safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--app-bg);
+  color: var(--app-fg);
+  /* Field use is one-handed and often in motion; overscroll bounce makes taps miss. */
+  overscroll-behavior-y: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
