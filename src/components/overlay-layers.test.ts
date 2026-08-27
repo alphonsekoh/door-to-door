@@ -1,0 +1,64 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+/*
+ * The bottom nav is fixed and painted at z-40. A sheet that opens over it must
+ * sit above it, or its primary action ends up under the nav and cannot be
+ * tapped at all - which is exactly what shipped in #26, #28 and #29 and was
+ * only found by looking at a phone-sized screenshot.
+ *
+ * jsdom does not compute stacking, so no rendering test can catch this. The
+ * source is checked directly instead. E2E in a real browser (#37) is the
+ * proper long-term guard; this stops the next sheet being pasted in at z-20.
+ */
+
+const DIR = join(process.cwd(), "src/components");
+const NAV_LAYER = 40;
+
+/* A full-screen overlay: the shape every sheet and dialog in the app uses. */
+const OVERLAY = /className="fixed inset-0 z-(\d+)/g;
+
+function sources(): { file: string; text: string }[] {
+  return readdirSync(DIR)
+    .filter((file) => file.endsWith(".tsx") && !file.endsWith(".test.tsx"))
+    .map((file) => ({ file, text: readFileSync(join(DIR, file), "utf8") }));
+}
+
+describe("overlay stacking", () => {
+  it("finds the overlays it is meant to be guarding", () => {
+    // A pattern that matches nothing would pass every assertion below.
+    const found = sources().filter(({ text }) => new RegExp(OVERLAY.source).test(text));
+    expect(found.map(({ file }) => file).sort()).toEqual([
+      "amend-visit-sheet.tsx",
+      "block-attach-sheet.tsx",
+      "confirm-dialog.tsx",
+      "record-on-behalf-form.tsx",
+    ]);
+  });
+
+  it("puts every overlay above the bottom nav", () => {
+    const offenders: string[] = [];
+    for (const { file, text } of sources()) {
+      for (const match of text.matchAll(OVERLAY)) {
+        const layer = Number(match[1]);
+        if (layer <= NAV_LAYER) offenders.push(`${file}: z-${String(layer)}`);
+      }
+    }
+    expect(offenders, "an overlay at or below the nav's layer is untappable").toEqual([]);
+  });
+
+  it("keeps the nav itself at the layer this is measured against", () => {
+    const nav = readFileSync(join(DIR, "bottom-nav.tsx"), "utf8");
+    expect(nav).toContain(`z-${String(NAV_LAYER)}`);
+  });
+
+  it("opens a confirmation above the sheet that raised it", () => {
+    // Ending an outing confirms from inside the detail screen; detaching a
+    // block confirms over the sheet listing them.
+    const dialog = readFileSync(join(DIR, "confirm-dialog.tsx"), "utf8");
+    const sheet = readFileSync(join(DIR, "amend-visit-sheet.tsx"), "utf8");
+    const layerOf = (text: string) => Number(new RegExp(OVERLAY.source).exec(text)?.[1]);
+    expect(layerOf(dialog)).toBeGreaterThan(layerOf(sheet));
+  });
+});

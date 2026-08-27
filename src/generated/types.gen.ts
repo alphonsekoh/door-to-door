@@ -521,6 +521,27 @@ export type SessionHistoryList = {
 };
 
 /**
+ * A door that showed interest and has been left alone since. This is the
+ * list the whole app exists to produce.
+ *
+ */
+export type HouseholdAttention = {
+    household: Household;
+    block: Block;
+    /**
+     * The visit whose interest level put this unit on the list.
+     */
+    latestVisit: Visit;
+    visitCount: number;
+    lastVisitedAt: string;
+};
+
+export type HouseholdAttentionList = {
+    data: Array<HouseholdAttention>;
+    pagination: PaginationMeta;
+};
+
+/**
  * Rows per page.
  */
 export type Limit = number;
@@ -1093,6 +1114,55 @@ export type ListHouseholdsResponses = {
 };
 
 export type ListHouseholdsResponse = ListHouseholdsResponses[keyof ListHouseholdsResponses];
+
+export type ListHouseholdsNeedingAttentionData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * The lowest interest level that counts. `high` by default; widen to
+         * `medium` for a longer list.
+         *
+         */
+        minimumInterest?: InterestLevel;
+        blockId?: string;
+        /**
+         * Rows per page.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/households/attention';
+};
+
+export type ListHouseholdsNeedingAttentionErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session.
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+};
+
+export type ListHouseholdsNeedingAttentionError = ListHouseholdsNeedingAttentionErrors[keyof ListHouseholdsNeedingAttentionErrors];
+
+export type ListHouseholdsNeedingAttentionResponses = {
+    /**
+     * Households worth a return visit.
+     */
+    200: HouseholdAttentionList;
+};
+
+export type ListHouseholdsNeedingAttentionResponse = ListHouseholdsNeedingAttentionResponses[keyof ListHouseholdsNeedingAttentionResponses];
 
 export type GetHouseholdHistoryData = {
     body?: never;

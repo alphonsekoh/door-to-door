@@ -174,14 +174,21 @@ describe("summariseProgress", () => {
 
 describe("progressLabel", () => {
   it("reads as one phrase", () => {
-    expect(progressLabel({ units: 12, floors: 3, answered: 5 })).toBe(
-      "12 units on 3 floors, 5 answered",
+    expect(progressLabel({ units: 12, floors: 3, answered: 5 }, "Tonight")).toBe(
+      "Tonight: 12 units on 3 floors, 5 answered",
     );
   });
 
   it("uses the singular for a single unit on a single floor", () => {
-    expect(progressLabel({ units: 1, floors: 1, answered: 0 })).toBe(
-      "1 unit on 1 floor, 0 answered",
+    expect(progressLabel({ units: 1, floors: 1, answered: 0 }, "Tonight")).toBe(
+      "Tonight: 1 unit on 1 floor, 0 answered",
+    );
+  });
+
+  it("names its scope, because the tab beside it counts something else", () => {
+    // "Units (40)" next to a bare "36 units" reads as a contradiction.
+    expect(progressLabel({ units: 4, floors: 1, answered: 1 }, "On this block")).toBe(
+      "On this block: 4 units on 1 floor, 1 answered",
     );
   });
 });

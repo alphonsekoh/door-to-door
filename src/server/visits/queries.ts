@@ -202,3 +202,109 @@ export async function listFollowUpsFor(db: Database, householdId: string): Promi
     .where(eq(followUps.householdId, householdId))
     .orderBy(asc(followUps.createdAt));
 }
+
+export type HouseholdAttentionRow = {
+  household: HouseholdRow;
+  block: {
+    id: string;
+    name: string;
+    street: string;
+    postalCode: string | null;
+    createdAt: Date;
+  };
+  latestVisit: VisitRow;
+  visitCount: number;
+  lastVisitedAt: Date;
+};
+
+/* medium counts as interest; low and no_response do not. */
+const AT_LEAST: Record<"medium" | "high", ("medium" | "high")[]> = {
+  medium: ["medium", "high"],
+  high: ["high"],
+};
+
+/*
+ * Doors that said yes and were never gone back to.
+ *
+ * "Most recent visit" is the whole point: a unit that was high in March and
+ * declined in June is not on this list, because the last thing it said is what
+ * matters. Comparing against max(created_at) rather than picking any matching
+ * visit is what makes that true.
+ *
+ * A household with an outstanding follow-up is excluded - it is already
+ * someone's job, and leaving it here would make the list something to scroll
+ * past rather than work through.
+ */
+export async function listHouseholdsNeedingAttention(
+  db: Database,
+  options: {
+    minimumInterest: "medium" | "high";
+    blockId?: string | undefined;
+    limit: number;
+    offset: number;
+  },
+): Promise<{ rows: HouseholdAttentionRow[]; total: number }> {
+  const latest = sql`${visits.createdAt} = (
+    select max(v2.created_at) from ${visits} v2 where v2.household_id = ${visits.householdId}
+  )`;
+  const noOutstanding = sql`not exists (
+    select 1 from ${followUps} f
+    where f.household_id = ${visits.householdId} and f.done_at is null
+  )`;
+
+  const conditions = [
+    latest,
+    noOutstanding,
+    inArray(visits.interestLevel, AT_LEAST[options.minimumInterest]),
+    ...(options.blockId === undefined ? [] : [eq(households.blockId, options.blockId)]),
+  ];
+  const filter = and(...conditions);
+
+  const rows = await db
+    .select({
+      ...visitColumns,
+      household: households,
+      block: blocks,
+      visitCount: sql<number>`(
+        select count(*)::int from ${visits} v3 where v3.household_id = ${visits.householdId}
+      )`,
+    })
+    .from(visits)
+    .innerJoin(users, eq(users.id, visits.memberId))
+    .innerJoin(households, eq(households.id, visits.householdId))
+    .innerJoin(blocks, eq(blocks.id, households.blockId))
+    .where(filter)
+    /* Oldest first: the longer a yes has been left, the more it has cost. */
+    .orderBy(asc(visits.createdAt))
+    .limit(options.limit)
+    .offset(options.offset);
+
+  const counted = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(visits)
+    .innerJoin(households, eq(households.id, visits.householdId))
+    .where(filter);
+
+  return {
+    rows: rows.map((row) => ({
+      household: row.household,
+      block: row.block,
+      latestVisit: {
+        id: row.id,
+        householdId: row.householdId,
+        sessionId: row.sessionId,
+        interestLevel: row.interestLevel,
+        description: row.description,
+        clientCreatedAt: row.clientCreatedAt,
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+        memberId: row.memberId,
+        memberName: row.memberName,
+        memberImage: row.memberImage,
+      },
+      visitCount: row.visitCount,
+      lastVisitedAt: row.createdAt,
+    })),
+    total: firstOrThrow(counted, "the attention count").total,
+  };
+}
