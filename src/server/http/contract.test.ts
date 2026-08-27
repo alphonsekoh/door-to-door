@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import {
   ResponseContractError,
+  coerceQuery,
   searchParamsToObject,
   toErrorResponse,
   withContract,
@@ -270,5 +271,64 @@ describe("toErrorResponse", () => {
     const response = toErrorResponse(new NotFoundError());
     const payload = (await response.json()) as { error: Record<string, unknown> };
     expect(payload.error).not.toHaveProperty("details");
+  });
+});
+
+describe("coerceQuery", () => {
+  /*
+   * Query parameters are strings on the wire while the contract describes
+   * their semantic types. Every numeric parameter in the API would otherwise
+   * be rejected with 400 - "50" is not a number as far as z.int() is
+   * concerned.
+   */
+  const schema = z.object({
+    limit: z.int().optional().default(50),
+    active: z.boolean().optional(),
+    search: z.string().optional(),
+    status: z.enum(["draft", "active"]).optional(),
+  });
+
+  it("coerces a numeric parameter", () => {
+    expect(coerceQuery(schema, { limit: "25" })).toEqual({ limit: 25 });
+  });
+
+  it("coerces booleans", () => {
+    expect(coerceQuery(schema, { active: "true" })).toEqual({ active: true });
+    expect(coerceQuery(schema, { active: "false" })).toEqual({ active: false });
+  });
+
+  it("leaves a string parameter alone even when it looks numeric", () => {
+    // Block "123" is a name, not a number. Coercing by value rather than by
+    // schema would corrupt it.
+    expect(coerceQuery(schema, { search: "123" })).toEqual({ search: "123" });
+  });
+
+  it("leaves enums alone", () => {
+    expect(coerceQuery(schema, { status: "draft" })).toEqual({ status: "draft" });
+  });
+
+  it("leaves a non-numeric value for a numeric field, so the schema reports it", () => {
+    // Coercing to NaN would produce a baffling message.
+    expect(coerceQuery(schema, { limit: "abc" })).toEqual({ limit: "abc" });
+  });
+
+  it("leaves an empty string alone", () => {
+    expect(coerceQuery(schema, { limit: "" })).toEqual({ limit: "" });
+  });
+
+  it("ignores keys the schema does not declare", () => {
+    expect(coerceQuery(schema, { unknown: "5" })).toEqual({ unknown: "5" });
+  });
+
+  it("leaves a non-string value untouched", () => {
+    expect(coerceQuery(schema, { limit: 25 })).toEqual({ limit: 25 });
+  });
+
+  it("returns the input unchanged for a schema with no shape", () => {
+    expect(coerceQuery(z.string(), { limit: "25" })).toEqual({ limit: "25" });
+  });
+
+  it("only coerces booleans for exact true/false", () => {
+    expect(coerceQuery(schema, { active: "yes" })).toEqual({ active: "yes" });
   });
 });

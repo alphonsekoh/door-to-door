@@ -50,6 +50,52 @@ function issuesFrom(error: ZodError): FieldIssue[] {
   }));
 }
 
+/*
+ * Query parameters are always strings on the wire, but the contract describes
+ * their semantic types - `limit` is an integer, not "50". Coercion is driven
+ * by the schema rather than guessed from the value, so a parameter the
+ * contract declares as a string stays a string even when it looks numeric.
+ */
+type ZodInternals = {
+  def?: { type?: string; shape?: Record<string, unknown>; innerType?: unknown };
+};
+
+function unwrap(schema: unknown): ZodInternals {
+  let current = schema as ZodInternals;
+  while (current.def?.innerType !== undefined) {
+    current = current.def.innerType as ZodInternals;
+  }
+  return current;
+}
+
+export function coerceQuery(
+  schema: ZodType,
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const shape = (schema as ZodInternals).def?.shape;
+  if (!shape) {
+    return raw;
+  }
+
+  const coerced: Record<string, unknown> = { ...raw };
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value !== "string" || !(key in shape)) {
+      continue;
+    }
+    const expected = unwrap(shape[key]).def?.type;
+
+    if (expected === "number" || expected === "int") {
+      const asNumber = Number(value);
+      // Leave it alone when it is not a number, so the schema reports the
+      // real problem rather than a confusing NaN.
+      coerced[key] = value.trim() === "" || Number.isNaN(asNumber) ? value : asNumber;
+    } else if (expected === "boolean" && (value === "true" || value === "false")) {
+      coerced[key] = value === "true";
+    }
+  }
+  return coerced;
+}
+
 /* Repeated keys become arrays so `?id=a&id=b` reaches the schema intact. */
 export function searchParamsToObject(params: URLSearchParams): Record<string, unknown> {
   const result: Record<string, unknown> = {};
@@ -127,7 +173,11 @@ export function withContract<TPath = undefined, TQuery = undefined, TBody = unde
           ? parseOrThrow(spec.path, rawPath, "path parameters")
           : (undefined as TPath),
         query: spec.query
-          ? parseOrThrow(spec.query, searchParamsToObject(url.searchParams), "query parameters")
+          ? parseOrThrow(
+              spec.query,
+              coerceQuery(spec.query, searchParamsToObject(url.searchParams)),
+              "query parameters",
+            )
           : (undefined as TQuery),
         body: spec.body
           ? parseOrThrow(spec.body, await readJsonBody(request), "request body")
