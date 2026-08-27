@@ -8,6 +8,7 @@ import AdminSessionPage from "@/app/admin/sessions/[id]/page";
 import AdminAttentionPage from "@/app/admin/attention/page";
 import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
+import AdminTeamPage from "@/app/admin/team/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockPage from "@/app/blocks/[id]/page";
 import HouseholdPage from "@/app/households/[id]/page";
@@ -130,6 +131,13 @@ describe("admin screens", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Needs a return visit" }),
     ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("guards the team screen before rendering it", async () => {
+    render(await AdminTeamPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Team" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 

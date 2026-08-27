@@ -1,0 +1,196 @@
+"use client";
+
+import { useState } from "react";
+import type { Role, User } from "@/generated/types.gen";
+import { apiFetch } from "@/lib/api-client";
+
+/* Matches the contract's minLength, so a short password is refused here
+   rather than after a round trip. */
+const MIN_PASSWORD = 8;
+
+/*
+ * Adds somebody to the team with an initial password.
+ *
+ * There is no invite email in this app, so the admin has to read the password
+ * out. It stays on screen after saving for exactly that reason - a password
+ * that vanishes on success is one nobody can pass on.
+ */
+export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<Role>("member");
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [added, setAdded] = useState<{ email: string; password: string } | null>(null);
+
+  async function save(): Promise<void> {
+    if (email.trim() === "") {
+      setFailure("Enter an email address.");
+      return;
+    }
+    if (password.length < MIN_PASSWORD) {
+      setFailure(`The password needs at least ${String(MIN_PASSWORD)} characters.`);
+      return;
+    }
+
+    setFailure(null);
+    setSaving(true);
+    try {
+      const user = await apiFetch<User>("/users", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.trim(),
+          name: name.trim() === "" ? null : name.trim(),
+          password,
+          role,
+        }),
+      });
+      setAdded({ email: email.trim(), password });
+      setEmail("");
+      setName("");
+      setPassword("");
+      setRole("member");
+      setOpen(false);
+      onAdded(user);
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Could not add that person.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <div className="space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(true);
+            setAdded(null);
+          }}
+          className="min-h-12 w-full rounded-xl border border-border text-body font-medium"
+        >
+          Add someone
+        </button>
+
+        {added === null ? null : (
+          <p
+            role="status"
+            className="rounded-lg border border-interest-high/40 bg-interest-high/10 px-3 py-2 text-body"
+          >
+            {added.email} can sign in with <strong>{added.password}</strong>. Pass it on now — it is
+            not shown again.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
+      }}
+      noValidate
+      aria-label="Add someone to the team"
+      className="space-y-3 rounded-xl border border-border bg-surface p-4"
+    >
+      {failure === null ? null : (
+        <p
+          role="alert"
+          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+        >
+          {failure}
+        </p>
+      )}
+
+      <div>
+        <label htmlFor="member-email" className="mb-1 block text-body font-medium">
+          Email
+        </label>
+        <input
+          id="member-email"
+          type="email"
+          value={email}
+          autoComplete="off"
+          onChange={(event) => {
+            setEmail(event.target.value);
+          }}
+          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="member-name" className="mb-1 block text-body font-medium">
+          Name
+        </label>
+        <input
+          id="member-name"
+          value={name}
+          onChange={(event) => {
+            setName(event.target.value);
+          }}
+          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="member-password" className="mb-1 block text-body font-medium">
+          Initial password
+        </label>
+        {/* Deliberately not type="password": the admin is reading it out to
+            somebody, and hiding it from the person setting it helps nobody. */}
+        <input
+          id="member-password"
+          type="text"
+          value={password}
+          autoComplete="off"
+          onChange={(event) => {
+            setPassword(event.target.value);
+          }}
+          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+        />
+      </div>
+
+      <div>
+        <label htmlFor="member-role" className="mb-1 block text-body font-medium">
+          Role
+        </label>
+        <select
+          id="member-role"
+          value={role}
+          onChange={(event) => {
+            setRole(event.target.value as Role);
+          }}
+          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+        >
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving}
+          className="min-h-12 flex-1 rounded-xl bg-primary text-body font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          {saving ? "Adding…" : "Add to the team"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setFailure(null);
+          }}
+          className="min-h-12 rounded-xl border border-border px-4 text-body font-medium"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}

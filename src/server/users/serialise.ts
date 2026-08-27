@@ -9,6 +9,7 @@ export function toUser(row: UserRow): User {
     image: row.image,
     role: row.role,
     deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
+    lastRecordedAt: row.lastRecordedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }

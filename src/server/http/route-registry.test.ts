@@ -8,9 +8,9 @@ import { contractRoutes, isImplemented, routeFileFor } from "@/server/http/route
  * An entry that has actually been implemented fails the suite, which is what
  * keeps the list shrinking instead of rotting.
  */
-const PENDING_OPERATIONS = new Set([
-  "updateUser", // #31
-]);
+/* Every operation in the contract now has a handler. A new one added to the
+   spec without a route fails the check below rather than being listed here. */
+const PENDING_OPERATIONS = new Set<string>();
 
 const routes = contractRoutes();
 

@@ -66,6 +66,13 @@ export function AdminSessions() {
 
   return (
     <div className="space-y-4">
+      <Link
+        href="/admin/team"
+        className="flex min-h-12 items-center justify-center rounded-xl border border-border text-body font-medium"
+      >
+        Team
+      </Link>
+
       <div className="flex gap-2">
         <Link
           href="/admin/attention"
