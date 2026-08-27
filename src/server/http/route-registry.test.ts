@@ -9,7 +9,6 @@ import { contractRoutes, isImplemented, routeFileFor } from "@/server/http/route
  * keeps the list shrinking instead of rotting.
  */
 const PENDING_OPERATIONS = new Set([
-  "syncVisits", // #21
   "listFollowUps", // #22
   "createFollowUp", // #22
   "updateFollowUp", // #22
