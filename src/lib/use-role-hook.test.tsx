@@ -6,9 +6,10 @@ const { useSession } = vi.hoisted(() => ({ useSession: vi.fn() }));
 vi.mock("next-auth/react", () => ({ useSession }));
 
 function Probe() {
-  const { role, isAdmin, isMember, isLoading, isSignedIn } = useRole();
+  const { userId, role, isAdmin, isMember, isLoading, isSignedIn } = useRole();
   return (
     <ul>
+      <li>id:{userId ?? "none"}</li>
       <li>role:{role ?? "none"}</li>
       <li>admin:{String(isAdmin)}</li>
       <li>member:{String(isMember)}</li>
@@ -22,17 +23,18 @@ describe("useRole", () => {
   it("reads an admin from the session", () => {
     useSession.mockReturnValue({
       status: "authenticated",
-      data: { user: { role: "admin", deactivated: false } },
+      data: { user: { id: "u1", role: "admin", deactivated: false } },
     });
     render(<Probe />);
     expect(screen.getByText("admin:true")).toBeInTheDocument();
     expect(screen.getByText("role:admin")).toBeInTheDocument();
+    expect(screen.getByText("id:u1")).toBeInTheDocument();
   });
 
   it("reads a member from the session", () => {
     useSession.mockReturnValue({
       status: "authenticated",
-      data: { user: { role: "member", deactivated: false } },
+      data: { user: { id: "u2", role: "member", deactivated: false } },
     });
     render(<Probe />);
     expect(screen.getByText("member:true")).toBeInTheDocument();
