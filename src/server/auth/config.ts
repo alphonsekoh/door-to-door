@@ -3,7 +3,7 @@ import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { getDatabase } from "@/db/client";
 import { accounts, authSessions, users, verificationTokens } from "@/db/schema";
-import { applyTokenToSession, applyUserToToken } from "@/server/auth/callbacks";
+import { baseAuthConfig } from "@/server/auth/base-config";
 import { authorizeFromRawCredentials } from "@/server/auth/credentials";
 
 /*
@@ -13,6 +13,7 @@ import { authorizeFromRawCredentials } from "@/server/auth/credentials";
  */
 export function buildAuthConfig(): NextAuthConfig {
   return {
+    ...baseAuthConfig,
     adapter: DrizzleAdapter(getDatabase(), {
       usersTable: users,
       accountsTable: accounts,
@@ -21,15 +22,6 @@ export function buildAuthConfig(): NextAuthConfig {
       sessionsTable: authSessions,
       verificationTokensTable: verificationTokens,
     }),
-    session: {
-      /*
-       * Required, not preferred: the Credentials provider (#15) does not work
-       * with database sessions. auth_sessions therefore exists to satisfy the
-       * adapter's contract and is unused at runtime.
-       */
-      strategy: "jwt",
-      maxAge: 60 * 60 * 24 * 30,
-    },
     providers: [
       Credentials({
         id: "credentials",
@@ -41,18 +33,5 @@ export function buildAuthConfig(): NextAuthConfig {
         authorize: authorizeFromRawCredentials,
       }),
     ],
-    pages: {
-      signIn: "/sign-in",
-      error: "/sign-in",
-    },
-    callbacks: {
-      jwt({ token, user }) {
-        return applyUserToToken(token, user);
-      },
-      session({ session, token }) {
-        return applyTokenToSession(session, token);
-      },
-    },
-    trustHost: true,
   };
 }

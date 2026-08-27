@@ -1,0 +1,55 @@
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { useRole } from "@/lib/use-role";
+
+const { useSession } = vi.hoisted(() => ({ useSession: vi.fn() }));
+vi.mock("next-auth/react", () => ({ useSession }));
+
+function Probe() {
+  const { role, isAdmin, isMember, isLoading, isSignedIn } = useRole();
+  return (
+    <ul>
+      <li>role:{role ?? "none"}</li>
+      <li>admin:{String(isAdmin)}</li>
+      <li>member:{String(isMember)}</li>
+      <li>loading:{String(isLoading)}</li>
+      <li>signedIn:{String(isSignedIn)}</li>
+    </ul>
+  );
+}
+
+describe("useRole", () => {
+  it("reads an admin from the session", () => {
+    useSession.mockReturnValue({
+      status: "authenticated",
+      data: { user: { role: "admin", deactivated: false } },
+    });
+    render(<Probe />);
+    expect(screen.getByText("admin:true")).toBeInTheDocument();
+    expect(screen.getByText("role:admin")).toBeInTheDocument();
+  });
+
+  it("reads a member from the session", () => {
+    useSession.mockReturnValue({
+      status: "authenticated",
+      data: { user: { role: "member", deactivated: false } },
+    });
+    render(<Probe />);
+    expect(screen.getByText("member:true")).toBeInTheDocument();
+    expect(screen.getByText("admin:false")).toBeInTheDocument();
+  });
+
+  it("reports loading while the session resolves", () => {
+    useSession.mockReturnValue({ status: "loading", data: undefined });
+    render(<Probe />);
+    expect(screen.getByText("loading:true")).toBeInTheDocument();
+    expect(screen.getByText("admin:false")).toBeInTheDocument();
+  });
+
+  it("reports nobody when signed out", () => {
+    useSession.mockReturnValue({ status: "unauthenticated", data: null });
+    render(<Probe />);
+    expect(screen.getByText("signedIn:false")).toBeInTheDocument();
+    expect(screen.getByText("role:none")).toBeInTheDocument();
+  });
+});
