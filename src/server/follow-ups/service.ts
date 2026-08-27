@@ -150,14 +150,29 @@ export async function createFollowUp(
   return getFollowUp(db, firstOrThrow(inserted, "the follow-up insert").id);
 }
 
-/* Only the author or an admin may touch a note. */
-function assertMayModify(
+/*
+ * Editing a note - its text or its due date - is restricted to the author or
+ * an admin. The words belong to whoever wrote them.
+ */
+function assertMayEdit(
   followUp: FollowUpRow,
   actor: { id: string; role: "admin" | "member" },
 ): void {
   if (actor.role !== "admin" && followUp.authorId !== actor.id) {
     throw new ForbiddenError("You can only change your own follow-ups.");
   }
+}
+
+/*
+ * Resolving is not editing. Whether the thing got done is a fact about the
+ * household, and the member who did it is exactly who should record it - a
+ * note written by one member and acted on by another would otherwise sit on
+ * the outstanding list until its author happened to notice. doneBy keeps it
+ * attributable.
+ */
+function isResolutionOnly(changes: Record<string, unknown>): boolean {
+  const keys = Object.keys(changes);
+  return keys.length > 0 && keys.every((key) => key === "done");
 }
 
 export async function updateFollowUp(
@@ -171,7 +186,9 @@ export async function updateFollowUp(
   actor: { id: string; role: "admin" | "member" },
 ): Promise<FollowUpRow> {
   const existing = await getFollowUp(db, id);
-  assertMayModify(existing, actor);
+  if (!isResolutionOnly(changes)) {
+    assertMayEdit(existing, actor);
+  }
 
   const values: Record<string, unknown> = { updatedAt: new Date() };
   if (changes.note !== undefined) values["note"] = changes.note.trim();
@@ -197,6 +214,6 @@ export async function deleteFollowUp(
   id: string,
   actor: { id: string; role: "admin" | "member" },
 ): Promise<void> {
-  assertMayModify(await getFollowUp(db, id), actor);
+  assertMayEdit(await getFollowUp(db, id), actor);
   await db.delete(followUps).where(eq(followUps.id, id));
 }

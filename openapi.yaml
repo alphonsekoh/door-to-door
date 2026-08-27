@@ -1299,8 +1299,15 @@ paths:
       operationId: updateFollowUp
       summary: Amend or resolve a follow-up
       description: |
-        Only the author or an admin may amend. Resolving records who did so and
-        when.
+        **Resolving is open to any member.** Whoever actually did the thing
+        should be able to record that it happened - a note written by one
+        member and acted on by another would otherwise sit on the outstanding
+        list until its author noticed. `doneBy` records who closed it, so it
+        stays attributable.
+
+        Changing the note text or its due date is restricted to the author or
+        an admin: the words belong to whoever wrote them, whereas whether the
+        thing got done is a fact about the household.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
         required: true

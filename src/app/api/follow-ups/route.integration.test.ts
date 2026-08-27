@@ -158,16 +158,53 @@ describe("resolving a note", () => {
     expect(body.doneBy?.name).toBe("Admin");
   });
 
-  it("refuses another member resolving a note they did not write", async () => {
+  it("lets another member resolve a note they acted on", async () => {
     /*
-     * Deliberate: only the author or an admin may change a note. Worth knowing
-     * that a member who acts on someone else's note cannot tick it off
-     * themselves - an admin has to.
+     * Alice writes "bring the flyer" in March; Ben works the block in June,
+     * reads the note and brings it. He must be able to tick it off, or the
+     * outstanding list fills with things that already happened.
      */
+    asAlice();
+    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
+
+    asBen();
+    const response = await patch(id, { done: true });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { doneBy: { name: string } | null };
+    // Attributable to whoever actually did it, not to the author.
+    expect(body.doneBy?.name).toBe("Ben");
+  });
+
+  it("lets another member reopen a note ticked off by mistake", async () => {
+    asAlice();
+    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
+    asBen();
+    await patch(id, { done: true });
+    const body = (await (await patch(id, { done: false })).json()) as { doneAt: null };
+    expect(body.doneAt).toBeNull();
+  });
+
+  it("still refuses another member editing the note text", async () => {
+    // The words belong to whoever wrote them.
+    asAlice();
+    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's wording" }));
+    asBen();
+    expect((await patch(id, { note: "Ben's rewrite" })).status).toBe(403);
+  });
+
+  it("still refuses another member changing the due date", async () => {
     asAlice();
     const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
     asBen();
-    expect((await patch(id, { done: true })).status).toBe(403);
+    expect((await patch(id, { dueDate: "2026-12-01T00:00:00.000Z" })).status).toBe(403);
+  });
+
+  it("refuses a resolution bundled with an edit", async () => {
+    // Otherwise `done` would be a way to smuggle in a rewrite.
+    asAlice();
+    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
+    asBen();
+    expect((await patch(id, { done: true, note: "and rewritten" })).status).toBe(403);
   });
 
   it("can reopen a note that was closed too early", async () => {
