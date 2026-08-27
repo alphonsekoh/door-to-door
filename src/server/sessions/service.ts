@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { SessionStatus } from "@/db/schema";
-import { firstOrThrow } from "@/server/db-utils";
+import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { ConflictError, NotFoundError } from "@/server/http/errors";
 
 /*
@@ -16,21 +16,8 @@ import { ConflictError, NotFoundError } from "@/server/http/errors";
 
 export const ACTIVE_SESSION_CONSTRAINT = "one_active_session_idx";
 
-/*
- * Postgres reports the partial unique index by name, but Drizzle wraps the
- * driver error, so the constraint lands on a cause further down the chain.
- * Anything else rethrows.
- */
-export function isActiveSessionClash(error: unknown): boolean {
-  let current: unknown = error;
-  while (typeof current === "object" && current !== null) {
-    if ((current as { constraint?: string }).constraint === ACTIVE_SESSION_CONSTRAINT) {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
+export const isActiveSessionClash = (error: unknown): boolean =>
+  isConstraintViolation(error, ACTIVE_SESSION_CONSTRAINT);
 
 export type SessionRow = {
   id: string;
