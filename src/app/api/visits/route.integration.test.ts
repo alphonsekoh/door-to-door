@@ -349,3 +349,93 @@ describe("households over HTTP", () => {
     ).toBe(404);
   });
 });
+
+describe("recording on someone else's behalf", () => {
+  it("lets an admin attribute a visit to a member", async () => {
+    // A record phoned in, or captured on paper, belongs to whoever knocked.
+    asAdmin();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#09-01",
+      interestLevel: "high",
+      memberId: ALICE,
+    });
+
+    expect(response.status).toBe(201);
+    const visit = (await response.json()) as { member: { id: string; name: string } };
+    expect(visit.member.id).toBe(ALICE);
+  });
+
+  it("refuses a member attributing a visit to anyone else", async () => {
+    asBen();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#09-02",
+      interestLevel: "low",
+      memberId: ALICE,
+    });
+
+    expect(response.status).toBe(403);
+  });
+
+  it("lets a member name themselves, since that changes nothing", async () => {
+    asAlice();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#09-03",
+      interestLevel: "low",
+      memberId: ALICE,
+    });
+
+    expect(response.status).toBe(201);
+  });
+
+  it("still attributes to the caller when no member is named", async () => {
+    asBen();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#09-04",
+      interestLevel: "medium",
+    });
+
+    const visit = (await response.json()) as { member: { id: string } };
+    expect(visit.member.id).toBe(BEN);
+  });
+
+  it("rejects a member id that does not exist", async () => {
+    // A foreign-key crash would surface a constraint name, not a message.
+    asAdmin();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#09-05",
+      interestLevel: "low",
+      memberId: "dededede-0000-4000-8000-0000000000ff",
+    });
+
+    expect(response.status).toBe(404);
+    expect((await response.json()) as { error: { message: string } }).toMatchObject({
+      error: { message: "No such member." },
+    });
+  });
+
+  it("does not reassign authorship when an admin later amends the record", async () => {
+    asAdmin();
+    const id = nextId();
+    await post({
+      id,
+      blockId: BLOCK,
+      unitNumber: "#09-06",
+      interestLevel: "low",
+      memberId: ALICE,
+    });
+
+    const amended = await patch(id, { interestLevel: "high" });
+    const visit = (await amended.json()) as { member: { id: string } };
+    expect(visit.member.id).toBe(ALICE);
+  });
+});

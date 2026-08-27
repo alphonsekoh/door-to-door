@@ -87,7 +87,13 @@ export const POST = withContract(
     responses: { 201: zCreateVisitResponse },
   },
   async ({ body }) => {
-    const user = requireUser(await auth());
+    const session = await auth();
+    /*
+     * Authorship is decided here and never again. resolveMemberScope refuses a
+     * member naming anyone else, so the only caller who can attribute a visit
+     * to someone else is an admin capturing a paper or phoned-in record.
+     */
+    const memberId = resolveMemberScope(session, body.memberId);
     const visit = await createVisit(getDatabase(), {
       id: body.id,
       blockId: body.blockId,
@@ -98,7 +104,7 @@ export const POST = withContract(
       name: body.name,
       contact: body.contact,
       religion: body.religion,
-      memberId: user.id,
+      memberId,
     });
     return { status: 201, body: toVisit(visit) };
   },

@@ -314,6 +314,16 @@ export type CreateVisitRequest = HouseholdIdentity & {
     unitNumber: string;
     interestLevel: InterestLevel;
     description?: string;
+    /**
+     * **Requires: admin.** Attributes the visit to this member rather
+     * than to the caller, for a record phoned in or captured on paper.
+     * A member supplying anyone else's id is refused with `403`.
+     *
+     * The record belongs to whoever knocked, so authorship is set here
+     * and never reassigned by a later amendment.
+     *
+     */
+    memberId?: string;
     clientCreatedAt?: string;
 };
 
@@ -1183,7 +1193,11 @@ export type CreateVisitErrors = {
      */
     401: Error;
     /**
-     * The block does not exist.
+     * A member attributing a visit to someone else.
+     */
+    403: Error;
+    /**
+     * The block, or a named `memberId`, does not exist.
      */
     404: Error;
     /**

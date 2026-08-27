@@ -157,6 +157,19 @@ export async function createVisit(
     throw new NotFoundError("No such block.");
   }
 
+  const memberExists = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, input.memberId))
+    .limit(1);
+
+  if (memberExists.length === 0) {
+    /* Only reachable when an admin names someone: a caller's own id comes
+       from a verified session. A bare insert would fail on the foreign key
+       with a constraint name instead of a usable message. */
+    throw new NotFoundError("No such member.");
+  }
+
   const sessionId = await requireActiveSessionWithBlock(db, input.blockId);
 
   const existing = await db

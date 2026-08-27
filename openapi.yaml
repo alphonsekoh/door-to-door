@@ -457,6 +457,16 @@ components:
               description: The household is created on first contact if new.
             interestLevel: { $ref: "#/components/schemas/InterestLevel" }
             description: { type: string, maxLength: 4000, default: "" }
+            memberId:
+              type: string
+              format: uuid
+              description: |
+                **Requires: admin.** Attributes the visit to this member rather
+                than to the caller, for a record phoned in or captured on paper.
+                A member supplying anyone else's id is refused with `403`.
+
+                The record belongs to whoever knocked, so authorship is set here
+                and never reassigned by a later amendment.
             clientCreatedAt: { type: string, format: date-time }
 
     UpdateVisitRequest:
@@ -1194,8 +1204,13 @@ paths:
               schema: { $ref: "#/components/schemas/Visit" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: A member attributing a visit to someone else.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "404":
-          description: The block does not exist.
+          description: The block, or a named `memberId`, does not exist.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
