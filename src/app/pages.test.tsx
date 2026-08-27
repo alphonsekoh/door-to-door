@@ -5,6 +5,7 @@ import FollowUpsPage from "@/app/follow-ups/page";
 import HistoryPage from "@/app/history/page";
 import SessionHistoryPage from "@/app/history/[sessionId]/page";
 import AdminSessionPage from "@/app/admin/sessions/[id]/page";
+import AdminRecordsPage from "@/app/admin/records/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockPage from "@/app/blocks/[id]/page";
 import HouseholdPage from "@/app/households/[id]/page";
@@ -14,7 +15,11 @@ import type * as ApiClientModule from "@/lib/api-client";
 
 const { requireAdminPage } = vi.hoisted(() => ({ requireAdminPage: vi.fn() }));
 vi.mock("@/server/auth/pages", () => ({ requireAdminPage }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useRouter: () => ({ replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return {
@@ -103,6 +108,12 @@ describe("admin screens", () => {
     expect(requireAdminPage).toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Outings" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("guards the record list before rendering it", async () => {
+    render(await AdminRecordsPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Records" })).toBeInTheDocument();
   });
 
   it("guards one outing's detail before rendering it", async () => {

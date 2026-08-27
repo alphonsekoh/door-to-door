@@ -213,6 +213,7 @@ export const zCreateVisitRequest = zHouseholdIdentity.and(z.object({
     unitNumber: z.string().min(1).max(32),
     interestLevel: zInterestLevel,
     description: z.string().max(4000).optional().default(''),
+    memberId: z.uuid().optional(),
     clientCreatedAt: z.iso.datetime().optional()
 }));
 

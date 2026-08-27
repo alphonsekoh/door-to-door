@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -122,6 +123,15 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
             Reopen it if anyone still needs to record or amend.
           </p>
         </div>
+      ) : null}
+
+      {session.status === "active" ? (
+        <Link
+          href="/admin/records"
+          className="block min-h-12 rounded-xl border border-border px-4 py-3 text-body font-medium"
+        >
+          See every record on this outing
+        </Link>
       ) : null}
 
       {availableActions(session.status).map((spec) => (
