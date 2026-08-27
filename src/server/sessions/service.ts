@@ -258,3 +258,37 @@ export async function findActiveSession(db: Database): Promise<SessionRow | unde
     .limit(1);
   return rows[0];
 }
+
+/*
+ * Detaching a block that already has visits recorded in this session is
+ * refused. History is never orphaned by a UI action - an admin tidying up the
+ * block list must not silently strip a member's afternoon of work off it.
+ */
+export async function detachBlock(db: Database, sessionId: string, blockId: string): Promise<void> {
+  const attached = await db
+    .select({ blockId: sessionBlocks.blockId })
+    .from(sessionBlocks)
+    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)))
+    .limit(1);
+
+  if (attached.length === 0) {
+    throw new NotFoundError("That block is not attached to this session.");
+  }
+
+  const recorded = await db
+    .select({ total: sql<number>`count(*)::int` })
+    .from(visits)
+    .innerJoin(households, eq(households.id, visits.householdId))
+    .where(and(eq(visits.sessionId, sessionId), eq(households.blockId, blockId)));
+
+  if (firstOrThrow(recorded, "the visit count").total > 0) {
+    throw new ConflictError(
+      "block_in_use",
+      "That block has visits recorded in this session, so it cannot be detached.",
+    );
+  }
+
+  await db
+    .delete(sessionBlocks)
+    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)));
+}
