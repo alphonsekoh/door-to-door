@@ -35,7 +35,6 @@ const PENDING_OPERATIONS = new Set([
   "listHistory", // #23
   "listOwnHistory", // #23
   "listUsers", // #31
-  "getCurrentUser", // #16
   "updateUser", // #31
 ]);
 
