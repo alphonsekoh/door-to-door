@@ -71,6 +71,11 @@
   padding-bottom: calc(4rem + env(safe-area-inset-bottom));
 }
 
+/* Sits just above the fixed bottom nav, clearing the home indicator too. */
+@utility above-nav {
+  bottom: calc(4rem + env(safe-area-inset-bottom));
+}
+
 @utility inset-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }
