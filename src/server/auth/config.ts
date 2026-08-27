@@ -1,8 +1,10 @@
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import type { NextAuthConfig } from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import { getDatabase } from "@/db/client";
 import { accounts, authSessions, users, verificationTokens } from "@/db/schema";
 import { applyTokenToSession, applyUserToToken } from "@/server/auth/callbacks";
+import { authorizeFromRawCredentials } from "@/server/auth/credentials";
 
 /*
  * Auth.js configuration. Providers are added by #14 (Google) and #15
@@ -28,7 +30,17 @@ export function buildAuthConfig(): NextAuthConfig {
       strategy: "jwt",
       maxAge: 60 * 60 * 24 * 30,
     },
-    providers: [],
+    providers: [
+      Credentials({
+        id: "credentials",
+        name: "Email and password",
+        credentials: {
+          email: { label: "Email", type: "email" },
+          password: { label: "Password", type: "password" },
+        },
+        authorize: authorizeFromRawCredentials,
+      }),
+    ],
     pages: {
       signIn: "/sign-in",
       error: "/sign-in",
