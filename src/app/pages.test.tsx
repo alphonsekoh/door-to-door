@@ -4,12 +4,16 @@ import AccountPage from "@/app/account/page";
 import FollowUpsPage from "@/app/follow-ups/page";
 import HistoryPage from "@/app/history/page";
 import SessionHistoryPage from "@/app/history/[sessionId]/page";
+import AdminSessionPage from "@/app/admin/sessions/[id]/page";
+import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockPage from "@/app/blocks/[id]/page";
 import HouseholdPage from "@/app/households/[id]/page";
 import NotFound from "@/app/not-found";
 import SessionPage from "@/app/page";
 import type * as ApiClientModule from "@/lib/api-client";
 
+const { requireAdminPage } = vi.hoisted(() => ({ requireAdminPage: vi.fn() }));
+vi.mock("@/server/auth/pages", () => ({ requireAdminPage }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
@@ -90,6 +94,27 @@ describe("block screen", () => {
     );
     expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
+  });
+});
+
+describe("admin screens", () => {
+  it("guards the outing list before rendering it", async () => {
+    render(await AdminSessionsPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Outings" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("guards one outing's detail before rendering it", async () => {
+    render(
+      await AdminSessionPage({
+        params: Promise.resolve({ id: "s1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });
 
