@@ -1,0 +1,351 @@
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { resetDatabase } from "@/db/client";
+import { createTestPool, truncateAll } from "@/db/testing";
+
+const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
+vi.mock("@/../auth", () => ({ auth }));
+
+const { GET, POST } = await import("./route");
+const { PATCH } = await import("./[id]/route");
+const { GET: listHouseholdsRoute } = await import("../households/route");
+const { GET: householdHistory } = await import("../households/[id]/route");
+
+const pool = createTestPool();
+const ADMIN = "dededede-0000-4000-8000-000000000001";
+const ALICE = "dededede-0000-4000-8000-000000000002";
+const BEN = "dededede-0000-4000-8000-000000000003";
+const BLOCK = "dededede-0000-4000-8001-000000000001";
+const SESSION = "dededede-0000-4000-8002-000000000001";
+
+const asAdmin = () =>
+  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAlice = () =>
+  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+const asBen = () =>
+  auth.mockResolvedValue({ user: { id: BEN, role: "member", deactivated: false } });
+
+let seq = 0;
+const nextId = () => `01960000-0000-7000-8000-${String(++seq).padStart(12, "0")}`;
+
+const post = (body: unknown) =>
+  POST(
+    new Request("https://test.local/api/visits", {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    }),
+  );
+
+const patch = (id: string, body: unknown) =>
+  PATCH(
+    new Request(`https://test.local/api/visits/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      headers: { "content-type": "application/json" },
+    }),
+    { params: Promise.resolve({ id }) },
+  );
+
+const record = (unit: string, extra: Record<string, unknown> = {}) =>
+  post({ id: nextId(), blockId: BLOCK, unitNumber: unit, interestLevel: "low", ...extra });
+
+beforeEach(async () => {
+  seq = 0;
+  await truncateAll(pool);
+  await pool.query(
+    `INSERT INTO users (id, email, name, role) VALUES
+      ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member'), ($3,'ben@t.local','Ben','member')`,
+    [ADMIN, ALICE, BEN],
+  );
+  await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
+  await pool.query(
+    `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Outing','active',$2)`,
+    [SESSION, ADMIN],
+  );
+  await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+    SESSION,
+    BLOCK,
+  ]);
+  vi.clearAllMocks();
+});
+
+afterAll(async () => {
+  await pool.end();
+  await resetDatabase();
+});
+
+describe("POST /api/visits", () => {
+  it("records a visit and creates the household", async () => {
+    asAlice();
+    const response = await record("#05-123", { name: "Mr Tan", religion: "buddhist" });
+    expect(response.status).toBe(201);
+    const body = (await response.json()) as { interestLevel: string; member: { name: string } };
+    expect(body).toMatchObject({ interestLevel: "low", member: { name: "Alice" } });
+  });
+
+  it("takes two fields for a silent door", async () => {
+    // The most common outcome must be the cheapest to record.
+    asAlice();
+    const response = await post({
+      id: nextId(),
+      blockId: BLOCK,
+      unitNumber: "#06-201",
+      interestLevel: "no_response",
+    });
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { description: string }).description).toBe("");
+  });
+
+  it("rejects a missing unit number with 400", async () => {
+    asAlice();
+    const response = await post({ id: nextId(), blockId: BLOCK, interestLevel: "low" });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toContain("/unitNumber");
+  });
+
+  it("rejects a non-uuid visit id with 400", async () => {
+    asAlice();
+    expect(
+      (await post({ id: "nope", blockId: BLOCK, unitNumber: "#01-01", interestLevel: "low" }))
+        .status,
+    ).toBe(400);
+  });
+
+  it("returns 409 for a duplicate id", async () => {
+    asAlice();
+    const id = nextId();
+    const args = { id, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low" };
+    await post(args);
+    expect((await post(args)).status).toBe(409);
+  });
+
+  it("returns 404 for an unknown block", async () => {
+    asAlice();
+    expect(
+      (
+        await post({
+          id: nextId(),
+          blockId: "dededede-0000-4000-8001-00000000ffff",
+          unitNumber: "#01-01",
+          interestLevel: "low",
+        })
+      ).status,
+    ).toBe(404);
+  });
+
+  it("returns 409 when no session is active", async () => {
+    await pool.query(`UPDATE outing_sessions SET status='ended' WHERE id=$1`, [SESSION]);
+    asAlice();
+    const response = await record("#05-123");
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("session_not_active");
+  });
+
+  it("refuses an unauthenticated caller", async () => {
+    auth.mockResolvedValue(null);
+    expect((await record("#05-123")).status).toBe(401);
+  });
+});
+
+describe("PATCH /api/visits/{id}", () => {
+  const idOf = async (response: Response) => ((await response.json()) as { id: string }).id;
+
+  it("amends a member's own record", async () => {
+    asAlice();
+    const id = await idOf(await record("#05-123"));
+    const response = await patch(id, { interestLevel: "high" });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { interestLevel: string }).interestLevel).toBe("high");
+  });
+
+  it("refuses a member amending another member's record", async () => {
+    asAlice();
+    const id = await idOf(await record("#05-123"));
+    asBen();
+    expect((await patch(id, { interestLevel: "high" })).status).toBe(403);
+  });
+
+  it("lets an admin amend anyone's record", async () => {
+    asAlice();
+    const id = await idOf(await record("#05-123"));
+    asAdmin();
+    expect((await patch(id, { description: "Corrected" })).status).toBe(200);
+  });
+
+  it("rejects an empty body with 400, not a database error", async () => {
+    asAlice();
+    const id = await idOf(await record("#05-123"));
+    expect((await patch(id, {})).status).toBe(400);
+  });
+
+  it("returns 404 for an unknown visit", async () => {
+    asAdmin();
+    expect((await patch("01960000-0000-7000-8000-0000000000ff", { description: "x" })).status).toBe(
+      404,
+    );
+  });
+});
+
+describe("GET /api/visits", () => {
+  it("scopes a member to their own records", async () => {
+    asAlice();
+    await record("#05-123");
+    asBen();
+    await record("#06-201");
+
+    asAlice();
+    const body = (await (await GET(new Request("https://test.local/api/visits"))).json()) as {
+      data: { member: { name: string } }[];
+    };
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.member.name).toBe("Alice");
+  });
+
+  it("refuses a member asking for someone else's records", async () => {
+    // No parameter combination may widen a member's view.
+    asAlice();
+    const response = await GET(new Request(`https://test.local/api/visits?memberId=${BEN}`));
+    expect(response.status).toBe(403);
+  });
+
+  it("lets an admin see everyone's", async () => {
+    asAlice();
+    await record("#05-123");
+    asBen();
+    await record("#06-201");
+
+    asAdmin();
+    const body = (await (await GET(new Request("https://test.local/api/visits"))).json()) as {
+      data: unknown[];
+    };
+    expect(body.data).toHaveLength(2);
+  });
+
+  it("lets an admin filter to one member", async () => {
+    asAlice();
+    await record("#05-123");
+    asBen();
+    await record("#06-201");
+
+    asAdmin();
+    const body = (await (
+      await GET(new Request(`https://test.local/api/visits?memberId=${BEN}`))
+    ).json()) as { data: { member: { name: string } }[] };
+    expect(body.data.map((v) => v.member.name)).toEqual(["Ben"]);
+  });
+
+  it("filters by session", async () => {
+    asAlice();
+    await record("#05-123");
+    const body = (await (
+      await GET(new Request(`https://test.local/api/visits?sessionId=${SESSION}`))
+    ).json()) as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+
+  it("filters by household", async () => {
+    asAlice();
+    const created = (await (await record("#05-123")).json()) as { householdId: string };
+    await record("#06-201");
+
+    const body = (await (
+      await GET(new Request(`https://test.local/api/visits?householdId=${created.householdId}`))
+    ).json()) as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+
+  it("filters by block", async () => {
+    asAlice();
+    await record("#05-123");
+    const body = (await (
+      await GET(new Request(`https://test.local/api/visits?blockId=${BLOCK}`))
+    ).json()) as { data: unknown[] };
+    expect(body.data).toHaveLength(1);
+  });
+});
+
+describe("households over HTTP", () => {
+  it("lists a block's units with their latest visit", async () => {
+    asAlice();
+    await record("#05-123", { interestLevel: "medium" });
+    const response = await listHouseholdsRoute(
+      new Request(`https://test.local/api/households?blockId=${BLOCK}`),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { household: { unitNumber: string }; latestVisit: { interestLevel: string } }[];
+    };
+    expect(body.data[0]?.household.unitNumber).toBe("#05-123");
+    expect(body.data[0]?.latestVisit.interestLevel).toBe("medium");
+  });
+
+  it("scopes the unit list to one session", async () => {
+    // The block unit list shows tonight's work, not everything ever recorded.
+    asAlice();
+    await record("#05-123");
+    const response = await listHouseholdsRoute(
+      new Request(`https://test.local/api/households?blockId=${BLOCK}&sessionId=${SESSION}`),
+    );
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { data: unknown[] }).data).toHaveLength(1);
+  });
+
+  it("lists a unit that has no visits in the scope, with a null latest visit", async () => {
+    asAlice();
+    await record("#05-123");
+    await pool.query(`INSERT INTO households (block_id, unit_number) VALUES ($1, '#09-99')`, [
+      BLOCK,
+    ]);
+
+    const body = (await (
+      await listHouseholdsRoute(new Request(`https://test.local/api/households?blockId=${BLOCK}`))
+    ).json()) as { data: { household: { unitNumber: string }; latestVisit: unknown }[] };
+
+    const untouched = body.data.find((d) => d.household.unitNumber === "#09-99");
+    expect(untouched?.latestVisit).toBeNull();
+  });
+
+  it("requires a blockId", async () => {
+    asAlice();
+    expect(
+      (await listHouseholdsRoute(new Request("https://test.local/api/households"))).status,
+    ).toBe(400);
+  });
+
+  it("returns a unit's whole timeline", async () => {
+    asAlice();
+    const created = (await (await record("#05-123", { name: "Mr Tan" })).json()) as {
+      householdId: string;
+    };
+    asBen();
+    await record("#05-123", { interestLevel: "high" });
+
+    asAlice();
+    const response = await householdHistory(
+      new Request(`https://test.local/api/households/${created.householdId}`),
+      { params: Promise.resolve({ id: created.householdId }) },
+    );
+    const body = (await response.json()) as {
+      household: { name: string };
+      block: { name: string };
+      visits: { interestLevel: string }[];
+    };
+    expect(body.household.name).toBe("Mr Tan");
+    expect(body.block.name).toBe("123");
+    expect(body.visits.map((v) => v.interestLevel)).toEqual(["low", "high"]);
+  });
+
+  it("returns 404 for an unknown household", async () => {
+    asAlice();
+    const missing = "dededede-0000-4000-8003-00000000ffff";
+    expect(
+      (
+        await householdHistory(new Request(`https://test.local/api/households/${missing}`), {
+          params: Promise.resolve({ id: missing }),
+        })
+      ).status,
+    ).toBe(404);
+  });
+});
