@@ -3,6 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import AccountPage from "@/app/account/page";
 import FollowUpsPage from "@/app/follow-ups/page";
 import HistoryPage from "@/app/history/page";
+import SessionHistoryPage from "@/app/history/[sessionId]/page";
+import BlockPage from "@/app/blocks/[id]/page";
+import HouseholdPage from "@/app/households/[id]/page";
 import NotFound from "@/app/not-found";
 import SessionPage from "@/app/page";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -15,10 +18,19 @@ vi.mock("@/lib/api-client", async () => {
     apiFetch: vi.fn().mockRejectedValue(new actual.ApiRequestError(404, undefined)),
   };
 });
+vi.mock("@/lib/use-role", () => ({
+  useRole: () => ({
+    userId: "u1",
+    role: "member",
+    isAdmin: false,
+    isMember: true,
+    isLoading: false,
+    isSignedIn: true,
+  }),
+}));
 
 describe("placeholder screens", () => {
   it.each([
-    ["history", HistoryPage, "History", 27],
     ["follow-ups", FollowUpsPage, "Follow-ups", 35],
     ["account", AccountPage, "Account", 15],
   ])("%s renders its heading and names its issue", (_name, Page, heading, issue) => {
@@ -34,6 +46,50 @@ describe("session screen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Active session" })).toBeInTheDocument();
     // No session is running in this test, which is a normal state.
     expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
+  });
+});
+
+describe("history screens", () => {
+  it("renders the member's own outings", async () => {
+    render(<HistoryPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
+    // The fetch fails in this test, so the screen must say so rather than
+    // pretend the member has never recorded anything.
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("renders one outing's records", async () => {
+    render(
+      await SessionHistoryPage({
+        params: Promise.resolve({ sessionId: "s1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Your records" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("renders a unit's timeline", async () => {
+    render(
+      await HouseholdPage({
+        params: Promise.resolve({ id: "h1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+describe("block screen", () => {
+  it("renders the recording form for the block in the route", async () => {
+    render(
+      await BlockPage({
+        params: Promise.resolve({ id: "b1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
   });
 });
 

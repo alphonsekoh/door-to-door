@@ -333,6 +333,38 @@ export const zHistoryList = z.object({
 });
 
 /**
+ * How an outing went, counted by outcome. `noResponse` is a real result
+ * and is counted alongside the rest, not treated as a gap.
+ *
+ */
+export const zInterestBreakdown = z.object({
+    low: z.int(),
+    medium: z.int(),
+    high: z.int(),
+    noResponse: z.int()
+});
+
+/**
+ * One outing as the member who worked it experienced it. Counts describe
+ * that member's own records only, never the session as a whole.
+ *
+ */
+export const zSessionHistorySummary = z.object({
+    session: zOutingSession,
+    blocks: z.array(zBlock),
+    visitCount: z.int(),
+    householdCount: z.int(),
+    interest: zInterestBreakdown,
+    firstRecordedAt: z.iso.datetime(),
+    lastRecordedAt: z.iso.datetime()
+});
+
+export const zSessionHistoryList = z.object({
+    data: z.array(zSessionHistorySummary),
+    pagination: zPaginationMeta
+});
+
+/**
  * Rows per page.
  */
 export const zLimit = z.int().gte(1).lte(100).default(50);
@@ -591,6 +623,16 @@ export const zListOwnHistoryQuery = z.object({
  * The caller's records.
  */
 export const zListOwnHistoryResponse = zHistoryList;
+
+export const zListOwnSessionHistoryQuery = z.object({
+    limit: z.int().gte(1).lte(100).optional().default(50),
+    offset: z.int().gte(0).optional().default(0)
+});
+
+/**
+ * The outings the caller recorded in.
+ */
+export const zListOwnSessionHistoryResponse = zSessionHistoryList;
 
 export const zListUsersQuery = z.object({
     role: zRole.optional(),

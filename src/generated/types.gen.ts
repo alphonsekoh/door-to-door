@@ -467,6 +467,50 @@ export type HistoryList = {
 };
 
 /**
+ * How an outing went, counted by outcome. `noResponse` is a real result
+ * and is counted alongside the rest, not treated as a gap.
+ *
+ */
+export type InterestBreakdown = {
+    low: number;
+    medium: number;
+    high: number;
+    noResponse: number;
+};
+
+/**
+ * One outing as the member who worked it experienced it. Counts describe
+ * that member's own records only, never the session as a whole.
+ *
+ */
+export type SessionHistorySummary = {
+    session: OutingSession;
+    /**
+     * Blocks this member recorded on during the outing.
+     */
+    blocks: Array<Block>;
+    /**
+     * Visits this member recorded during the outing.
+     */
+    visitCount: number;
+    /**
+     * Distinct units this member recorded during the outing.
+     */
+    householdCount: number;
+    interest: InterestBreakdown;
+    /**
+     * When this member's first record of the outing was made.
+     */
+    firstRecordedAt: string;
+    lastRecordedAt: string;
+};
+
+export type SessionHistoryList = {
+    data: Array<SessionHistorySummary>;
+    pagination: PaginationMeta;
+};
+
+/**
  * Rows per page.
  */
 export type Limit = number;
@@ -1495,6 +1539,41 @@ export type ListOwnHistoryResponses = {
 };
 
 export type ListOwnHistoryResponse = ListOwnHistoryResponses[keyof ListOwnHistoryResponses];
+
+export type ListOwnSessionHistoryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Rows per page.
+         */
+        limit?: number;
+        offset?: number;
+    };
+    url: '/history/mine/sessions';
+};
+
+export type ListOwnSessionHistoryErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session.
+     */
+    401: Error;
+};
+
+export type ListOwnSessionHistoryError = ListOwnSessionHistoryErrors[keyof ListOwnSessionHistoryErrors];
+
+export type ListOwnSessionHistoryResponses = {
+    /**
+     * The outings the caller recorded in.
+     */
+    200: SessionHistoryList;
+};
+
+export type ListOwnSessionHistoryResponse = ListOwnSessionHistoryResponses[keyof ListOwnSessionHistoryResponses];
 
 export type ListUsersData = {
     body?: never;
