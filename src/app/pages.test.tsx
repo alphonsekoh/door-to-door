@@ -5,12 +5,19 @@ import FollowUpsPage from "@/app/follow-ups/page";
 import HistoryPage from "@/app/history/page";
 import NotFound from "@/app/not-found";
 import SessionPage from "@/app/page";
+import type * as ApiClientModule from "@/lib/api-client";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("@/lib/api-client", async () => {
+  const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
+  return {
+    ...actual,
+    apiFetch: vi.fn().mockRejectedValue(new actual.ApiRequestError(404, undefined)),
+  };
+});
 
 describe("placeholder screens", () => {
   it.each([
-    ["session", SessionPage, "Active session", 24],
     ["history", HistoryPage, "History", 27],
     ["follow-ups", FollowUpsPage, "Follow-ups", 35],
     ["account", AccountPage, "Account", 15],
@@ -18,6 +25,15 @@ describe("placeholder screens", () => {
     render(<Page />);
     expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
     expect(screen.getByText(`Arrives in issue #${String(issue)}`)).toBeInTheDocument();
+  });
+});
+
+describe("session screen", () => {
+  it("renders the heading and the live block picker", async () => {
+    render(<SessionPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Active session" })).toBeInTheDocument();
+    // No session is running in this test, which is a normal state.
+    expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
   });
 });
 

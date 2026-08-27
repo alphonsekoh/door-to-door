@@ -1,0 +1,182 @@
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ActiveSessionScreen } from "@/components/active-session";
+import { ApiRequestError } from "@/lib/api-client";
+import type * as ApiClientModule from "@/lib/api-client";
+
+const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+vi.mock("@/lib/api-client", async () => {
+  const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
+  return { ...actual, apiFetch };
+});
+
+const block = (name: string, over: Record<string, unknown> = {}) => ({
+  block: { id: `b-${name}`, name, street: "Ang Mo Kio Ave 3", postalCode: null, createdAt: "" },
+  visitCount: 0,
+  householdCount: 0,
+  activeMembers: [],
+  ...over,
+});
+
+const session = (blocks: unknown[]) => ({
+  session: {
+    id: "s1",
+    title: "March outing",
+    status: "active",
+    startedAt: null,
+    endedAt: null,
+    createdBy: { id: "u1", name: "Admin", image: null },
+    createdAt: "",
+  },
+  blocks,
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+describe("no active session", () => {
+  it("says so plainly rather than showing an error", async () => {
+    // A quiet evening is a normal state, not a failure.
+    apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("with blocks", () => {
+  it("lists each block for the member to pick", async () => {
+    apiFetch.mockResolvedValue(session([block("123"), block("125")]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Blk 123")).toBeInTheDocument();
+    expect(screen.getByText("Blk 125")).toBeInTheDocument();
+  });
+
+  it("links each block to its recording screen", async () => {
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByRole("link", { name: /Blk 123/ })).toHaveAttribute(
+      "href",
+      "/blocks/b-123",
+    );
+  });
+
+  it("shows progress so far", async () => {
+    apiFetch.mockResolvedValue(session([block("123", { householdCount: 6, visitCount: 8 })]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("6")).toBeInTheDocument();
+    expect(screen.getByText("units")).toBeInTheDocument();
+    // Visits only shown when they exceed units, or it is noise.
+    expect(screen.getByText("8 visits")).toBeInTheDocument();
+  });
+
+  it("hides the visit count when it matches the unit count", async () => {
+    apiFetch.mockResolvedValue(session([block("123", { householdCount: 3, visitCount: 3 })]));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("Blk 123");
+    expect(screen.queryByText("3 visits")).not.toBeInTheDocument();
+  });
+
+  it("says who is already working a block, without locking it", async () => {
+    /*
+     * Blocks are shared. Naming who is here lets a pair split floors; it must
+     * not read as "taken".
+     */
+    apiFetch.mockResolvedValue(
+      session([block("123", { activeMembers: [{ id: "u2", name: "Ben", image: null }] })]),
+    );
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Ben here now")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Blk 123/ })).toBeInTheDocument();
+  });
+
+  it("falls back to a placeholder for a member with no name", async () => {
+    apiFetch.mockResolvedValue(
+      session([block("123", { activeMembers: [{ id: "u2", name: null, image: null }] })]),
+    );
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Someone here now")).toBeInTheDocument();
+  });
+
+  it("uses the singular for one unit", async () => {
+    apiFetch.mockResolvedValue(session([block("123", { householdCount: 1, visitCount: 1 })]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("unit")).toBeInTheDocument();
+  });
+});
+
+describe("a session with no blocks yet", () => {
+  it("explains that an admin can add them mid-outing", async () => {
+    apiFetch.mockResolvedValue(session([]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("No blocks yet.")).toBeInTheDocument();
+    expect(screen.getByText(/add blocks while the outing is running/)).toBeInTheDocument();
+  });
+});
+
+describe("refreshing", () => {
+  it("picks up a block an admin added", async () => {
+    // The contingency path: no one should have to restart the app.
+    apiFetch.mockResolvedValueOnce(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("Blk 123");
+
+    apiFetch.mockResolvedValueOnce(session([block("123"), block("127")]));
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("Blk 127")).toBeInTheDocument();
+  });
+
+  it("polls without the member touching anything", async () => {
+    vi.useFakeTimers();
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops polling once the screen is gone", async () => {
+    vi.useFakeTimers();
+    apiFetch.mockResolvedValue(session([block("123")]));
+    const { unmount } = render(<ActiveSessionScreen />);
+    await vi.advanceTimersByTimeAsync(0);
+    unmount();
+
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("when loading fails", () => {
+  it("shows the message and offers a retry", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(500, undefined));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong.");
+
+    apiFetch.mockResolvedValue(session([block("123")]));
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => {
+      expect(screen.getByText("Blk 123")).toBeInTheDocument();
+    });
+  });
+
+  it("handles a failure that is not an ApiRequestError", async () => {
+    apiFetch.mockRejectedValue(new Error("Network down"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Network down");
+  });
+
+  it("copes with something thrown that is not an Error", async () => {
+    apiFetch.mockRejectedValue("boom");
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the session.");
+  });
+});
