@@ -88,6 +88,12 @@ hand-written SQL. Never edit an applied migration; add a new one.
 checks are for UI affordance only and are never trusted. Hiding an admin button must never
 be the only thing preventing an admin action.
 
+### Generated route types
+
+**[CI]** `PageProps` and `LayoutProps` come from `.next/types`, which does not
+exist on a clean checkout. Both `lint` and `typecheck` run `next typegen` first for
+that reason — anything type-aware that touches a route file needs it.
+
 ### TypeScript
 
 **[CI]** No `any`. `noUncheckedIndexedAccess` is on, so array and record access yields
