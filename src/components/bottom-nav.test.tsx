@@ -1,10 +1,26 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomNav } from "@/components/bottom-nav";
 
 const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn<() => string>() }));
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("@/lib/use-role", () => ({ useRole }));
+
+const asRole = (isAdmin: boolean) =>
+  useRole.mockReturnValue({
+    userId: "u1",
+    role: isAdmin ? "admin" : "member",
+    isAdmin,
+    isMember: !isAdmin,
+    isLoading: false,
+    isSignedIn: true,
+  });
+
+beforeEach(() => {
+  asRole(false);
+});
 
 describe("BottomNav", () => {
   it("renders every primary destination", () => {
@@ -46,5 +62,27 @@ describe("BottomNav", () => {
 
     expect(screen.getByRole("link", { name: "Session" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "Follow-ups" })).toHaveAttribute("href", "/follow-ups");
+  });
+
+  it("keeps the admin section out of a member's nav", () => {
+    // Affordance only - the handlers re-check - but a member should not be
+    // shown a tab whose every request would come back 403.
+    usePathname.mockReturnValue("/");
+    render(<BottomNav />);
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+
+  it("offers the admin section to an admin", () => {
+    asRole(true);
+    usePathname.mockReturnValue("/");
+    render(<BottomNav />);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin/sessions");
+  });
+
+  it("keeps the admin tab current on a nested admin route", () => {
+    asRole(true);
+    usePathname.mockReturnValue("/admin/sessions/42");
+    render(<BottomNav />);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page");
   });
 });

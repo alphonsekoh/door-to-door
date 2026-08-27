@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "@/components/nav-icon";
-import { NAV_ITEMS, isActiveRoute } from "@/lib/nav";
+import { isActiveRoute, visibleNavItems } from "@/lib/nav";
+import { useRole } from "@/lib/use-role";
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { isAdmin } = useRole();
+  const items = visibleNavItems(isAdmin);
 
   return (
     <nav
@@ -14,7 +17,7 @@ export function BottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 inset-safe-bottom backdrop-blur"
     >
       <ul className="mx-auto flex max-w-screen-sm">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = isActiveRoute(pathname, item);
           return (
             <li key={item.href} className="flex-1">

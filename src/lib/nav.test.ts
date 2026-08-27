@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NAV_ITEMS, isActiveRoute, type NavItem } from "@/lib/nav";
+import { NAV_ITEMS, isActiveRoute, visibleNavItems, type NavItem } from "@/lib/nav";
 
 const exact: NavItem = { href: "/", label: "Session", matchPrefix: false };
 const prefixed: NavItem = { href: "/history", label: "History", matchPrefix: true };
@@ -38,11 +38,12 @@ describe("isActiveRoute", () => {
 });
 
 describe("NAV_ITEMS", () => {
-  it("exposes the four primary destinations", () => {
+  it("exposes the primary destinations in order", () => {
     expect(NAV_ITEMS.map((item) => item.href)).toEqual([
       "/",
       "/history",
       "/follow-ups",
+      "/admin/sessions",
       "/account",
     ]);
   });
@@ -57,5 +58,25 @@ describe("NAV_ITEMS", () => {
     // The root route must stay exact or it matches everything.
     const root = NAV_ITEMS.find((item) => item.href === "/");
     expect(root?.matchPrefix).toBe(false);
+  });
+});
+
+describe("visibleNavItems", () => {
+  it("hides the admin section from a member", () => {
+    expect(visibleNavItems(false).map((item) => item.href)).not.toContain("/admin/sessions");
+  });
+
+  it("shows it to an admin", () => {
+    expect(visibleNavItems(true).map((item) => item.href)).toContain("/admin/sessions");
+  });
+
+  it("leaves every shared destination in place either way", () => {
+    // Hiding one tab must not reorder or drop the rest.
+    expect(visibleNavItems(false).map((item) => item.href)).toEqual([
+      "/",
+      "/history",
+      "/follow-ups",
+      "/account",
+    ]);
   });
 });
