@@ -29,8 +29,12 @@ describe("session strategy", () => {
     expect(config().session?.maxAge).toBe(60 * 60 * 24 * 30);
   });
 
-  it("starts with no providers - Google is #14, credentials #15", () => {
-    expect(config().providers).toEqual([]);
+  it("offers credentials sign-in", () => {
+    // Google follows in #14.
+    const ids = config().providers.map((provider) =>
+      typeof provider === "function" ? "" : provider.id,
+    );
+    expect(ids).toContain("credentials");
   });
 
   it("routes sign-in and errors to our own page", () => {
