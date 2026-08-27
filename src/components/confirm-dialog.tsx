@@ -22,7 +22,7 @@ export function ConfirmDialog({
   onCancel: () => void;
 }) {
   return (
-    <div className="fixed inset-0 z-30 flex flex-col justify-end bg-black/40">
+    <div className="fixed inset-0 z-60 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Cancel" onClick={onCancel} className="flex-1" />
 
       <div

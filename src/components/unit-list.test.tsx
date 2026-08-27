@@ -97,7 +97,7 @@ describe("UnitList", () => {
       />,
     );
 
-    expect(screen.getByText("2 units on 1 floor, 1 answered")).toBeInTheDocument();
+    expect(screen.getByText("Tonight: 2 units on 1 floor, 1 answered")).toBeInTheDocument();
   });
 
   it("counts everything when the running session is unknown", () => {
@@ -105,7 +105,7 @@ describe("UnitList", () => {
     render(
       <UnitList units={[unit("#05-01"), unit("#06-01")]} sessionId={null} onAmended={vi.fn()} />,
     );
-    expect(screen.getByText("2 units on 2 floors, 2 answered")).toBeInTheDocument();
+    expect(screen.getByText("On this block: 2 units on 2 floors, 2 answered")).toBeInTheDocument();
   });
 
   it("marks the units recorded during the running outing", () => {

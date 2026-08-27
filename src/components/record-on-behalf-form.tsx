@@ -64,7 +64,7 @@ export function RecordOnBehalfForm({
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col justify-end bg-black/40">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <form
@@ -169,13 +169,15 @@ export function RecordOnBehalfForm({
           />
         </div>
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-        >
-          {saving ? "Saving…" : "Save the record"}
-        </button>
+        <div className="sticky bottom-0 -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+          <button
+            type="submit"
+            disabled={saving}
+            className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save the record"}
+          </button>
+        </div>
       </form>
     </div>
   );

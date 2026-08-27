@@ -115,7 +115,7 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col justify-end bg-black/40">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       {/* Tapping the backdrop closes; it is a plain button so it is reachable
           by keyboard and screen reader rather than being a click trap. */}
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
@@ -254,13 +254,18 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={saving}
-              className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-            >
-              {saving ? "Saving…" : "Save changes"}
-            </button>
+            {/* Sticky inside the sheet: with details open the form runs past
+                the sheet's height, and a Save you have to scroll for is a Save
+                that does not get pressed. */}
+            <div className="sticky bottom-0 -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+              <button
+                type="submit"
+                disabled={saving}
+                className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
+              >
+                {saving ? "Saving…" : "Save changes"}
+              </button>
+            </div>
           </form>
         )}
       </div>

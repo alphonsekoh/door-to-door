@@ -71,7 +71,9 @@ export function UnitList({ units, sessionId, onAmended }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-body font-medium tabular-nums">{progressLabel(progress)}</p>
+      <p className="text-body font-medium tabular-nums">
+        {progressLabel(progress, sessionId === null ? "On this block" : "Tonight")}
+      </p>
 
       <div>
         <label htmlFor="unit-search" className="sr-only">

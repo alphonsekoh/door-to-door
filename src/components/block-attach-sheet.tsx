@@ -95,7 +95,7 @@ export function BlockAttachSheet({
   const available = blocks.filter((block) => !attachedIds.includes(block.id));
 
   return (
-    <div className="fixed inset-0 z-20 flex flex-col justify-end bg-black/40">
+    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <div

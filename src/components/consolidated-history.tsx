@@ -322,7 +322,9 @@ export function ConsolidatedHistory() {
             </select>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          {/* Spans the row: nested in a grid cell each date input lost half
+              its width and rendered as a clipped "dd/mm/". */}
+          <div className="col-span-2 grid grid-cols-2 gap-2">
             <div>
               <label htmlFor="history-from" className="sr-only">
                 Recorded from
@@ -334,7 +336,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("from", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-2 text-caption"
+                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
               />
             </div>
             <div>
@@ -348,7 +350,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("to", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-2 text-caption"
+                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
               />
             </div>
           </div>
@@ -395,7 +397,10 @@ export function ConsolidatedHistory() {
             return (
               <li key={group.key} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-baseline justify-between gap-3">
-                  <Link href={`/households/${first.household.id}`} className="min-w-0">
+                  <Link
+                    href={`/households/${first.household.id}`}
+                    className="flex min-h-11 min-w-0 flex-col justify-center"
+                  >
                     <span className="block text-body font-semibold tabular-nums">
                       Blk {first.block.name}, {first.household.unitNumber}
                     </span>
@@ -419,7 +424,7 @@ export function ConsolidatedHistory() {
                         onClick={() => {
                           setAmending(entry);
                         }}
-                        className="flex w-full items-center gap-3 text-left"
+                        className="flex min-h-11 w-full items-center gap-3 py-1 text-left"
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block text-caption text-foreground-muted">

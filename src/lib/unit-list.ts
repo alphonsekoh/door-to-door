@@ -96,10 +96,15 @@ export function summariseProgress(units: HouseholdSummary[]): Progress {
   return { units: units.length, floors: floors.size, answered };
 }
 
-/* Built here rather than as JSX so the pluralisation is covered properly, and
-   so the whole line reads as one phrase to a screen reader. */
-export function progressLabel(progress: Progress): string {
+/*
+ * Built here rather than as JSX so the pluralisation is covered properly, and
+ * so the whole line reads as one phrase to a screen reader.
+ *
+ * It names its scope because the tab beside it counts every unit ever recorded
+ * on the block. Two bare numbers on one screen read as a contradiction.
+ */
+export function progressLabel(progress: Progress, scope: string): string {
   const units = `${String(progress.units)} ${progress.units === 1 ? "unit" : "units"}`;
   const floors = `${String(progress.floors)} ${progress.floors === 1 ? "floor" : "floors"}`;
-  return `${units} on ${floors}, ${String(progress.answered)} answered`;
+  return `${scope}: ${units} on ${floors}, ${String(progress.answered)} answered`;
 }
