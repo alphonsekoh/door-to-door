@@ -6,6 +6,11 @@ export default defineConfig({
   // Resolves the "@/*" alias from tsconfig.json natively, no plugin needed.
   resolve: { tsconfigPaths: true },
   test: {
+    server: {
+      // next-auth reaches for next/server, which does not resolve outside the
+      // Next.js runtime unless it is inlined.
+      deps: { inline: ["next-auth", "@auth/core"] },
+    },
     projects: [
       {
         extends: true,
