@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Block, BlockList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 
@@ -28,11 +28,21 @@ export function BlockAttachSheet({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
+  /*
+   * A search that lands after a newer one - or after a block was registered
+   * here - must not overwrite what is on screen. Typing "12" then "125" issues
+   * two requests, and nothing guarantees they come back in that order.
+   */
+  const generation = useRef(0);
+
   const load = useCallback(async (term: string) => {
+    const mine = ++generation.current;
     try {
       const query = term.trim() === "" ? "" : `&search=${encodeURIComponent(term.trim())}`;
       const page = await apiFetch<BlockList>(`/blocks?limit=50${query}`);
-      setBlocks(page.data);
+      if (mine === generation.current) {
+        setBlocks(page.data);
+      }
     } catch (error) {
       setFailure(error instanceof Error ? error.message : "Could not load the blocks.");
     }
@@ -57,6 +67,7 @@ export function BlockAttachSheet({
         method: "POST",
         body: JSON.stringify({ name: name.trim(), street: street.trim() }),
       });
+      generation.current += 1;
       setBlocks((current) => [block, ...current]);
       setChosen((current) => [...current, block.id]);
       setName("");
