@@ -734,6 +734,32 @@ components:
           items: { $ref: "#/components/schemas/SessionHistorySummary" }
         pagination: { $ref: "#/components/schemas/PaginationMeta" }
 
+    HouseholdAttention:
+      description: |
+        A door that showed interest and has been left alone since. This is the
+        list the whole app exists to produce.
+      type: object
+      additionalProperties: false
+      required: [household, block, latestVisit, visitCount, lastVisitedAt]
+      properties:
+        household: { $ref: "#/components/schemas/Household" }
+        block: { $ref: "#/components/schemas/Block" }
+        latestVisit:
+          allOf: [{ $ref: "#/components/schemas/Visit" }]
+          description: The visit whose interest level put this unit on the list.
+        visitCount: { type: integer }
+        lastVisitedAt: { type: string, format: date-time }
+
+    HouseholdAttentionList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/HouseholdAttention" }
+        pagination: { $ref: "#/components/schemas/PaginationMeta" }
+
   parameters:
     Limit:
       name: limit
@@ -1125,6 +1151,45 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
+
+  /households/attention:
+    get:
+      tags: [Households]
+      operationId: listHouseholdsNeedingAttention
+      summary: Interested households nobody has gone back to
+      description: |
+        **Requires: admin.** Households whose most recent visit recorded real
+        interest and that have no outstanding follow-up.
+
+        Ordered by how long they have been left, oldest first, because the
+        cost of this list is a door that said yes and was never revisited.
+
+        A household with an outstanding follow-up is deliberately absent: it is
+        already someone's job, and repeating it here would make the list
+        something to scroll past.
+      parameters:
+        - name: minimumInterest
+          in: query
+          description: |
+            The lowest interest level that counts. `high` by default; widen to
+            `medium` for a longer list.
+          schema:
+            allOf: [{ $ref: "#/components/schemas/InterestLevel" }]
+            default: high
+        - name: blockId
+          in: query
+          schema: { type: string, format: uuid }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Households worth a return visit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HouseholdAttentionList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /households/{id}:
     get:

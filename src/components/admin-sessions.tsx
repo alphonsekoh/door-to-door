@@ -66,6 +66,21 @@ export function AdminSessions() {
 
   return (
     <div className="space-y-4">
+      <div className="flex gap-2">
+        <Link
+          href="/admin/attention"
+          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+        >
+          Needs a return visit
+        </Link>
+        <Link
+          href="/admin/history"
+          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+        >
+          All records
+        </Link>
+      </div>
+
       <CreateSessionForm onCreated={() => void load()} />
 
       {state.sessions.length === 0 ? (

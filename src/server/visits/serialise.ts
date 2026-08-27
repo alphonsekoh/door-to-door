@@ -1,6 +1,7 @@
 import type {
   FollowUp,
   Household,
+  HouseholdAttention,
   HouseholdHistory,
   HouseholdSummary,
   Visit,
@@ -8,6 +9,7 @@ import type {
 import { toBlock } from "@/server/blocks/serialise";
 import type {
   FollowUpRow,
+  HouseholdAttentionRow,
   HouseholdHistoryRows,
   HouseholdSummaryRow,
 } from "@/server/visits/queries";
@@ -72,5 +74,15 @@ export function toHouseholdHistory(rows: HouseholdHistoryRows): HouseholdHistory
     block: toBlock(rows.block),
     visits: rows.visits.map(toVisit),
     followUps: rows.followUps.map(toFollowUp),
+  };
+}
+
+export function toHouseholdAttention(row: HouseholdAttentionRow): HouseholdAttention {
+  return {
+    household: toHousehold(row.household),
+    block: toBlock(row.block),
+    latestVisit: toVisit(row.latestVisit),
+    visitCount: row.visitCount,
+    lastVisitedAt: row.lastVisitedAt.toISOString(),
   };
 }

@@ -1,0 +1,118 @@
+import { describe, expect, it } from "vitest";
+import type { HistoryEntry } from "@/generated/types.gen";
+import { escapeCell, historyToCsv, toCsv } from "@/lib/csv";
+
+const AT = "2026-03-14T11:00:00.000Z";
+
+function entry(overrides: {
+  unitNumber?: string;
+  name?: string | null;
+  description?: string;
+  member?: string | null;
+}): HistoryEntry {
+  const { unitNumber = "#05-123", name = null, description = "", member = "Alice" } = overrides;
+  return {
+    visit: {
+      id: "v1",
+      householdId: "h1",
+      sessionId: "s1",
+      member: { id: "u1", name: member, image: null },
+      interestLevel: "high",
+      description,
+      clientCreatedAt: AT,
+      createdAt: AT,
+      updatedAt: AT,
+    },
+    household: {
+      id: "h1",
+      blockId: "b1",
+      unitNumber,
+      name,
+      contact: null,
+      religion: "buddhist",
+      createdAt: AT,
+      updatedAt: AT,
+    },
+    block: { id: "b1", name: "123", street: "Test Ave", postalCode: null, createdAt: AT },
+    session: {
+      id: "s1",
+      title: "March outing",
+      status: "ended",
+      startedAt: null,
+      endedAt: null,
+      createdBy: { id: "admin", name: "Admin", image: null },
+      createdAt: AT,
+    },
+  };
+}
+
+describe("escapeCell", () => {
+  it("leaves an ordinary value alone", () => {
+    expect(escapeCell("Mr Tan")).toBe("Mr Tan");
+  });
+
+  it("quotes a value holding a comma", () => {
+    expect(escapeCell("Tan, Mr")).toBe('"Tan, Mr"');
+  });
+
+  it("doubles an embedded quote", () => {
+    expect(escapeCell('He said "come back"')).toBe('"He said ""come back"""');
+  });
+
+  it("quotes a value holding a newline", () => {
+    expect(escapeCell("line one\nline two")).toBe('"line one\nline two"');
+  });
+
+  it("defuses a value a spreadsheet would run as a formula", () => {
+    // Notes are free text typed at a door; =cmd|... is a real attack on CSV.
+    expect(escapeCell("=1+1")).toBe('"\'=1+1"');
+    expect(escapeCell("+44 7700")).toBe('"\'+44 7700"');
+    expect(escapeCell("-5")).toBe('"\'-5"');
+    expect(escapeCell("@handle")).toBe('"\'@handle"');
+  });
+});
+
+describe("toCsv", () => {
+  it("joins cells with commas and rows with CRLF", () => {
+    expect(
+      toCsv([
+        ["a", "b"],
+        ["c", "d"],
+      ]),
+    ).toBe("a,b\r\nc,d");
+  });
+
+  it("returns an empty string for no rows", () => {
+    expect(toCsv([])).toBe("");
+  });
+});
+
+describe("historyToCsv", () => {
+  it("writes a header row even when nothing matched", () => {
+    // A file with no header is not obviously an empty export.
+    const csv = historyToCsv([]);
+    expect(csv.split("\r\n")).toHaveLength(1);
+    expect(csv).toContain("Block,Street,Unit");
+  });
+
+  it("writes one row per visit", () => {
+    const csv = historyToCsv([entry({}), entry({ unitNumber: "#05-124" })]);
+    expect(csv.split("\r\n")).toHaveLength(3);
+  });
+
+  it("carries the household, the visit and the outing", () => {
+    const csv = historyToCsv([entry({ name: "Mr Tan", description: "Come back Sunday" })]);
+    const row = csv.split("\r\n")[1] ?? "";
+    expect(row).toContain("#05-123");
+    expect(row).toContain("Mr Tan");
+    expect(row).toContain("buddhist");
+    expect(row).toContain("high");
+    expect(row).toContain("Come back Sunday");
+    expect(row).toContain("March outing");
+  });
+
+  it("writes an empty cell rather than null for what is not known", () => {
+    const row = historyToCsv([entry({ name: null, member: null })]).split("\r\n")[1] ?? "";
+    expect(row).not.toContain("null");
+  });
+});

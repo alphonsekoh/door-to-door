@@ -366,6 +366,24 @@ export const zSessionHistoryList = z.object({
 });
 
 /**
+ * A door that showed interest and has been left alone since. This is the
+ * list the whole app exists to produce.
+ *
+ */
+export const zHouseholdAttention = z.object({
+    household: zHousehold,
+    block: zBlock,
+    latestVisit: zVisit,
+    visitCount: z.int(),
+    lastVisitedAt: z.iso.datetime()
+});
+
+export const zHouseholdAttentionList = z.object({
+    data: z.array(zHouseholdAttention),
+    pagination: zPaginationMeta
+});
+
+/**
  * Rows per page.
  */
 export const zLimit = z.int().gte(1).lte(100).default(50);
@@ -503,6 +521,18 @@ export const zListHouseholdsQuery = z.object({
  * Households in the block.
  */
 export const zListHouseholdsResponse = zHouseholdList;
+
+export const zListHouseholdsNeedingAttentionQuery = z.object({
+    minimumInterest: zInterestLevel.optional().default('high'),
+    blockId: z.uuid().optional(),
+    limit: z.int().gte(1).lte(100).optional().default(50),
+    offset: z.int().gte(0).optional().default(0)
+});
+
+/**
+ * Households worth a return visit.
+ */
+export const zListHouseholdsNeedingAttentionResponse = zHouseholdAttentionList;
 
 export const zGetHouseholdHistoryPath = z.object({
     id: z.uuid()

@@ -5,6 +5,8 @@ import FollowUpsPage from "@/app/follow-ups/page";
 import HistoryPage from "@/app/history/page";
 import SessionHistoryPage from "@/app/history/[sessionId]/page";
 import AdminSessionPage from "@/app/admin/sessions/[id]/page";
+import AdminAttentionPage from "@/app/admin/attention/page";
+import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockPage from "@/app/blocks/[id]/page";
@@ -114,6 +116,21 @@ describe("admin screens", () => {
     render(await AdminRecordsPage());
     expect(requireAdminPage).toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Records" })).toBeInTheDocument();
+  });
+
+  it("guards the long-term history before rendering it", async () => {
+    render(await AdminHistoryPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "All records" })).toBeInTheDocument();
+  });
+
+  it("guards the return-visit list before rendering it", async () => {
+    render(await AdminAttentionPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Needs a return visit" }),
+    ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
   it("guards one outing's detail before rendering it", async () => {
