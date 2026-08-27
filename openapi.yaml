@@ -674,6 +674,56 @@ components:
           items: { $ref: "#/components/schemas/HistoryEntry" }
         pagination: { $ref: "#/components/schemas/PaginationMeta" }
 
+    InterestBreakdown:
+      description: |
+        How an outing went, counted by outcome. `noResponse` is a real result
+        and is counted alongside the rest, not treated as a gap.
+      type: object
+      additionalProperties: false
+      required: [low, medium, high, noResponse]
+      properties:
+        low: { type: integer }
+        medium: { type: integer }
+        high: { type: integer }
+        noResponse: { type: integer }
+
+    SessionHistorySummary:
+      description: |
+        One outing as the member who worked it experienced it. Counts describe
+        that member's own records only, never the session as a whole.
+      type: object
+      additionalProperties: false
+      required:
+        [session, blocks, visitCount, householdCount, interest, firstRecordedAt, lastRecordedAt]
+      properties:
+        session: { $ref: "#/components/schemas/OutingSession" }
+        blocks:
+          type: array
+          description: Blocks this member recorded on during the outing.
+          items: { $ref: "#/components/schemas/Block" }
+        visitCount:
+          type: integer
+          description: Visits this member recorded during the outing.
+        householdCount:
+          type: integer
+          description: Distinct units this member recorded during the outing.
+        interest: { $ref: "#/components/schemas/InterestBreakdown" }
+        firstRecordedAt:
+          type: string
+          format: date-time
+          description: When this member's first record of the outing was made.
+        lastRecordedAt: { type: string, format: date-time }
+
+    SessionHistoryList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/SessionHistorySummary" }
+        pagination: { $ref: "#/components/schemas/PaginationMeta" }
+
   parameters:
     Limit:
       name: limit
@@ -1413,6 +1463,31 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HistoryList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+
+  /history/mine/sessions:
+    get:
+      tags: [History]
+      operationId: listOwnSessionHistory
+      summary: The outings the calling member worked, newest first
+      description: |
+        One row per outing the member recorded in, with the blocks they worked
+        and how it went. Scoped to the authenticated user by the server, like
+        `/history/mine`.
+
+        The counts are the member's own, not the outing's: two members on the
+        same block see different numbers here, and that is the intent — this is
+        a record of what *you* did.
+      parameters:
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: The outings the caller recorded in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionHistoryList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
 
