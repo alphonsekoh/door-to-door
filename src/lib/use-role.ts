@@ -12,6 +12,8 @@ import type { Role } from "@/db/schema";
  */
 
 export type RoleState = {
+  /* Needed to tell "my record" from "someone else's" in a shared block. */
+  userId: string | undefined;
   role: Role | undefined;
   isAdmin: boolean;
   isMember: boolean;
@@ -19,16 +21,23 @@ export type RoleState = {
   isSignedIn: boolean;
 };
 
+export type SessionUser = {
+  id: string;
+  role?: Role | undefined;
+  deactivated?: boolean | undefined;
+};
+
 export function deriveRoleState(
   status: "loading" | "authenticated" | "unauthenticated",
-  role: Role | undefined,
-  deactivated = false,
+  user?: SessionUser,
 ): RoleState {
-  const isSignedIn = status === "authenticated" && !deactivated;
+  const isSignedIn = status === "authenticated" && user?.deactivated !== true;
+  const role = isSignedIn ? user?.role : undefined;
   return {
-    role: isSignedIn ? role : undefined,
-    isAdmin: isSignedIn && role === "admin",
-    isMember: isSignedIn && role === "member",
+    userId: isSignedIn ? user?.id : undefined,
+    role,
+    isAdmin: role === "admin",
+    isMember: role === "member",
     isLoading: status === "loading",
     isSignedIn,
   };
@@ -36,5 +45,5 @@ export function deriveRoleState(
 
 export function useRole(): RoleState {
   const { data, status } = useSession();
-  return deriveRoleState(status, data?.user.role, data?.user.deactivated);
+  return deriveRoleState(status, data?.user);
 }
