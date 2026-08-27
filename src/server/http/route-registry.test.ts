@@ -12,9 +12,6 @@ const PENDING_OPERATIONS = new Set([
   "listSessionBlocks", // #18
   "attachSessionBlocks", // #18
   "detachSessionBlock", // #18
-  "listBlocks", // #19
-  "createBlock", // #19
-  "updateBlock", // #19
   "listHouseholds", // #20
   "getHouseholdHistory", // #20
   "listVisits", // #20

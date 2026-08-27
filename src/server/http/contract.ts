@@ -251,3 +251,18 @@ export function toErrorResponse(error: unknown): Response {
   console.error(error);
   return jsonResponse(500, new InternalError().toBody());
 }
+
+/*
+ * Enforces the contract's `minProperties: 1` on PATCH bodies.
+ *
+ * The Zod generator does not express minProperties, so a request the spec
+ * rejects reaches the handler - and an empty update reaches Drizzle, which
+ * throws "No values to set" and surfaces as a 500 where the contract promised
+ * a 400. Every PATCH handler calls this.
+ */
+export function requireChanges<T extends object>(body: T): T {
+  if (Object.keys(body).length === 0) {
+    throw new ValidationError("Provide at least one field to change.");
+  }
+  return body;
+}

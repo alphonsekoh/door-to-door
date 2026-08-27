@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   ResponseContractError,
   coerceQuery,
+  requireChanges,
   searchParamsToObject,
   toErrorResponse,
   withContract,
@@ -12,6 +13,7 @@ import {
   ForbiddenError,
   NotFoundError,
   UnauthenticatedError,
+  ValidationError,
 } from "@/server/http/errors";
 
 const zWidget = z.object({ id: z.string(), size: z.number() });
@@ -330,5 +332,28 @@ describe("coerceQuery", () => {
 
   it("only coerces booleans for exact true/false", () => {
     expect(coerceQuery(schema, { active: "yes" })).toEqual({ active: "yes" });
+  });
+});
+
+describe("requireChanges", () => {
+  /*
+   * The generated Zod drops the contract's minProperties, so an empty PATCH
+   * body would otherwise reach the database and fail as a 500.
+   */
+  it("passes a body with changes through", () => {
+    expect(requireChanges({ name: "123" })).toEqual({ name: "123" });
+  });
+
+  it("rejects an empty body with a 400, not a database error", () => {
+    expect(() => requireChanges({})).toThrow(ValidationError);
+  });
+
+  it("says what to do about it", () => {
+    expect(() => requireChanges({})).toThrow(/at least one field/);
+  });
+
+  it("accepts a body whose only field is explicitly null", () => {
+    // Clearing a postal code is a real change.
+    expect(requireChanges({ postalCode: null })).toEqual({ postalCode: null });
   });
 });

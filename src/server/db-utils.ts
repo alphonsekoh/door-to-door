@@ -15,3 +15,22 @@ export function firstOrThrow<T>(rows: readonly T[], what: string): T {
   }
   return row;
 }
+
+/*
+ * True when a database error was caused by violating a named constraint.
+ *
+ * Drizzle wraps the driver error, so the constraint name is never on the
+ * top-level error - it sits on a cause further down. Getting this wrong means
+ * a constraint violation escapes as a raw "Failed query" that no client can
+ * act on.
+ */
+export function isConstraintViolation(error: unknown, constraint: string): boolean {
+  let current: unknown = error;
+  while (typeof current === "object" && current !== null) {
+    if ((current as { constraint?: string }).constraint === constraint) {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
