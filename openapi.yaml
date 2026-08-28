@@ -182,7 +182,7 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, email, name, role, deactivatedAt, createdAt]
+      required: [id, email, name, role, deactivatedAt, lastRecordedAt, createdAt]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -197,6 +197,12 @@ components:
           description: |
             Deactivated users cannot sign in, but their records stay attributed
             to them — history must survive someone leaving the team.
+        lastRecordedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When this user last recorded a visit. Null for someone who has
+            never knocked — which is how an account nobody uses is spotted.
         createdAt: { type: string, format: date-time }
 
     Block:
@@ -574,6 +580,24 @@ components:
           type: boolean
           description: |
             `true` marks it resolved and records who did so; `false` reopens it.
+
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, maxLength: 320 }
+        name: { type: [string, "null"], maxLength: 120 }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 200
+          description: |
+            An initial password the admin passes on. There is no invite email
+            in this app, so somebody has to hand it over in person.
+        role:
+          allOf: [{ $ref: "#/components/schemas/Role" }]
+          default: member
 
     UpdateUserRequest:
       type: object
@@ -1596,6 +1620,34 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+    post:
+      tags: [Users]
+      operationId: createUser
+      summary: Add someone to the team
+      description: |
+        **Requires: admin.** Creates a credentials account with an initial
+        password. Google-only accounts arrive through sign-in instead and are
+        not created here.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateUserRequest" }
+      responses:
+        "201":
+          description: The new user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: That email address already belongs to someone.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /users/me:
     get:

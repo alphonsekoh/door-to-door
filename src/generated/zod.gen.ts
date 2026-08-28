@@ -81,6 +81,7 @@ export const zUser = z.object({
     image: z.url().nullish(),
     role: zRole,
     deactivatedAt: z.iso.datetime().nullable(),
+    lastRecordedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime()
 });
 
@@ -277,6 +278,13 @@ export const zUpdateFollowUpRequest = z.object({
     note: z.string().min(1).max(2000).optional(),
     dueDate: z.iso.datetime().nullish(),
     done: z.boolean().optional()
+});
+
+export const zCreateUserRequest = z.object({
+    email: z.email().max(320),
+    name: z.string().max(120).nullish(),
+    password: z.string().min(8).max(200),
+    role: zRole.optional().default('member')
 });
 
 export const zUpdateUserRequest = z.object({
@@ -676,6 +684,13 @@ export const zListUsersQuery = z.object({
  * Matching users.
  */
 export const zListUsersResponse = zUserList;
+
+export const zCreateUserBody = zCreateUserRequest;
+
+/**
+ * The new user.
+ */
+export const zCreateUserResponse = zUser;
 
 /**
  * The current user.

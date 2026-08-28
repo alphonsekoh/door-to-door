@@ -125,6 +125,12 @@ export type User = {
      *
      */
     deactivatedAt: string | null;
+    /**
+     * When this user last recorded a visit. Null for someone who has
+     * never knocked — which is how an account nobody uses is spotted.
+     *
+     */
+    lastRecordedAt: string | null;
     createdAt: string;
 };
 
@@ -412,6 +418,18 @@ export type UpdateFollowUpRequest = {
      *
      */
     done?: boolean;
+};
+
+export type CreateUserRequest = {
+    email: string;
+    name?: string | null;
+    /**
+     * An initial password the admin passes on. There is no invite email
+     * in this app, so somebody has to hand it over in person.
+     *
+     */
+    password: string;
+    role?: Role;
 };
 
 export type UpdateUserRequest = {
@@ -1702,6 +1720,46 @@ export type ListUsersResponses = {
 };
 
 export type ListUsersResponse = ListUsersResponses[keyof ListUsersResponses];
+
+export type CreateUserData = {
+    body: CreateUserRequest;
+    path?: never;
+    query?: never;
+    url: '/users';
+};
+
+export type CreateUserErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session.
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * That email address already belongs to someone.
+     */
+    409: Error;
+};
+
+export type CreateUserError = CreateUserErrors[keyof CreateUserErrors];
+
+export type CreateUserResponses = {
+    /**
+     * The new user.
+     */
+    201: User;
+};
+
+export type CreateUserResponse = CreateUserResponses[keyof CreateUserResponses];
 
 export type GetCurrentUserData = {
     body?: never;

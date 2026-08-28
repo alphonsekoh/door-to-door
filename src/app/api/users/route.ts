@@ -1,9 +1,14 @@
 import { getDatabase } from "@/db/client";
-import { zListUsersQuery, zListUsersResponse } from "@/generated/zod.gen";
+import {
+  zCreateUserBody,
+  zCreateUserResponse,
+  zListUsersQuery,
+  zListUsersResponse,
+} from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
 import { currentUser } from "@/server/sessions/handlers";
 import { toUser } from "@/server/users/serialise";
-import { listUsers } from "@/server/users/service";
+import { createUser, listUsers } from "@/server/users/service";
 
 /*
  * The team. Admin-only: it exposes email addresses and who is deactivated.
@@ -35,5 +40,28 @@ export const GET = withContract(
         pagination: { limit, offset, total, hasMore: offset + rows.length < total },
       },
     };
+  },
+);
+
+/*
+ * There is no invite email in this app, so an admin sets an initial password
+ * and hands it over. hashPassword refuses a weak one before anything is
+ * written, so a rejected password leaves no half-made account.
+ */
+export const POST = withContract(
+  {
+    operationId: "createUser",
+    body: zCreateUserBody,
+    responses: { 201: zCreateUserResponse },
+  },
+  async ({ body }) => {
+    await currentUser("admin");
+    const user = await createUser(getDatabase(), {
+      email: body.email,
+      password: body.password,
+      name: body.name,
+      role: body.role,
+    });
+    return { status: 201, body: toUser(user) };
   },
 );

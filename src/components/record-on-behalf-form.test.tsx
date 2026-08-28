@@ -23,6 +23,7 @@ const members: User[] = [
     image: null,
     role: "member",
     deactivatedAt: null,
+    lastRecordedAt: null,
     createdAt: AT,
   },
   {
@@ -32,6 +33,7 @@ const members: User[] = [
     image: null,
     role: "member",
     deactivatedAt: null,
+    lastRecordedAt: null,
     createdAt: AT,
   },
 ];
