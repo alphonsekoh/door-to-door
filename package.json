@@ -26,7 +26,10 @@
     "test:all": "vitest run",
     "spec:lint": "redocly lint openapi.yaml",
     "spec:preview": "redocly preview-docs openapi.yaml",
-    "generate:api": "openapi-ts"
+    "generate:api": "openapi-ts",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "start:standalone": "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && node .next/standalone/server.js"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
@@ -41,6 +44,7 @@
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.99.0",
+    "@playwright/test": "^1.62.1",
     "@redocly/cli": "^2.48.0",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.1",

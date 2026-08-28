@@ -4,12 +4,24 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "@/components/nav-icon";
 import { isActiveRoute, visibleNavItems } from "@/lib/nav";
+import { isPublicPath } from "@/server/auth/routes";
 import { useRole } from "@/lib/use-role";
 
 export function BottomNav() {
   const pathname = usePathname();
   const { isAdmin } = useRole();
   const items = visibleNavItems(isAdmin);
+
+  /*
+   * Nothing to navigate to on a public route, and rendering it there does
+   * harm: each Link prefetches while signed out, the proxy answers with a
+   * redirect to /sign-in, and the client router caches that. The push after a
+   * successful sign-in then replays the cached redirect and the member is left
+   * staring at the form they just completed.
+   */
+  if (isPublicPath(pathname)) {
+    return null;
+  }
 
   return (
     <nav

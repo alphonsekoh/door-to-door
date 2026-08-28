@@ -55,6 +55,12 @@ workaround or trade-off earns its place; `// increment the counter` does not.
 are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`,
 `src/db/**`; **90%** for `src/components/**` and `src/app/**`.
 
+**[CI]** Three end-to-end flows run in a real browser at a phone viewport:
+signing in, recording a visit, and an outing's whole lifecycle. They exist for what
+jsdom cannot see - layout, stacking, and client-side navigation - after a sheet's save
+button shipped underneath the bottom nav through three PRs and 1100 passing tests.
+Keep the suite thin; Vitest owns coverage.
+
 **[convention]** Write tests that assert behaviour. If a line can only be covered by a test
 that asserts nothing meaningful, prefer deleting the unreachable code over writing a hollow
 test. Coverage is the proxy; working software is the goal.

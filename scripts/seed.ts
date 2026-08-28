@@ -29,9 +29,12 @@ const SEEDED_AT = new Date("2026-01-01T00:00:00Z");
 /* Refers to the row Postgres was about to insert, for ON CONFLICT DO UPDATE. */
 const sqlExcluded = (column: string) => sql.raw(`excluded."${column}"`);
 
-async function main(): Promise<void> {
-  loadEnvFile();
-  const pool = new Pool({ connectionString: requireDatabaseUrl(), max: 1 });
+/*
+ * Exported so the e2e suite can seed a database it names itself, rather than
+ * shelling out and losing the stack trace when something goes wrong.
+ */
+export async function seedDatabase(connectionString: string): Promise<void> {
+  const pool = new Pool({ connectionString, max: 1 });
   const db = drizzle(pool);
 
   try {
@@ -162,7 +165,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+/* Only when run as a script: importing this module must not touch a database. */
+if (process.argv[1]?.endsWith("seed.ts") === true) {
+  loadEnvFile();
+  seedDatabase(requireDatabaseUrl()).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

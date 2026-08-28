@@ -94,6 +94,8 @@ You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`
 | `npm run test:all` | Every project |
 | `npm run test:components` | Component project only |
 | `npm run test:coverage` | Run tests and enforce coverage thresholds |
+| `npm run test:e2e` | Three end-to-end flows in a real browser (**needs the `db-test` container**) |
+| `npm run test:e2e:ui` | The same suite in Playwright's UI mode |
 
 | `npm run db:generate` | Generate a migration from schema changes |
 | `npm run db:migrate` | Apply pending migrations |
@@ -174,6 +176,23 @@ npm run test:coverage      # everything, with thresholds enforced
 `npm test` deliberately excludes integration tests so the common case stays fast and
 offline. Integration tests fail loudly when `DATABASE_URL` is unset rather than skipping —
 a suite that quietly runs nothing is worse than one that does not run.
+
+### End-to-end
+
+```bash
+docker compose up -d db-test    # the scratch Postgres the suite seeds into
+npm run test:e2e
+```
+
+Playwright builds the app, serves the standalone output and drives three flows at a
+phone viewport: signing in, recording a visit, and an outing from draft through end to
+reopened. It creates and reseeds its own `door_to_door_e2e` database on the scratch
+server, so it never disturbs the integration suite.
+
+It is deliberately thin — Vitest owns coverage. This layer exists for what jsdom cannot
+see: layout, stacking order and client-side navigation. Its first real run caught a
+sign-in that set the session cookie and then left the member on the sign-in page, in the
+production build only.
 
 Vitest runs three projects — `unit` (node), `integration` (node, against a real PostgreSQL
 once #7 lands) and `components` (jsdom + Testing Library). Test files are picked up by
