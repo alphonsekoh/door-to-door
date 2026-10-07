@@ -116,6 +116,21 @@ Reference the issue with `Refs #N`; use `Closes #N` in the PR body, not the comm
 its PR targets that branch, not `main`. Merge top-down, and squash or rebase — a merge
 commit on `main` gives every branch below it phantom conflicts.
 
+## Workflow
+
+**[convention]** Each issue moves through four subagents in `.claude/agents/`. The owner
+(a human) makes product decisions and merges; no agent merges.
+
+| Agent      | Does                                                            | Skip when                     |
+| ---------- | --------------------------------------------------------------- | ----------------------------- |
+| `planner`  | Issue → slice plan; edits `openapi.yaml` only                   | No API, schema or sync change |
+| `builder`  | Generate, server, UI, tests, gates; opens the stacked PR        | Never                         |
+| `verifier` | E2E, phone-width device pass, proves new tests fail when broken | Docs, config or server-only   |
+| `reviewer` | Read-only review of invariants, authorization and conventions   | Never                         |
+
+Bugs found by the verifier or reviewer go back to the builder on the same branch. The
+planner's open questions go to the owner before building starts.
+
 ## Layout
 
 ```
