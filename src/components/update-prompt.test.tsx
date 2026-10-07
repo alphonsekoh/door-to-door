@@ -18,7 +18,7 @@ function stubServiceWorker(waiting: ServiceWorker | null, controller: object | n
   };
   const serviceWorker = {
     controller,
-    getRegistration: () => Promise.resolve(registration),
+    ready: Promise.resolve(registration),
     addEventListener: vi.fn(),
   };
   Object.defineProperty(navigator, "serviceWorker", { value: serviceWorker, configurable: true });
@@ -31,6 +31,27 @@ describe("UpdatePrompt", () => {
     render(<UpdatePrompt />);
     await act(() => Promise.resolve());
     expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("waits for the worker to be registered on a first load", async () => {
+    const { registration, serviceWorker } = stubServiceWorker(null);
+    let register: (value: unknown) => void = () => undefined;
+    Object.assign(serviceWorker, {
+      ready: new Promise((resolve) => {
+        register = resolve;
+      }),
+    });
+    render(<UpdatePrompt />);
+    await act(() => Promise.resolve());
+    expect(registration.addEventListener).not.toHaveBeenCalled();
+
+    register(registration);
+    await waitFor(() => {
+      expect(registration.addEventListener).toHaveBeenCalledWith(
+        "updatefound",
+        expect.any(Function),
+      );
+    });
   });
 
   it("says nothing in a browser without service workers", async () => {
@@ -101,5 +122,22 @@ describe("UpdatePrompt", () => {
     });
     unmount();
     expect(registration.removeEventListener).toHaveBeenCalled();
+  });
+});
+
+describe("UpdatePrompt reserved space", () => {
+  it("reserves room at the top while showing, and gives it back after", async () => {
+    stubServiceWorker({} as ServiceWorker);
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get: () => 56,
+    });
+    const { unmount } = render(<UpdatePrompt />);
+    await screen.findByRole("status");
+    expect(document.documentElement.style.getPropertyValue("--banner-top")).toBe("56px");
+
+    unmount();
+    expect(document.documentElement.style.getPropertyValue("--banner-top")).toBe("");
+    Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
   });
 });

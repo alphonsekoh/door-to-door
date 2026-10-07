@@ -44,15 +44,43 @@ describe("the bounded API cache", () => {
     expect(cachedResponseWillBeUsed({ cachedResponse: undefined } as never)).toBeNull();
   });
 
-  it("evicts the oldest entries past the cap", async () => {
-    const keys = ["a", "b", "c"].map((id) => new Request(`https://app.test/api/blocks?${id}`));
-    const deleted: Request[] = [];
+  it.each([
+    ["a 401", () => new Response("{}", { status: 401 })],
+    ["a 500", () => new Response("{}", { status: 500 })],
+    ["an opaque response", () => Response.error()],
+  ])("refuses to store %s", async (_name, make) => {
+    const { cacheWillUpdate } = hooks(createBoundedCachePlugin());
+    expect(await cacheWillUpdate({ response: make() } as never)).toBeNull();
+  });
+
+  it("refuses to store a response that followed a redirect", async () => {
+    const { cacheWillUpdate } = hooks(createBoundedCachePlugin());
+    const response = new Response("<html>", { status: 200 });
+    Object.defineProperty(response, "redirected", { value: true });
+    expect(await cacheWillUpdate({ response } as never)).toBeNull();
+  });
+
+  it("evicts by when an entry was stored, not by listing order", async () => {
+    const stamped = (stamp?: number) =>
+      new Response(
+        "x",
+        stamp === undefined ? {} : { headers: { [CACHED_AT_HEADER]: String(stamp) } },
+      );
+    // Listed oldest-first by key, but "a" was refreshed most recently.
+    const stored = new Map<Request, Response>([
+      [new Request("https://app.test/api/blocks?a"), stamped(900)],
+      [new Request("https://app.test/api/blocks?b"), stamped(100)],
+      [new Request("https://app.test/api/blocks?c"), stamped(500)],
+      [new Request("https://app.test/api/blocks?d"), stamped()],
+    ]);
+    const deleted: string[] = [];
     vi.stubGlobal("caches", {
       open: () =>
         Promise.resolve({
-          keys: () => Promise.resolve(keys),
+          keys: () => Promise.resolve([...stored.keys()]),
+          match: (key: Request) => Promise.resolve(stored.get(key)),
           delete: (key: Request) => {
-            deleted.push(key);
+            deleted.push(new URL(key.url).search);
             return Promise.resolve(true);
           },
         }),
@@ -61,6 +89,7 @@ describe("the bounded API cache", () => {
     const { cacheDidUpdate } = hooks(createBoundedCachePlugin(Date.now, 1_000, 2));
     await cacheDidUpdate({ cacheName: "api" } as never);
 
-    expect(deleted).toEqual([keys[0]]);
+    // The unstamped entry and the oldest stamped one go; the refreshed "a" stays.
+    expect(deleted.sort()).toEqual(["?b", "?d"]);
   });
 });

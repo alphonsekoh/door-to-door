@@ -221,3 +221,64 @@ test.describe("phone layout", () => {
     }
   });
 });
+
+test.describe("the install banner", () => {
+  /* Chromium fires this itself when the app is installable; a fake keeps the
+     check deterministic, and WebKit shows its manual banner regardless. */
+  async function offerInstall(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const event = new Event("beforeinstallprompt", { cancelable: true });
+      Object.assign(event, {
+        prompt: () => Promise.resolve(),
+        userChoice: new Promise(() => undefined),
+      });
+      window.dispatchEvent(event);
+    });
+  }
+
+  test("never covers the last item, and stays off the recording screen", async ({
+    memberPage,
+    adminApi,
+  }) => {
+    for (const path of ["/history", "/account"]) {
+      await memberPage.goto(path);
+      await expect(memberPage.getByRole("heading", { level: 1 })).toBeVisible();
+      await offerInstall(memberPage);
+      const banner = memberPage.getByRole("complementary", { name: "Install the app" });
+      await expect(banner).toBeVisible();
+
+      await memberPage.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      const clearance = await memberPage.evaluate(() => {
+        const last = document.querySelector("main")?.lastElementChild;
+        const banner = document.querySelector('aside[aria-label="Install the app"]');
+        return banner && last
+          ? banner.getBoundingClientRect().top - last.getBoundingClientRect().bottom
+          : null;
+      });
+      expect(clearance, `${path}: the banner covers the last item`).toBeGreaterThanOrEqual(0);
+
+      // The seeded pages are short, so also check the room itself: the
+      // content's bottom padding must clear the nav and the whole banner.
+      const room = await memberPage.evaluate(() => {
+        const main = document.querySelector("main");
+        const banner = document.querySelector('aside[aria-label="Install the app"]');
+        const nav = document.querySelector("nav[aria-label=Primary]");
+        return main && banner && nav
+          ? parseFloat(getComputedStyle(main).paddingBottom) -
+              (banner.getBoundingClientRect().height + nav.getBoundingClientRect().height)
+          : null;
+      });
+      expect(room, `${path}: no room reserved for the banner`).toBeGreaterThanOrEqual(0);
+    }
+
+    await ensureActiveSession(adminApi);
+    await memberPage.goto("/");
+    await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+    await expect(memberPage.getByRole("button", { name: "Save and next" })).toBeVisible();
+    await offerInstall(memberPage);
+    await expect(memberPage.getByRole("complementary", { name: "Install the app" })).toBeHidden();
+    await endActiveSession(adminApi);
+  });
+});

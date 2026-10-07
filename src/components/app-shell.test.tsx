@@ -26,6 +26,12 @@ describe("AppShell", () => {
     expect(screen.getByRole("main")).toHaveTextContent("Page body");
   });
 
+  it("pads the content for the nav and for any banner floating over it", () => {
+    // Both utilities add the --banner-* variables the banners publish.
+    render(<AppShell>content</AppShell>);
+    expect(screen.getByRole("main")).toHaveClass("pt-banner", "pb-nav");
+  });
+
   it("renders the primary navigation alongside the content", () => {
     render(<AppShell>content</AppShell>);
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();

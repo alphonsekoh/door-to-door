@@ -29,10 +29,24 @@ export function isFresh(cachedAt: number, now: number, maxAgeMs: number): boolea
   return now - cachedAt <= maxAgeMs;
 }
 
-/* The oldest entries to drop to get back under the cap. Keys arrive in
-   insertion order, which is the order the Cache API lists them in. */
-export function keysToEvict<T>(keys: readonly T[], maxEntries: number): T[] {
-  return keys.slice(0, Math.max(0, keys.length - maxEntries));
+/* Only a plain success is worth keeping: a 401 or 500 stored here would be
+   served as if it were the answer, and a redirect or opaque response is not
+   something the page can read. */
+export function isStorableResponse(response: {
+  status: number;
+  redirected: boolean;
+  type: string;
+}): boolean {
+  return response.status === 200 && !response.redirected && response.type !== "opaque";
+}
+
+export type StoredEntry<T> = { key: T; storedAt: number };
+
+/* The oldest entries to drop to get back under the cap, by when each was last
+   stored. The Cache API's own listing order is not a promise about recency. */
+export function keysToEvict<T>(entries: readonly StoredEntry<T>[], maxEntries: number): T[] {
+  const oldestFirst = [...entries].sort((a, b) => a.storedAt - b.storedAt);
+  return oldestFirst.slice(0, Math.max(0, entries.length - maxEntries)).map(({ key }) => key);
 }
 
 /* Messages the page sends the worker. */

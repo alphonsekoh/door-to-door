@@ -4,6 +4,7 @@ import {
   API_CACHE_MAX_ENTRIES,
   CACHED_AT_HEADER,
   isFresh,
+  isStorableResponse,
   keysToEvict,
 } from "@/lib/sw-cache-rules";
 
@@ -22,6 +23,7 @@ export function createBoundedCachePlugin(
 ): SerwistPlugin {
   return {
     cacheWillUpdate: ({ response }) => {
+      if (!isStorableResponse(response)) return null;
       const headers = new Headers(response.headers);
       headers.set(CACHED_AT_HEADER, String(now()));
       return new Response(response.body, {
@@ -41,7 +43,14 @@ export function createBoundedCachePlugin(
     cacheDidUpdate: async ({ cacheName }) => {
       const cache = await caches.open(cacheName);
       const keys = await cache.keys();
-      await Promise.all(keysToEvict(keys, maxEntries).map((key) => cache.delete(key)));
+      const entries = await Promise.all(
+        keys.map(async (key) => ({
+          key,
+          // Unstamped counts as the oldest, so it goes first.
+          storedAt: Number((await cache.match(key))?.headers.get(CACHED_AT_HEADER)) || 0,
+        })),
+      );
+      await Promise.all(keysToEvict(entries, maxEntries).map((key) => cache.delete(key)));
     },
   };
 }

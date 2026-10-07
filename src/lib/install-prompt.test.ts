@@ -6,6 +6,7 @@ import {
   deriveInstallState,
   isRecordingRoute,
   isStandalone,
+  clearInstalled,
   readDismissedAt,
   readInstalled,
   writeDismissedAt,
@@ -131,6 +132,26 @@ describe("storage", () => {
     expect(storage.data.get(INSTALLED_KEY)).toBe("1");
     expect(readDismissedAt(storage)).toBe(NOW);
     expect(readInstalled(storage)).toBe(true);
+  });
+
+  it("forgets an installed flag, and survives storage that throws", () => {
+    const storage = {
+      ...memory(),
+      removeItem(key: string) {
+        this.data.delete(key);
+      },
+    };
+    writeInstalled(storage);
+    clearInstalled(storage);
+    expect(readInstalled(storage)).toBe(false);
+
+    expect(() => {
+      clearInstalled({
+        removeItem: () => {
+          throw new Error("blocked");
+        },
+      });
+    }).not.toThrow();
   });
 
   it("ignores a corrupted dismissal", () => {

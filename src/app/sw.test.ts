@@ -4,7 +4,10 @@ import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 type Rule = {
   matcher: (context: { request: { method: string; mode: string }; url: URL }) => boolean;
-  handler: { kind: string; options?: { cacheName: string } };
+  handler: {
+    kind: string;
+    options?: { cacheName: string; plugins: { cacheWillUpdate: (p: unknown) => unknown }[] };
+  };
 };
 type Options = {
   precacheEntries: string[];
@@ -32,7 +35,12 @@ vi.mock("serwist", () => ({
   },
   StaleWhileRevalidate: class {
     kind = "stale-while-revalidate";
-    constructor(public options: { cacheName: string }) {}
+    constructor(
+      public options: {
+        cacheName: string;
+        plugins: { cacheWillUpdate: (p: unknown) => unknown }[];
+      },
+    ) {}
   },
 }));
 
@@ -75,6 +83,15 @@ describe("the service worker", () => {
     expect(handlerFor("/api/blocks")).toBe("stale-while-revalidate");
     const rule = options().runtimeCaching[0];
     expect(rule?.handler.options?.cacheName).toBe("api-reference-v1");
+  });
+
+  it("wires in the real bounded cache, which refuses error responses", async () => {
+    const [plugin] = options().runtimeCaching[0]?.handler.options?.plugins ?? [];
+    expect(
+      await plugin?.cacheWillUpdate({ response: new Response("{}", { status: 401 }) }),
+    ).toBeNull();
+    const stored = await plugin?.cacheWillUpdate({ response: new Response("{}", { status: 200 }) });
+    expect(stored).toBeInstanceOf(Response);
   });
 
   it.each(["/api/sessions/active", "/api/follow-ups", "/api/history", "/api/auth/session"])(

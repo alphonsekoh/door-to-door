@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useReservedSpace } from "@/components/use-reserved-space";
 import { classifyBrowser, INSTALL_GUIDES, installPathFor } from "@/lib/install-environment";
 import type { InstallPath } from "@/lib/install-environment";
 import {
@@ -9,6 +10,7 @@ import {
   isRecordingRoute,
   isStandalone,
   readDismissedAt,
+  clearInstalled,
   readInstalled,
   writeDismissedAt,
   writeInstalled,
@@ -53,6 +55,7 @@ export function InstallPrompt() {
   const [environment, setEnvironment] = useState<Environment | null>(null);
   const [hasDeferred, setHasDeferred] = useState(false);
   const deferred = useRef<BeforeInstallPromptEvent | null>(null);
+  const bannerRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     // Deferred: React warns about state set synchronously inside an effect.
@@ -63,6 +66,8 @@ export function InstallPrompt() {
     const onBeforeInstall = (event: Event) => {
       event.preventDefault();
       deferred.current = event as BeforeInstallPromptEvent;
+      clearInstalled(localStorage);
+      setEnvironment((current) => (current ? { ...current, installedFlag: false } : current));
       setHasDeferred(true);
     };
     const onInstalled = () => {
@@ -81,18 +86,22 @@ export function InstallPrompt() {
     };
   }, []);
 
-  if (!environment || !isSignedIn || isPublicPath(pathname)) return null;
+  const eligible = environment !== null && isSignedIn && !isPublicPath(pathname);
+  const state = eligible
+    ? deriveInstallState({
+        path: environment.path,
+        hasDeferredPrompt: hasDeferred,
+        standalone: environment.standalone,
+        installedFlag: environment.installedFlag,
+        dismissedAt: environment.dismissedAt,
+        now: environment.now,
+        recording: isRecordingRoute(pathname),
+      })
+    : null;
+  const visible = state?.kind === "available" || state?.kind === "manual";
+  useReservedSpace("--banner-bottom", bannerRef, visible);
 
-  const state = deriveInstallState({
-    path: environment.path,
-    hasDeferredPrompt: hasDeferred,
-    standalone: environment.standalone,
-    installedFlag: environment.installedFlag,
-    dismissedAt: environment.dismissedAt,
-    now: environment.now,
-    recording: isRecordingRoute(pathname),
-  });
-  if (state.kind !== "available" && state.kind !== "manual") return null;
+  if (!state || (state.kind !== "available" && state.kind !== "manual")) return null;
 
   function dismiss() {
     const now = Date.now();
@@ -121,6 +130,7 @@ export function InstallPrompt() {
 
   return (
     <aside
+      ref={bannerRef}
       aria-label="Install the app"
       className="fixed inset-x-0 above-nav z-30 border-t border-border bg-surface px-4 py-3"
     >

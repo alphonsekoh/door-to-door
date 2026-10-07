@@ -54,7 +54,9 @@ const IOS_OTHER_BROWSER_MIN = 1604;
 const WEBVIEW_TOKENS = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger|Snapchat|Twitter|; wv\)/;
 
 function iosVersionOf(ua: string): number | null {
-  const match = /OS (\d+)[_.](\d+)/.exec(ua) ?? /Version\/(\d+)\.(\d+)/.exec(ua);
+  // Anchored to the iOS tokens: a bare "OS (\d+)" also matches the "Mac OS X
+  // 10_15" that every iPad in desktop mode claims, which is not an iOS version.
+  const match = /(?:iPhone|CPU) OS (\d+)[_.](\d+)/.exec(ua) ?? /Version\/(\d+)\.(\d+)/.exec(ua);
   if (match === null) return null;
   return Number(match[1]) * 100 + Number(match[2]);
 }

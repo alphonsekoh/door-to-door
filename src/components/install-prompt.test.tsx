@@ -118,6 +118,21 @@ describe("InstallPrompt on Chromium", () => {
     expect(banner()).toBeNull();
   });
 
+  it("shows again for someone who installed, then removed the app", async () => {
+    // Only a real beforeinstallprompt proves the app is no longer installed.
+    localStorage.setItem(INSTALLED_KEY, "1");
+    render(<InstallPrompt />);
+    await act(() => Promise.resolve());
+    expect(banner()).toBeNull();
+
+    act(() => {
+      window.dispatchEvent(installEvent().event);
+    });
+
+    expect(await screen.findByRole("button", { name: "Install" })).toBeInTheDocument();
+    expect(localStorage.getItem(INSTALLED_KEY)).toBeNull();
+  });
+
   it("never shows inside the installed app", async () => {
     setEnvironment(ANDROID_CHROME, true);
     render(<InstallPrompt />);
@@ -204,5 +219,31 @@ describe("InstallPrompt where there is no install event", () => {
     render(<InstallPrompt />);
     await act(() => Promise.resolve());
     expect(banner()).toBeNull();
+  });
+});
+
+describe("InstallPrompt reserved space", () => {
+  it("keeps content clear of the banner while it shows, and releases it when dismissed", async () => {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get: () => 72,
+    });
+    const user = userEvent.setup();
+    render(<InstallPrompt />);
+    act(() => {
+      window.dispatchEvent(installEvent().event);
+    });
+    await screen.findByRole("button", { name: "Install" });
+    const bottom = () => document.documentElement.style.getPropertyValue("--banner-bottom");
+    expect(bottom()).toBe("72px");
+
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(bottom()).toBe("72px");
+
+    await user.click(screen.getByRole("button", { name: "Not now" }));
+    expect(bottom()).toBe("");
+    Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
   });
 });

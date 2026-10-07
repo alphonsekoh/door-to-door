@@ -98,6 +98,16 @@ export function readInstalled(storage: StorageLike): boolean {
   }
 }
 
+/* A real install prompt means the browser thinks the app is not installed, so
+   an earlier "installed" note is stale - the member has since removed it. */
+export function clearInstalled(storage: Pick<Storage, "removeItem">): void {
+  try {
+    storage.removeItem(INSTALLED_KEY);
+  } catch {
+    // The flag stays; the banner may be missed until it is cleared.
+  }
+}
+
 export function writeInstalled(storage: StorageLike): void {
   try {
     storage.setItem(INSTALLED_KEY, "1");

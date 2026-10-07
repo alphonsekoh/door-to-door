@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useReservedSpace } from "@/components/use-reserved-space";
 import { activateWaitingWorker, hasUnsyncedItems, watchForWaitingWorker } from "@/lib/sw-update";
 
 type Props = {
@@ -20,14 +21,18 @@ const reloadPage = () => {
 export function UpdatePrompt({ hasUnsynced = hasUnsyncedItems, reload = reloadPage }: Props) {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [blockedBySync, setBlockedBySync] = useState(false);
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  useReservedSpace("--banner-top", bannerRef, waiting !== null);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
     let stop: (() => void) | undefined;
     let cancelled = false;
 
-    void navigator.serviceWorker.getRegistration().then((registration) => {
-      if (cancelled || !registration) return;
+    // `ready` rather than getRegistration(): on the very first load that
+    // can resolve before the worker has been registered at all.
+    void navigator.serviceWorker.ready.then((registration) => {
+      if (cancelled) return;
       stop = watchForWaitingWorker(
         registration,
         () => navigator.serviceWorker.controller !== null,
@@ -54,6 +59,7 @@ export function UpdatePrompt({ hasUnsynced = hasUnsyncedItems, reload = reloadPa
 
   return (
     <div
+      ref={bannerRef}
       role="status"
       className="fixed inset-x-0 top-0 z-30 border-b border-border bg-surface px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
     >

@@ -3,6 +3,7 @@ import {
   isApiRequest,
   isCacheableApiGet,
   isFresh,
+  isStorableResponse,
   keysToEvict,
   messageType,
 } from "@/lib/sw-cache-rules";
@@ -55,13 +56,37 @@ describe("isFresh", () => {
   });
 });
 
+describe("isStorableResponse", () => {
+  const plain = { status: 200, redirected: false, type: "basic" };
+
+  it("keeps a plain success", () => {
+    expect(isStorableResponse(plain)).toBe(true);
+  });
+
+  it.each([
+    ["unauthenticated", { ...plain, status: 401 }],
+    ["a server error", { ...plain, status: 500 }],
+    ["a no-content reply", { ...plain, status: 204 }],
+    ["a redirect that was followed", { ...plain, redirected: true }],
+    ["an opaque response", { status: 0, redirected: false, type: "opaque" }],
+  ])("refuses %s", (_name, response) => {
+    expect(isStorableResponse(response)).toBe(false);
+  });
+});
+
 describe("keysToEvict", () => {
-  it("drops the oldest entries beyond the cap", () => {
-    expect(keysToEvict(["a", "b", "c", "d"], 2)).toEqual(["a", "b"]);
+  it("drops the entries stored longest ago, whatever order they are listed in", () => {
+    const entries = [
+      { key: "refreshed", storedAt: 300 },
+      { key: "oldest", storedAt: 100 },
+      { key: "newest", storedAt: 400 },
+      { key: "older", storedAt: 200 },
+    ];
+    expect(keysToEvict(entries, 2)).toEqual(["oldest", "older"]);
   });
 
   it("drops nothing while under the cap", () => {
-    expect(keysToEvict(["a"], 2)).toEqual([]);
+    expect(keysToEvict([{ key: "a", storedAt: 1 }], 2)).toEqual([]);
     expect(keysToEvict([], 0)).toEqual([]);
   });
 });
