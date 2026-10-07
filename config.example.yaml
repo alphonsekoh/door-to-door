@@ -22,6 +22,7 @@ auth:
   # and its public URL is fixed with AUTH_URL. Default: true.
   trustHost: true
 
+  # Used by Google sign-in (#14); no effect until that lands.
   # Google single sign-on. Omit this block to leave Google sign-in off. The
   # client ID is public; the client secret is AUTH_GOOGLE_SECRET (or
   # AUTH_GOOGLE_SECRET_FILE) and is required once a clientId is set.
@@ -37,6 +38,7 @@ rateLimit:
   signInWindowSeconds: 300
 
 sync:
+  # Used by the sync clock rules (#76); no effect until then.
   # How far a phone's clock may differ from the server's, in seconds, before
   # an offline visit's timestamp is not trusted. Whole number, at least 1.
   # Default: 300.

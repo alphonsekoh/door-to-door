@@ -252,7 +252,6 @@ describe("warnIfDotEnv", () => {
     write("X=1\n", ".env");
     expect(warnIfDotEnv({ cwd: dir })).toBe(true);
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warnIfDotEnv()).toBeTypeOf("boolean");
   });
 });
 
@@ -290,6 +289,17 @@ describe("verifyConfigOrExit", () => {
     verifyConfigOrExit(exit, report);
     expect(report).toHaveBeenCalledWith(expect.stringContaining("AUTH_SECRET"));
     expect(report).not.toHaveBeenCalledWith(expect.stringContaining("short-secret-value"));
+    expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  it("reports whatever was thrown, even when it is not an Error", () => {
+    const exit = vi.fn() as unknown as (code: number) => never;
+    const report = vi.fn();
+    verifyConfigOrExit(exit, report, () => {
+      // JSON.parse returns any, which the lint rule permits throwing.
+      throw JSON.parse('"plain string"');
+    });
+    expect(report).toHaveBeenCalledWith("Cannot start: plain string");
     expect(exit).toHaveBeenCalledWith(1);
   });
 

@@ -141,12 +141,12 @@ export function verifyConfigOrExit(
   report: (message: string) => void = (message) => {
     console.error(message);
   },
+  load: () => unknown = getConfig,
 ): void {
   try {
-    getConfig();
+    load();
   } catch (error) {
-    // Everything getConfig throws is an Error: our own classes, or fs's.
-    report(`Cannot start: ${(error as Error).message}`);
+    report(`Cannot start: ${error instanceof Error ? error.message : String(error)}`);
     exit(1);
   }
 }

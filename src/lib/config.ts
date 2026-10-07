@@ -21,6 +21,8 @@ const DEFAULT_CLOCK_SKEW_SECONDS = 300;
 
 const positiveInteger = z.number().int().positive();
 
+const ALLOWED_QUERY_PARAMETERS: ReadonlySet<string> = new Set(["sslmode", "application_name"]);
+
 const databaseUrl = z.string().superRefine((value, ctx) => {
   let url: URL;
   try {
@@ -32,6 +34,20 @@ const databaseUrl = z.string().superRefine((value, ctx) => {
   if (url.protocol !== "postgres:" && url.protocol !== "postgresql:") {
     ctx.addIssue({ code: "custom", message: "must start with postgresql://" });
     return;
+  }
+  /*
+   * A query-string user/password would both put a secret in the file and, in
+   * pg-connection-string, override the injected credentials. Allow-listed
+   * rather than deny-listed: the next secret-bearing parameter (sslkey,
+   * sslpassword, options...) is then refused by default.
+   */
+  for (const key of new Set(url.searchParams.keys())) {
+    if (!ALLOWED_QUERY_PARAMETERS.has(key)) {
+      ctx.addIssue({
+        code: "custom",
+        message: `query parameter "${key}" is not allowed; only ${[...ALLOWED_QUERY_PARAMETERS].join(", ")} may be set here`,
+      });
+    }
   }
   if (url.username !== "" || url.password !== "") {
     ctx.addIssue({

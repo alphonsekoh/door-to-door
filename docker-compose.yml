@@ -70,6 +70,8 @@ services:
       target: dev
     environment:
       <<: *credentials
+      # A public, local-development-only value. Never use it on a host that is
+      # reachable by anyone else; set AUTH_SECRET in the environment instead.
       AUTH_SECRET: ${AUTH_SECRET:-compose-local-dev-secret-0f3a9c71d2b84e56-not-for-production}
       CONFIG_PATH: /config/config.yaml
       # Bind-mounted source on macOS and Windows does not deliver inotify

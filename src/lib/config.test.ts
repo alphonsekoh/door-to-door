@@ -131,6 +131,33 @@ describe("database.url", () => {
     ]);
   });
 
+  it.each(["user", "password", "sslpassword", "sslkey", "sslcert", "options"])(
+    "refuses the query parameter %s without echoing its value",
+    (key) => {
+      const sentinel = "SENTINEL-query-value";
+      const problems = problemsOf(`database:\n  url: "postgresql://db/x?${key}=${sentinel}"\n`);
+      expect(problems).toEqual([
+        expect.stringContaining(`query parameter "${key}" is not allowed`),
+      ]);
+      expect(problems.join()).not.toContain(sentinel);
+    },
+  );
+
+  it("names each offending parameter once, even when repeated", () => {
+    expect(problemsOf("database:\n  url: postgresql://db/x?password=a&password=b\n")).toHaveLength(
+      1,
+    );
+  });
+
+  it("still allows sslmode and application_name", () => {
+    expect(
+      parseConfig(
+        "database:\n  url: postgresql://db/x?sslmode=require&application_name=d2d\n",
+        SOURCE,
+      ).database.url,
+    ).toContain("sslmode=require");
+  });
+
   it("refuses something that is not a URL", () => {
     expect(problemsOf("database:\n  url: not a url\n")).toEqual([
       "database.url: must be a valid URL",
