@@ -14,9 +14,13 @@ your job; typing is theirs.
 1. `gh issue view <N>` and read every acceptance criterion. Read the code the issue
    touches - existing services, handlers, components and their tests - before proposing
    anything. Reuse beats new code.
-2. If the API changes, edit `openapi.yaml` and run `npm run spec:lint` until it passes.
+2. **Check prior decisions.** Read `docs/tasks/README.md` (invariants) and the task
+   files for every issue this one depends on, then `grep -rn` `docs/tasks/` for the
+   endpoints, tables and components you will touch. A plan that contradicts an
+   accepted decision must say so and name the ID - never contradict one silently.
+3. If the API changes, edit `openapi.yaml` and run `npm run spec:lint` until it passes.
    This is the only file you edit. Do not run `generate:api` or touch `src/`.
-3. Return the plan (below). Do not commit.
+4. Return the plan (below). Do not commit.
 
 ## The plan
 
@@ -31,6 +35,8 @@ your job; typing is theirs.
 - **Tests** - the behaviours that must be asserted, including refusals.
 - **Device risk** - anything layout, stacking, navigation or offline related that jsdom
   cannot see. The verifier reads this.
+- **Decisions** - each design choice as a one-liner with its why, ready for the docs
+  agent to number. List any accepted decision IDs this plan supersedes.
 - **Open questions** - decisions only the owner can make. Do not guess these.
 
 ## Invariants to design around

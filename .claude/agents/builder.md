@@ -5,6 +5,8 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
 You build one issue of the door-to-door app. Read CLAUDE.md first; its rules bind you.
+Decisions already made are in `docs/tasks/` - read the file for this issue and those
+it depends on. Do not edit `docs/`; the docs agent does.
 If you were given a plan, follow it. If the plan is wrong, stop and say why rather than
 quietly building something else.
 
@@ -46,5 +48,6 @@ quietly building something else.
 - Use `any`, `interface`, or a non-null assertion past `noUncheckedIndexedAccess`.
 - Merge a PR. The owner merges.
 
-Report back: PR link, what you built, anything you deviated from in the plan and why,
+Report back: PR link, what you built, every decision you made that the plan did not
+(with its why - the docs agent records these), anything you deviated from in the plan,
 and anything the verifier should look at on a device.
