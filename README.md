@@ -29,7 +29,16 @@ nothing.
 
 **In the field**
 
-- Installable on a phone, works offline, and syncs when signal returns _(not yet — #32, #33)_
+- Installable on a phone, works offline, and syncs when signal returns _(installable: done; offline queue — #33)_
+
+## Known limits
+
+**Pairs cannot share records that have not synced.** Door-to-door is done in pairs, and
+teammates will be able to view and edit each other's records (#74). But two phones with
+no reception cannot talk to each other, so a record still waiting to sync exists on one
+phone only. Its teammate sees and edits it after it has synced. The app says so on
+screen; if this ever needs to change it means peer-to-peer sync between phones, which is
+a different and much larger piece of work.
 
 ## Requirements
 
