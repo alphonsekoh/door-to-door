@@ -25,6 +25,7 @@ Edit only `docs/`, `README.md`, `CLAUDE.md` and `.env.example`. Never edit code.
 
    Superseding is recorded only once the owner has agreed: the new decision says
    `Supersedes D-x-y`; the old one is struck through with `Superseded by D-N-n`.
+
 4. **Research.** Anything the decision depended on from outside the repo - library
    behaviour, a platform limit, a doc page, a measured result - goes in
    `docs/RESEARCH.md` as the next `R-<n>`, with source and the decision IDs it fed.
