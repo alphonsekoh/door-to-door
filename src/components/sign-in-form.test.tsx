@@ -3,15 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/sign-in-form";
 
-const { signIn, push, get } = vi.hoisted(() => ({
+const { signIn, push, refresh, get } = vi.hoisted(() => ({
   signIn: vi.fn(),
   push: vi.fn(),
+  refresh: vi.fn(),
   get: vi.fn<(key: string) => string | null>(),
 }));
 
 vi.mock("next-auth/react", () => ({ signIn }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push }),
+  useRouter: () => ({ push, refresh }),
   useSearchParams: () => ({ get }),
 }));
 
@@ -58,6 +59,30 @@ describe("SignInForm", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     expect(screen.getByLabelText("Email")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("clears the router cache before navigating", async () => {
+    /*
+     * Prefetches made while signed out are redirects back to the sign-in page.
+     * Pushing without invalidating them replays one, and the member is left
+     * looking at the form they just completed - which is what happened in the
+     * production build until the e2e suite caught it.
+     */
+    const user = userEvent.setup();
+    signIn.mockResolvedValue(ok);
+    get.mockReturnValue(null);
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "admin@example.com");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    await waitFor(() => {
+      expect(refresh).toHaveBeenCalled();
+    });
+    expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
+      push.mock.invocationCallOrder[0] ?? Infinity,
+    );
   });
 
   it("signs in and redirects home", async () => {

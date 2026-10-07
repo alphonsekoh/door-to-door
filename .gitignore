@@ -47,6 +47,8 @@ next-env.d.ts
 /playwright-report
 /blob-report
 /playwright/.cache
+# Saved sign-ins for the e2e suite; regenerated on every run.
+/e2e/.auth
 
 # editors
 .idea

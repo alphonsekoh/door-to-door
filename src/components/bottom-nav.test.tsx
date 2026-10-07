@@ -85,4 +85,23 @@ describe("BottomNav", () => {
     render(<BottomNav />);
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("does not render on a public route", () => {
+    /*
+     * Not cosmetic. Its Links prefetch while the visitor is signed out, the
+     * proxy answers each with a redirect to /sign-in, and the client router
+     * caches those - so the push after a successful sign-in replayed one and
+     * left the member on the form. Found by the e2e suite, in the production
+     * build only.
+     */
+    usePathname.mockReturnValue("/sign-in");
+    const { container } = render(<BottomNav />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("still renders on the routes behind the guard", () => {
+    usePathname.mockReturnValue("/history");
+    render(<BottomNav />);
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+  });
 });

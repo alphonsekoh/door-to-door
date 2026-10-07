@@ -51,6 +51,9 @@ export function SignInForm() {
       setFailure(GENERIC_FAILURE);
       return;
     }
+    /* refresh before push: the router may hold responses fetched while this
+       visitor was signed out, and every one of them is a redirect back here. */
+    router.refresh();
     router.push(params.get("callbackUrl") ?? "/");
   }
 

@@ -113,6 +113,59 @@ jobs:
           path: coverage/
           retention-days: 7
 
+  e2e:
+    name: End-to-end smoke
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # global-setup creates the database itself, so the server here only has
+      # to exist. The app is started by Playwright's webServer.
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/door_to_door_e2e
+      AUTH_SECRET: e2e-secret-not-used-anywhere-else
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Only the browser the suite actually uses; the full set is a slow
+      # download for two engines nothing runs against.
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Three flows that must never break
+        run: npm run test:e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   build:
     name: Production build
     runs-on: ubuntu-latest

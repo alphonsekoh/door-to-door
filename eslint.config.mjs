@@ -54,6 +54,13 @@ const eslintConfig = defineConfig([
     },
   },
 
+  // Playwright fixtures receive a callback conventionally named `use`, which the
+  // React plugin mistakes for the `use` hook. There is no React here at all.
+  {
+    files: ["e2e/**/*.ts"],
+    rules: { "react-hooks/rules-of-hooks": "off" },
+  },
+
   // Config files run in Node and sit outside the app's type-checked program.
   {
     files: ["*.mjs", "*.ts", "*.config.*"],
