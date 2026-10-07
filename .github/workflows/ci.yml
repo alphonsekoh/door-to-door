@@ -148,10 +148,10 @@ jobs:
 
       - run: npm ci
 
-      # Only the browser the suite actually uses; the full set is a slow
-      # download for two engines nothing runs against.
-      - name: Install the browser
-        run: npx playwright install --with-deps chromium
+      # Only the engines the suite actually uses: Chromium for Android, WebKit
+      # for every browser on iOS. Firefox is not run.
+      - name: Install the browsers
+        run: npx playwright install --with-deps chromium webkit
 
       - name: Three flows that must never break
         run: npm run test:e2e

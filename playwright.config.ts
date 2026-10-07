@@ -37,22 +37,22 @@ export default defineConfig({
 
   use: {
     baseURL: BASE_URL,
-    /*
-     * A real phone profile - viewport, touch and mobile user agent - and the
-     * only place the app is exercised at that size.
-     *
-     * Pixel 5 rather than an iPhone because the iPhone profiles pull in WebKit,
-     * which is another browser to install in CI. That leaves Safari-specific
-     * behaviour uncovered; worth revisiting if the PWA work in #32 turns up
-     * anything iOS-shaped.
-     */
-    ...devices["Pixel 5"],
+    /* Phone profiles - viewport, touch and mobile user agent - are set per
+       project below; this is the only place the app is exercised at that size. */
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
 
-  projects: [{ name: "mobile-chromium", use: { ...devices["Pixel 5"] } }],
+  /*
+   * Chromium on a Pixel 5 and WebKit on an iPhone. WebKit is there because
+   * every browser on iOS runs it, and the PWA work (#32) is where Safari
+   * differs most: service workers, storage and the install flow.
+   */
+  projects: [
+    { name: "mobile-chromium", use: { ...devices["Pixel 5"] } },
+    { name: "mobile-webkit", use: { ...devices["iPhone 13"] } },
+  ],
 
   webServer: {
     /*

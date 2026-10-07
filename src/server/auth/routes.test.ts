@@ -2,22 +2,33 @@ import { describe, expect, it } from "vitest";
 import { isApiPath, isPublicPath, signInRedirect } from "@/server/auth/routes";
 
 describe("isPublicPath", () => {
-  it.each(["/sign-in", "/api/auth", "/api/auth/session", "/api/auth/callback/credentials"])(
-    "lets %s through",
+  it.each([
+    "/sign-in",
+    "/api/auth",
+    "/api/auth/session",
+    "/api/auth/callback/credentials",
+    "/offline",
+    "/manifest.webmanifest",
+    "/serwist/sw.js",
+    "/serwist/sw.js.map",
+  ])("lets %s through", (path) => {
+    // Guarding these would make signing in impossible.
+    expect(isPublicPath(path)).toBe(true);
+  });
+
+  it.each(["/", "/history", "/api/sessions", "/api/sessions/active", "/api/blocks", "/account"])(
+    "guards %s",
     (path) => {
-      // Guarding these would make signing in impossible.
-      expect(isPublicPath(path)).toBe(true);
+      expect(isPublicPath(path)).toBe(false);
     },
   );
-
-  it.each(["/", "/history", "/api/sessions", "/account"])("guards %s", (path) => {
-    expect(isPublicPath(path)).toBe(false);
-  });
 
   it("does not treat a lookalike prefix as public", () => {
     // /sign-in-secretly must not inherit /sign-in's exemption.
     expect(isPublicPath("/sign-in-secretly")).toBe(false);
     expect(isPublicPath("/api/authorise")).toBe(false);
+    expect(isPublicPath("/offline-secrets")).toBe(false);
+    expect(isPublicPath("/serwistx")).toBe(false);
   });
 });
 

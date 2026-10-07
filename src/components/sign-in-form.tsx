@@ -3,6 +3,7 @@
 import { signIn } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type ComponentProps } from "react";
+import { clearServiceWorkerCaches } from "@/lib/sw-client";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
 type SubmitEvent = Parameters<NonNullable<ComponentProps<"form">["onSubmit"]>>[0];
@@ -51,6 +52,9 @@ export function SignInForm() {
       setFailure(GENERIC_FAILURE);
       return;
     }
+    /* A second member signing in on a shared phone must not read the first
+       one's cached API answers. */
+    await clearServiceWorkerCaches();
     /* refresh before push: the router may hold responses fetched while this
        visitor was signed out, and every one of them is a redirect back here. */
     router.refresh();
