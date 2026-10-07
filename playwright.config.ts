@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { stringify } from "yaml";
 
 /*
  * A deliberately thin E2E layer. Vitest owns UI coverage; these three flows
@@ -13,9 +16,29 @@ const BASE_URL = `http://127.0.0.1:${String(PORT)}`;
 /* Its own database, on the scratch server the integration suite already uses.
    A separate name rather than a separate container: e2e truncates and reseeds,
    which would pull the rug out from under a concurrent integration run. */
-const DATABASE_URL =
+const E2E_DATABASE_URL =
   process.env["E2E_DATABASE_URL"] ??
   "postgresql://postgres:postgres@localhost:5433/door_to_door_e2e";
+
+/*
+ * The app reads its settings from a YAML file and its credentials from the
+ * environment, exactly as in production. So the one full URL the harness uses
+ * is split here: the file gets the URL without credentials, the server process
+ * gets them as DATABASE_USER and DATABASE_PASSWORD.
+ *
+ * Written when this config loads, and the path is absolute: the standalone
+ * server changes directory to its own folder, so a relative one would miss.
+ */
+const target = new URL(E2E_DATABASE_URL);
+const CREDENTIALS = {
+  DATABASE_USER: decodeURIComponent(target.username),
+  DATABASE_PASSWORD: decodeURIComponent(target.password),
+};
+target.username = "";
+target.password = "";
+const CONFIG_PATH = resolve("e2e/.auth/config.yaml");
+mkdirSync(dirname(CONFIG_PATH), { recursive: true });
+writeFileSync(CONFIG_PATH, stringify({ database: { url: target.toString() } }));
 
 export default defineConfig({
   testDir: "./e2e",
@@ -70,9 +93,9 @@ export default defineConfig({
     env: {
       PORT: String(PORT),
       HOSTNAME: "127.0.0.1",
-      DATABASE_URL,
+      CONFIG_PATH,
+      ...CREDENTIALS,
       AUTH_SECRET: process.env["AUTH_SECRET"] ?? "e2e-secret-not-used-anywhere-else",
-      AUTH_TRUST_HOST: "true",
     },
   },
 });

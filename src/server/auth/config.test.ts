@@ -8,17 +8,21 @@ import { buildAuthConfig } from "@/server/auth/config";
  * role never reaching the session, with every unit test still green.
  */
 
-const DB_URL = "postgresql://postgres:postgres@localhost:5432/nowhere";
+const { getConfig } = vi.hoisted(() => ({
+  getConfig: vi.fn(() => ({
+    databaseUrl: "postgresql://postgres:postgres@localhost:5432/nowhere",
+    authSecret: "a-secret-that-is-long-enough-for-tests",
+    auth: { trustHost: false },
+    rateLimit: { signInAttempts: 10, signInWindowSeconds: 300 },
+  })),
+}));
+vi.mock("@/server/config", () => ({ getConfig }));
 
 afterEach(async () => {
   await resetDatabase();
-  vi.unstubAllEnvs();
 });
 
-const config = () => {
-  vi.stubEnv("DATABASE_URL", DB_URL);
-  return buildAuthConfig();
-};
+const config = () => buildAuthConfig();
 
 describe("session strategy", () => {
   it("uses JWTs, forced by the Credentials provider in #15", () => {
@@ -40,6 +44,16 @@ describe("session strategy", () => {
   it("routes sign-in and errors to our own page", () => {
     expect(config().pages?.signIn).toBe("/sign-in");
     expect(config().pages?.error).toBe("/sign-in");
+  });
+});
+
+describe("settings from config", () => {
+  it("signs with the configured secret", () => {
+    expect(config().secret).toBe("a-secret-that-is-long-enough-for-tests");
+  });
+
+  it("honours auth.trustHost rather than always trusting the host header", () => {
+    expect(config().trustHost).toBe(false);
   });
 });
 

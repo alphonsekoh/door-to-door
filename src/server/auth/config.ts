@@ -3,8 +3,9 @@ import type { NextAuthConfig } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import { getDatabase } from "@/db/client";
 import { accounts, authSessions, users, verificationTokens } from "@/db/schema";
-import { baseAuthConfig } from "@/server/auth/base-config";
+import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { authorizeFromRawCredentials } from "@/server/auth/credentials";
+import { getConfig } from "@/server/config";
 
 /*
  * Auth.js configuration. Providers are added by #14 (Google) and #15
@@ -13,7 +14,7 @@ import { authorizeFromRawCredentials } from "@/server/auth/credentials";
  */
 export function buildAuthConfig(): NextAuthConfig {
   return {
-    ...baseAuthConfig,
+    ...buildBaseAuthConfig(getConfig()),
     adapter: DrizzleAdapter(getDatabase(), {
       usersTable: users,
       accountsTable: accounts,

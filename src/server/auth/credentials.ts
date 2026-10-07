@@ -2,12 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import { getDatabase, type Database } from "@/db/client";
 import { users, type Role } from "@/db/schema";
 import { hashPassword, verifyPassword } from "@/server/password";
-import {
-  SIGN_IN_ATTEMPT_LIMIT,
-  SIGN_IN_WINDOW_MS,
-  createRateLimiter,
-  type RateLimiter,
-} from "@/server/auth/rate-limit";
+import { createRateLimiter, type RateLimiter } from "@/server/auth/rate-limit";
+import { getConfig } from "@/server/config";
 
 /*
  * Credentials sign-in.
@@ -60,10 +56,26 @@ export type AuthorizeDeps = {
   attemptKey?: string;
 };
 
-const defaultLimiter = createRateLimiter({
-  limit: SIGN_IN_ATTEMPT_LIMIT,
-  windowMs: SIGN_IN_WINDOW_MS,
-});
+/*
+ * Built on first use from rateLimit in config.yaml, not at import: reading the
+ * file at module scope would make `next build` need it (D-13-4).
+ */
+let defaultLimiter: RateLimiter | undefined;
+
+function getDefaultLimiter(): RateLimiter {
+  if (defaultLimiter === undefined) {
+    const { signInAttempts, signInWindowSeconds } = getConfig().rateLimit;
+    defaultLimiter = createRateLimiter({
+      limit: signInAttempts,
+      windowMs: signInWindowSeconds * 1000,
+    });
+  }
+  return defaultLimiter;
+}
+
+export function resetDefaultLimiter(): void {
+  defaultLimiter = undefined;
+}
 
 export async function findUserForSignIn(
   db: Database,
@@ -88,7 +100,7 @@ export async function findUserForSignIn(
 
 export async function authorizeCredentials(
   credentials: SignInCredentials,
-  { db, limiter = defaultLimiter, attemptKey }: AuthorizeDeps,
+  { db, limiter = getDefaultLimiter(), attemptKey }: AuthorizeDeps,
 ): Promise<AuthorizedUser> {
   const email = normaliseEmail(credentials.email);
   const key = attemptKey ?? email;

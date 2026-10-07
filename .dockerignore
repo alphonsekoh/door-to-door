@@ -5,7 +5,11 @@ coverage
 .github
 .env
 .env.*
-!.env.example
+# Settings are mounted at runtime, never baked into an image.
+config.yaml
+config.*.yaml
+!config.example.yaml
+!config.docker.yaml
 npm-debug.log*
 .DS_Store
 test-results

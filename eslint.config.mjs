@@ -54,6 +54,39 @@ const eslintConfig = defineConfig([
     },
   },
 
+  /*
+   * Runtime configuration is read on the server only. A client component or a
+   * framework-free helper importing the loader would drag node:fs and the
+   * file's contents toward the browser bundle.
+   */
+  {
+    files: ["src/components/**/*.{ts,tsx}", "src/lib/**/*.{ts,tsx}"],
+    ignores: ["src/lib/config.ts", "src/lib/config.test.ts", "src/lib/openapi-document.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "yaml",
+              message: "Parse YAML in src/lib/config.ts or on the server, not in UI or helpers.",
+            },
+          ],
+          patterns: [
+            {
+              group: ["@/server/config", "**/server/config"],
+              message: "The config loader is server-only; do not import it from UI or helpers.",
+            },
+            {
+              group: ["@/lib/config", "**/lib/config"],
+              message: "Only server code may import the config schema.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Playwright fixtures receive a callback conventionally named `use`, which the
   // React plugin mistakes for the `use` hook. There is no React here at all.
   {

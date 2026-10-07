@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { requireDatabaseUrl } from "@/db/env";
 import * as schema from "@/db/schema";
+import { getConfig } from "@/server/config";
 
 export type Database = NodePgDatabase<typeof schema>;
 
@@ -18,12 +18,12 @@ export function createDatabase(connectionString: string): { pool: Pool; db: Data
 }
 
 export function getDatabase(): Database {
-  cached ??= createDatabase(requireDatabaseUrl());
+  cached ??= createDatabase(getConfig().databaseUrl);
   return cached.db;
 }
 
 export function getPool(): Pool {
-  cached ??= createDatabase(requireDatabaseUrl());
+  cached ??= createDatabase(getConfig().databaseUrl);
   return cached.pool;
 }
 

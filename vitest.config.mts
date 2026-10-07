@@ -28,6 +28,7 @@ export default defineConfig({
           environment: "node",
           include: ["src/**/*.integration.test.ts"],
           globalSetup: ["./vitest.globalSetup.integration.ts"],
+          setupFiles: ["./vitest.setup.integration.ts"],
           // Shared scratch database: parallel files would truncate each other.
           fileParallelism: false,
           testTimeout: 20_000,

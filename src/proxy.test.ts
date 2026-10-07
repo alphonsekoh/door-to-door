@@ -4,14 +4,22 @@ import { describe, expect, it, vi } from "vitest";
  * NextAuth is stubbed so auth() hands back the wrapped handler unchanged,
  * making the proxy callable directly with a request whose auth state we set.
  */
-const { NextAuth } = vi.hoisted(() => ({
+const { NextAuth, getConfig } = vi.hoisted(() => ({
+  getConfig: vi.fn(() => ({ authSecret: "s".repeat(40), auth: { trustHost: false } })),
   NextAuth: vi.fn((_config: unknown) => ({
-    auth: (handler: (request: unknown) => unknown) => handler,
+    // The lazy form of NextAuth hands back a promise of the wrapped handler.
+    auth: (handler: (request: unknown) => unknown) =>
+      Promise.resolve((request: unknown) => handler(request)),
   })),
 }));
 vi.mock("next-auth", () => ({ default: NextAuth }));
+vi.mock("@/server/config", () => ({ getConfig }));
 
-const proxy = (await import("@/proxy")).default as unknown as (request: unknown) => Response;
+const proxy = (await import("@/proxy")).default as unknown as (
+  request: unknown,
+) => Promise<Response>;
+
+const getConfigCallsAtImport = getConfig.mock.calls.length;
 
 const request = (pathname: string, auth: unknown = null, search = "") => ({
   nextUrl: Object.assign(new URL(`https://test.local${pathname}${search}`), {
@@ -26,9 +34,9 @@ const signedIn = { user: { id: "u1", role: "member" } };
 describe("public paths", () => {
   it.each(["/sign-in", "/api/auth/session", "/api/auth/callback/credentials"])(
     "lets %s through unauthenticated",
-    (path) => {
+    async (path) => {
       // Guarding these would make signing in impossible.
-      expect(proxy(request(path)).status).toBe(200);
+      expect((await proxy(request(path))).status).toBe(200);
     },
   );
 });
@@ -36,31 +44,31 @@ describe("public paths", () => {
 describe("PWA files", () => {
   it.each(["/manifest.webmanifest", "/serwist/sw.js", "/serwist/sw.js.map", "/offline"])(
     "serves %s without a session",
-    (path) => {
+    async (path) => {
       // The browser fetches these with no cookies; a redirect breaks installing
       // and makes the service worker's registration fail.
-      expect(proxy(request(path)).status).toBe(200);
+      expect((await proxy(request(path))).status).toBe(200);
     },
   );
 
   it.each(["/api/sessions/active", "/api/blocks", "/api/visits/sync", "/history"])(
     "still guards %s",
-    (path) => {
-      expect(proxy(request(path)).status).not.toBe(200);
+    async (path) => {
+      expect((await proxy(request(path))).status).not.toBe(200);
     },
   );
 });
 
 describe("unauthenticated visitors", () => {
-  it("redirects a page request to sign-in", () => {
-    const response = proxy(request("/history"));
+  it("redirects a page request to sign-in", async () => {
+    const response = await proxy(request("/history"));
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/sign-in");
   });
 
-  it("preserves where they were going", () => {
+  it("preserves where they were going", async () => {
     // A member following a link to a unit should land on that unit.
-    const response = proxy(request("/history", null, "?block=123"));
+    const response = await proxy(request("/history", null, "?block=123"));
     expect(response.headers.get("location")).toContain("callbackUrl=");
     expect(decodeURIComponent(response.headers.get("location") ?? "")).toContain(
       "/history?block=123",
@@ -69,7 +77,7 @@ describe("unauthenticated visitors", () => {
 
   it("answers an API request with 401 rather than an HTML redirect", async () => {
     // A fetch() could do nothing useful with a redirect to a sign-in page.
-    const response = proxy(request("/api/sessions"));
+    const response = await proxy(request("/api/sessions"));
     expect(response.status).toBe(401);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe("unauthenticated");
@@ -77,15 +85,27 @@ describe("unauthenticated visitors", () => {
 });
 
 describe("authenticated visitors", () => {
-  it.each(["/history", "/api/sessions", "/"])("lets %s through", (path) => {
-    expect(proxy(request(path, signedIn)).status).toBe(200);
+  it.each(["/history", "/api/sessions", "/"])("lets %s through", async (path) => {
+    expect((await proxy(request(path, signedIn))).status).toBe(200);
   });
 });
 
 describe("configuration", () => {
-  it("builds without the database adapter, so it can run on the edge", () => {
-    // pg cannot load in the edge runtime; verifying a JWT needs no database.
-    const config = NextAuth.mock.calls[0]?.[0] as { adapter?: unknown } | undefined;
-    expect(config?.adapter).toBeUndefined();
+  it("builds without the database adapter", () => {
+    // Verifying a JWT needs no database, so the proxy opens no pool.
+    const factory = NextAuth.mock.calls[0]?.[0] as () => { adapter?: unknown };
+    expect(factory().adapter).toBeUndefined();
+  });
+});
+
+describe("Auth.js configuration", () => {
+  it("is built lazily, so importing the proxy reads no config file", () => {
+    // `next build` imports this module; D-13-4 says it must need no file.
+    expect(getConfigCallsAtImport).toBe(0);
+  });
+
+  it("takes its secret and trustHost from the loaded config", () => {
+    const factory = NextAuth.mock.calls[0]?.[0] as () => unknown;
+    expect(factory()).toMatchObject({ secret: "s".repeat(40), trustHost: false });
   });
 });

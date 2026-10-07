@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/node-postgres";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
@@ -10,9 +10,18 @@ import {
   authorizeCredentials,
   authorizeFromRawCredentials,
   normaliseEmail,
+  resetDefaultLimiter,
 } from "@/server/auth/credentials";
 import { createRateLimiter } from "@/server/auth/rate-limit";
 import { hashPassword } from "@/server/password";
+
+const { getConfig } = vi.hoisted(() => ({
+  getConfig: vi.fn(() => ({
+    databaseUrl: process.env["TEST_DATABASE_URL"],
+    rateLimit: { signInAttempts: 2, signInWindowSeconds: 60 },
+  })),
+}));
+vi.mock("@/server/config", () => ({ getConfig }));
 
 const pool = createTestPool();
 const db = drizzle(pool, { schema }) as unknown as Database;
@@ -42,6 +51,7 @@ const freshLimiter = () => createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 beforeEach(async () => {
   await truncateAll(pool);
+  resetDefaultLimiter();
 });
 
 afterAll(async () => {
@@ -211,6 +221,27 @@ describe("rate limiting", () => {
     await expect(
       authorizeCredentials({ email: "ben@test.local", password: PASSWORD }, { db, limiter }),
     ).resolves.toMatchObject({ email: "ben@test.local" });
+  });
+});
+
+describe("the limiter built from config", () => {
+  it("allows exactly rateLimit.signInAttempts attempts, then refuses", async () => {
+    await seedUser({ email: "member@test.local" });
+    const attempt = () =>
+      authorizeCredentials({ email: "member@test.local", password: "wrong-password" }, { db });
+
+    await expect(attempt()).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
+    await expect(attempt()).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
+    await expect(attempt()).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  });
+
+  it("reads the config once and reuses the limiter", async () => {
+    getConfig.mockClear();
+    await seedUser({ email: "member@test.local" });
+    for (let i = 0; i < 2; i += 1) {
+      await authorizeCredentials({ email: "member@test.local", password: PASSWORD }, { db });
+    }
+    expect(getConfig).toHaveBeenCalledTimes(1);
   });
 });
 

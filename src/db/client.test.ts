@@ -1,12 +1,18 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabase, getDatabase, getPool, resetDatabase } from "@/db/client";
-import { MissingDatabaseUrlError } from "@/db/env";
 
 const URL = "postgresql://postgres:postgres@localhost:5432/nowhere";
 
+const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }));
+vi.mock("@/server/config", () => ({ getConfig }));
+
+beforeEach(() => {
+  getConfig.mockReturnValue({ databaseUrl: URL });
+});
+
 afterEach(async () => {
   await resetDatabase();
-  vi.unstubAllEnvs();
+  vi.clearAllMocks();
 });
 
 describe("createDatabase", () => {
@@ -21,30 +27,33 @@ describe("createDatabase", () => {
 
 describe("getDatabase", () => {
   it("reuses one client per process", () => {
-    vi.stubEnv("DATABASE_URL", URL);
     expect(getDatabase()).toBe(getDatabase());
   });
 
   it("shares the pool with the client", () => {
-    vi.stubEnv("DATABASE_URL", URL);
     getDatabase();
     expect(getPool()).toBe(getPool());
   });
 
   it("creates the pool on first access via getPool too", () => {
-    vi.stubEnv("DATABASE_URL", URL);
     expect(getPool()).toBeDefined();
   });
 
-  it("fails clearly when DATABASE_URL is unset", () => {
-    vi.stubEnv("DATABASE_URL", "");
-    expect(() => getDatabase()).toThrow(MissingDatabaseUrlError);
+  it("connects with the URL composed from config and credentials", () => {
+    getConfig.mockReturnValue({ databaseUrl: "postgresql://app:s3cret@db:5432/prod" });
+    expect(getPool().options.connectionString).toBe("postgresql://app:s3cret@db:5432/prod");
+  });
+
+  it("lets a configuration error through rather than connecting somewhere else", () => {
+    getConfig.mockImplementation(() => {
+      throw new Error("bad config");
+    });
+    expect(() => getDatabase()).toThrow("bad config");
   });
 });
 
 describe("resetDatabase", () => {
   it("closes the pool and forces a new one", async () => {
-    vi.stubEnv("DATABASE_URL", URL);
     const first = getDatabase();
     await resetDatabase();
     expect(getDatabase()).not.toBe(first);

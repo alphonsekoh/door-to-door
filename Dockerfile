@@ -40,7 +40,12 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 # Migrations and their runner, so a production container can migrate itself.
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 
+# The settings file is not in the image: mount it read-only, e.g.
+#   -v ./config.yaml:/app/config.yaml:ro
+# so a change is an edit and a restart, not a rebuild. It must be readable by
+# uid 1001. Secrets arrive as DATABASE_USER, DATABASE_PASSWORD, AUTH_SECRET
+# (or their _FILE variants).
 USER nextjs
 EXPOSE 3000
-ENV PORT=3000 HOSTNAME=0.0.0.0
+ENV PORT=3000 HOSTNAME=0.0.0.0 CONFIG_PATH=/app/config.yaml
 CMD ["node", "server.js"]
