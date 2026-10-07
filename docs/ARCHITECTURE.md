@@ -31,21 +31,22 @@ flowchart LR
 
 ## Layers
 
-| Path                  | Holds                                       | Coverage | Notes                                                              |
-| --------------------- | ------------------------------------------- | -------- | ------------------------------------------------------------------ |
-| `openapi.yaml`        | The API contract                            | —        | Source of truth. Edited first, always.                             |
-| `src/generated/`      | Types and Zod schemas from the contract     | excluded | Never hand-edited; CI regenerates and diffs.                       |
-| `src/app/api/**`      | Route handlers, one file per path           | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.      |
-| `src/server/http/`    | `withContract`, `ApiError`s, route registry | 100%     | Validates request _and_ response; maps errors to the envelope.     |
-| `src/server/auth/`    | Auth.js config, guards, rate limit          | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                |
-| `src/server/<domain>` | Services, queries, serialisers per domain   | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users. |
-| `src/db/`             | Drizzle schema, client, env, seed data      | 100%     | Constraints carry the invariants the API cannot race.              |
-| `src/lib/`            | Framework-free helpers                      | 100%     | Where UI logic goes so it can be tested without rendering.         |
-| `src/components/`     | React components                            | 90%      | Client components; call the API with `fetch`.                      |
-| `src/app/**` (pages)  | Routes                                      | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
-| `drizzle/`            | Generated migrations                        | excluded | From `drizzle-kit generate` only.                                  |
-| `scripts/`            | `migrate.ts`, `seed.ts` entrypoints         | excluded | Glue; the logic they call is in `src/db`.                          |
-| `e2e/`                | Playwright smoke flows                      | —        | Three flows, phone viewport, production build.                     |
+| Path                  | Holds                                        | Coverage | Notes                                                              |
+| --------------------- | -------------------------------------------- | -------- | ------------------------------------------------------------------ |
+| `openapi.yaml`        | The API contract                             | —        | Source of truth. Edited first, always.                             |
+| `src/generated/`      | Types and Zod schemas from the contract      | excluded | Never hand-edited; CI regenerates and diffs.                       |
+| `src/app/api/**`      | Route handlers, one file per path            | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.      |
+| `src/server/http/`    | `withContract`, `ApiError`s, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope.     |
+| `src/server/auth/`    | Auth.js config, guards, rate limit           | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                |
+| `src/server/<domain>` | Services, queries, serialisers per domain    | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users. |
+| `src/db/`             | Drizzle schema, client, env, seed data       | 100%     | Constraints carry the invariants the API cannot race.              |
+| `src/lib/`            | Framework-free helpers                       | 100%     | Where UI logic goes so it can be tested without rendering.         |
+| `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
+| `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
+| `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
+| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue; the logic they call is in `src/db`.                          |
+| `src/app/sw.ts`       | Service worker source (Serwist)              | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.   |
+| `e2e/`                | Playwright smoke flows                       | —        | Three flows, phone viewport, production build.                     |
 
 ## Domain model
 
@@ -97,21 +98,37 @@ Google SSO (#14) is not built.
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
 
-## Offline (planned)
+## PWA and service worker
+
+- `src/app/manifest.ts` and icons (`npm run icons` from `public/icon.svg`) make the
+  app installable. The worker (`src/app/sw.ts`, `@serwist/turbopack`) is served at
+  `/serwist/sw.js` and is disabled outside production builds. Manifest, `/serwist/*`
+  and `/offline` are public to the proxy.
+- Precache: static assets, icons and `/offline`; never authenticated HTML.
+  Navigations are network-only with an `/offline` fallback. API is network-only except
+  `GET /api/blocks` (stale-while-revalidate, own cache, 24h / 20 entries).
+- The worker never touches IndexedDB. Updates are prompted and defer while unsynced
+  items exist; a page is controlled from its second load.
+- `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
+  banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
+- Sign-in clears the cached block list; sign-out wiring waits for #15.
+
+## Offline
 
 Server side is done: `POST /visits/sync` is idempotent on the client id, resolves
 conflicts last-write-wins on `updatedAt`, reports per item (`applied`, `unchanged`,
-`stale`, rejected), and is rate limited. Client side — IndexedDB queue, sync engine,
-service worker — is #32–#34.
+`stale`, rejected), and is rate limited. The service worker and offline shell are done
+(#32); a cold offline launch shows `/offline`. The IndexedDB queue and sync engine are
+#33–#34.
 
 ## Testing
 
-| Layer       | Tool                             | Runs against                         |
-| ----------- | -------------------------------- | ------------------------------------ |
-| unit        | Vitest (`*.test.ts`)             | node                                 |
-| integration | Vitest (`*.integration.test.ts`) | real PostgreSQL (`db-test`, 5433)    |
-| components  | Vitest (`*.test.tsx`)            | jsdom + Testing Library              |
-| e2e         | Playwright (`e2e/`)              | standalone production build, Pixel 5 |
+| Layer       | Tool                             | Runs against                                                           |
+| ----------- | -------------------------------- | ---------------------------------------------------------------------- |
+| unit        | Vitest (`*.test.ts`)             | node                                                                   |
+| integration | Vitest (`*.integration.test.ts`) | real PostgreSQL (`db-test`, 5433)                                      |
+| components  | Vitest (`*.test.tsx`)            | jsdom + Testing Library                                                |
+| e2e         | Playwright (`e2e/`)              | standalone production build, Pixel 5 (Chromium) and iPhone 13 (WebKit) |
 
 ## Runtime
 
