@@ -23,7 +23,7 @@ quietly building something else.
 6. **Gates**, all of them, before you call it done:
    - `npm run lint`
    - `npm run typecheck`
-   - `DATABASE_URL=postgresql://postgres:postgres@localhost:5433/door_to_door_test npm run test:coverage`
+   - `TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/door_to_door_test npm run test:coverage`
      (without it the integration project reports "No test files found")
    - `npm run build` if you touched routing, config or anything server-only
 7. **Prove a new test bites**: break the code it guards, watch it fail, restore.

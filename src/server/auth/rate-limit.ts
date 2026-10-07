@@ -57,7 +57,3 @@ export function createRateLimiter({
 
   return { consume, reset };
 }
-
-/* Generous enough for a mistyped password, tight enough to make guessing slow. */
-export const SIGN_IN_ATTEMPT_LIMIT = 10;
-export const SIGN_IN_WINDOW_MS = 5 * 60 * 1000;

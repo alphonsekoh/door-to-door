@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { loadEnvFile, requireDatabaseUrl } from "../src/db/env";
 import {
   blocks,
   followUps,
@@ -11,6 +10,7 @@ import {
   users,
   visits,
 } from "../src/db/schema";
+import { loadDatabaseUrl } from "../src/server/config";
 import {
   SEED_PASSWORD,
   seedAdmin,
@@ -167,9 +167,10 @@ export async function seedDatabase(connectionString: string): Promise<void> {
 
 /* Only when run as a script: importing this module must not touch a database. */
 if (process.argv[1]?.endsWith("seed.ts") === true) {
-  loadEnvFile();
-  seedDatabase(requireDatabaseUrl()).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
-  });
+  Promise.resolve()
+    .then(() => seedDatabase(loadDatabaseUrl()))
+    .catch((error: unknown) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exit(1);
+    });
 }

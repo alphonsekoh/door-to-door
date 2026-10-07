@@ -39,7 +39,7 @@ flowchart LR
 | `src/server/http/`    | `withContract`, `ApiError`s, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope.     |
 | `src/server/auth/`    | Auth.js config, guards, rate limit           | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                |
 | `src/server/<domain>` | Services, queries, serialisers per domain    | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users. |
-| `src/db/`             | Drizzle schema, client, env, seed data       | 100%     | Constraints carry the invariants the API cannot race.              |
+| `src/db/`             | Drizzle schema, client, test env, seed data  | 100%     | Constraints carry the invariants the API cannot race.              |
 | `src/lib/`            | Framework-free helpers                       | 100%     | Where UI logic goes so it can be tested without rendering.         |
 | `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
 | `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
@@ -70,7 +70,7 @@ households ─< follow_ups (optional visit_id, set null on delete)
 ## Request path
 
 1. `src/proxy.ts` redirects page requests with no session to `/sign-in` and returns
-   `401` for API requests. Edge runtime, so it uses `baseAuthConfig` (no adapter).
+   `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `baseAuthConfig` (no adapter).
    It is an affordance, not a guard.
 2. The route handler is wrapped in `withContract(operation, handler)`: path, query
    (schema-driven coercion) and body are parsed with generated Zod; PATCH bodies go
@@ -81,6 +81,19 @@ households ─< follow_ups (optional visit_id, set null on delete)
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
    and is a logged `500` in production. Only the parsed value is sent.
+
+## Configuration
+
+- Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`).
+  `config.example.yaml` and `config.docker.yaml` are committed; `config.yaml` is not.
+  Pure parsing and validation is `src/lib/config.ts`; file access and caching is
+  `src/server/config.ts`.
+- Secrets never go in the file: database user/password, `AUTH_SECRET`,
+  `AUTH_GOOGLE_SECRET` are env vars with optional `_FILE` variants. `database.url` with
+  credentials is refused.
+- Loading is lazy (config, rate limiter, proxy, db client), so `next build` needs neither
+  file nor database. `src/instrumentation.ts` validates at start and exits 1 on bad config.
+- Tests use `TEST_DATABASE_URL`, the one place a full URL is allowed.
 
 ## Auth
 

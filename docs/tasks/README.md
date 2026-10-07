@@ -107,3 +107,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open      |
 | 37  | [E2E smoke](37-e2e.md)                                  | In review |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Open      |
+| 75  | [Config in YAML](75-config-yaml.md)                     | In review |

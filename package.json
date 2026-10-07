@@ -29,7 +29,7 @@
     "generate:api": "openapi-ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "start:standalone": "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && node .next/standalone/server.js",
+    "start:standalone": "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && CONFIG_PATH=\"${CONFIG_PATH:-$PWD/config.yaml}\" node .next/standalone/server.js",
     "icons": "tsx scripts/generate-icons.ts"
   },
   "dependencies": {
@@ -44,6 +44,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "serwist": "^9.5.13",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -71,7 +72,6 @@
     "tsx": "^4.23.12",
     "typescript": "^5",
     "typescript-eslint": "^8.68.0",
-    "vitest": "^4.1.11",
-    "yaml": "^2.9.0"
+    "vitest": "^4.1.11"
   }
 }

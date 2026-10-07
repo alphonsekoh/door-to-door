@@ -1,0 +1,48 @@
+# Door to Door settings. Copy this file to config.yaml and edit it.
+#
+# Read when the server starts, never bundled into the build: change a value,
+# restart, no rebuild. Where the file lives: CONFIG_PATH, default ./config.yaml.
+#
+# SECRETS ARE NOT IN THIS FILE. The database username and password, the
+# session-signing secret and the Google client secret come from environment
+# variables (see README, "Configuration"). A database.url that contains a
+# username or password is refused at startup.
+#
+# Unknown keys are errors, so a typo cannot silently fall back to a default.
+
+database:
+  # Connection URL WITHOUT credentials. The username and password are added
+  # from DATABASE_USER and DATABASE_PASSWORD (or DATABASE_USER_FILE and
+  # DATABASE_PASSWORD_FILE).
+  url: postgresql://localhost:5432/door_to_door
+
+auth:
+  # Trust the Host header from a reverse proxy. Leave true behind Docker, a
+  # load balancer or any proxy; set false only when the app is exposed directly
+  # and its public URL is fixed with AUTH_URL. Default: true.
+  trustHost: true
+
+  # Used by Google sign-in (#14); no effect until that lands.
+  # Google single sign-on. Omit this block to leave Google sign-in off. The
+  # client ID is public; the client secret is AUTH_GOOGLE_SECRET (or
+  # AUTH_GOOGLE_SECRET_FILE) and is required once a clientId is set.
+  # google:
+  #   clientId: 1234567890-abcdef.apps.googleusercontent.com
+
+rateLimit:
+  # Sign-in attempts allowed per email within the window, before further
+  # attempts are refused. Whole number, at least 1. Default: 10.
+  signInAttempts: 10
+
+  # Length of that window, in seconds. Whole number, at least 1. Default: 300.
+  signInWindowSeconds: 300
+
+sync:
+  # Used by the sync clock rules (#76); no effect until then.
+  # How far a phone's clock may differ from the server's, in seconds, before
+  # an offline visit's timestamp is not trusted. Whole number, at least 1.
+  # Default: 300.
+  clockSkewToleranceSeconds: 300
+
+# AUTH_SECRET (environment, not this file) signs session cookies. It must be
+# random and at least 32 characters: openssl rand -base64 32

@@ -40,8 +40,6 @@ async function ensureDatabase(): Promise<void> {
 }
 
 async function resetAndSeed(): Promise<void> {
-  process.env["DATABASE_URL"] = E2E_DATABASE_URL;
-
   const pool = new Pool({ connectionString: E2E_DATABASE_URL, max: 1 });
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });

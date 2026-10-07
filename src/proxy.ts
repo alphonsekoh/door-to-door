@@ -1,7 +1,8 @@
 import NextAuth from "next-auth";
-import { NextResponse } from "next/server";
-import { baseAuthConfig } from "@/server/auth/base-config";
+import { NextResponse, type NextFetchEvent, type NextProxy, type NextRequest } from "next/server";
+import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { isApiPath, isPublicPath, signInRedirect } from "@/server/auth/routes";
+import { getConfig } from "@/server/config";
 
 /*
  * An optimistic guard, and only that.
@@ -12,12 +13,14 @@ import { isApiPath, isPublicPath, signInRedirect } from "@/server/auth/routes";
  * Every handler still calls requireUser/requireRole, because a request can
  * reach a route without passing here.
  *
- * Built from baseAuthConfig rather than the full config: the edge runtime
- * cannot load pg, and verifying a JWT needs no database.
+ * Built from the base config rather than the full one: verifying a JWT needs
+ * no database, so the proxy never opens a pool. Next 16 runs proxy on Node, so
+ * it can read config.yaml like any handler. The function form defers that read
+ * until the first request, keeping `next build` free of the file (D-13-4).
  */
-const { auth } = NextAuth(baseAuthConfig);
+const { auth } = NextAuth(() => buildBaseAuthConfig(getConfig()));
 
-export default auth((request) => {
+const guard = auth((request) => {
   const { pathname, search } = request.nextUrl;
 
   if (isPublicPath(pathname)) {
@@ -41,6 +44,17 @@ export default auth((request) => {
 
   return NextResponse.redirect(new URL(signInRedirect(pathname, search), request.nextUrl));
 });
+
+/*
+ * With the function form of NextAuth, auth(handler) is a promise of the
+ * wrapped handler at runtime although typed as the handler itself. Next
+ * rejects a default export that is not a function, so the promise is awaited
+ * per request instead of exported directly.
+ */
+export default async function proxy(request: NextRequest, event: NextFetchEvent) {
+  const middleware = (await Promise.resolve(guard)) as unknown as NextProxy;
+  return middleware(request, event);
+}
 
 export const config = {
   /* Everything except Next's own assets and static files. */

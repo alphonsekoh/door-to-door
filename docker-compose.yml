@@ -1,11 +1,21 @@
 name: door-to-door
 
+# Settings are a file, secrets are environment. CONFIG_FILE picks the file
+# (default config.docker.yaml, which reaches the database as host `db`). It is
+# mounted outside /app so the source bind-mount cannot shadow it. The
+# credentials below are throwaway local defaults; override them in the shell.
+x-credentials: &credentials
+  DATABASE_USER: ${DATABASE_USER:-postgres}
+  DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
+
+x-settings: &settings ${CONFIG_FILE:-./config.docker.yaml}:/config/config.yaml:ro
+
 services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: ${DATABASE_USER:-postgres}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       POSTGRES_DB: door_to_door
     ports:
       - "5432:5432"
@@ -43,7 +53,8 @@ services:
       context: .
       target: dev
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/door_to_door
+      <<: *credentials
+      CONFIG_PATH: /config/config.yaml
     command: sh -c "npm run db:migrate && npm run db:seed"
     depends_on:
       db:
@@ -51,13 +62,18 @@ services:
     volumes:
       - .:/app
       - node_modules:/app/node_modules
+      - *settings
 
   web:
     build:
       context: .
       target: dev
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/door_to_door
+      <<: *credentials
+      # A public, local-development-only value. Never use it on a host that is
+      # reachable by anyone else; set AUTH_SECRET in the environment instead.
+      AUTH_SECRET: ${AUTH_SECRET:-compose-local-dev-secret-0f3a9c71d2b84e56-not-for-production}
+      CONFIG_PATH: /config/config.yaml
       # Bind-mounted source on macOS and Windows does not deliver inotify
       # events, so the dev server polls instead.
       WATCHPACK_POLLING: "true"
@@ -69,6 +85,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - .:/app
+      - *settings
       # Anonymous volumes so the host's node_modules and .next never shadow
       # the container's - they hold platform-specific binaries.
       - node_modules:/app/node_modules

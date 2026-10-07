@@ -71,8 +71,8 @@ npm install
 npm run dev
 ```
 
-You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`; see
-[Database](#database).
+You will need a PostgreSQL instance of your own, a `config.yaml` and the credential
+variables; see [Configuration](#configuration) and [Database](#database).
 
 ## Scripts
 
@@ -90,7 +90,7 @@ You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`
 | `npm test` | Unit and component tests (no database needed) |
 | `npm run test:watch` | Vitest watch mode |
 | `npm run test:unit` | Unit project only |
-| `npm run test:integration` | Integration tests (**requires `DATABASE_URL`**) |
+| `npm run test:integration` | Integration tests (**requires `TEST_DATABASE_URL`**) |
 | `npm run test:all` | Every project |
 | `npm run test:components` | Component project only |
 | `npm run test:coverage` | Run tests and enforce coverage thresholds |
@@ -109,18 +109,72 @@ You will need a PostgreSQL instance of your own and `DATABASE_URL` set in `.env`
 
 | `npm run generate:api` | Regenerate types and Zod schemas from the contract |
 
-## Environment variables
+## Configuration
 
-| Variable                                | Used by                   | Arrives in |
-| --------------------------------------- | ------------------------- | ---------- |
-| `DATABASE_URL`                          | Drizzle, migrations, seed | #7, #8     |
-| `AUTH_SECRET`                           | Auth.js session signing   | #13        |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google SSO                | #14        |
+App settings live in a YAML file, read when the server starts and never bundled into the
+build. Change a value, restart, done: no rebuild. Copy
+[`config.example.yaml`](config.example.yaml) to `config.yaml` (git-ignored) and edit it;
+every key is documented in the example. Unknown keys are errors, so a typo cannot silently
+fall back to a default.
+
+| Key                              | Default | Meaning                                                       |
+| -------------------------------- | ------- | ------------------------------------------------------------- |
+| `database.url`                   | -       | Connection URL **without** username or password               |
+| `auth.trustHost`                 | `true`  | Trust the `Host` header from a reverse proxy                  |
+| `auth.google.clientId`           | unset   | Google SSO client ID (public). Omit to leave SSO off          |
+| `rateLimit.signInAttempts`       | `10`    | Sign-in attempts per email within the window                  |
+| `rateLimit.signInWindowSeconds`  | `300`   | Length of that window                                         |
+| `sync.clockSkewToleranceSeconds` | `300`   | Tolerated difference between a phone's clock and the server's |
+
+Numbers must be whole and at least 1.
+
+### Secrets are not in the file
+
+The server refuses to start if `database.url` contains a username or password. Secrets come
+from the environment. Each also has a `_FILE` variant naming a file to read it from (a
+trailing newline is dropped), which is how Docker and Kubernetes secrets arrive. Set one or
+the other, not both.
+
+| Variable                             | Used for                                                                                           |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `DATABASE_USER`, `DATABASE_PASSWORD` | Added to `database.url` (percent-encoded for you)                                                  |
+| `AUTH_SECRET`                        | Signs session cookies. At least 32 random characters, not a placeholder: `openssl rand -base64 32` |
+| `AUTH_GOOGLE_SECRET`                 | Google client secret; required once `auth.google.clientId` is set                                  |
+
+### Other environment variables
+
+| Variable            | Meaning                                                                     |
+| ------------------- | --------------------------------------------------------------------------- |
+| `CONFIG_PATH`       | Where the file is. Default `./config.yaml`; `/app/config.yaml` in the image |
+| `PORT`, `HOSTNAME`  | Where the server listens (standalone build)                                 |
+| `NODE_ENV`          | Set by Next; `production` in the image                                      |
+| `TEST_DATABASE_URL` | Tests only: a full URL, credentials included, for the scratch database      |
+
+A `.env` file is no longer read for settings. If one is present the server says so at startup.
+
+### Changing a value in production
+
+Edit the file, then restart. The settings file is not part of the image:
+
+```bash
+docker run -p 3000:3000 \
+  -v ./config.yaml:/app/config.yaml:ro \
+  -e DATABASE_USER -e DATABASE_PASSWORD -e AUTH_SECRET \
+  door-to-door
+```
+
+The container runs as uid 1001, so the file must be readable by it (`chmod 644`, or `chown
+1001`). A bad file, a missing secret or a placeholder `AUTH_SECRET` stops the server at
+startup with a message naming the file and the key, never the value.
+
+`docker compose up` mounts `config.docker.yaml` (database host `db`) and passes throwaway
+local credentials. Point it at another file with `CONFIG_FILE=./config.yaml docker compose up`.
 
 ## Database
 
 ```bash
-cp .env.example .env          # set DATABASE_URL
+cp config.example.yaml config.yaml    # then set database.url
+export DATABASE_USER=postgres DATABASE_PASSWORD=postgres
 npm run db:migrate            # apply migrations
 npm run db:seed               # load demo data
 ```
@@ -169,12 +223,12 @@ drizzle/        generated migrations - never edit by hand
 
 ```bash
 npm test               # unit + components, no database required
-npm run test:integration   # needs DATABASE_URL
+npm run test:integration   # needs TEST_DATABASE_URL, e.g. postgresql://postgres:postgres@localhost:5433/door_to_door_test
 npm run test:coverage      # everything, with thresholds enforced
 ```
 
 `npm test` deliberately excludes integration tests so the common case stays fast and
-offline. Integration tests fail loudly when `DATABASE_URL` is unset rather than skipping —
+offline. Integration tests fail loudly when `TEST_DATABASE_URL` is unset rather than skipping —
 a suite that quietly runs nothing is worse than one that does not run.
 
 ### End-to-end
