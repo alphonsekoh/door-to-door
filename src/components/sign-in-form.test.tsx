@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/sign-in-form";
 
-const { signIn, push, refresh, get } = vi.hoisted(() => ({
+const { signIn, push, refresh, get, clearCaches } = vi.hoisted(() => ({
+  clearCaches: vi.fn(() => Promise.resolve()),
   signIn: vi.fn(),
   push: vi.fn(),
   refresh: vi.fn(),
@@ -11,6 +12,7 @@ const { signIn, push, refresh, get } = vi.hoisted(() => ({
 }));
 
 vi.mock("next-auth/react", () => ({ signIn }));
+vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh }),
   useSearchParams: () => ({ get }),
@@ -102,6 +104,22 @@ describe("SignInForm", () => {
       });
     });
     expect(push).toHaveBeenCalledWith("/");
+  });
+
+  it("forgets the previous member's cached API answers on sign-in, not on failure", async () => {
+    signIn.mockResolvedValueOnce(failed).mockResolvedValueOnce(ok);
+    const user = userEvent.setup();
+    render(<SignInForm />);
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByRole("alert");
+    expect(clearCaches).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => {
+      expect(clearCaches).toHaveBeenCalledOnce();
+    });
   });
 
   it("returns to where the user was headed", async () => {

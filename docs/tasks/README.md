@@ -100,7 +100,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 29  | [Admin records](29-admin-records.md)                    | Done      |
 | 30  | [Consolidated history](30-consolidated-history.md)      | Done      |
 | 31  | [Member management](31-member-management.md)            | Done      |
-| 32  | [PWA and service worker](32-pwa.md)                     | Open      |
+| 32  | [PWA and service worker](32-pwa.md)                     | In review |
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open      |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Open      |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Open      |

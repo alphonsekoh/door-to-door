@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { AppShell } from "@/components/app-shell";
+import { PwaProvider } from "@/components/pwa-provider";
 import { SessionProvider } from "@/components/session-provider";
 import "./globals.css";
 
@@ -16,6 +17,8 @@ export const metadata: Metadata = {
   },
   description: "Record door-to-door visits and follow up on them later.",
   applicationName: "Door to Door",
+  icons: { apple: "/apple-touch-icon.png" },
+  appleWebApp: { capable: true, title: "Door to Door", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
@@ -34,9 +37,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} font-sans antialiased`}>
-        <SessionProvider>
-          <AppShell>{children}</AppShell>
-        </SessionProvider>
+        <PwaProvider>
+          <SessionProvider>
+            <AppShell>{children}</AppShell>
+          </SessionProvider>
+        </PwaProvider>
       </body>
     </html>
   );

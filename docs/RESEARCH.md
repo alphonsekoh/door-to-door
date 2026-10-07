@@ -13,7 +13,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** `next-pwa` is unmaintained. Serwist (`@serwist/next`) is its maintained
   successor and the option the Next.js PWA guide points to.
 - **Source:** [Next.js PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps)
-- **Used by:** D-32-1
+- **Used by:** D-32-1 (superseded by D-32-2)
 
 ### R-2 · Can Auth.js Credentials use database sessions?
 
@@ -115,7 +115,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** iPhone profiles require WebKit; Pixel 5 runs on Chromium. Safari
   behaviour is therefore not covered by the suite.
 - **Source:** Playwright device registry
-- **Used by:** D-37-2, open item on #32
+- **Used by:** D-37-2 (superseded by D-32-18)
 
 ### R-15 · iOS input zoom and WCAG zoom
 
@@ -123,3 +123,66 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   `maximumScale` at 1 fails WCAG 1.4.4.
 - **Source:** WCAG 1.4.4; iOS Safari behaviour
 - **Used by:** D-01-1
+
+### R-16 · Next.js PWA guide: install prompt
+
+- **Finding:** The guide's custom install prompt is not cross-browser, and iOS has no
+  `beforeinstallprompt`, so iOS needs manual instructions. It also notes
+  `experimental.useOffline`; it exists and was not adopted (the issue asks for Serwist).
+- **Source:** [Next.js PWA guide](https://nextjs.org/docs/app/guides/progressive-web-apps)
+- **Used by:** D-32-2, D-32-9
+
+### R-17 · `@serwist/next` vs `@serwist/turbopack`
+
+- **Finding:** `@serwist/next` is a webpack plugin and does not run under Turbopack,
+  the Next 16 default. `@serwist/turbopack` builds the worker from a route handler
+  (`/serwist/[path]`). A standalone spike confirmed it builds and serves under
+  `output: "standalone"`.
+- **Source:** Serwist docs; spike during #32
+- **Used by:** D-32-2
+
+### R-18 · Serwist strategy status filter
+
+- **Finding:** A Serwist `Strategy`'s default "cache only 200/opaque" status filter is
+  dropped when a plugin defines `cacheWillUpdate`. Our first plugin therefore cached a
+  `401`. The plugin must check `response.status === 200` itself.
+- **Source:** Observed bug in #32
+- **Used by:** D-32-3
+
+### R-19 · `ExpirationPlugin` uses IndexedDB
+
+- **Finding:** Serwist/Workbox `ExpirationPlugin` keeps its metadata in IndexedDB,
+  which the offline queue (#33) owns. Also: iOS may evict IndexedDB after about 7 days
+  of non-use (unverified), and iOS has no Background Sync API. Relevant to #33.
+- **Source:** Workbox source; WebKit storage policy (unverified)
+- **Used by:** D-32-5, D-32-6, #33 notes
+
+### R-20 · iOS third-party browsers and Home Screen
+
+- **Finding:** From iOS 16.4, third-party browsers can Add to Home Screen. The menu
+  wording per browser (Chrome, Firefox, Edge) is unverified. Samsung Internet firing
+  `beforeinstallprompt`, and the Android Firefox menu wording, are also unverified.
+- **Source:** Apple iOS 16.4 release notes; unverified per browser
+- **Used by:** D-32-9
+
+### R-21 · iPad desktop-mode user agents
+
+- **Finding:** iPad desktop-mode Safari reports a Mac UA; the CriOS and FxiOS variants
+  in `install-environment.test.ts` are modelled, not captured from devices
+  (unverified). They pin only the conservative outcome ("open in Safari").
+- **Source:** Modelled in #32
+- **Used by:** D-32-9
+
+### R-22 · Playwright WebKit offline emulation
+
+- **Finding:** `context.setOffline(true)` in WebKit bypasses the service worker, so the
+  offline-fallback navigation cannot be tested there.
+- **Source:** Observed in #32
+- **Used by:** D-32-18
+
+### R-23 · Lighthouse 12 and the PWA category
+
+- **Finding:** Lighthouse 12 removed the PWA category, so "PWA audit passes" can no
+  longer be run as written.
+- **Source:** Lighthouse 12 release notes
+- **Used by:** D-32-16

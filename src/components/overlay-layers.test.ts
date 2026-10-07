@@ -61,4 +61,21 @@ describe("overlay stacking", () => {
     const layerOf = (text: string) => Number(new RegExp(OVERLAY.source).exec(text)?.[1]);
     expect(layerOf(dialog)).toBeGreaterThan(layerOf(sheet));
   });
+
+  it("keeps the install and update banners beneath the nav and every sheet", () => {
+    // A banner above a sheet would cover its Save button; above the nav it
+    // would hide the tabs. Neither is a full-screen overlay, so the pattern
+    // above does not see them.
+    const banner = /className="fixed [^"]*\bz-(\d+)/;
+    const sheetLayers = sources()
+      .flatMap(({ text }) => [...text.matchAll(OVERLAY)].map((match) => Number(match[1])))
+      .sort((a, b) => a - b);
+    const lowestSheet = sheetLayers[0] ?? Infinity;
+
+    for (const file of ["install-prompt.tsx", "update-prompt.tsx"]) {
+      const layer = Number(banner.exec(readFileSync(join(DIR, file), "utf8"))?.[1]);
+      expect(layer, `${file} has no fixed layer`).toBeLessThan(NAV_LAYER);
+      expect(layer).toBeLessThan(lowestSheet);
+    }
+  });
 });

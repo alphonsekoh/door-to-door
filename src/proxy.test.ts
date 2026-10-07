@@ -33,6 +33,24 @@ describe("public paths", () => {
   );
 });
 
+describe("PWA files", () => {
+  it.each(["/manifest.webmanifest", "/serwist/sw.js", "/serwist/sw.js.map", "/offline"])(
+    "serves %s without a session",
+    (path) => {
+      // The browser fetches these with no cookies; a redirect breaks installing
+      // and makes the service worker's registration fail.
+      expect(proxy(request(path)).status).toBe(200);
+    },
+  );
+
+  it.each(["/api/sessions/active", "/api/blocks", "/api/visits/sync", "/history"])(
+    "still guards %s",
+    (path) => {
+      expect(proxy(request(path)).status).not.toBe(200);
+    },
+  );
+});
+
 describe("unauthenticated visitors", () => {
   it("redirects a page request to sign-in", () => {
     const response = proxy(request("/history"));

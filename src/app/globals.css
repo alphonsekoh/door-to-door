@@ -67,8 +67,14 @@
 }
 
 /* The nav is fixed, so content needs clearance for it plus the home indicator. */
+/* Room for the nav, plus whatever a fixed banner has claimed (see
+   use-reserved-space). */
 @utility pb-nav {
-  padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom) + var(--banner-bottom, 0px));
+}
+
+@utility pt-banner {
+  padding-top: calc(1rem + var(--banner-top, 0px));
 }
 
 /* Sits just above the fixed bottom nav, clearing the home indicator too. */

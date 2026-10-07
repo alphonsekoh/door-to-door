@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#3b6fd6"/>
+  <!-- The door sits inside the central 60% so the same art survives a maskable crop. -->
+  <rect x="188" y="136" width="136" height="240" rx="14" fill="#ffffff"/>
+  <rect x="208" y="156" width="96" height="200" rx="6" fill="#3b6fd6" opacity="0.18"/>
+  <circle cx="294" cy="260" r="10" fill="#3b6fd6"/>
+</svg>
