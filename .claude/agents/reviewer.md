@@ -31,6 +31,12 @@ changed file - not just the hunks.
 - Members can act on their own records only; admins on anyone's. Refusals use the
   status codes the contract declares.
 
+**Prior decisions**
+
+- Nothing in the diff contradicts an accepted decision in `docs/tasks/`, especially
+  the invariants in `docs/tasks/README.md`. Cite the decision ID.
+- The PR's task file records the decisions the diff actually makes.
+
 **Contract**
 
 - Behaviour matches `openapi.yaml` exactly, including refusals and nullability.
