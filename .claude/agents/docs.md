@@ -6,7 +6,7 @@ tools: Read, Grep, Glob, Bash, Edit, Write
 
 You keep `docs/` accurate. Read CLAUDE.md and `docs/tasks/README.md` first.
 
-Edit only `docs/`, `README.md`, `CLAUDE.md` and `.env.example`. Never edit code.
+Edit only `docs/`, `README.md`, `CLAUDE.md` and `config.example.yaml` and `config.docker.yaml`. Never edit code.
 
 ## On each task
 

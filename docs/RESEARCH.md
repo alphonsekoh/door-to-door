@@ -186,3 +186,37 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   longer be run as written.
 - **Source:** Lighthouse 12 release notes
 - **Used by:** D-32-16
+
+### R-24 · Next 16 proxy runs on Node
+
+- **Finding:** The Next 16 `proxy` file convention runs on the Node runtime, so it can read
+  the config file from disk.
+- **Source:** `node_modules/next/dist/docs/` (proxy.md)
+- **Used by:** D-75-12
+
+### R-25 · Auth.js function config returns an async handler
+
+- **Finding:** With the lazy `NextAuth(fn)` form, `auth(handler)` returns a Promise at
+  runtime, so the proxy export must be async.
+- **Source:** Observed in #75 (standalone run)
+- **Used by:** D-75-11
+
+### R-26 · pg-connection-string query-string overrides
+
+- **Finding:** `pg-connection-string` lets query-string `user`, `password` and `ssl*`
+  params override the URL's userinfo, so credentials can hide there.
+- **Source:** pg-connection-string behaviour, checked in #75
+- **Used by:** D-75-3
+
+### R-27 · Turbopack traces `path.resolve`
+
+- **Finding:** `path.resolve` with a dynamic argument makes Turbopack trace the whole
+  directory (all of `src/server`) into the standalone output.
+- **Source:** Observed in #75
+- **Used by:** D-75-14
+
+### R-28 · Next copies `.env` into `.next/standalone`
+
+- **Finding:** `next build` copies a local `.env` into `.next/standalone`.
+- **Source:** Observed in #75
+- **Used by:** D-75-16
