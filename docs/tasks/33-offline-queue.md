@@ -34,7 +34,8 @@ distinct.
 
 From #32: replace the `hasUnsyncedItems()` stub in `src/lib/sw-update.ts` (returns
 false) with a real queue check. The update prompt already calls it and defers while it
-is true (D-32-6). Also call `clearServiceWorkerCaches` wherever sign-out lands (D-32-7).
+is true (D-32-6). Sign-out already clears the caches (D-74-9) and warns when `hasUnsyncedItems()` is
+true, so the warning only becomes real once this task replaces the stub.
 
 From #76 (clock rules): send `sentAt` (the phone's clock, regenerated) on every attempt;
 handle batch `422 clock_skew` (keep everything queued, tell the member to fix the clock)
