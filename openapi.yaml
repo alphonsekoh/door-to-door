@@ -118,6 +118,7 @@ components:
         - conflict
         - session_not_active
         - session_already_active
+        - clock_skew
         - block_in_use
         - rate_limited
         - internal_error
@@ -473,7 +474,14 @@ components:
 
                 The record belongs to whoever knocked, so authorship is set here
                 and never reassigned by a later amendment.
-            clientCreatedAt: { type: string, format: date-time }
+            clientCreatedAt:
+              type: string
+              format: date-time
+              description: |
+                Must not be more than the clock tolerance ahead of the server's
+                clock; otherwise the request is refused with `422 clock_skew`.
+                The tolerance is configurable (`sync.clockSkewToleranceSeconds`
+                in config.yaml, default 300).
 
     UpdateVisitRequest:
       allOf:
@@ -503,7 +511,12 @@ components:
                 currently active session.
             interestLevel: { $ref: "#/components/schemas/InterestLevel" }
             description: { type: string, maxLength: 4000, default: "" }
-            clientCreatedAt: { type: string, format: date-time }
+            clientCreatedAt:
+              type: string
+              format: date-time
+              description: |
+                Subject to the same two clock bounds as `updatedAt`. A violation
+                rejects this item with `clock_skew`.
             updatedAt:
               type: string
               format: date-time
@@ -511,11 +524,34 @@ components:
                 Decides last-write-wins. An item older than the stored row is
                 acknowledged as `stale` and not applied.
 
+                Clock bounds, with one server-configured tolerance
+                (`sync.clockSkewToleranceSeconds` in config.yaml, default 300):
+                `updatedAt` and `clientCreatedAt` must not be more than the
+                tolerance ahead of the server's clock, and must not be earlier
+                than the session's `startedAt` minus the tolerance. A violation
+                rejects **this item only** with `clock_skew`; siblings still
+                apply, and the record stays queued on the client to be restamped
+                on retry. A record captured hours ago in a dead zone passes,
+                because it falls inside the outing. A replay of an already
+                stored record is answered `unchanged` or `stale` before the
+                lower bound is checked.
+
     VisitSyncRequest:
       type: object
       additionalProperties: false
-      required: [items]
+      required: [sentAt, items]
       properties:
+        sentAt:
+          type: string
+          format: date-time
+          description: |
+            The phone's own clock reading at the moment this request was sent;
+            regenerated on every attempt, never reused. If it differs from the
+            server's clock by more than the tolerance in either direction, the
+            **whole batch** is refused with `422 clock_skew` and nothing is
+            applied. This detects a wrong phone clock; it does not authenticate
+            it, since a client can lie in it. The per-item bounds on stored
+            values are the real protection.
         items:
           type: array
           minItems: 1
@@ -1310,6 +1346,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "422":
+          description: |
+            `clock_skew`: `clientCreatedAt` is more than the tolerance ahead of
+            the server's clock.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /visits/{id}:
     patch:
@@ -1362,6 +1405,14 @@ paths:
 
         Conflicts resolve last-write-wins on `updatedAt`; an item older than the
         stored row is acknowledged as `stale` and not applied.
+
+        Clock skew is reported at two levels, using one tolerance
+        (`sync.clockSkewToleranceSeconds` in config.yaml, default 300). A batch
+        whose `sentAt` is off from the server's clock is refused whole with
+        `422 clock_skew`. An item whose own timestamps break the bounds is
+        `rejected` with error code `clock_skew` while its siblings still apply.
+        Neither discards anything: the client keeps the records and retries
+        after restamping.
       requestBody:
         required: true
         content:
@@ -1379,6 +1430,14 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "422":
+          description: |
+            `clock_skew`: the phone's clock (`sentAt`) is off from the server's
+            by more than the tolerance. Nothing in the batch was applied. The
+            message states the approximate difference.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "429":
           description: Too many sync requests.
           content:

@@ -22,6 +22,12 @@
 - **D-21-6 · Rate limited to 30 flushes/minute per member.**
 - **D-21-7 · Batches are 1–100 items.**
 
+## Later changes
+
+- #76 added clock rules: `sentAt` is now required on the request, and items can be
+  rejected `clock_skew`. Replays stay `unchanged` (D-76-6). See
+  [76-clock-rules.md](76-clock-rules.md).
+
 ## Relies on
 
 D-07-1, D-07-3, D-10-5.

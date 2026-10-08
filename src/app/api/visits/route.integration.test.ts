@@ -1,9 +1,23 @@
+import type * as ConfigModule from "@/server/config";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/../auth", () => ({ auth }));
+
+/* The database client reads its URL from the same config, so only the tolerance is overridden. */
+const tolerance = vi.hoisted(() => ({ seconds: 300 }));
+vi.mock("@/server/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof ConfigModule>();
+  return {
+    ...actual,
+    getConfig: () => {
+      const config = actual.getConfig();
+      return { ...config, sync: { ...config.sync, clockSkewToleranceSeconds: tolerance.seconds } };
+    },
+  };
+});
 
 const { GET, POST } = await import("./route");
 const { PATCH } = await import("./[id]/route");
@@ -51,6 +65,7 @@ const record = (unit: string, extra: Record<string, unknown> = {}) =>
 
 beforeEach(async () => {
   seq = 0;
+  tolerance.seconds = 300;
   await truncateAll(pool);
   await pool.query(
     `INSERT INTO users (id, email, name, role) VALUES
@@ -141,6 +156,27 @@ describe("POST /api/visits", () => {
     expect(response.status).toBe(409);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe("session_not_active");
+  });
+
+  it("accepts clientCreatedAt within the tolerance ahead and refuses beyond it", async () => {
+    asAlice();
+    const ahead = (ms: number) => new Date(Date.now() + ms).toISOString();
+    expect((await record("#05-120", { clientCreatedAt: ahead(240_000) })).status).toBe(201);
+
+    const response = await record("#05-121", { clientCreatedAt: ahead(3_600_000) });
+    expect(response.status).toBe(422);
+    const body = (await response.json()) as { error: { code: string; message: string } };
+    expect(body.error.code).toBe("clock_skew");
+    expect(body.error.message).toMatch(/minutes ahead/);
+    const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);
+    expect(rows[0]?.count).toBe("1");
+  });
+
+  it("follows the configured tolerance for clientCreatedAt", async () => {
+    asAlice();
+    tolerance.seconds = 7200;
+    const ahead = new Date(Date.now() + 3_600_000).toISOString();
+    expect((await record("#05-122", { clientCreatedAt: ahead })).status).toBe(201);
   });
 
   it("refuses an unauthenticated caller", async () => {

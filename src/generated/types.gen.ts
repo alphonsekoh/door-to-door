@@ -68,6 +68,7 @@ export const ErrorCode = {
     CONFLICT: 'conflict',
     SESSION_NOT_ACTIVE: 'session_not_active',
     SESSION_ALREADY_ACTIVE: 'session_already_active',
+    CLOCK_SKEW: 'clock_skew',
     BLOCK_IN_USE: 'block_in_use',
     RATE_LIMITED: 'rate_limited',
     INTERNAL_ERROR: 'internal_error'
@@ -330,6 +331,13 @@ export type CreateVisitRequest = HouseholdIdentity & {
      *
      */
     memberId?: string;
+    /**
+     * Must not be more than the clock tolerance ahead of the server's
+     * clock; otherwise the request is refused with `422 clock_skew`.
+     * The tolerance is configurable (`sync.clockSkewToleranceSeconds`
+     * in config.yaml, default 300).
+     *
+     */
     clientCreatedAt?: string;
 };
 
@@ -350,16 +358,44 @@ export type VisitSyncItem = HouseholdIdentity & {
     sessionId?: string;
     interestLevel: InterestLevel;
     description?: string;
+    /**
+     * Subject to the same two clock bounds as `updatedAt`. A violation
+     * rejects this item with `clock_skew`.
+     *
+     */
     clientCreatedAt: string;
     /**
      * Decides last-write-wins. An item older than the stored row is
      * acknowledged as `stale` and not applied.
+     *
+     * Clock bounds, with one server-configured tolerance
+     * (`sync.clockSkewToleranceSeconds` in config.yaml, default 300):
+     * `updatedAt` and `clientCreatedAt` must not be more than the
+     * tolerance ahead of the server's clock, and must not be earlier
+     * than the session's `startedAt` minus the tolerance. A violation
+     * rejects **this item only** with `clock_skew`; siblings still
+     * apply, and the record stays queued on the client to be restamped
+     * on retry. A record captured hours ago in a dead zone passes,
+     * because it falls inside the outing. A replay of an already
+     * stored record is answered `unchanged` or `stale` before the
+     * lower bound is checked.
      *
      */
     updatedAt: string;
 };
 
 export type VisitSyncRequest = {
+    /**
+     * The phone's own clock reading at the moment this request was sent;
+     * regenerated on every attempt, never reused. If it differs from the
+     * server's clock by more than the tolerance in either direction, the
+     * **whole batch** is refused with `422 clock_skew` and nothing is
+     * applied. This detects a wrong phone clock; it does not authenticate
+     * it, since a client can lie in it. The per-item bounds on stored
+     * values are the real protection.
+     *
+     */
+    sentAt: string;
     items: Array<VisitSyncItem>;
 };
 
@@ -1294,6 +1330,12 @@ export type CreateVisitErrors = {
      *
      */
     409: Error;
+    /**
+     * `clock_skew`: `clientCreatedAt` is more than the tolerance ahead of
+     * the server's clock.
+     *
+     */
+    422: Error;
 };
 
 export type CreateVisitError = CreateVisitErrors[keyof CreateVisitErrors];
@@ -1368,6 +1410,13 @@ export type SyncVisitsErrors = {
      * No valid session.
      */
     401: Error;
+    /**
+     * `clock_skew`: the phone's clock (`sentAt`) is off from the server's
+     * by more than the tolerance. Nothing in the batch was applied. The
+     * message states the approximate difference.
+     *
+     */
+    422: Error;
     /**
      * Too many sync requests.
      */

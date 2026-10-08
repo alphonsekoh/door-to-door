@@ -6,6 +6,7 @@ import {
   ForbiddenError,
   InternalError,
   NotFoundError,
+  ClockSkewError,
   RateLimitedError,
   UnauthenticatedError,
   ValidationError,
@@ -19,6 +20,7 @@ describe("status and code mapping", () => {
     [new AccountDeactivatedError(), 403, "account_deactivated"],
     [new NotFoundError(), 404, "not_found"],
     [new ConflictError(), 409, "conflict"],
+    [new ClockSkewError(), 422, "clock_skew"],
     [new RateLimitedError(), 429, "rate_limited"],
     [new InternalError(), 500, "internal_error"],
   ])("maps to %s", (error, status, code) => {
@@ -41,6 +43,7 @@ describe("default messages", () => {
     [new AccountDeactivatedError(), /deactivated/i],
     [new NotFoundError(), /not found/i],
     [new ConflictError(), /conflicts/i],
+    [new ClockSkewError(), /clock/i],
     [new RateLimitedError(), /too many/i],
     [new InternalError(), /went wrong/i],
   ])("reads as something a user could be shown", (error, pattern) => {

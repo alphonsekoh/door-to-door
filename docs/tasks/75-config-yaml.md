@@ -51,7 +51,7 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
 - **D-75-14 · The loader avoids `path.resolve`.** _Why:_ Turbopack then traces all of
   `src/server` into the standalone output. _Research:_ R-27.
 - **D-75-15 · Rate limits and clock-skew tolerance are config keys.** Sign-in limit 10 per
-  300 s; `sync.clockSkewToleranceSeconds` 300, reserved for #76. _Why:_ settings in one
+  300 s; `sync.clockSkewToleranceSeconds` 300, used by #76 (D-76-1). _Why:_ settings in one
   place.
 - **D-75-16 · One-time `.env found and ignored` warning.** _Why:_ stale `.env` files would
   otherwise silently stop working. _Research:_ R-28.

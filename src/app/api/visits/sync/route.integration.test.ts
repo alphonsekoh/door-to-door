@@ -1,3 +1,4 @@
+import type * as ConfigModule from "@/server/config";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
@@ -5,16 +6,34 @@ import { createTestPool, truncateAll } from "@/db/testing";
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/../auth", () => ({ auth }));
 
+/* The database client reads its URL from the same config, so only the tolerance is overridden. */
+const tolerance = vi.hoisted(() => ({ seconds: 300 }));
+vi.mock("@/server/config", async (importOriginal) => {
+  const actual = await importOriginal<typeof ConfigModule>();
+  return {
+    ...actual,
+    getConfig: () => {
+      const config = actual.getConfig();
+      return { ...config, sync: { ...config.sync, clockSkewToleranceSeconds: tolerance.seconds } };
+    },
+  };
+});
+
 const { POST } = await import("./route");
 
 const pool = createTestPool();
 const ADMIN = "fafafafa-0000-4000-8000-000000000001";
 const ALICE = "fafafafa-0000-4000-8000-000000000002";
+const BEN = "fafafafa-0000-4000-8000-000000000003";
 const BLOCK = "fafafafa-0000-4000-8001-000000000001";
 const SESSION = "fafafafa-0000-4000-8002-000000000001";
 
 const asAlice = () =>
   auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+
+/* The limiter is per member and persists across tests, so the clock tests use another caller. */
+const asAdmin = () =>
+  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
 
 let seq = 0;
 const nextId = () => `01960000-0000-7000-8000-${String(++seq).padStart(12, "0")}`;
@@ -29,7 +48,7 @@ const item = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-const sync = (body: unknown) =>
+const post = (body: unknown) =>
   POST(
     new Request("https://test.local/api/visits/sync", {
       method: "POST",
@@ -38,23 +57,26 @@ const sync = (body: unknown) =>
     }),
   );
 
+const sync = (body: Record<string, unknown>) => post({ sentAt: new Date().toISOString(), ...body });
+
 beforeEach(async () => {
   seq = 0;
   await truncateAll(pool);
   await pool.query(
-    `INSERT INTO users (id, email, name, role) VALUES ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member')`,
-    [ADMIN, ALICE],
+    `INSERT INTO users (id, email, name, role) VALUES ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member'), ($3,'ben@t.local','Ben','member')`,
+    [ADMIN, ALICE, BEN],
   );
   await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
   await pool.query(
-    `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Outing','active',$2)`,
-    [SESSION, ADMIN],
+    `INSERT INTO outing_sessions (id, title, status, created_by, started_at) VALUES ($1,'Outing','active',$2,$3)`,
+    [SESSION, ADMIN, new Date("2026-03-01T00:00:00.000Z")],
   );
   await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
     SESSION,
     BLOCK,
   ]);
   vi.clearAllMocks();
+  tolerance.seconds = 300;
 });
 
 afterAll(async () => {
@@ -134,5 +156,79 @@ describe("POST /api/visits/sync", () => {
       lastStatus = (await sync({ items: [item()] })).status;
     }
     expect(lastStatus).toBe(429);
+  });
+
+  describe("clock rules", () => {
+    const visitCount = async () =>
+      Number((await pool.query<{ count: string }>(`SELECT count(*) FROM visits`)).rows[0]?.count);
+    const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+    it("refuses the whole batch when sentAt is ahead beyond the tolerance, applying nothing", async () => {
+      asAdmin();
+      const response = await sync({ sentAt: ago(-3_600_000), items: [item(), item()] });
+      expect(response.status).toBe(422);
+      const body = (await response.json()) as { error: { code: string; message: string } };
+      expect(body.error.code).toBe("clock_skew");
+      expect(body.error.message).toMatch(/minutes ahead of/);
+      expect(await visitCount()).toBe(0);
+    });
+
+    it("refuses the whole batch when sentAt is behind beyond the tolerance", async () => {
+      asAdmin();
+      const response = await sync({ sentAt: ago(3_600_000), items: [item()] });
+      expect(response.status).toBe(422);
+      expect(((await response.json()) as { error: { message: string } }).error.message).toMatch(
+        /minutes behind/,
+      );
+      expect(await visitCount()).toBe(0);
+    });
+
+    it("accepts a sentAt inside the tolerance", async () => {
+      asAdmin();
+      expect((await sync({ sentAt: ago(240_000), items: [item()] })).status).toBe(200);
+      expect((await sync({ sentAt: ago(-240_000), items: [item()] })).status).toBe(200);
+    });
+
+    it("follows the tolerance in config", async () => {
+      asAdmin();
+      expect((await sync({ sentAt: ago(600_000), items: [item()] })).status).toBe(422);
+      tolerance.seconds = 900;
+      expect((await sync({ sentAt: ago(600_000), items: [item()] })).status).toBe(200);
+    });
+
+    it("rejects a request without sentAt as a validation failure", async () => {
+      asAdmin();
+      const response = await post({ items: [item()] });
+      expect(response.status).toBe(400);
+      const body = (await response.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("validation_failed");
+    });
+
+    it("counts a clock_skew refusal against the rate limit", async () => {
+      // Deliberate: the limiter runs first, so probing sentAt cannot be free.
+      auth.mockResolvedValue({ user: { id: BEN, role: "member", deactivated: false } });
+      for (let i = 0; i < 30; i += 1) {
+        expect((await sync({ sentAt: ago(3_600_000), items: [item()] })).status).toBe(422);
+      }
+      expect((await sync({ items: [item()] })).status).toBe(429);
+    });
+
+    it("answers 401 before judging the clock", async () => {
+      auth.mockResolvedValue(null);
+      expect((await sync({ sentAt: ago(3_600_000), items: [item()] })).status).toBe(401);
+    });
+
+    it("rejects only the future-dated item, reporting clock_skew per item", async () => {
+      asAdmin();
+      const response = await sync({
+        items: [item(), item({ updatedAt: ago(-3_600_000), unitNumber: "#09-909" })],
+      });
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        results: { status: string; error: { error: { code: string } } | null }[];
+      };
+      expect(body.results.map((r) => r.status)).toEqual(["applied", "rejected"]);
+      expect(body.results[1]?.error?.error.code).toBe("clock_skew");
+    });
   });
 });

@@ -108,3 +108,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 37  | [E2E smoke](37-e2e.md)                                  | In review |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Open      |
 | 75  | [Config in YAML](75-config-yaml.md)                     | In review |
+| 76  | [Clock rules](76-clock-rules.md)                        | In review |

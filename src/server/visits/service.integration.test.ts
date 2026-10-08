@@ -1,9 +1,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
+import type { Clock } from "@/lib/clock";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
+import { ClockSkewError, ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 import { getHouseholdHistory, listHouseholds } from "@/server/visits/queries";
 import { createVisit, updateVisit, upsertHousehold } from "@/server/visits/service";
 
@@ -43,19 +44,25 @@ beforeEach(async () => {
   ]);
 });
 
+const CLOCK: Clock = { now: new Date(), toleranceMs: 300_000 };
+
 afterAll(async () => {
   await pool.end();
 });
 
 const record = (unit: string, extra: Record<string, unknown> = {}) =>
-  createVisit(db, {
-    id: nextVisitId(),
-    blockId: BLOCK,
-    unitNumber: unit,
-    interestLevel: "low",
-    memberId: ALICE,
-    ...extra,
-  });
+  createVisit(
+    db,
+    {
+      id: nextVisitId(),
+      blockId: BLOCK,
+      unitNumber: unit,
+      interestLevel: "low",
+      memberId: ALICE,
+      ...extra,
+    },
+    CLOCK,
+  );
 
 describe("households accumulate", () => {
   it("creates the household on first contact", async () => {
@@ -81,13 +88,17 @@ describe("households accumulate", () => {
 
   it("treats the same unit number in another block as a different household", async () => {
     const here = await record("#05-123");
-    const there = await createVisit(db, {
-      id: nextVisitId(),
-      blockId: OTHER_BLOCK,
-      unitNumber: "#05-123",
-      interestLevel: "low",
-      memberId: ALICE,
-    });
+    const there = await createVisit(
+      db,
+      {
+        id: nextVisitId(),
+        blockId: OTHER_BLOCK,
+        unitNumber: "#05-123",
+        interestLevel: "low",
+        memberId: ALICE,
+      },
+      CLOCK,
+    );
     expect(there.householdId).not.toBe(here.householdId);
   });
 
@@ -154,13 +165,17 @@ describe("visits are never overwritten", () => {
 describe("recording rules", () => {
   it("refuses an unknown block", async () => {
     await expect(
-      createVisit(db, {
-        id: nextVisitId(),
-        blockId: "cdcdcdcd-0000-4000-8001-00000000ffff",
-        unitNumber: "#01-01",
-        interestLevel: "low",
-        memberId: ALICE,
-      }),
+      createVisit(
+        db,
+        {
+          id: nextVisitId(),
+          blockId: "cdcdcdcd-0000-4000-8001-00000000ffff",
+          unitNumber: "#01-01",
+          interestLevel: "low",
+          memberId: ALICE,
+        },
+        CLOCK,
+      ),
     ).rejects.toThrow(NotFoundError);
   });
 
@@ -173,8 +188,8 @@ describe("recording rules", () => {
       interestLevel: "low" as const,
       memberId: ALICE,
     };
-    await createVisit(db, args);
-    await expect(createVisit(db, args)).rejects.toThrow(ConflictError);
+    await createVisit(db, args, CLOCK);
+    await expect(createVisit(db, args, CLOCK)).rejects.toThrow(ConflictError);
 
     const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);
     expect(rows[0]?.count).toBe("1");
@@ -440,5 +455,27 @@ describe("coverage of the remaining paths", () => {
 
     const all = await listHouseholds(db, { blockId: BLOCK, limit: 50, offset: 0 });
     expect(all.rows[0]?.visitCount).toBe(2);
+  });
+});
+
+describe("online clientCreatedAt clock rule", () => {
+  const offset = (ms: number) => new Date(CLOCK.now.getTime() + ms).toISOString();
+
+  it("accepts exactly at the tolerance ahead", async () => {
+    const visit = await record("#05-123", { clientCreatedAt: offset(300_000) });
+    expect(visit.id).toBeTruthy();
+  });
+
+  it("rejects just beyond it, storing nothing", async () => {
+    await expect(record("#05-123", { clientCreatedAt: offset(300_001) })).rejects.toThrow(
+      ClockSkewError,
+    );
+    const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);
+    expect(rows[0]?.count).toBe("0");
+  });
+
+  it("accepts a past value", async () => {
+    const visit = await record("#05-123", { clientCreatedAt: offset(-86_400_000) });
+    expect(visit.id).toBeTruthy();
   });
 });
