@@ -145,6 +145,12 @@ future or before their outing are rejected `clock_skew` while siblings apply. Th
 (#32); a cold offline launch shows `/offline`. The IndexedDB queue and sync engine are
 #33–#34.
 
+**Limit: pairs and the queue.** The queue lives in one phone's IndexedDB. Teammates (#74)
+see and edit each other's records only once they have synced; unsynced records are
+visible on the phone that made them and nowhere else, because two phones with no
+reception cannot exchange data. The sync endpoint's rule that a member cannot overwrite
+another member's visit (D-21-5) gains a team exception, not a way around the queue.
+
 ## Testing
 
 | Layer       | Tool                             | Runs against                                                           |
