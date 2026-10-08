@@ -5,6 +5,7 @@ import { requireUser } from "@/server/auth/guards";
 import { createRateLimiter } from "@/server/auth/rate-limit";
 import { withContract } from "@/server/http/contract";
 import { RateLimitedError } from "@/server/http/errors";
+import { assertBatchClockSane, currentClock } from "@/server/visits/clock-rules";
 import { toVisit } from "@/server/visits/serialise";
 import { syncVisits } from "@/server/visits/sync";
 
@@ -27,7 +28,10 @@ export const POST = withContract(
       throw new RateLimitedError("Too many sync requests. Try again shortly.");
     }
 
-    const outcomes = await syncVisits(getDatabase(), body.items, user.id);
+    const clock = currentClock();
+    assertBatchClockSane(new Date(body.sentAt), clock);
+
+    const outcomes = await syncVisits(getDatabase(), body.items, user.id, clock);
 
     return {
       status: 200,

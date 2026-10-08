@@ -119,18 +119,28 @@ describe("offline sync batches", () => {
     updatedAt: "2026-03-14T10:00:00Z",
   };
 
+  const sentAt = "2026-03-14T12:00:00Z";
+
   it("accepts a batch of queued records", () => {
-    expect(zVisitSyncRequest.safeParse({ items: [item, item] }).success).toBe(true);
+    expect(zVisitSyncRequest.safeParse({ sentAt, items: [item, item] }).success).toBe(true);
+  });
+
+  it("requires sentAt, the phone's clock at send time", () => {
+    expect(zVisitSyncRequest.safeParse({ items: [item] }).success).toBe(false);
+  });
+
+  it("rejects a sentAt that is not a timestamp", () => {
+    expect(zVisitSyncRequest.safeParse({ sentAt: "soon", items: [item] }).success).toBe(false);
   });
 
   it("rejects an empty batch", () => {
-    expect(zVisitSyncRequest.safeParse({ items: [] }).success).toBe(false);
+    expect(zVisitSyncRequest.safeParse({ sentAt, items: [] }).success).toBe(false);
   });
 
   it("rejects a batch beyond the documented limit", () => {
     // Bounded so one client cannot flush an unbounded queue in a single request.
     const items = Array.from({ length: 101 }, () => item);
-    expect(zVisitSyncRequest.safeParse({ items }).success).toBe(false);
+    expect(zVisitSyncRequest.safeParse({ sentAt, items }).success).toBe(false);
   });
 
   it("requires updatedAt, which decides last-write-wins", () => {

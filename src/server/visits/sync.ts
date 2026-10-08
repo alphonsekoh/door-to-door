@@ -3,6 +3,8 @@ import type { Database } from "@/db/client";
 import type { InterestLevel } from "@/db/schema";
 import { blocks, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import { and } from "drizzle-orm";
+import type { Clock } from "@/lib/clock";
+import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { ApiError, ConflictError, NotFoundError } from "@/server/http/errors";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
@@ -37,10 +39,16 @@ export type SyncOutcome = {
   error: ApiError | null;
 };
 
-async function resolveSession(db: Database, item: SyncItem): Promise<string> {
+type ResolvedSession = { id: string; startedAt: Date | null };
+
+async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSession> {
   if (item.sessionId !== undefined) {
     const found = await db
-      .select({ id: outingSessions.id, status: outingSessions.status })
+      .select({
+        id: outingSessions.id,
+        status: outingSessions.status,
+        startedAt: outingSessions.startedAt,
+      })
       .from(outingSessions)
       .where(eq(outingSessions.id, item.sessionId))
       .limit(1);
@@ -60,11 +68,11 @@ async function resolveSession(db: Database, item: SyncItem): Promise<string> {
         "That session has ended. Ask an admin to reopen it.",
       );
     }
-    return session.id;
+    return { id: session.id, startedAt: session.startedAt };
   }
 
   const active = await db
-    .select({ id: outingSessions.id })
+    .select({ id: outingSessions.id, startedAt: outingSessions.startedAt })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
     .limit(1);
@@ -73,10 +81,21 @@ async function resolveSession(db: Database, item: SyncItem): Promise<string> {
   if (!session) {
     throw new ConflictError("session_not_active", "No session is active.");
   }
-  return session.id;
+  return { id: session.id, startedAt: session.startedAt };
 }
 
-async function applyItem(db: Database, item: SyncItem, memberId: string): Promise<SyncOutcome> {
+async function applyItem(
+  db: Database,
+  item: SyncItem,
+  memberId: string,
+  clock: Clock,
+): Promise<SyncOutcome> {
+  const incomingUpdatedAt = new Date(item.updatedAt);
+  const incomingCreatedAt = new Date(item.clientCreatedAt);
+  // Cheap and pure, so it runs before any lookup.
+  assertNotInFuture(incomingUpdatedAt, clock);
+  assertNotInFuture(incomingCreatedAt, clock);
+
   const blockExists = await db
     .select({ id: blocks.id })
     .from(blocks)
@@ -93,7 +112,6 @@ async function applyItem(db: Database, item: SyncItem, memberId: string): Promis
     .where(eq(visits.id, item.id))
     .limit(1);
 
-  const incomingUpdatedAt = new Date(item.updatedAt);
   const stored = existing[0];
 
   if (stored) {
@@ -113,7 +131,18 @@ async function applyItem(db: Database, item: SyncItem, memberId: string): Promis
     }
   }
 
-  const sessionId = await resolveSession(db, item);
+  const session = await resolveSession(db, item);
+  const sessionId = session.id;
+
+  /*
+   * After the replay short-circuit, so a stored record is never re-judged, and
+   * after the session check, so an ended session still reports itself first.
+   * A draft session has no start time to compare against.
+   */
+  if (session.startedAt !== null) {
+    assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
+    assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
+  }
 
   const attached = await db
     .select({ blockId: sessionBlocks.blockId })
@@ -139,7 +168,7 @@ async function applyItem(db: Database, item: SyncItem, memberId: string): Promis
     memberId,
     interestLevel: item.interestLevel,
     description: item.description ?? "",
-    clientCreatedAt: new Date(item.clientCreatedAt),
+    clientCreatedAt: incomingCreatedAt,
     updatedAt: incomingUpdatedAt,
   };
 
@@ -163,11 +192,12 @@ export async function syncVisits(
   db: Database,
   items: SyncItem[],
   memberId: string,
+  clock: Clock,
 ): Promise<SyncOutcome[]> {
   const outcomes: SyncOutcome[] = [];
   for (const item of items) {
     try {
-      outcomes.push(await applyItem(db, item, memberId));
+      outcomes.push(await applyItem(db, item, memberId, clock));
     } catch (error) {
       outcomes.push({
         id: item.id,

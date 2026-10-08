@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
+const clock = { now: new Date("2026-03-14T12:00:00.000Z"), toleranceMs: 300_000 };
+
 const item: SyncItem = {
   id: "01960000-0000-7000-8000-000000000001",
   blockId: "b1",
@@ -25,7 +27,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const results = await syncVisits(stub, [item], "u1");
+    const results = await syncVisits(stub, [item], "u1", clock);
     expect(results).toHaveLength(1);
     expect(results[0]?.status).toBe("rejected");
   });
@@ -41,7 +43,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const [result] = await syncVisits(stub, [item], "u1");
+    const [result] = await syncVisits(stub, [item], "u1", clock);
     expect(result?.error?.message).not.toMatch(/hunter2/);
     expect(result?.error?.message).toBe("Could not save.");
   });

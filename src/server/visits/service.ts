@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { InterestLevel, Religion } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
+import type { Clock } from "@/lib/clock";
+import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 
@@ -146,7 +148,12 @@ export async function createVisit(
     clientCreatedAt?: string | undefined;
     memberId: string;
   } & HouseholdIdentity,
+  clock: Clock,
 ): Promise<VisitRow> {
+  if (input.clientCreatedAt !== undefined) {
+    assertNotInFuture(new Date(input.clientCreatedAt), clock);
+  }
+
   const blockExists = await db
     .select({ id: blocks.id })
     .from(blocks)

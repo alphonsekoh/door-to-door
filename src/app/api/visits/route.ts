@@ -12,6 +12,7 @@ import { requireUser, resolveMemberScope } from "@/server/auth/guards";
 import { firstOrThrow } from "@/server/db-utils";
 import { withContract } from "@/server/http/contract";
 import { toVisit } from "@/server/visits/serialise";
+import { currentClock } from "@/server/visits/clock-rules";
 import { createVisit } from "@/server/visits/service";
 
 export const GET = withContract(
@@ -94,18 +95,22 @@ export const POST = withContract(
      * to someone else is an admin capturing a paper or phoned-in record.
      */
     const memberId = resolveMemberScope(session, body.memberId);
-    const visit = await createVisit(getDatabase(), {
-      id: body.id,
-      blockId: body.blockId,
-      unitNumber: body.unitNumber,
-      interestLevel: body.interestLevel,
-      description: body.description,
-      clientCreatedAt: body.clientCreatedAt,
-      name: body.name,
-      contact: body.contact,
-      religion: body.religion,
-      memberId,
-    });
+    const visit = await createVisit(
+      getDatabase(),
+      {
+        id: body.id,
+        blockId: body.blockId,
+        unitNumber: body.unitNumber,
+        interestLevel: body.interestLevel,
+        description: body.description,
+        clientCreatedAt: body.clientCreatedAt,
+        name: body.name,
+        contact: body.contact,
+        religion: body.religion,
+        memberId,
+      },
+      currentClock(),
+    );
     return { status: 201, body: toVisit(visit) };
   },
 );

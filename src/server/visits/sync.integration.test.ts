@@ -3,6 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
+import type { Clock } from "@/lib/clock";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
 const pool = createTestPool();
@@ -31,7 +32,13 @@ const item = (overrides: Partial<SyncItem> = {}): SyncItem => ({
   ...overrides,
 });
 
-const flush = (items: SyncItem[], memberId = ALICE) => syncVisits(db, items, memberId);
+const NOW = new Date("2026-03-14T12:00:00.000Z");
+const TOLERANCE_MS = 300_000;
+const clock: Clock = { now: NOW, toleranceMs: TOLERANCE_MS };
+const offset = (ms: number, base = NOW) => new Date(base.getTime() + ms).toISOString();
+
+const flush = (items: SyncItem[], memberId = ALICE, withClock: Clock = clock) =>
+  syncVisits(db, items, memberId, withClock);
 
 const countVisits = async (): Promise<number> => {
   const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);
@@ -252,5 +259,126 @@ describe("households still accumulate through sync", () => {
 describe("empty batches", () => {
   it("returns no results for no items", async () => {
     expect(await flush([])).toEqual([]);
+  });
+});
+
+describe("clock rules", () => {
+  const STARTED = new Date("2026-03-14T09:00:00.000Z");
+  const startSession = () =>
+    pool.query(`UPDATE outing_sessions SET started_at = $1 WHERE id = $2`, [STARTED, SESSION]);
+
+  it("accepts timestamps exactly at the tolerance ahead of the server", async () => {
+    const ahead = offset(TOLERANCE_MS);
+    const [result] = await flush([item({ updatedAt: ahead, clientCreatedAt: ahead })]);
+    expect(result?.status).toBe("applied");
+  });
+
+  it.each(["updatedAt", "clientCreatedAt"] as const)(
+    "rejects %s just beyond the tolerance ahead",
+    async (field) => {
+      const [result] = await flush([item({ [field]: offset(TOLERANCE_MS + 1) })]);
+      expect(result?.status).toBe("rejected");
+      expect(result?.error?.code).toBe("clock_skew");
+      expect(result?.error?.message).toMatch(/6 minutes ahead/);
+      expect(await countVisits()).toBe(0);
+    },
+  );
+
+  it("does not let one bad item reject its siblings", async () => {
+    const results = await flush([
+      item({ id: VISIT_A }),
+      item({ id: VISIT_B, updatedAt: offset(3_600_000) }),
+    ]);
+    expect(results.map((r) => r.status)).toEqual(["applied", "rejected"]);
+    expect(await countVisits()).toBe(1);
+  });
+
+  it("checks the future bound before touching the database", async () => {
+    const [result] = await flush([
+      item({ blockId: "efefefef-0000-4000-8001-00000000ffff", updatedAt: offset(3_600_000) }),
+    ]);
+    expect(result?.error?.code).toBe("clock_skew");
+  });
+
+  it("accepts a record exactly at the session start minus the tolerance", async () => {
+    await startSession();
+    const edge = offset(-TOLERANCE_MS, STARTED);
+    const [result] = await flush([item({ updatedAt: edge, clientCreatedAt: edge })]);
+    expect(result?.status).toBe("applied");
+  });
+
+  it.each(["updatedAt", "clientCreatedAt"] as const)(
+    "rejects %s just before the session start minus the tolerance",
+    async (field) => {
+      await startSession();
+      const [result] = await flush([
+        item({
+          clientCreatedAt: T1,
+          updatedAt: T1,
+          [field]: offset(-TOLERANCE_MS - 1, STARTED),
+        }),
+      ]);
+      expect(result?.status).toBe("rejected");
+      expect(result?.error?.code).toBe("clock_skew");
+      expect(result?.error?.message).toMatch(/before its outing began/);
+    },
+  );
+
+  it("applies a dead-zone record hours old but inside the outing", async () => {
+    await startSession();
+    const hoursOld = offset(-2 * 3_600_000);
+    const [result] = await flush([item({ updatedAt: hoursOld, clientCreatedAt: hoursOld })]);
+    expect(result?.status).toBe("applied");
+  });
+
+  it("reports a replay of an applied record as unchanged, not clock_skew", async () => {
+    await flush([item()]);
+    await pool.query(`UPDATE outing_sessions SET started_at = $1 WHERE id = $2`, [
+      new Date("2026-03-14T10:30:00.000Z"),
+      SESSION,
+    ]);
+    const [replayed] = await flush([item()]);
+    expect(replayed?.status).toBe("unchanged");
+  });
+
+  it("reports a stale edit as stale, not clock_skew", async () => {
+    await flush([item({ updatedAt: T2 })]);
+    await startSession();
+    await pool.query(`UPDATE outing_sessions SET started_at = $1 WHERE id = $2`, [
+      new Date("2026-03-14T10:30:00.000Z"),
+      SESSION,
+    ]);
+    const [stale] = await flush([item({ updatedAt: T1 })]);
+    expect(stale?.status).toBe("stale");
+  });
+
+  it("still reports an ended session as session_not_active first", async () => {
+    await startSession();
+    await pool.query(`UPDATE outing_sessions SET status = 'ended' WHERE id = $1`, [SESSION]);
+    const old = offset(-10 * 86_400_000);
+    const [result] = await flush([
+      item({ sessionId: SESSION, updatedAt: old, clientCreatedAt: old }),
+    ]);
+    expect(result?.error?.code).toBe("session_not_active");
+  });
+
+  it("applies the lower bound to an explicitly named session too", async () => {
+    await startSession();
+    const old = offset(-10 * 86_400_000);
+    const [result] = await flush([
+      item({ sessionId: SESSION, updatedAt: old, clientCreatedAt: old }),
+    ]);
+    expect(result?.error?.code).toBe("clock_skew");
+  });
+
+  it("follows the tolerance it is given", async () => {
+    const ahead = offset(600_000);
+    const [strict] = await flush([item({ updatedAt: ahead })]);
+    expect(strict?.status).toBe("rejected");
+    const [lenient] = await flush([item({ updatedAt: ahead })], ALICE, {
+      now: NOW,
+      toleranceMs: 600_000,
+    });
+    expect(lenient?.status).toBe("applied");
   });
 });

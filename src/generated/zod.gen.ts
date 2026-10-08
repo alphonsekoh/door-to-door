@@ -46,6 +46,7 @@ export const zErrorCode = z.enum([
     'conflict',
     'session_not_active',
     'session_already_active',
+    'clock_skew',
     'block_in_use',
     'rate_limited',
     'internal_error'
@@ -235,6 +236,7 @@ export const zVisitSyncItem = zHouseholdIdentity.and(z.object({
 }));
 
 export const zVisitSyncRequest = z.object({
+    sentAt: z.iso.datetime(),
     items: z.array(zVisitSyncItem).min(1).max(100)
 });
 

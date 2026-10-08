@@ -86,6 +86,13 @@ export class ConflictError extends ApiError {
   }
 }
 
+export class ClockSkewError extends ApiError {
+  constructor(message = "Your clock is out of step with the server.") {
+    super(422, "clock_skew", message);
+    this.name = "ClockSkewError";
+  }
+}
+
 export class RateLimitedError extends ApiError {
   constructor(message = "Too many requests. Try again shortly.") {
     super(429, "rate_limited", message);
