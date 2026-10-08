@@ -1,3 +1,4 @@
+import type * as ConfigModule from "@/server/config";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
@@ -8,7 +9,7 @@ vi.mock("@/../auth", () => ({ auth }));
 /* The database client reads its URL from the same config, so only the tolerance is overridden. */
 const tolerance = vi.hoisted(() => ({ seconds: 300 }));
 vi.mock("@/server/config", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/server/config")>();
+  const actual = await importOriginal<typeof ConfigModule>();
   return {
     ...actual,
     getConfig: () => {
@@ -23,6 +24,7 @@ const { POST } = await import("./route");
 const pool = createTestPool();
 const ADMIN = "fafafafa-0000-4000-8000-000000000001";
 const ALICE = "fafafafa-0000-4000-8000-000000000002";
+const BEN = "fafafafa-0000-4000-8000-000000000003";
 const BLOCK = "fafafafa-0000-4000-8001-000000000001";
 const SESSION = "fafafafa-0000-4000-8002-000000000001";
 
@@ -61,13 +63,13 @@ beforeEach(async () => {
   seq = 0;
   await truncateAll(pool);
   await pool.query(
-    `INSERT INTO users (id, email, name, role) VALUES ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member')`,
-    [ADMIN, ALICE],
+    `INSERT INTO users (id, email, name, role) VALUES ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member'), ($3,'ben@t.local','Ben','member')`,
+    [ADMIN, ALICE, BEN],
   );
   await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
   await pool.query(
-    `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Outing','active',$2)`,
-    [SESSION, ADMIN],
+    `INSERT INTO outing_sessions (id, title, status, created_by, started_at) VALUES ($1,'Outing','active',$2,$3)`,
+    [SESSION, ADMIN, new Date("2026-03-01T00:00:00.000Z")],
   );
   await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
     SESSION,
@@ -200,6 +202,15 @@ describe("POST /api/visits/sync", () => {
       expect(response.status).toBe(400);
       const body = (await response.json()) as { error: { code: string } };
       expect(body.error.code).toBe("validation_failed");
+    });
+
+    it("counts a clock_skew refusal against the rate limit", async () => {
+      // Deliberate: the limiter runs first, so probing sentAt cannot be free.
+      auth.mockResolvedValue({ user: { id: BEN, role: "member", deactivated: false } });
+      for (let i = 0; i < 30; i += 1) {
+        expect((await sync({ sentAt: ago(3_600_000), items: [item()] })).status).toBe(422);
+      }
+      expect((await sync({ items: [item()] })).status).toBe(429);
     });
 
     it("answers 401 before judging the clock", async () => {

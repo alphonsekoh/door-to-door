@@ -16,6 +16,14 @@ export function firstOrThrow<T>(rows: readonly T[], what: string): T {
   return row;
 }
 
+/* Narrows a nullable column the surrounding logic guarantees is set. */
+export function presentOrThrow<T>(value: T | null, what: string): T {
+  if (value === null) {
+    throw new InternalError(`Expected ${what} to be set.`);
+  }
+  return value;
+}
+
 /*
  * True when a database error was caused by violating a named constraint.
  *

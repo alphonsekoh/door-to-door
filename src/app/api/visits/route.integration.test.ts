@@ -1,3 +1,4 @@
+import type * as ConfigModule from "@/server/config";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
@@ -8,7 +9,7 @@ vi.mock("@/../auth", () => ({ auth }));
 /* The database client reads its URL from the same config, so only the tolerance is overridden. */
 const tolerance = vi.hoisted(() => ({ seconds: 300 }));
 vi.mock("@/server/config", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/server/config")>();
+  const actual = await importOriginal<typeof ConfigModule>();
   return {
     ...actual,
     getConfig: () => {
@@ -64,6 +65,7 @@ const record = (unit: string, extra: Record<string, unknown> = {}) =>
 
 beforeEach(async () => {
   seq = 0;
+  tolerance.seconds = 300;
   await truncateAll(pool);
   await pool.query(
     `INSERT INTO users (id, email, name, role) VALUES
@@ -175,7 +177,6 @@ describe("POST /api/visits", () => {
     tolerance.seconds = 7200;
     const ahead = new Date(Date.now() + 3_600_000).toISOString();
     expect((await record("#05-122", { clientCreatedAt: ahead })).status).toBe(201);
-    tolerance.seconds = 300;
   });
 
   it("refuses an unauthenticated caller", async () => {

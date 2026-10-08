@@ -16,7 +16,7 @@ export function currentClock(): Clock {
   };
 }
 
-/* Rules 1 and 4: nothing the server stores may be from the future. */
+/* Nothing the server stores may be from the future. */
 export function assertNotInFuture(instant: Date, clock: Clock): void {
   const violation = checkNotAhead(instant, clock);
   if (violation) {
@@ -26,7 +26,7 @@ export function assertNotInFuture(instant: Date, clock: Clock): void {
   }
 }
 
-/* Rule 2: a record cannot predate the outing it claims to belong to. */
+/* A record cannot predate the outing it claims to belong to. */
 export function assertNotBeforeOuting(instant: Date, startedAt: Date, clock: Clock): void {
   const violation = checkNotBefore(instant, startedAt, clock);
   if (violation) {
@@ -36,7 +36,7 @@ export function assertNotBeforeOuting(instant: Date, startedAt: Date, clock: Clo
   }
 }
 
-/* Rule 3: the whole batch is refused, so nothing is half-applied. */
+/* The whole batch is refused, so nothing is half-applied. */
 export function assertBatchClockSane(sentAt: Date, clock: Clock): void {
   const violation = checkWithinTolerance(sentAt, clock);
   if (violation) {

@@ -8,9 +8,9 @@ export type Clock = { now: Date; toleranceMs: number };
 
 export type ClockViolation = { kind: "ahead" | "behind"; differenceMs: number };
 
-/* Rounded up so a violation never reads as "0 minutes". */
+/* Never reads as "0 minutes". */
 export function approximateMinutes(differenceMs: number): number {
-  return Math.max(1, Math.ceil(Math.abs(differenceMs) / 60_000));
+  return Math.max(1, Math.round(Math.abs(differenceMs) / 60_000));
 }
 
 /* Exactly at the tolerance is accepted; only beyond it is a violation. */

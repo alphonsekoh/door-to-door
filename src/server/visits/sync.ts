@@ -5,6 +5,7 @@ import { blocks, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import { and } from "drizzle-orm";
 import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
+import { presentOrThrow } from "@/server/db-utils";
 import { ApiError, ConflictError, NotFoundError } from "@/server/http/errors";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
@@ -39,7 +40,7 @@ export type SyncOutcome = {
   error: ApiError | null;
 };
 
-type ResolvedSession = { id: string; startedAt: Date | null };
+type ResolvedSession = { id: string; startedAt: Date };
 
 async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSession> {
   if (item.sessionId !== undefined) {
@@ -68,7 +69,10 @@ async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSes
         "That session has ended. Ask an admin to reopen it.",
       );
     }
-    return { id: session.id, startedAt: session.startedAt };
+    return {
+      id: session.id,
+      startedAt: presentOrThrow(session.startedAt, "an active session start"),
+    };
   }
 
   const active = await db
@@ -81,7 +85,10 @@ async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSes
   if (!session) {
     throw new ConflictError("session_not_active", "No session is active.");
   }
-  return { id: session.id, startedAt: session.startedAt };
+  return {
+    id: session.id,
+    startedAt: presentOrThrow(session.startedAt, "an active session start"),
+  };
 }
 
 async function applyItem(
@@ -92,10 +99,6 @@ async function applyItem(
 ): Promise<SyncOutcome> {
   const incomingUpdatedAt = new Date(item.updatedAt);
   const incomingCreatedAt = new Date(item.clientCreatedAt);
-  // Cheap and pure, so it runs before any lookup.
-  assertNotInFuture(incomingUpdatedAt, clock);
-  assertNotInFuture(incomingCreatedAt, clock);
-
   const blockExists = await db
     .select({ id: blocks.id })
     .from(blocks)
@@ -131,18 +134,23 @@ async function applyItem(
     }
   }
 
+  /*
+   * After the replay short-circuit, so a stored record is never re-judged (a
+   * lowered tolerance must not turn a retry into a rejection), yet before any
+   * write.
+   */
+  assertNotInFuture(incomingUpdatedAt, clock);
+  assertNotInFuture(incomingCreatedAt, clock);
+
   const session = await resolveSession(db, item);
   const sessionId = session.id;
 
   /*
-   * After the replay short-circuit, so a stored record is never re-judged, and
-   * after the session check, so an ended session still reports itself first.
-   * A draft session has no start time to compare against.
+   * After the session check, so an ended session still reports itself first.
+   * Active sessions always have a start time: activation sets it.
    */
-  if (session.startedAt !== null) {
-    assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
-    assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
-  }
+  assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
+  assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
 
   const attached = await db
     .select({ blockId: sessionBlocks.blockId })

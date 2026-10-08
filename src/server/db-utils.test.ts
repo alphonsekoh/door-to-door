@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
+import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
 import { InternalError } from "@/server/http/errors";
 
 describe("firstOrThrow", () => {
@@ -56,5 +56,15 @@ describe("isConstraintViolation", () => {
     ["undefined", undefined],
   ])("does not claim %s", (_case, error) => {
     expect(isConstraintViolation(error, CONSTRAINT)).toBe(false);
+  });
+});
+
+describe("presentOrThrow", () => {
+  it("returns a value that is set", () => {
+    expect(presentOrThrow(new Date(0), "a start")).toEqual(new Date(0));
+  });
+
+  it("fails loudly on null, naming what was missing", () => {
+    expect(() => presentOrThrow(null, "a start")).toThrow(/a start/);
   });
 });

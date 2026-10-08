@@ -50,8 +50,9 @@ describe("checkWithinTolerance", () => {
 });
 
 describe("approximateMinutes", () => {
-  it("rounds up and ignores sign", () => {
-    expect(approximateMinutes(300_001)).toBe(6);
+  it("rounds to the nearest minute and ignores sign", () => {
+    expect(approximateMinutes(300_001)).toBe(5);
+    expect(approximateMinutes(330_000)).toBe(6);
     expect(approximateMinutes(-3_600_000)).toBe(60);
   });
   it("never reports zero", () => {

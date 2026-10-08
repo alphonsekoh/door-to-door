@@ -57,8 +57,8 @@ beforeEach(async () => {
     [BLOCK, LOOSE_BLOCK],
   );
   await pool.query(
-    `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Outing','active',$2)`,
-    [SESSION, ADMIN],
+    `INSERT INTO outing_sessions (id, title, status, created_by, started_at) VALUES ($1,'Outing','active',$2,$3)`,
+    [SESSION, ADMIN, new Date("2026-03-14T08:00:00.000Z")],
   );
   await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
     SESSION,
@@ -279,7 +279,7 @@ describe("clock rules", () => {
       const [result] = await flush([item({ [field]: offset(TOLERANCE_MS + 1) })]);
       expect(result?.status).toBe("rejected");
       expect(result?.error?.code).toBe("clock_skew");
-      expect(result?.error?.message).toMatch(/6 minutes ahead/);
+      expect(result?.error?.message).toMatch(/5 minutes ahead/);
       expect(await countVisits()).toBe(0);
     },
   );
@@ -293,11 +293,21 @@ describe("clock rules", () => {
     expect(await countVisits()).toBe(1);
   });
 
-  it("checks the future bound before touching the database", async () => {
-    const [result] = await flush([
-      item({ blockId: "efefefef-0000-4000-8001-00000000ffff", updatedAt: offset(3_600_000) }),
-    ]);
+  it("still rejects a new record outside the tolerance before writing it", async () => {
+    const [result] = await flush([item({ updatedAt: offset(3_600_000) })]);
     expect(result?.error?.code).toBe("clock_skew");
+    expect(await countVisits()).toBe(0);
+  });
+
+  it("answers a replay unchanged even when the tolerance has since been lowered", async () => {
+    // Stored while the clock agreed; retried after the stamp fell outside a tighter tolerance.
+    const stamp = offset(200_000);
+    await flush([item({ updatedAt: stamp, clientCreatedAt: stamp })]);
+    const [replayed] = await flush([item({ updatedAt: stamp, clientCreatedAt: stamp })], ALICE, {
+      now: NOW,
+      toleranceMs: 60_000,
+    });
+    expect(replayed?.status).toBe("unchanged");
   });
 
   it("accepts a record exactly at the session start minus the tolerance", async () => {
