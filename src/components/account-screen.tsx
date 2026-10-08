@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
-import { MAX_NAME_LENGTH, checkOwnName } from "@/lib/own-name";
+import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/own-name";
 import { signOutAndForget } from "@/lib/sign-out";
 import { hasUnsyncedItems } from "@/lib/sw-update";
 
@@ -127,7 +127,6 @@ export function AccountScreen() {
             id="own-name"
             value={name}
             autoComplete="name"
-            maxLength={MAX_NAME_LENGTH}
             onChange={(event) => {
               setName(event.target.value);
               setSaved(false);
@@ -135,7 +134,10 @@ export function AccountScreen() {
             className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
           />
           <p className="mt-1 text-caption text-foreground-muted">
-            Shown on your records, including earlier ones.
+            Shown on your records, including earlier ones.{" "}
+            <span aria-live="polite">
+              {nameLength(name.trim())} of {MAX_NAME_LENGTH}
+            </span>
           </p>
         </div>
 

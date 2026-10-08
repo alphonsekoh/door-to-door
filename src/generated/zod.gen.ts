@@ -295,7 +295,7 @@ export const zUpdateUserRequest = z.object({
 });
 
 export const zUpdateOwnProfileRequest = z.object({
-    name: z.string().min(1).max(80)
+    name: z.string().min(1).max(400)
 });
 
 export const zSessionList = z.object({

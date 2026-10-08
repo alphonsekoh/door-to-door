@@ -109,3 +109,15 @@ describe("Auth.js configuration", () => {
     expect(factory()).toMatchObject({ secret: "s".repeat(40), trustHost: false });
   });
 });
+
+describe("caching of signed-in pages", () => {
+  it("marks a signed-in page no-store so Back after sign-out asks the server", async () => {
+    const response = await proxy(request("/account", signedIn));
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("leaves API responses to their own handlers", async () => {
+    const response = await proxy(request("/api/blocks", signedIn));
+    expect(response.headers.get("cache-control")).toBeNull();
+  });
+});

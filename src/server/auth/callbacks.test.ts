@@ -118,6 +118,8 @@ describe("applyUpdateToToken", () => {
   it("ignores anything that is not a valid name, and never takes other claims", () => {
     expect(applyUpdateToToken(token, { name: "  " })).toBe(token);
     expect(applyUpdateToToken(token, { name: 7 })).toBe(token);
+    expect(applyUpdateToToken(token, { name: "\u200b" })).toBe(token);
+    expect(applyUpdateToToken(token, { name: "\u202eAlice" })).toBe(token);
     expect(applyUpdateToToken(token, undefined)).toBe(token);
     expect(applyUpdateToToken(token, null)).toBe(token);
     expect(applyUpdateToToken(token, { role: "admin" })).toBe(token);

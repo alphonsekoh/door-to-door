@@ -145,6 +145,31 @@ describe("AccountScreen: renaming", () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
+  it("counts the name and lets a long one be typed, then explains the refusal", async () => {
+    const user = userEvent.setup();
+    const input = await loaded();
+    await user.clear(input);
+    await user.click(input);
+    await user.paste("a".repeat(85));
+
+    expect(input).toHaveValue("a".repeat(85));
+    expect(screen.getByText("85 of 80")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save name" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Keep your name to 80");
+    expect(input).toHaveValue("a".repeat(85));
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a name that would show as blank", async () => {
+    const user = userEvent.setup();
+    const input = await loaded();
+    await user.clear(input);
+    await user.click(input);
+    await user.paste("\u200b\u200b");
+    await user.click(screen.getByRole("button", { name: "Save name" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("cannot be shown");
+  });
+
   it("keeps what was typed when the save fails", async () => {
     const user = userEvent.setup();
     const input = await loaded();

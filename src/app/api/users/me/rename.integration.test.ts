@@ -85,13 +85,38 @@ describe("PATCH /api/users/me", () => {
     expect(await nameOf(ALICE)).toBe("Alice");
   });
 
-  it("accepts 80 characters and refuses 81", async () => {
+  it("counts 80 code points on the trimmed name, whatever the padding", async () => {
     signedInAs(ALICE);
     expect((await rename({ name: "a".repeat(81) })).status).toBe(400);
     expect((await rename({ name: "a".repeat(80) })).status).toBe(200);
+    expect((await rename({ name: `   ${"b".repeat(80)}   ` })).status).toBe(200);
+    expect(await nameOf(ALICE)).toBe("b".repeat(80));
+    expect((await rename({ name: `  ${"c".repeat(81)}  ` })).status).toBe(400);
+    expect(await nameOf(ALICE)).toBe("b".repeat(80));
   });
 
-  it("refuses a body without a name, and cannot be used to change a role", async () => {
+  it("counts an emoji as one character", async () => {
+    signedInAs(ALICE);
+    expect((await rename({ name: "😀".repeat(41) })).status).toBe(200);
+    expect((await rename({ name: "😀".repeat(81) })).status).toBe(400);
+  });
+
+  it.each([
+    ["zero-width only", "\u200b\u200b"],
+    ["a right-to-left override", "\u202eecilA"],
+    ["a control character", "Al\u0007ice"],
+    ["punctuation only", "..."],
+  ])("refuses a name that is %s", async (_label, name) => {
+    signedInAs(ALICE);
+    const response = await rename({ name });
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "validation_failed",
+    );
+    expect(await nameOf(ALICE)).toBe("Alice");
+  });
+
+  it("refuses a body without a name, and ignores unknown fields such as a role", async () => {
     signedInAs(ALICE);
     expect((await rename({})).status).toBe(400);
     expect((await rename({ name: "Al", role: "admin" })).status).toBe(200);

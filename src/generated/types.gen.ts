@@ -480,8 +480,18 @@ export type UpdateUserRequest = {
 
 export type UpdateOwnProfileRequest = {
     /**
-     * Stored trimmed. A blank or whitespace-only name is refused with
-     * `400 validation_failed`, as is one over 80 characters as sent.
+     * One rule: the name is trimmed, then counted in code points (an
+     * emoji is one), and must be 1 to 80 of them. Refused with
+     * `400 validation_failed` when blank, over 80, without a
+     * single letter, number or emoji, or containing control, zero-width
+     * (including the joiner) or bidirectional-override characters.
+     *
+     * `maxLength` here is only a generous bound on the raw string, so
+     * surrounding whitespace never decides the outcome; the service
+     * enforces the 80 on the trimmed name.
+     *
+     * Unknown fields are ignored, not rejected: a `role` sent alongside
+     * changes nothing.
      *
      */
     name: string;

@@ -28,7 +28,18 @@ const guard = auth((request) => {
   }
 
   if (request.auth) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    /*
+     * Signed-in pages are never stored or restored. Without this, Back after
+     * signing out brings the old page back from the browser's own cache (or
+     * bfcache) - the shell with every request failing 401 - rather than
+     * asking the server, which would redirect to sign-in. no-store also keeps
+     * a page out of bfcache in Chromium.
+     */
+    if (!isApiPath(pathname)) {
+      response.headers.set("Cache-Control", "no-store");
+    }
+    return response;
   }
 
   /*

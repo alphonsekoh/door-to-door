@@ -243,17 +243,26 @@ test.describe("the install banner", () => {
       const banner = memberPage.getByRole("complementary", { name: "Install the app" });
       await expect(banner).toBeVisible();
 
-      await memberPage.evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight);
-      });
-      const clearance = await memberPage.evaluate(() => {
-        const last = document.querySelector("main")?.lastElementChild;
-        const banner = document.querySelector('aside[aria-label="Install the app"]');
-        return banner && last
-          ? banner.getBoundingClientRect().top - last.getBoundingClientRect().bottom
-          : null;
-      });
-      expect(clearance, `${path}: the banner covers the last item`).toBeGreaterThanOrEqual(0);
+      /* Scrolled and measured together, and polled: the page keeps growing
+         after the heading shows (the list loads, the reservation is applied),
+         and a scroll issued before that stops short of the real bottom. That
+         was the whole of the WebKit flake - the reservation was always right.
+         A banner that really covers the last item stays negative until the
+         timeout, so this cannot pass a genuine overlap. */
+      await expect
+        .poll(
+          () =>
+            memberPage.evaluate(() => {
+              window.scrollTo(0, document.body.scrollHeight);
+              const last = document.querySelector("main")?.lastElementChild;
+              const banner = document.querySelector('aside[aria-label="Install the app"]');
+              return banner && last
+                ? banner.getBoundingClientRect().top - last.getBoundingClientRect().bottom
+                : null;
+            }),
+          { message: `${path}: the banner covers the last item` },
+        )
+        .toBeGreaterThanOrEqual(0);
 
       // The seeded pages are short, so also check the room itself: the
       // content's bottom padding must clear the nav and the whole banner.
