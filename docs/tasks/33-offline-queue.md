@@ -18,7 +18,8 @@ interface.
 
 D-07-3, D-21-1 to D-21-7, D-25-7, D-26-5 (only changed fields, which keeps
 `updatedAt` honest for last-write-wins), D-32-5 (the service worker never touches
-IndexedDB; the queue owns it), D-32-6 (updates defer while items are unsynced).
+IndexedDB; the queue owns it), D-32-6 (updates defer while items are unsynced),
+D-76-3 to D-76-7 (clock rules).
 
 Findings from #32 that shape the design (R-19, R-20):
 
@@ -34,3 +35,9 @@ distinct.
 From #32: replace the `hasUnsyncedItems()` stub in `src/lib/sw-update.ts` (returns
 false) with a real queue check. The update prompt already calls it and defers while it
 is true (D-32-6). Also call `clearServiceWorkerCaches` wherever sign-out lands (D-32-7).
+
+From #76 (clock rules): send `sentAt` (the phone's clock, regenerated) on every attempt;
+handle batch `422 clock_skew` (keep everything queued, tell the member to fix the clock)
+and item `clock_skew` (restamp, then retry, throttled); probe clock-blocked records at
+most every 5 minutes, since the limiter counts 422s (D-76-7); always send the visit's own
+`sessionId`, including on amends (D-76 known limit).

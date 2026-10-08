@@ -77,7 +77,8 @@ households ─< follow_ups (optional visit_id, set null on delete)
    through `requireChanges`.
 3. The handler calls `requireUser` / `requireRole`. Deactivation is re-checked here on
    every request because sessions are JWTs.
-4. The service does the work. Constraint violations are recognised by name through
+4. The service does the work. Sync and `POST /visits` also run the clock rules
+   (`src/server/visits/clock-rules.ts`) before any write. Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
    and is a logged `500` in production. Only the parsed value is sent.
@@ -130,7 +131,10 @@ Google SSO (#14) is not built.
 
 Server side is done: `POST /visits/sync` is idempotent on the client id, resolves
 conflicts last-write-wins on `updatedAt`, reports per item (`applied`, `unchanged`,
-`stale`, rejected), and is rate limited. The service worker and offline shell are done
+`stale`, rejected), and is rate limited. Clock rules (#76) apply to it and to
+`POST /visits`: a batch whose `sentAt` is off from the server by more than
+`sync.clockSkewToleranceSeconds` is refused `422 clock_skew`; items stamped in the
+future or before their outing are rejected `clock_skew` while siblings apply. The service worker and offline shell are done
 (#32); a cold offline launch shows `/offline`. The IndexedDB queue and sync engine are
 #33–#34.
 
