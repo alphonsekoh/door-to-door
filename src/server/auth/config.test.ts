@@ -78,6 +78,19 @@ describe("jwt callback", () => {
   });
 });
 
+describe("jwt callback on a session update", () => {
+  it("renames the token without touching its role", async () => {
+    const jwt = config().callbacks?.jwt;
+    const existing = { sub: "u1", role: "member" as const, deactivated: false };
+    const token = await jwt?.({
+      token: existing,
+      trigger: "update",
+      session: { name: "New Name", role: "admin" },
+    } as never);
+    expect(token).toMatchObject({ name: "New Name", role: "member" });
+  });
+});
+
 describe("session callback", () => {
   it("surfaces the token's role on the session the app reads", async () => {
     const sessionCallback = config().callbacks?.session;

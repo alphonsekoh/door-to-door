@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ROLE, applyTokenToSession, applyUserToToken } from "@/server/auth/callbacks";
+import {
+  DEFAULT_ROLE,
+  applyTokenToSession,
+  applyUpdateToToken,
+  applyUserToToken,
+} from "@/server/auth/callbacks";
 
 describe("applyUserToToken", () => {
   it("copies id, role and deactivation onto the token at sign-in", () => {
@@ -97,5 +102,27 @@ describe("applyTokenToSession", () => {
     );
     expect(session.expires).toBe("2026-01-01");
     expect(session.user?.email).toBe("a@b.c");
+  });
+});
+
+describe("applyUpdateToToken", () => {
+  const token = { sub: "u1", role: "member" as const, deactivated: false };
+
+  it("takes a new, trimmed display name", () => {
+    expect(applyUpdateToToken(token, { name: " Alice Tan " })).toEqual({
+      ...token,
+      name: "Alice Tan",
+    });
+  });
+
+  it("ignores anything that is not a valid name, and never takes other claims", () => {
+    expect(applyUpdateToToken(token, { name: "  " })).toBe(token);
+    expect(applyUpdateToToken(token, { name: 7 })).toBe(token);
+    expect(applyUpdateToToken(token, { name: "\u200b" })).toBe(token);
+    expect(applyUpdateToToken(token, { name: "\u202eAlice" })).toBe(token);
+    expect(applyUpdateToToken(token, undefined)).toBe(token);
+    expect(applyUpdateToToken(token, null)).toBe(token);
+    expect(applyUpdateToToken(token, { role: "admin" })).toBe(token);
+    expect(applyUpdateToToken(token, { name: "A", role: "admin" }).role).toBe("member");
   });
 });

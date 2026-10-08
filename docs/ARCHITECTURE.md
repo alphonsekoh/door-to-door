@@ -111,6 +111,13 @@ Google SSO (#14) is not built.
   by `overlay-layers.test.ts`.
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
+- Account screen (`/account`): reads the name from `GET /users/me`, renames through
+  `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
+  display name. The token name is display-only; handlers read the database.
+- Sign-out (`src/lib/sign-out.ts`): clears the block cache, warns on unsynced items,
+  `signOut({ redirect: false })`, then a full navigation to `/sign-in`.
+- The proxy sets `Cache-Control: no-store` on signed-in page responses (not API), so Back
+  after sign-out revalidates instead of restoring the page from bfcache.
 
 ## PWA and service worker
 
@@ -125,7 +132,7 @@ Google SSO (#14) is not built.
   items exist; a page is controlled from its second load.
 - `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
   banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
-- Sign-in clears the cached block list; sign-out wiring waits for #15.
+- Sign-in and sign-out clear the cached block list (sign-out: D-74-9).
 
 ## Offline
 

@@ -3,7 +3,8 @@ import type { Database } from "@/db/client";
 import type { Role } from "@/db/schema";
 import { users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
-import { ConflictError, NotFoundError } from "@/server/http/errors";
+import { checkOwnName } from "@/lib/own-name";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
 import { hashPassword } from "@/server/password";
 
 /*
@@ -173,4 +174,22 @@ export async function updateUser(
 
   await db.update(users).set(values).where(eq(users.id, id));
   return getUser(db, id);
+}
+
+/*
+ * Acts on the caller only - the id is the session's, never a parameter - so
+ * there is no way to name somebody else here. A name is a label: visits point
+ * at the user by id, so renaming rewrites no record and no author.
+ */
+export async function updateOwnName(db: Database, userId: string, raw: string): Promise<UserRow> {
+  const checked = checkOwnName(raw);
+  if (!checked.ok) {
+    throw new ValidationError(checked.message);
+  }
+  await getUser(db, userId, "Your account no longer exists.");
+  await db
+    .update(users)
+    .set({ name: checked.name, updatedAt: new Date() })
+    .where(eq(users.id, userId));
+  return getUser(db, userId);
 }

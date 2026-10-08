@@ -1,4 +1,5 @@
 import type { Role } from "@/db/schema";
+import { checkOwnName } from "@/lib/own-name";
 
 /*
  * Session callbacks, kept as plain functions so the role logic is testable
@@ -39,6 +40,18 @@ export function applyUserToToken(token: TokenClaims, user?: AuthenticatedUser): 
     role: user.role ?? DEFAULT_ROLE,
     deactivated: user.deactivatedAt != null,
   };
+}
+
+/*
+ * `useSession().update({ name })` after a rename. Only the display name is
+ * taken, and only if it is one the server would accept: the token's name is a
+ * label for the UI and never read for authorization, so the worst a forged
+ * update does is change what its own sender sees.
+ */
+export function applyUpdateToToken(token: TokenClaims, data: unknown): TokenClaims {
+  const name = typeof data === "object" && data !== null && "name" in data ? data.name : undefined;
+  const checked = typeof name === "string" ? checkOwnName(name) : undefined;
+  return checked?.ok ? { ...token, name: checked.name } : token;
 }
 
 /*

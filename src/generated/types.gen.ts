@@ -478,6 +478,25 @@ export type UpdateUserRequest = {
     deactivated?: boolean;
 };
 
+export type UpdateOwnProfileRequest = {
+    /**
+     * One rule: the name is trimmed, then counted in code points (an
+     * emoji is one), and must be 1 to 80 of them. Refused with
+     * `400 validation_failed` when blank, over 80, without a
+     * single letter, number or emoji, or containing control, zero-width
+     * (including the joiner) or bidirectional-override characters.
+     *
+     * `maxLength` here is only a generous bound on the raw string, so
+     * surrounding whitespace never decides the outcome; the service
+     * enforces the 80 on the trimmed name.
+     *
+     * Unknown fields are ignored, not rejected: a `role` sent alongside
+     * changes nothing.
+     *
+     */
+    name: string;
+};
+
 export type SessionList = {
     data: Array<OutingSession>;
     pagination: PaginationMeta;
@@ -1841,6 +1860,44 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type UpdateOwnProfileData = {
+    body: UpdateOwnProfileRequest;
+    path?: never;
+    query?: never;
+    url: '/users/me';
+};
+
+export type UpdateOwnProfileErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session.
+     */
+    401: Error;
+    /**
+     * The account was deactivated after this session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * The token names a user that no longer exists.
+     */
+    404: Error;
+};
+
+export type UpdateOwnProfileError = UpdateOwnProfileErrors[keyof UpdateOwnProfileErrors];
+
+export type UpdateOwnProfileResponses = {
+    /**
+     * The caller, with the new name.
+     */
+    200: User;
+};
+
+export type UpdateOwnProfileResponse = UpdateOwnProfileResponses[keyof UpdateOwnProfileResponses];
 
 export type UpdateUserData = {
     body: UpdateUserRequest;

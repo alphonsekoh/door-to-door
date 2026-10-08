@@ -30,6 +30,7 @@ vi.mock("@/lib/api-client", async () => {
     apiFetch: vi.fn().mockRejectedValue(new actual.ApiRequestError(404, undefined)),
   };
 });
+vi.mock("next-auth/react", () => ({ useSession: () => ({ update: vi.fn() }), signOut: vi.fn() }));
 vi.mock("@/lib/use-role", () => ({
   useRole: () => ({
     userId: "u1",
@@ -42,13 +43,28 @@ vi.mock("@/lib/use-role", () => ({
 }));
 
 describe("placeholder screens", () => {
-  it.each([
-    ["follow-ups", FollowUpsPage, "Follow-ups", 35],
-    ["account", AccountPage, "Account", 15],
-  ])("%s renders its heading and names its issue", (_name, Page, heading, issue) => {
-    render(<Page />);
-    expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
-    expect(screen.getByText(`Arrives in issue #${String(issue)}`)).toBeInTheDocument();
+  it.each([["follow-ups", FollowUpsPage, "Follow-ups", 35]])(
+    "%s renders its heading and names its issue",
+    (_name, Page, heading, issue) => {
+      render(<Page />);
+      expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
+      expect(screen.getByText(`Arrives in issue #${String(issue)}`)).toBeInTheDocument();
+    },
+  );
+});
+
+describe("account screen", () => {
+  it("renders its heading and the name form once loaded", async () => {
+    const { apiFetch } = await import("@/lib/api-client");
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      id: "u1",
+      email: "a@b.c",
+      name: "Alice",
+      role: "member",
+    });
+    render(<AccountPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
+    expect(await screen.findByLabelText("Your name")).toHaveValue("Alice");
   });
 });
 

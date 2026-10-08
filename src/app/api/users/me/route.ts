@@ -1,10 +1,14 @@
 import { auth } from "@/../auth";
 import { getDatabase } from "@/db/client";
-import { zGetCurrentUserResponse } from "@/generated/zod.gen";
+import {
+  zGetCurrentUserResponse,
+  zUpdateOwnProfileBody,
+  zUpdateOwnProfileResponse,
+} from "@/generated/zod.gen";
 import { requireUser } from "@/server/auth/guards";
 import { withContract } from "@/server/http/contract";
 import { toUser } from "@/server/users/serialise";
-import { getUser } from "@/server/users/service";
+import { getUser, updateOwnName } from "@/server/users/service";
 
 /*
  * The first contract-backed handler, and the shape every later one follows:
@@ -20,6 +24,19 @@ export const GET = withContract(
     const current = requireUser(await auth());
     // The token names a user that no longer exists.
     const user = await getUser(getDatabase(), current.id, "Your account no longer exists.");
+    return { status: 200, body: toUser(user) };
+  },
+);
+
+export const PATCH = withContract(
+  {
+    operationId: "updateOwnProfile",
+    body: zUpdateOwnProfileBody,
+    responses: { 200: zUpdateOwnProfileResponse },
+  },
+  async ({ body }) => {
+    const current = requireUser(await auth());
+    const user = await updateOwnName(getDatabase(), current.id, body.name);
     return { status: 200, body: toUser(user) };
   },
 );

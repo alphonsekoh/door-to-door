@@ -220,3 +220,28 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** `next build` copies a local `.env` into `.next/standalone`.
 - **Source:** Observed in #75
 - **Used by:** D-75-16
+
+### R-29 · Unicode categories for non-printing characters
+
+- **Finding:** `\p{Cf}` (format) covers zero-width space/joiner/non-joiner and the bidi
+  overrides and isolates; `\p{Cc}` covers controls. A ZWJ emoji sequence contains
+  U+200D, which is `Cf`, so it is refused with them. (Unverified against the Unicode
+  tables; behaviour is covered by `own-name.test.ts`.)
+- **Source:** Unicode general categories, as implemented by JS `\p{...}` with the `u` flag
+- **Used by:** D-74-4
+
+### R-30 · Auth.js absolutises the sign-out redirect from the request host
+
+- **Finding:** `signOut()` with a redirect returns a URL built server-side from the
+  request host; behind the standalone server with `HOSTNAME=127.0.0.1` this changed the
+  origin to `localhost`. Observed in #74 (unverified in Auth.js source).
+- **Source:** Observed in #74 e2e
+- **Used by:** D-74-10
+
+### R-31 · bfcache and `Cache-Control: no-store`
+
+- **Finding:** Chromium does not put a `Cache-Control: no-store` page in bfcache, and the
+  HTTP cache will not reuse it, so Back refetches. Other engines may differ. (Unverified
+  beyond the Chromium behaviour observed in #74.)
+- **Source:** Browser behaviour (web.dev bfcache guidance); observed in #74
+- **Used by:** D-74-11

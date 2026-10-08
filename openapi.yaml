@@ -647,6 +647,28 @@ components:
             Deactivating preserves the user's records. An admin cannot
             deactivate or demote their own account.
 
+    UpdateOwnProfileRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 400
+          description: |
+            One rule: the name is trimmed, then counted in code points (an
+            emoji is one), and must be 1 to 80 of them. Refused with
+            `400 validation_failed` when blank, over 80, without a
+            single letter, number or emoji, or containing control, zero-width
+            (including the joiner) or bidirectional-override characters.
+
+            `maxLength` here is only a generous bound on the raw string, so
+            surrounding whitespace never decides the outcome; the service
+            enforces the 80 on the trimmed name.
+
+            Unknown fields are ignored, not rejected: a `role` sent alongside
+            changes nothing.
+
     # -------------------------------------------------------------- listings
 
     SessionList:
@@ -1728,6 +1750,42 @@ paths:
             The account was deactivated after this session was issued. The JWT
             is still valid, so this is checked per request rather than at
             sign-in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+    patch:
+      tags: [Users]
+      operationId: updateOwnProfile
+      summary: Change your own display name
+      description: |
+        Available to all roles. Always acts on the caller: there is no id
+        parameter, so one member cannot rename another through this operation.
+        Changing someone else's account stays admin-only on `PATCH /users/{id}`.
+
+        A name is a label; authorship is by id. Past records therefore show the
+        new name, and no visit or record changes author (D-29-2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOwnProfileRequest" }
+      responses:
+        "200":
+          description: The caller, with the new name.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: |
+            The account was deactivated after this session was issued.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: The token names a user that no longer exists.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

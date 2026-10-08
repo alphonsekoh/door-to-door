@@ -32,9 +32,9 @@ Make the app installable and the shell load with no network.
   (a stub returning false until #33). _Why:_ acceptance criterion "a new deploy does
   not discard unsynced data". Consequence: a page is controlled from its second load.
 - **D-32-7 · The block cache is cleared on sign-in** via `clearServiceWorkerCaches`.
-  Sign-out wiring is deferred until a sign-out UI exists (#15). _Why:_ a different
-  member signing in must not see the previous list. **Known limit:** until then
-  sign-out leaves the cached list.
+  _Why:_ a different member signing in must not see the previous list. Sign-out wiring
+  is done in #74: see D-74-9 and D-74-10. ~~**Known limit:** until then sign-out
+  leaves the cached list.~~
 - **D-32-8 · Manifest, `/serwist/*` and `/offline` are public to the proxy.** D-16-2
   intact: no handler guard changed. _Why:_ the browser fetches them unauthenticated.
 - **D-32-9 · Install banner state is derived, not stored.** A UA classifier by
@@ -73,6 +73,5 @@ D-30-7, D-37-6 (the PWA spec stays thin).
 
 ## Open questions
 
-- Sign-out cache clearing needs wiring when the sign-out UI lands (#15).
 - Real-device checks outstanding: Samsung Internet install event, third-party iOS
   browsers, iPad desktop-mode UAs (R-16, R-20, R-21).

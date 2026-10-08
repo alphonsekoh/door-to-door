@@ -1,5 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
-import { applyTokenToSession, applyUserToToken } from "@/server/auth/callbacks";
+import { applyTokenToSession, applyUpdateToToken, applyUserToToken } from "@/server/auth/callbacks";
 
 export type BaseAuthSettings = {
   authSecret: string;
@@ -33,8 +33,10 @@ export function buildBaseAuthConfig({ authSecret, auth }: BaseAuthSettings) {
       error: "/sign-in",
     },
     callbacks: {
-      jwt({ token, user }) {
-        return applyUserToToken(token, user);
+      jwt({ token, user, trigger, session }) {
+        return trigger === "update"
+          ? applyUpdateToToken(token, session)
+          : applyUserToToken(token, user);
       },
       session({ session, token }) {
         return applyTokenToSession(session, token);
