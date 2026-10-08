@@ -649,7 +649,6 @@ components:
 
     UpdateOwnProfileRequest:
       type: object
-      additionalProperties: false
       required: [name]
       properties:
         name:
