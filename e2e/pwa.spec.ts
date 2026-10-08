@@ -176,15 +176,11 @@ test.describe("signing in and out with the worker active", () => {
     await page.getByRole("button", { name: /sign in/i }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
 
-    await page.evaluate(async () => {
-      const { csrfToken } = (await (await fetch("/api/auth/csrf")).json()) as { csrfToken: string };
-      await fetch("/api/auth/signout", {
-        redirect: "manual",
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ csrfToken }),
-      });
-    });
+    // The real button, and state rather than timing: the redirect to /sign-in
+    // only comes after the session cookie is gone.
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/sign-in/);
     await page.goto("/history");
     await expect(page).toHaveURL(/sign-in/);
 

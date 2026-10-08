@@ -1,7 +1,7 @@
 import { API_CACHE_NAME, SW_MESSAGES } from "@/lib/sw-cache-rules";
 
 /*
- * Forgets cached API answers. Called on sign-in (and belongs on sign-out too)
+ * Forgets cached API answers. Called on sign-in and on sign-out
  * so a second member on a shared phone never reads the first one's data. The
  * page deletes the cache itself as well as asking the worker, because a worker
  * that is asleep or not yet controlling the page would miss the message.

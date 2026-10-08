@@ -478,6 +478,15 @@ export type UpdateUserRequest = {
     deactivated?: boolean;
 };
 
+export type UpdateOwnProfileRequest = {
+    /**
+     * Stored trimmed. A blank or whitespace-only name is refused with
+     * `400 validation_failed`, as is one over 80 characters as sent.
+     *
+     */
+    name: string;
+};
+
 export type SessionList = {
     data: Array<OutingSession>;
     pagination: PaginationMeta;
@@ -1841,6 +1850,44 @@ export type GetCurrentUserResponses = {
 };
 
 export type GetCurrentUserResponse = GetCurrentUserResponses[keyof GetCurrentUserResponses];
+
+export type UpdateOwnProfileData = {
+    body: UpdateOwnProfileRequest;
+    path?: never;
+    query?: never;
+    url: '/users/me';
+};
+
+export type UpdateOwnProfileErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session.
+     */
+    401: Error;
+    /**
+     * The account was deactivated after this session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * The token names a user that no longer exists.
+     */
+    404: Error;
+};
+
+export type UpdateOwnProfileError = UpdateOwnProfileErrors[keyof UpdateOwnProfileErrors];
+
+export type UpdateOwnProfileResponses = {
+    /**
+     * The caller, with the new name.
+     */
+    200: User;
+};
+
+export type UpdateOwnProfileResponse = UpdateOwnProfileResponses[keyof UpdateOwnProfileResponses];
 
 export type UpdateUserData = {
     body: UpdateUserRequest;

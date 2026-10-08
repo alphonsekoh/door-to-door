@@ -294,6 +294,10 @@ export const zUpdateUserRequest = z.object({
     deactivated: z.boolean().optional()
 });
 
+export const zUpdateOwnProfileRequest = z.object({
+    name: z.string().min(1).max(80)
+});
+
 export const zSessionList = z.object({
     data: z.array(zOutingSession),
     pagination: zPaginationMeta
@@ -698,6 +702,13 @@ export const zCreateUserResponse = zUser;
  * The current user.
  */
 export const zGetCurrentUserResponse = zUser;
+
+export const zUpdateOwnProfileBody = zUpdateOwnProfileRequest;
+
+/**
+ * The caller, with the new name.
+ */
+export const zUpdateOwnProfileResponse = zUser;
 
 export const zUpdateUserBody = zUpdateUserRequest;
 
