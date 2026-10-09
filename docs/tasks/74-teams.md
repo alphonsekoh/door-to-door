@@ -207,6 +207,5 @@ D-31-6 uses "team screen" for the admin member list; that is not a team in this 
 
 ## Open questions
 
-- `openapi.yaml` declares `additionalProperties: false` on `UpdateOwnProfileRequest`
-  while the description (and generated Zod, which is not strict) ignore unknown fields.
-  The spec flag should be dropped or the prose changed; the code's behaviour is D-74-5.
+None open. (The `additionalProperties: false` flag on `UpdateOwnProfileRequest` was dropped in
+  PR #81; the spec now says unknown fields are ignored, as D-74-5 records.)
