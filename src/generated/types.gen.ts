@@ -266,7 +266,8 @@ export type TeamSummary = {
 
 /**
  * A pair or small group working one outing, with its **current**
- * members. A user is on at most one team per outing.
+ * members; a deactivated person is not listed. A user is on at most one
+ * team per outing.
  *
  */
 export type Team = {
@@ -278,7 +279,8 @@ export type Team = {
 };
 
 /**
- * Someone who has started on an outing.
+ * Someone who has started on an outing. Deactivated people are not listed.
+ *
  */
 export type Participant = {
     user: UserSummary;
@@ -1133,7 +1135,10 @@ export type ListParticipantsData = {
 
 export type ListParticipantsErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1171,7 +1176,10 @@ export type JoinSessionData = {
 
 export type JoinSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1215,7 +1223,10 @@ export type ListTeamsData = {
 
 export type ListTeamsErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1257,7 +1268,10 @@ export type CreateTeamErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1303,7 +1317,10 @@ export type DeleteTeamData = {
 
 export type DeleteTeamErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1351,7 +1368,10 @@ export type UpdateTeamErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1397,7 +1417,10 @@ export type AddTeamMemberErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1443,7 +1466,10 @@ export type RemoveTeamMemberData = {
 
 export type RemoveTeamMemberErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**

@@ -32,6 +32,19 @@ describe("unexpected failures", () => {
     expect(results[0]?.status).toBe("rejected");
   });
 
+  it("reports it as retryable, never as a conflict the queue would hold", async () => {
+    const stub = {
+      select: () => ({
+        from: () => ({
+          where: () => ({ limit: () => Promise.reject(new Error("deadlock detected")) }),
+        }),
+      }),
+    } as unknown as Database;
+
+    const [result] = await syncVisits(stub, [item], "u1", clock);
+    expect(result?.error?.code).toBe("internal_error");
+  });
+
   it("does not leak the internal message to the client", async () => {
     const stub = {
       select: () => ({
@@ -45,6 +58,6 @@ describe("unexpected failures", () => {
 
     const [result] = await syncVisits(stub, [item], "u1", clock);
     expect(result?.error?.message).not.toMatch(/hunter2/);
-    expect(result?.error?.message).toBe("Could not save.");
+    expect(result?.error?.message).toBe("Could not save this record right now. Try again.");
   });
 });

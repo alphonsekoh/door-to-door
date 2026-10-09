@@ -41,6 +41,12 @@ const sessionBlocks = await import("./sessions/[id]/blocks/route");
 const sessionBlock = await import("./sessions/[id]/blocks/[blockId]/route");
 const activeSession = await import("./sessions/active/route");
 const userRoute = await import("./users/[id]/route");
+const participantsRoute = await import("./sessions/[id]/participants/route");
+const joinRoute = await import("./sessions/[id]/join/route");
+const sessionTeamsRoute = await import("./sessions/[id]/teams/route");
+const teamRoute = await import("./teams/[id]/route");
+const teamMembersRoute = await import("./teams/[id]/members/route");
+const teamMemberRoute = await import("./teams/[id]/members/[userId]/route");
 const { requireAdminPage } = await import("@/server/auth/pages");
 
 const pool = createTestPool();
@@ -171,6 +177,54 @@ const extraAdminCalls: [string, Call][] = [
       usersRoute.POST(
         json("POST", "/users", { email: "new@t.local", password: "correct-horse-1" }),
       ),
+  ],
+];
+
+const TEAM = "f1f1f1f1-0000-4000-8004-000000000001";
+const DRAFT = "f1f1f1f1-0000-4000-8002-000000000002";
+const THIRD = "f1f1f1f1-0000-4000-8000-000000000003";
+
+/* Valid input throughout, so validation (which runs first) cannot mask the guard. */
+const teamCalls: [string, Call][] = [
+  [
+    "GET /sessions/{id}/participants",
+    () => participantsRoute.GET(json("GET", `/sessions/${SESSION}/participants`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/join",
+    () => joinRoute.POST(json("POST", `/sessions/${SESSION}/join`), withId(SESSION)),
+  ],
+  [
+    "GET /sessions/{id}/teams",
+    () => sessionTeamsRoute.GET(json("GET", `/sessions/${SESSION}/teams`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/teams",
+    () =>
+      sessionTeamsRoute.POST(
+        json("POST", `/sessions/${SESSION}/teams`, { name: "New" }),
+        withId(SESSION),
+      ),
+  ],
+  [
+    "PATCH /teams/{id}",
+    () => teamRoute.PATCH(json("PATCH", `/teams/${TEAM}`, { name: "Renamed" }), withId(TEAM)),
+  ],
+  ["DELETE /teams/{id}", () => teamRoute.DELETE(json("DELETE", `/teams/${TEAM}`), withId(TEAM))],
+  [
+    "POST /teams/{id}/members",
+    () =>
+      teamMembersRoute.POST(
+        json("POST", `/teams/${TEAM}/members`, { userId: THIRD }),
+        withId(TEAM),
+      ),
+  ],
+  [
+    "DELETE /teams/{id}/members/{userId}",
+    () =>
+      teamMemberRoute.DELETE(json("DELETE", `/teams/${TEAM}/members/${OTHER}`), {
+        params: Promise.resolve({ id: TEAM, userId: OTHER }),
+      }),
   ],
 ];
 
@@ -387,5 +441,90 @@ describe("cost of resolving the caller", () => {
 
   it("is two on GET /users/me, which also loads the profile", async () => {
     expect(await usersQueries(() => me.GET(json("GET", "/users/me")))).toBe(2);
+  });
+});
+
+describe("teams and participants, holding the same token", () => {
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES
+        ($1,'o@t.local','Other','member'), ($2,'t@t.local','Third','member')`,
+      [OTHER, THIRD],
+    );
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Soon','draft',$2)`,
+      [DRAFT, USER],
+    );
+    await pool.query(
+      `INSERT INTO session_teams (id, session_id, name, created_by) VALUES ($1,$2,'Pair',$3)`,
+      [TEAM, SESSION, USER],
+    );
+    await pool.query(
+      `INSERT INTO session_team_members (team_id, session_id, user_id) VALUES ($1,$2,$3)`,
+      [TEAM, SESSION, OTHER],
+    );
+  });
+
+  it.each(teamCalls)("%s works, then 403s once deactivated", async (_n, call) => {
+    const first = await call();
+    expect(first.status, await first.clone().text()).toBeLessThan(300);
+
+    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+    const response = await call();
+    expect(response.status).toBe(403);
+    expect(await errorCode(response)).toBe("account_deactivated");
+  });
+
+  it("works again once reactivated, without signing in again", async () => {
+    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+    expect((await teamCalls[0]?.[1]())?.status).toBe(403);
+    await pool.query("update users set deactivated_at = null where id = $1", [USER]);
+    expect((await teamCalls[0]?.[1]())?.status).toBe(200);
+  });
+
+  it.each(teamCalls)("%s is 401 once the account is deleted", async (_n, call) => {
+    await pool.query("delete from session_team_members");
+    await pool.query("delete from session_teams");
+    await deleteUser();
+    const response = await call();
+    expect(response.status).toBe(401);
+    expect(await errorCode(response)).toBe("unauthenticated");
+  });
+
+  it("stops a demoted admin reading a draft outing, and joining or forming on it", async () => {
+    const read = () =>
+      participantsRoute.GET(json("GET", `/sessions/${DRAFT}/participants`), withId(DRAFT));
+    const joinDraft = () => joinRoute.POST(json("POST", `/sessions/${DRAFT}/join`), withId(DRAFT));
+    const formOnDraft = () =>
+      sessionTeamsRoute.POST(
+        json("POST", `/sessions/${DRAFT}/teams`, { name: "Plan" }),
+        withId(DRAFT),
+      );
+
+    expect((await read()).status).toBe(200);
+    await pool.query("update users set role = 'member' where id = $1", [USER]);
+
+    expect((await read()).status).toBe(403);
+    for (const attempt of [joinDraft, formOnDraft]) {
+      const response = await attempt();
+      expect(response.status).toBe(409);
+      expect(await errorCode(response)).toBe("session_not_active");
+    }
+    const { rows } = await pool.query<{ n: string }>(
+      "select (select count(*) from session_participants where session_id = $1) as n",
+      [DRAFT],
+    );
+    expect(rows[0]?.n).toBe("0");
+  });
+
+  it("makes a demoted admin who is not on a team a stranger to it", async () => {
+    await pool.query("update users set role = 'member' where id = $1", [USER]);
+    const response = await teamRoute.PATCH(
+      json("PATCH", `/teams/${TEAM}`, { name: "Hijack" }),
+      withId(TEAM),
+    );
+    expect(response.status).toBe(403);
+    const { rows } = await pool.query<{ name: string }>("select name from session_teams");
+    expect(rows[0]?.name).toBe("Pair");
   });
 });

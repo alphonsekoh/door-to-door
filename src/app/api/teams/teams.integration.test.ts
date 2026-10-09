@@ -201,6 +201,23 @@ describe("reading participants and teams", () => {
     expect(body.data.map(memberIds)).toEqual([[ALICE, BEN].sort()]);
   });
 
+  it("leaves a deactivated person out of participants and of a team's live members", async () => {
+    const team = await makeTeam(ACTIVE, "Pair", [ALICE, GONE]);
+    as(ALICE);
+    const people = (await (await call(listParticipants, "GET", { id: ACTIVE })).json()) as {
+      data: { user: { id: string } }[];
+    };
+    expect(people.data.map((p) => p.user.id)).toEqual([ALICE]);
+
+    const teams = (await (await call(listTeams, "GET", { id: ACTIVE })).json()) as {
+      data: TeamBody[];
+    };
+    expect(teams.data.map(memberIds)).toEqual([[ALICE]]);
+
+    const renamed = await call(updateTeam, "PATCH", { id: team }, { name: "Renamed" });
+    expect(memberIds((await renamed.json()) as TeamBody)).toEqual([ALICE]);
+  });
+
   it("lists no teams as an empty array", async () => {
     as(ALICE);
     expect(await (await call(listTeams, "GET", { id: ACTIVE })).json()).toEqual({ data: [] });
@@ -377,7 +394,7 @@ describe("forming a team", () => {
     },
   );
 
-  it("leaves one team and no stray rows when two requests race for the same person", async () => {
+  it("ends with one team and no stray rows when two requests race (the loser is refused by the pre-check or the index, depending on interleaving)", async () => {
     as(ALICE);
     const results = await Promise.all([
       call(createTeam, "POST", { id: ACTIVE }, { name: "One" }),

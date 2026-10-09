@@ -1,13 +1,12 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { InterestLevel } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
-import { and } from "drizzle-orm";
 import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
-import { firstOrThrow, presentOrThrow } from "@/server/db-utils";
-import { autoJoin, canAmend, stampVisit, teamIdFor } from "@/server/teams/access";
-import { ApiError, ConflictError, NotFoundError } from "@/server/http/errors";
+import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
+import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
+import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
 
@@ -193,56 +192,129 @@ async function applyItem(
     throw new ConflictError("conflict", "That block is not part of the session.");
   }
 
-  await db.transaction(async (tx) => {
-    const household = await upsertHousehold(tx, {
-      blockId: item.blockId,
-      unitNumber: item.unitNumber,
-      name: item.name,
-      contact: item.contact,
-      religion: item.religion,
-    });
-    const teamId = await teamIdFor(tx, memberId, sessionId);
-
+  const write = {
+    item,
+    memberId,
+    sessionId,
+    createdAt: incomingCreatedAt,
+    updatedAt: incomingUpdatedAt,
+  };
+  let status: "applied" | "unchanged" | "stale";
+  try {
+    status = await persist(db, write);
+  } catch (error) {
+    if (!isConstraintViolation(error, VISIT_TEAM_FK)) throw error;
     /*
-     * Upsert on the client-generated id. Two devices flushing the same queued
-     * record concurrently both land here, and the row is written once.
-     *
-     * The conflict branch rewrites only what an amend may change. Author,
-     * session, team, household and clientCreatedAt are set once at insert
-     * (D-29-2, D-74-16): a teammate's flush must not take the record over.
+     * The team this record was about to be stamped with was disbanded between
+     * reading it and inserting. A second attempt re-reads the author's team,
+     * which is now none or another one, instead of holding a good record.
      */
-    const written = await tx
-      .insert(visits)
-      .values({
-        id: item.id,
-        householdId: household.id,
-        sessionId,
-        memberId,
-        teamId,
-        interestLevel: item.interestLevel,
-        description: item.description ?? "",
-        clientCreatedAt: incomingCreatedAt,
-        updatedAt: incomingUpdatedAt,
-      })
-      .onConflictDoUpdate({
-        target: visits.id,
-        set: {
+    status = await persist(db, write);
+  }
+
+  return { id: item.id, status, visit: await getVisit(db, item.id), error: null };
+}
+
+type Write = {
+  item: SyncItem;
+  memberId: string;
+  sessionId: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+/* Thrown inside the transaction to roll its writes back without failing the item. */
+class NotApplied extends Error {
+  constructor(readonly status: "unchanged" | "stale") {
+    super(status);
+  }
+}
+
+/*
+ * Writes one item atomically. The checks in applyItem ran on a read that other
+ * requests may have outdated, so the decisive ones are repeated here in SQL:
+ *
+ * - INSERT ... ON CONFLICT DO NOTHING says whether this call created the row,
+ *   which is what decides who writes the teammate snapshot when two flushes
+ *   race. Only one inserts.
+ * - Otherwise the row is locked (SELECT ... FOR UPDATE) and re-judged: the
+ *   amend applies only if the stored row is still older and the caller is
+ *   still its author or a current teammate. A concurrent writer finishes
+ *   first, and this sees what it committed.
+ *
+ * Author, session, team, household and clientCreatedAt are set at insert and
+ * never in the UPDATE (D-29-2, D-74-16).
+ */
+async function persist(
+  db: Database,
+  { item, memberId, sessionId, createdAt, updatedAt }: Write,
+): Promise<"applied" | "unchanged" | "stale"> {
+  try {
+    await db.transaction(async (tx) => {
+      const household = await upsertHousehold(tx, {
+        blockId: item.blockId,
+        unitNumber: item.unitNumber,
+        name: item.name,
+        contact: item.contact,
+        religion: item.religion,
+      });
+      const teamId = await teamIdFor(tx, memberId, sessionId);
+      const description = item.description ?? "";
+
+      const inserted = await tx
+        .insert(visits)
+        .values({
+          id: item.id,
+          householdId: household.id,
+          sessionId,
+          memberId,
+          teamId,
           interestLevel: item.interestLevel,
-          description: item.description ?? "",
-          updatedAt: incomingUpdatedAt,
-        },
-      })
-      // xmax is zero only on a row this statement inserted, which is what
-      // decides who writes the teammate snapshot when two flushes race.
-      .returning({ inserted: sql<boolean>`(xmax = 0)` });
+          description,
+          clientCreatedAt: createdAt,
+          updatedAt,
+        })
+        .onConflictDoNothing()
+        .returning({ id: visits.id });
 
-    if (firstOrThrow(written, "the visit upsert").inserted) {
-      await stampVisit(tx, item.id, teamId, memberId);
-      await autoJoin(tx, sessionId, memberId);
-    }
-  });
+      if (inserted.length > 0) {
+        await stampVisit(tx, item.id, teamId, memberId);
+        await autoJoin(tx, sessionId, memberId);
+        return;
+      }
 
-  return { id: item.id, status: "applied", visit: await getVisit(db, item.id), error: null };
+      /*
+       * Lock the row, then judge it. Each statement gets a fresh snapshot, so
+       * after waiting for a concurrent writer this sees what it committed -
+       * a newer updatedAt, or a teammate removed - rather than what the
+       * caller read earlier.
+       */
+      const locked = firstOrThrow(
+        await tx
+          .select({ updatedAt: visits.updatedAt, memberId: visits.memberId, teamId: visits.teamId })
+          .from(visits)
+          .where(eq(visits.id, item.id))
+          .for("update")
+          .limit(1),
+        "the stored visit",
+      );
+      if (!(await canAmend(tx, { id: memberId, role: "member" }, locked))) {
+        throw new ConflictError("conflict", "That visit belongs to another member.");
+      }
+      if (updatedAt <= locked.updatedAt) {
+        throw new NotApplied(updatedAt < locked.updatedAt ? "stale" : "unchanged");
+      }
+
+      await tx
+        .update(visits)
+        .set({ interestLevel: item.interestLevel, description, updatedAt })
+        .where(eq(visits.id, item.id));
+    });
+  } catch (error) {
+    if (error instanceof NotApplied) return error.status;
+    throw error;
+  }
+  return "applied";
 }
 
 /*
@@ -264,7 +336,16 @@ export async function syncVisits(
         id: item.id,
         status: "rejected",
         visit: null,
-        error: error instanceof ApiError ? error : new ConflictError("conflict", "Could not save."),
+        /*
+         * Anything that is not a deliberate refusal - a dropped connection, a
+         * deadlock - is the server's failure, not the record's. It is reported
+         * as internal_error so the queue retries it, where `conflict` would
+         * hold a good record for review forever (D-74-23).
+         */
+        error:
+          error instanceof ApiError
+            ? error
+            : new InternalError("Could not save this record right now. Try again."),
       });
     }
   }

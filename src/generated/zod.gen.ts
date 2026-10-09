@@ -165,7 +165,8 @@ export const zVisit = z.object({
 
 /**
  * A pair or small group working one outing, with its **current**
- * members. A user is on at most one team per outing.
+ * members; a deactivated person is not listed. A user is on at most one
+ * team per outing.
  *
  */
 export const zTeam = z.object({
@@ -177,7 +178,8 @@ export const zTeam = z.object({
 });
 
 /**
- * Someone who has started on an outing.
+ * Someone who has started on an outing. Deactivated people are not listed.
+ *
  */
 export const zParticipant = z.object({
     user: zUserSummary,
@@ -325,7 +327,7 @@ export const zCreateUserRequest = z.object({
 
 export const zCreateTeamRequest = z.object({
     name: z.string().min(1).max(60),
-    memberIds: z.array(z.uuid()).max(10).optional()
+    memberIds: z.array(z.uuid()).optional()
 });
 
 export const zUpdateTeamRequest = z.object({

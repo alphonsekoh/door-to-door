@@ -198,13 +198,20 @@ describe("recording stamps the author's team", () => {
     expect(await teammateIds()).toEqual([BEN]);
   });
 
+  it("still names a since-deactivated teammate on an old record's snapshot", async () => {
+    await makeTeam("Pair", [ALICE, BEN]);
+    await record(ALICE);
+    await pool.query(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [BEN]);
+    expect((await getVisit(db, V1)).team?.members.map((m) => m.id)).toEqual([BEN]);
+  });
+
   it("stamps null for a sync insert by someone on no team", async () => {
     const [result] = await flush([item()], ALICE);
     expect(result?.visit?.team).toBeNull();
     expect(await count("visit_teammates")).toBe(0);
   });
 
-  it("keeps one visit and one snapshot when the same record is flushed twice at once", async () => {
+  it("keeps one visit and one snapshot when the same record is flushed twice at once, however they interleave", async () => {
     await makeTeam("Pair", [ALICE, BEN]);
     await Promise.all([flush([item()], ALICE), flush([item()], ALICE)]);
     expect(await count("visits")).toBe(1);

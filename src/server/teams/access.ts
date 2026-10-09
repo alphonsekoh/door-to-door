@@ -14,6 +14,9 @@ import { getOrThrow } from "@/server/db-utils";
  * records, a leaver loses the teammates' ones.
  */
 
+/* The foreign key that stops a team with stamped records being deleted. */
+export const VISIT_TEAM_FK = "visits_team_id_session_teams_id_fk";
+
 export type PersonRow = { id: string; name: string | null; image: string | null };
 
 export type TeamStamp = { id: string; name: string; members: PersonRow[] };

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, type SQL } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role, SessionStatus } from "@/db/schema";
 import {
@@ -16,7 +16,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/server/http/errors";
-import { isCurrentMember, type PersonRow } from "@/server/teams/access";
+import { isCurrentMember, VISIT_TEAM_FK, type PersonRow } from "@/server/teams/access";
 
 /*
  * Outings' participants and teams.
@@ -41,7 +41,6 @@ export type ParticipantRow = { user: PersonRow; teamId: string | null; joinedAt:
 /* One team per member per outing; also what makes concurrent creates safe. */
 const ONE_TEAM_PER_OUTING = "session_team_members_session_user_unique";
 const TEAM_MEMBER_PK = "session_team_members_team_id_user_id_pk";
-const TEAM_HAS_VISITS = "visits_team_id_session_teams_id_fk";
 
 type SessionInfo = { id: string; status: SessionStatus };
 
@@ -111,13 +110,13 @@ async function listParticipantRows(
         eq(sessionTeamMembers.userId, sessionParticipants.userId),
       ),
     )
+    // A deactivated person cannot be added or work, so a picker should not offer them.
     .where(
-      onlyUserId === undefined
-        ? eq(sessionParticipants.sessionId, sessionId)
-        : and(
-            eq(sessionParticipants.sessionId, sessionId),
-            eq(sessionParticipants.userId, onlyUserId),
-          ),
+      and(
+        eq(sessionParticipants.sessionId, sessionId),
+        isNull(users.deactivatedAt),
+        ...(onlyUserId === undefined ? [] : [eq(sessionParticipants.userId, onlyUserId)]),
+      ),
     )
     .orderBy(asc(sessionParticipants.joinedAt), asc(users.id));
 
@@ -155,9 +154,12 @@ async function loadTeams(db: Database, where: SQL): Promise<TeamRow[]> {
     .from(sessionTeamMembers)
     .innerJoin(users, eq(users.id, sessionTeamMembers.userId))
     .where(
-      inArray(
-        sessionTeamMembers.teamId,
-        teams.map((team) => team.id),
+      and(
+        inArray(
+          sessionTeamMembers.teamId,
+          teams.map((team) => team.id),
+        ),
+        isNull(users.deactivatedAt),
       ),
     )
     .orderBy(asc(sessionTeamMembers.joinedAt), asc(users.id));
@@ -372,7 +374,7 @@ export async function deleteTeam(db: Database, actor: Actor, teamId: string): Pr
   try {
     await db.delete(sessionTeams).where(eq(sessionTeams.id, teamId));
   } catch (error) {
-    if (isConstraintViolation(error, TEAM_HAS_VISITS)) {
+    if (isConstraintViolation(error, VISIT_TEAM_FK)) {
       throw new ConflictError(
         "conflict",
         "Records were made as this team, so it cannot be disbanded. Remove its members instead.",

@@ -1,7 +1,7 @@
 import { getDatabase } from "@/db/client";
 import { zRemoveTeamMemberPath, zRemoveTeamMemberResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toTeam } from "@/server/teams/serialise";
 import { removeTeamMember } from "@/server/teams/service";
 

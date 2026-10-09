@@ -381,7 +381,8 @@ components:
     Team:
       description: |
         A pair or small group working one outing, with its **current**
-        members. A user is on at most one team per outing.
+        members; a deactivated person is not listed. A user is on at most one
+        team per outing.
       type: object
       additionalProperties: false
       required: [id, sessionId, name, members, createdAt]
@@ -395,7 +396,8 @@ components:
         createdAt: { type: string, format: date-time }
 
     Participant:
-      description: Someone who has started on an outing.
+      description: |
+        Someone who has started on an outing. Deactivated people are not listed.
       type: object
       additionalProperties: false
       required: [user, teamId, joinedAt]
@@ -702,7 +704,6 @@ components:
         name: { type: string, minLength: 1, maxLength: 60 }
         memberIds:
           type: array
-          maxItems: 10
           uniqueItems: true
           items: { type: string, format: uuid }
           description: |
@@ -1784,7 +1785,10 @@ paths:
         An item naming a different block, unit or `sessionId` than the stored
         record is `conflict` for everyone, the author included. A teammate who was
         removed from the team before the item arrived gets `conflict` too, and a
-        queue should hold such an item for review rather than retry it. Only
+        queue should hold such an item for review rather than retry it. A
+        `rejected` item with error code `internal_error` is different: the server
+        failed to save it for a reason unrelated to the record (a dropped
+        connection, a deadlock), so it should be retried unchanged. Only
         what has already synced can be amended. New records are stamped with the
         author's team when first stored.
 

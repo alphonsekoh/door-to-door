@@ -1,7 +1,7 @@
 import { getDatabase } from "@/db/client";
 import { zListParticipantsPath, zListParticipantsResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toParticipant } from "@/server/teams/serialise";
 import { listParticipants } from "@/server/teams/service";
 
