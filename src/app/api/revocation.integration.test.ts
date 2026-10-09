@@ -26,6 +26,21 @@ const usersRoute = await import("./users/route");
 const sessionsRoute = await import("./sessions/route");
 const followUps = await import("./follow-ups/route");
 const blocksRoute = await import("./blocks/route");
+const blockRoute = await import("./blocks/[id]/route");
+const households = await import("./households/route");
+const household = await import("./households/[id]/route");
+const attention = await import("./households/attention/route");
+const visitRoute = await import("./visits/[id]/route");
+const followUp = await import("./follow-ups/[id]/route");
+const mineSessions = await import("./history/mine/sessions/route");
+const sessionRoute = await import("./sessions/[id]/route");
+const start = await import("./sessions/[id]/start/route");
+const end = await import("./sessions/[id]/end/route");
+const reopen = await import("./sessions/[id]/reopen/route");
+const sessionBlocks = await import("./sessions/[id]/blocks/route");
+const sessionBlock = await import("./sessions/[id]/blocks/[blockId]/route");
+const activeSession = await import("./sessions/active/route");
+const userRoute = await import("./users/[id]/route");
 const { requireAdminPage } = await import("@/server/auth/pages");
 
 const pool = createTestPool();
@@ -78,6 +93,86 @@ const deleteUser = async () => {
   await pool.query("delete from outing_sessions");
   await pool.query("delete from users where id = $1", [USER]);
 };
+
+const OTHER = "f1f1f1f1-0000-4000-8000-000000000002";
+const withId = <T extends { id: string }>(id: string, extra?: Omit<T, "id">) => ({
+  params: Promise.resolve({ id, ...extra }),
+});
+
+/* Minimal valid input, so validation (which runs first) cannot mask the guard. */
+const extraMemberCalls: [string, Call][] = [
+  ["GET /households", () => households.GET(json("GET", `/households?blockId=${BLOCK}`))],
+  ["GET /households/{id}", () => household.GET(json("GET", `/households/${OTHER}`), withId(OTHER))],
+  [
+    "PATCH /visits/{id}",
+    () => visitRoute.PATCH(json("PATCH", `/visits/${OTHER}`, { description: "x" }), withId(OTHER)),
+  ],
+  [
+    "PATCH /follow-ups/{id}",
+    () => followUp.PATCH(json("PATCH", `/follow-ups/${OTHER}`, { done: true }), withId(OTHER)),
+  ],
+  [
+    "DELETE /follow-ups/{id}",
+    () => followUp.DELETE(json("DELETE", `/follow-ups/${OTHER}`), withId(OTHER)),
+  ],
+  ["GET /history/mine/sessions", () => mineSessions.GET(json("GET", "/history/mine/sessions"))],
+  ["GET /sessions/active", () => activeSession.GET(json("GET", "/sessions/active"))],
+  [
+    "GET /sessions/{id}/blocks",
+    () => sessionBlocks.GET(json("GET", `/sessions/${SESSION}/blocks`), withId(SESSION)),
+  ],
+];
+const extraAdminCalls: [string, Call][] = [
+  ["POST /blocks", () => blocksRoute.POST(json("POST", "/blocks", { name: "9", street: "Elm" }))],
+  [
+    "PATCH /blocks/{id}",
+    () => blockRoute.PATCH(json("PATCH", `/blocks/${BLOCK}`, { name: "7" }), withId(BLOCK)),
+  ],
+  ["GET /households/attention", () => attention.GET(json("GET", "/households/attention"))],
+  ["GET /sessions", () => sessionsRoute.GET(json("GET", "/sessions"))],
+  [
+    "GET /sessions/{id}",
+    () => sessionRoute.GET(json("GET", `/sessions/${SESSION}`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/start",
+    () => start.POST(json("POST", `/sessions/${SESSION}/start`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/end",
+    () => end.POST(json("POST", `/sessions/${SESSION}/end`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/reopen",
+    () => reopen.POST(json("POST", `/sessions/${SESSION}/reopen`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/blocks",
+    () =>
+      sessionBlocks.POST(
+        json("POST", `/sessions/${SESSION}/blocks`, { blockIds: [BLOCK] }),
+        withId(SESSION),
+      ),
+  ],
+  [
+    "DELETE /sessions/{id}/blocks/{blockId}",
+    () =>
+      sessionBlock.DELETE(json("DELETE", `/sessions/${SESSION}/blocks/${BLOCK}`), {
+        params: Promise.resolve({ id: SESSION, blockId: BLOCK }),
+      }),
+  ],
+  [
+    "PATCH /users/{id}",
+    () => userRoute.PATCH(json("PATCH", `/users/${OTHER}`, { deactivated: true }), withId(OTHER)),
+  ],
+  [
+    "POST /users",
+    () =>
+      usersRoute.POST(
+        json("POST", "/users", { email: "new@t.local", password: "correct-horse-1" }),
+      ),
+  ],
+];
 
 const errorCode = async (response: Response) =>
   ((await response.json()) as { error: { code: string } }).error.code;
@@ -207,5 +302,90 @@ describe("when the database lookup fails", () => {
     } finally {
       broken.mockRestore();
     }
+  });
+});
+
+describe("every remaining handler, holding the same token", () => {
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES ($1,'o@t.local','Other','member')`,
+      [OTHER],
+    );
+  });
+
+  it.each([...extraMemberCalls, ...extraAdminCalls])(
+    "%s is 403 account_deactivated once deactivated",
+    async (_n, call) => {
+      await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+      const response = await call();
+      expect(response.status).toBe(403);
+      expect(await errorCode(response)).toBe("account_deactivated");
+    },
+  );
+
+  it.each([...extraMemberCalls, ...extraAdminCalls])(
+    "%s is 401 once the account is deleted",
+    async (_n, call) => {
+      await deleteUser();
+      const response = await call();
+      expect(response.status).toBe(401);
+      expect(await errorCode(response)).toBe("unauthenticated");
+    },
+  );
+
+  it.each(extraAdminCalls)("%s is 403 forbidden once demoted", async (_n, call) => {
+    await pool.query("update users set role = 'member' where id = $1", [USER]);
+    const response = await call();
+    expect(response.status).toBe(403);
+    expect(await errorCode(response)).toBe("forbidden");
+  });
+
+  it("stops a just-demoted admin changing anyone before the service runs", async () => {
+    await pool.query("update users set role = 'member' where id = $1", [USER]);
+    const response = await userRoute.PATCH(
+      json("PATCH", `/users/${OTHER}`, { deactivated: true }),
+      withId(OTHER),
+    );
+    expect(response.status).toBe(403);
+    const { rows } = await pool.query<{ deactivated_at: Date | null }>(
+      "select deactivated_at from users where id = $1",
+      [OTHER],
+    );
+    expect(rows[0]?.deactivated_at).toBeNull();
+  });
+
+  it("still refuses an admin demoting or deactivating themselves (D-31-5)", async () => {
+    for (const body of [{ role: "member" }, { deactivated: true }]) {
+      const response = await userRoute.PATCH(json("PATCH", `/users/${USER}`, body), withId(USER));
+      expect(response.status).toBe(409);
+    }
+    const { rows } = await pool.query<{ role: string }>("select role from users where id = $1", [
+      USER,
+    ]);
+    expect(rows[0]?.role).toBe("admin");
+  });
+});
+
+describe("cost of resolving the caller", () => {
+  async function usersQueries(call: Call): Promise<number> {
+    const { getPool } = await import("@/db/client");
+    const spy = vi.spyOn(getPool(), "query");
+    try {
+      await call();
+      return spy.mock.calls.filter(([q]) => {
+        const text = typeof q === "string" ? q : (q as { text?: string }).text;
+        return text?.includes('from "users"') === true;
+      }).length;
+    } finally {
+      spy.mockRestore();
+    }
+  }
+
+  it("is one primary-key lookup for a handler that does not load the user", async () => {
+    expect(await usersQueries(() => blocksRoute.GET(json("GET", "/blocks")))).toBe(1);
+  });
+
+  it("is two on GET /users/me, which also loads the profile", async () => {
+    expect(await usersQueries(() => me.GET(json("GET", "/users/me")))).toBe(2);
   });
 });

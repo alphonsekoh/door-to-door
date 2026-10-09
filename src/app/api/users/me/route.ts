@@ -22,8 +22,7 @@ export const GET = withContract(
   },
   async () => {
     const current = requireUser(await currentSession());
-    // The token names a user that no longer exists.
-    const user = await getUser(getDatabase(), current.id, "Your account no longer exists.");
+    const user = await getUser(getDatabase(), current.id);
     return { status: 200, body: toUser(user) };
   },
 );

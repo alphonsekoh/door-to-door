@@ -8,8 +8,9 @@ import {
 /*
  * Authorization for route handlers.
  *
- * These are the real guard. The proxy only performs an optimistic redirect, so
- * every handler re-checks here, against the user's current database row - a request that never passes through the proxy
+ * These are the real guard. The proxy only performs an optimistic redirect,
+ * so every handler re-checks here, against the user's current database row
+ * (see session.ts) - a request that never passes through the proxy
  * (a direct API call, a stale client) must still be rejected.
  */
 
@@ -60,7 +61,13 @@ export function requireAdmin(session: SessionLike): SessionUser {
 }
 
 export function isAdmin(session: SessionLike): boolean {
-  return session?.user?.role === "admin" && session.user.deactivated !== true;
+  const user = session?.user;
+  return (
+    typeof user?.id === "string" &&
+    user.id !== "" &&
+    user.role === "admin" &&
+    user.deactivated !== true
+  );
 }
 
 /*

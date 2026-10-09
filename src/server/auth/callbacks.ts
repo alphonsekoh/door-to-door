@@ -6,8 +6,9 @@ import { checkOwnName } from "@/lib/own-name";
  * without standing up Auth.js.
  *
  * Sessions are JWTs. That is forced, not chosen: the Credentials provider
- * (#15) cannot use database sessions. Everything the app needs for
- * authorization therefore has to travel on the token.
+ * (#15) cannot use database sessions. The token therefore carries identity;
+ * its role and deactivated claims are written at sign-in and are hints for the
+ * UI only. Authorization re-reads the user's row on every request (#83).
  */
 
 export type TokenClaims = {

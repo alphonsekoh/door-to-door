@@ -27,7 +27,7 @@ import {
 export async function resolveSession(db: Database, session: SessionLike): Promise<SessionLike> {
   const id = session?.user?.id;
   if (typeof id !== "string" || id === "") {
-    return session;
+    return null;
   }
 
   const rows = await db
@@ -62,6 +62,10 @@ export async function currentSession(): Promise<SessionLike> {
   // auth() first: it opts the page into dynamic rendering, so the database
   // (and config.yaml) are never touched while `next build` prerenders.
   const session = await auth();
+  // Signed out: nothing to look up, so no pool is opened for it.
+  if (session === null) {
+    return null;
+  }
   return resolveSession(getDatabase(), session);
 }
 

@@ -865,7 +865,10 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Unauthenticated:
-      description: No valid session.
+      description: |
+        No valid session. Also returned for a valid token whose account no
+        longer exists: the account is looked up on every request, so a deleted
+        user's old cookie is treated as signed out.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1785,7 +1788,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "404":
-          description: The token names a user that no longer exists.
+          description: |
+            The account was deleted between the per-request check and this
+            update. Normally a deleted account is answered with 401 before the
+            handler runs.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

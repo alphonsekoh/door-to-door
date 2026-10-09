@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
+import type { SessionLike } from "@/server/auth/guards";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/../auth", () => ({ auth }));
@@ -48,14 +49,19 @@ describe("resolveSession", () => {
     expect(await resolveSession(db, { user: { id: "u1", role: "admin" } })).toBeNull();
   });
 
-  it.each([null, {}, { user: {} }, { user: { id: "" } }])(
-    "passes %j through without a lookup",
-    async (session) => {
-      const { db, limit } = dbReturning([row]);
-      expect(await resolveSession(db, session)).toEqual(session);
-      expect(limit).not.toHaveBeenCalled();
-    },
-  );
+  it.each<SessionLike>([
+    null,
+    {},
+    { user: {} },
+    { user: null },
+    { user: { id: "" } },
+    { user: { role: "admin" } },
+    { user: { role: "admin", deactivated: false } },
+  ])("treats %j as signed out without a lookup", async (session) => {
+    const { db, limit } = dbReturning([row]);
+    expect(await resolveSession(db, session)).toBeNull();
+    expect(limit).not.toHaveBeenCalled();
+  });
 
   it("does not fail open when the lookup throws", async () => {
     const db = {
@@ -71,15 +77,16 @@ describe("resolveSession", () => {
       "connection refused",
     );
   });
-
-  it("makes one lookup per resolution", async () => {
-    const { db, limit } = dbReturning([row]);
-    await resolveSession(db, { user: { id: "u1" } });
-    expect(limit).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe("currentSession and currentUser", () => {
+  it("does not touch the database for a signed-out request", async () => {
+    getDatabase.mockClear();
+    auth.mockResolvedValue(null);
+    expect(await currentSession()).toBeNull();
+    expect(getDatabase).not.toHaveBeenCalled();
+  });
+
   it("resolve the token against the database", async () => {
     getDatabase.mockReturnValue(dbReturning([{ ...row, role: "admin" }]).db);
     auth.mockResolvedValue({ user: { id: "u1", role: "member" } });

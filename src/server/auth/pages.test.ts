@@ -39,4 +39,9 @@ describe("requireAdminPage", () => {
     auth.mockResolvedValue({ user: { id: "u1", role: "admin", deactivated: true } });
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
+
+  it("hides the page from an admin claim that names no user", async () => {
+    auth.mockResolvedValue({ user: { role: "admin" } });
+    await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
+  });
 });

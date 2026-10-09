@@ -67,6 +67,30 @@ describe("AccountScreen: loading", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong.");
   });
 
+  it.each([
+    ["deactivated", 403, "account_deactivated"],
+    ["gone", 401, "unauthenticated"],
+  ])("keeps Sign out for an account that is %s, and nothing else", async (_label, status, code) => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(status, { error: { code, message: "Not allowed." } } as never),
+    );
+    render(<AccountScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not allowed.");
+    expect(screen.queryByLabelText("Your name")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => {
+      expect(signOutAndForget).toHaveBeenCalled();
+    });
+  });
+
+  it("offers no Sign out when the failure is not about the session", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(500, undefined));
+    render(<AccountScreen />);
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+  });
+
   it("uses a generic message for a failure that is not an API error", async () => {
     apiFetch.mockRejectedValue(new TypeError("offline"));
     render(<AccountScreen />);

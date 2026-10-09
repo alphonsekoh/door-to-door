@@ -19,6 +19,8 @@ export function AccountScreen() {
   const { update } = useSession();
   const [user, setUser] = useState<User | null>(null);
   const [loadFailure, setLoadFailure] = useState<string | null>(null);
+  // The session is no longer valid: signing out is the only thing left to offer.
+  const [staleSession, setStaleSession] = useState(false);
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -36,7 +38,12 @@ export function AccountScreen() {
         setName(found.name ?? "");
       },
       (error: unknown) => {
-        if (!cancelled) setLoadFailure(messageOf(error, "Could not load your details."));
+        if (cancelled) return;
+        setLoadFailure(messageOf(error, "Could not load your details."));
+        setStaleSession(
+          error instanceof ApiRequestError &&
+            (error.status === 401 || error.code === "account_deactivated"),
+        );
       },
     );
     return () => {
@@ -94,14 +101,62 @@ export function AccountScreen() {
     await leave();
   }
 
+  const signOutControls = (
+    <>
+      <div className="space-y-2">
+        {signOutFailure === null ? null : (
+          <p
+            role="alert"
+            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+          >
+            {signOutFailure}
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={signingOut}
+          onClick={() => {
+            void startSignOut();
+          }}
+          className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
+        >
+          {signingOut && !confirmingSignOut ? "Signing out…" : "Sign out"}
+        </button>
+      </div>
+
+      {confirmingSignOut ? (
+        <ConfirmDialog
+          title="Sign out with unsynced records?"
+          detail="Some records on this phone have not reached the server yet. They will wait here until you sign in again."
+          confirmLabel="Sign out anyway"
+          busy={signingOut}
+          onConfirm={() => {
+            void leave();
+          }}
+          onCancel={() => {
+            setConfirmingSignOut(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
+
   if (loadFailure !== null) {
-    return (
+    const alert = (
       <p
         role="alert"
         className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
       >
         {loadFailure}
       </p>
+    );
+    return staleSession ? (
+      <div className="space-y-4">
+        {alert}
+        {signOutControls}
+      </div>
+    ) : (
+      alert
     );
   }
   if (user === null) {
@@ -180,41 +235,7 @@ export function AccountScreen() {
         </div>
       </dl>
 
-      <div className="space-y-2">
-        {signOutFailure === null ? null : (
-          <p
-            role="alert"
-            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
-            {signOutFailure}
-          </p>
-        )}
-        <button
-          type="button"
-          disabled={signingOut}
-          onClick={() => {
-            void startSignOut();
-          }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
-        >
-          {signingOut && !confirmingSignOut ? "Signing out…" : "Sign out"}
-        </button>
-      </div>
-
-      {confirmingSignOut ? (
-        <ConfirmDialog
-          title="Sign out with unsynced records?"
-          detail="Some records on this phone have not reached the server yet. They will wait here until you sign in again."
-          confirmLabel="Sign out anyway"
-          busy={signingOut}
-          onConfirm={() => {
-            void leave();
-          }}
-          onCancel={() => {
-            setConfirmingSignOut(false);
-          }}
-        />
-      ) : null}
+      {signOutControls}
     </div>
   );
 }
