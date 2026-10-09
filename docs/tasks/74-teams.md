@@ -208,4 +208,4 @@ D-31-6 uses "team screen" for the admin member list; that is not a team in this 
 ## Open questions
 
 None open. (The `additionalProperties: false` flag on `UpdateOwnProfileRequest` was dropped in
-  PR #81; the spec now says unknown fields are ignored, as D-74-5 records.)
+PR #81; the spec now says unknown fields are ignored, as D-74-5 records.)
