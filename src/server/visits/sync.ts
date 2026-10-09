@@ -291,13 +291,30 @@ async function persist(
        */
       const locked = firstOrThrow(
         await tx
-          .select({ updatedAt: visits.updatedAt, memberId: visits.memberId, teamId: visits.teamId })
+          .select({
+            updatedAt: visits.updatedAt,
+            memberId: visits.memberId,
+            teamId: visits.teamId,
+            householdId: visits.householdId,
+            sessionId: visits.sessionId,
+          })
           .from(visits)
           .where(eq(visits.id, item.id))
           .for("update")
           .limit(1),
         "the stored visit",
       );
+      /*
+       * The pre-read missed a row created since, so location is judged again.
+       * Throwing rolls back the identity upsert above, which already wrote to
+       * whichever household this item named.
+       */
+      if (locked.householdId !== household.id || locked.sessionId !== sessionId) {
+        throw new ConflictError(
+          "conflict",
+          "A saved visit cannot be moved to another unit or outing.",
+        );
+      }
       if (!(await canAmend(tx, { id: memberId, role: "member" }, locked))) {
         throw new ConflictError("conflict", "That visit belongs to another member.");
       }
@@ -332,6 +349,10 @@ export async function syncVisits(
     try {
       outcomes.push(await applyItem(db, item, memberId, clock));
     } catch (error) {
+      // The client gets only the generic message; the cause stays in the logs.
+      if (!(error instanceof ApiError)) {
+        console.error(`sync: could not save visit ${item.id}`, error);
+      }
       outcomes.push({
         id: item.id,
         status: "rejected",

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
@@ -13,7 +13,35 @@ const item: SyncItem = {
   updatedAt: "2026-03-14T10:00:00.000Z",
 };
 
+const logged = vi.spyOn(console, "error");
+
 describe("unexpected failures", () => {
+  beforeEach(() => {
+    logged.mockReset();
+    logged.mockImplementation(() => undefined);
+  });
+
+  it("logs the cause with the item id, but not the request, and not to the client", async () => {
+    const cause = new Error("deadlock detected");
+    const stub = {
+      select: () => ({
+        from: () => ({ where: () => ({ limit: () => Promise.reject(cause) }) }),
+      }),
+    } as unknown as Database;
+
+    const [result] = await syncVisits(
+      stub,
+      [{ ...item, description: "private note" }],
+      "u1",
+      clock,
+    );
+
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining(item.id), cause);
+    expect(JSON.stringify(logged.mock.calls)).not.toContain("private note");
+    expect(result?.error?.message).not.toMatch(/deadlock/);
+  });
+
   it("rejects the item rather than losing the rest of the batch", async () => {
     /*
      * A connection reset mid-flush must not throw away the items either side

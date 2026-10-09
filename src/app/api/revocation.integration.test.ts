@@ -517,14 +517,18 @@ describe("teams and participants, holding the same token", () => {
     expect(rows[0]?.n).toBe("0");
   });
 
-  it("makes a demoted admin who is not on a team a stranger to it", async () => {
-    await pool.query("update users set role = 'member' where id = $1", [USER]);
-    const response = await teamRoute.PATCH(
-      json("PATCH", `/teams/${TEAM}`, { name: "Hijack" }),
-      withId(TEAM),
-    );
-    expect(response.status).toBe(403);
-    const { rows } = await pool.query<{ name: string }>("select name from session_teams");
-    expect(rows[0]?.name).toBe("Pair");
-  });
+  it.each(teamCalls.filter(([name]) => name.includes("/teams/{id}")))(
+    "%s is 403 forbidden for a demoted admin who is not on the team, changing nothing",
+    async (_n, call) => {
+      await pool.query("update users set role = 'member' where id = $1", [USER]);
+      const response = await call();
+      expect(response.status).toBe(403);
+      expect(await errorCode(response)).toBe("forbidden");
+
+      const { rows } = await pool.query<{ name: string; members: string }>(
+        "select name, (select count(*) from session_team_members) as members from session_teams",
+      );
+      expect(rows).toEqual([{ name: "Pair", members: "1" }]);
+    },
+  );
 });

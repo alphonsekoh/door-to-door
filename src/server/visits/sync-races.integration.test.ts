@@ -64,37 +64,65 @@ const row = async () =>
     )
   ).rows[0] as Record<string, unknown>;
 
+type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
+
+const POLL_BUDGET_MS = 4_000;
+// Well above the poll budget, so a flush that never parks fails with its own message.
+vi.setConfig({ testTimeout: 15_000 });
+
 /*
- * Runs `flushPromise` to the point where it is blocked on the row the
- * controller holds, lets `whileHeld` change things, then releases the lock.
+ * Holds a transaction on a second connection (`setup` takes the lock or makes
+ * the uncommitted row), starts the flush, waits until a backend is blocked
+ * running a query matching `waitingOn`, lets `whileHeld` change things, then
+ * commits. Whatever fails, the flush is awaited before returning so it can
+ * never write into the next test.
  */
-async function parkedFlush(
-  start: () => Promise<unknown>,
-  whileHeld: (query: (sql: string, params?: unknown[]) => Promise<unknown>) => Promise<void>,
-): Promise<unknown> {
+async function parkedFlush(options: {
+  setup: (query: Query) => Promise<unknown>;
+  waitingOn: string;
+  start: () => Promise<unknown>;
+  whileHeld?: (query: Query) => Promise<void>;
+}): Promise<unknown> {
   const client = await controller.connect();
+  const query: Query = (sql, params) => client.query(sql, params);
+  let pending: Promise<unknown> | undefined;
   try {
     await client.query("BEGIN");
-    await client.query("SELECT 1 FROM visits WHERE id=$1 FOR UPDATE", [V1]);
-    const pending = start();
-    for (let waited = 0; ; waited += 1) {
+    await options.setup(query);
+    pending = options.start();
+    const startedAt = Date.now();
+    for (;;) {
       const { rows } = await controller.query(
-        `SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`,
+        `SELECT 1 FROM pg_stat_activity
+         WHERE wait_event_type = 'Lock' AND datname = current_database()
+           AND pid <> pg_backend_pid() AND query ILIKE $1`,
+        [options.waitingOn],
       );
       if (rows.length > 0) break;
-      if (waited > 400) throw new Error("the flush never reached the row lock");
+      if (Date.now() - startedAt > POLL_BUDGET_MS) {
+        throw new Error("the flush never reached the lock");
+      }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
-    await whileHeld((sql, params) => client.query(sql, params));
+    await options.whileHeld?.(query);
     await client.query("COMMIT");
     return await pending;
   } catch (error) {
-    await client.query("ROLLBACK");
+    await client.query("ROLLBACK").catch(() => undefined);
+    await pending?.catch(() => undefined);
     throw error;
   } finally {
     client.release();
   }
 }
+
+const lockedFlush = (start: () => Promise<unknown>, whileHeld: (query: Query) => Promise<void>) =>
+  parkedFlush({
+    setup: (q) => q("SELECT 1 FROM visits WHERE id=$1 FOR UPDATE", [V1]),
+    waitingOn: "%for update%",
+    start,
+    whileHeld,
+  });
 
 beforeEach(async () => {
   await truncateAll(pool);
@@ -132,7 +160,7 @@ afterAll(async () => {
 
 describe("an amend that raced a concurrent write", () => {
   it("is stale when someone else committed a newer edit while it waited", async () => {
-    const [result] = (await parkedFlush(
+    const [result] = (await lockedFlush(
       () => flush([item({ interestLevel: "high", updatedAt: T2 })], BEN),
       async (q) => {
         await q(`UPDATE visits SET interest_level='medium', updated_at=$1 WHERE id=$2`, [T3, V1]);
@@ -144,7 +172,7 @@ describe("an amend that raced a concurrent write", () => {
   });
 
   it("is unchanged when the same edit was committed while it waited", async () => {
-    const [result] = (await parkedFlush(
+    const [result] = (await lockedFlush(
       () => flush([item({ interestLevel: "high", updatedAt: T2 })], BEN),
       async (q) => {
         await q(`UPDATE visits SET interest_level='high', updated_at=$1 WHERE id=$2`, [T2, V1]);
@@ -155,7 +183,7 @@ describe("an amend that raced a concurrent write", () => {
   });
 
   it("is refused when the teammate was removed while it waited, changing nothing", async () => {
-    const [result] = (await parkedFlush(
+    const [result] = (await lockedFlush(
       () => flush([item({ interestLevel: "high", description: "late", updatedAt: T2 })], BEN),
       async (q) => {
         await q(`DELETE FROM session_team_members WHERE user_id=$1`, [BEN]);
@@ -168,7 +196,7 @@ describe("an amend that raced a concurrent write", () => {
   });
 
   it("leaves household identity alone when it loses", async () => {
-    await parkedFlush(
+    await lockedFlush(
       () => flush([item({ name: "Mr Late", updatedAt: T2 })], BEN),
       async (q) => {
         await q(`UPDATE visits SET updated_at=$1 WHERE id=$2`, [T3, V1]);
@@ -179,7 +207,7 @@ describe("an amend that raced a concurrent write", () => {
   });
 
   it("applies when nothing changed while it waited", async () => {
-    const [result] = (await parkedFlush(
+    const [result] = (await lockedFlush(
       () => flush([item({ interestLevel: "high", updatedAt: T2 })], BEN),
       () => Promise.resolve(),
     )) as Awaited<ReturnType<typeof flush>>;
@@ -188,18 +216,81 @@ describe("an amend that raced a concurrent write", () => {
   });
 });
 
-describe("two flushes of the same new record", () => {
-  it("insert once: one applies, the other is unchanged, one snapshot", async () => {
-    const second = "01960000-0000-7000-8000-00000000ddd2";
-    const results = await Promise.all([
-      flush([item({ id: second })], ALICE),
-      flush([item({ id: second })], ALICE),
-    ]);
-    expect(results.map((r) => r[0]?.status).sort()).toEqual(["applied", "unchanged"]);
+describe("a flush that meets a record created while it was in flight", () => {
+  const NEW = "01960000-0000-7000-8000-00000000ddd2";
+
+  const insertUncommitted = async (q: Query, unit: string, inSession: string) => {
+    const mine = await pool.query<{ household_id: string; team_id: string }>(
+      `SELECT household_id, team_id FROM visits WHERE id=$1`,
+      [V1],
+    );
+    let householdId = mine.rows[0]?.household_id;
+    if (unit !== "#05-123") {
+      householdId = (
+        (await q(`INSERT INTO households (block_id, unit_number) VALUES ($1,$2) RETURNING id`, [
+          BLOCK,
+          unit,
+        ])) as { rows: { id: string }[] }
+      ).rows[0]?.id;
+    }
+    await q(
+      `INSERT INTO visits (id, household_id, session_id, member_id, team_id, interest_level, updated_at, client_created_at)
+       VALUES ($1,$2,$3,$4,$5,'low',$6,$6)`,
+      [NEW, householdId, inSession, ALICE, mine.rows[0]?.team_id, T1],
+    );
+    await q(`INSERT INTO visit_teammates (visit_id, user_id) VALUES ($1,$2)`, [NEW, BEN]);
+  };
+
+  // On the same unit the flush parks first on the household row the uncommitted
+  // visit holds a key lock on; on another unit, on the visit's own unique index.
+  const flushWhileInserting = (
+    unit: string,
+    itemUnit: string,
+    overrides: Partial<SyncItem>,
+    inSession = SESSION,
+  ) =>
+    parkedFlush({
+      setup: (q) => insertUncommitted(q, unit, inSession),
+      waitingOn: unit === itemUnit ? '%"households"%' : '%insert into "visits"%',
+      start: () => flush([item({ id: NEW, unitNumber: itemUnit, ...overrides })], ALICE),
+    }) as Promise<Awaited<ReturnType<typeof flush>>>;
+
+  it("takes the existing row instead of inserting twice: unchanged, one snapshot", async () => {
+    const [result] = await flushWhileInserting("#05-123", "#05-123", {});
+
+    expect(result?.status).toBe("unchanged");
     const { rows } = await pool.query(`SELECT user_id FROM visit_teammates WHERE visit_id=$1`, [
-      second,
+      NEW,
     ]);
     expect(rows).toEqual([{ user_id: BEN }]);
+    expect((await pool.query(`SELECT 1 FROM visits WHERE id=$1`, [NEW])).rowCount).toBe(1);
+  });
+
+  it("refuses to move it to another outing", async () => {
+    const OTHER_OUTING = "77777777-0000-4000-8002-000000000002";
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Earlier','ended',$2)`,
+      [OTHER_OUTING, ADMIN],
+    );
+    const [result] = await flushWhileInserting("#05-123", "#05-123", {}, OTHER_OUTING);
+
+    expect(result?.error?.code).toBe("conflict");
+    const { rows } = await pool.query(`SELECT session_id FROM visits WHERE id=$1`, [NEW]);
+    expect(rows).toEqual([{ session_id: OTHER_OUTING }]);
+  });
+
+  it("refuses to move it to another unit, and undoes the identity it already wrote", async () => {
+    const [result] = await flushWhileInserting("#09-909", "#05-123", { name: "Mr Misplaced" });
+
+    expect(result?.status).toBe("rejected");
+    expect(result?.error?.code).toBe("conflict");
+    const { rows } = await pool.query(
+      `SELECT unit_number, name FROM households ORDER BY unit_number`,
+    );
+    expect(rows).toEqual([
+      { unit_number: "#05-123", name: null },
+      { unit_number: "#09-909", name: null },
+    ]);
   });
 });
 
