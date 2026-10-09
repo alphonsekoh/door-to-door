@@ -1,7 +1,7 @@
 import { getDatabase } from "@/db/client";
 import { zGetHouseholdHistoryPath, zGetHouseholdHistoryResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { getHouseholdHistory } from "@/server/visits/queries";
 import { toHouseholdHistory } from "@/server/visits/serialise";
 

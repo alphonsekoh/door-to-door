@@ -3,7 +3,7 @@ import { zListHistoryQuery, zListHistoryResponse } from "@/generated/zod.gen";
 import { toHistoryEntry } from "@/server/history/serialise";
 import { listHistory } from "@/server/history/service";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 
 /*
  * The consolidated view, admin only. Members use /history/mine instead - a

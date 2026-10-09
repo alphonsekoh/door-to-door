@@ -7,7 +7,7 @@ import {
   zListSessionBlocksResponse,
 } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toSessionBlock } from "@/server/sessions/serialise";
 import { attachBlocks, getSession, listSessionBlocks } from "@/server/sessions/service";
 

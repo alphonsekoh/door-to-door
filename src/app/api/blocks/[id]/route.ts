@@ -3,7 +3,7 @@ import { zUpdateBlockBody, zUpdateBlockPath, zUpdateBlockResponse } from "@/gene
 import { toBlock } from "@/server/blocks/serialise";
 import { updateBlock } from "@/server/blocks/service";
 import { requireChanges, withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 
 export const PATCH = withContract(
   {

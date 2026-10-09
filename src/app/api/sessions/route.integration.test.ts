@@ -62,7 +62,8 @@ describe("authorization", () => {
   });
 
   it("refuses a deactivated admin", async () => {
-    auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: true } });
+    await pool.query("update users set deactivated_at = now() where id = $1", [ADMIN]);
+    asAdmin();
     expect((await GET(list())).status).toBe(403);
   });
 });

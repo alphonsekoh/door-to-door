@@ -2,7 +2,7 @@ import { getDatabase } from "@/db/client";
 import { zDetachSessionBlockPath } from "@/generated/zod.gen";
 import { z } from "zod";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { detachBlock, getSession } from "@/server/sessions/service";
 
 export const DELETE = withContract(

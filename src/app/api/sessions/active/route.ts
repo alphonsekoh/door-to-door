@@ -2,7 +2,7 @@ import { getDatabase } from "@/db/client";
 import { zGetActiveSessionResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
 import { NotFoundError } from "@/server/http/errors";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toOutingSession, toSessionBlock } from "@/server/sessions/serialise";
 import { findActiveSession, listSessionBlocks } from "@/server/sessions/service";
 

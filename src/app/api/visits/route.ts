@@ -7,7 +7,7 @@ import {
   zListVisitsQuery,
   zListVisitsResponse,
 } from "@/generated/zod.gen";
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { requireUser, resolveMemberScope } from "@/server/auth/guards";
 import { firstOrThrow } from "@/server/db-utils";
 import { withContract } from "@/server/http/contract";
@@ -22,7 +22,7 @@ export const GET = withContract(
     responses: { 200: zListVisitsResponse },
   },
   async ({ query }) => {
-    const session = await auth();
+    const session = await currentSession();
     const { limit, offset } = query;
 
     /*
@@ -88,7 +88,7 @@ export const POST = withContract(
     responses: { 201: zCreateVisitResponse },
   },
   async ({ body }) => {
-    const session = await auth();
+    const session = await currentSession();
     /*
      * Authorship is decided here and never again. resolveMemberScope refuses a
      * member naming anyone else, so the only caller who can attribute a visit

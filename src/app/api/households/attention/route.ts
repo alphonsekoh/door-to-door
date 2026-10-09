@@ -4,7 +4,7 @@ import {
   zListHouseholdsNeedingAttentionResponse,
 } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { listHouseholdsNeedingAttention } from "@/server/visits/queries";
 import { toHouseholdAttention } from "@/server/visits/serialise";
 

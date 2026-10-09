@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/server/auth/session", () => ({ currentSession: auth }));
 
 const { notFound } = vi.hoisted(() => ({
   notFound: vi.fn(() => {

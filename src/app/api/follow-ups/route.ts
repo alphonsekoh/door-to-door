@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import {
   zCreateFollowUpBody,
@@ -18,7 +18,7 @@ export const GET = withContract(
     responses: { 200: zListFollowUpsResponse },
   },
   async ({ query }) => {
-    const session = await auth();
+    const session = await currentSession();
     // Called for its guard, not its result: without it an unauthenticated
     // caller passing no authorId would reach the query.
     requireUser(session);
@@ -60,7 +60,7 @@ export const POST = withContract(
     responses: { 201: zCreateFollowUpResponse },
   },
   async ({ body }) => {
-    const user = requireUser(await auth());
+    const user = requireUser(await currentSession());
     const created = await createFollowUp(getDatabase(), {
       householdId: body.householdId,
       visitId: body.visitId,

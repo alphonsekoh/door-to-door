@@ -132,15 +132,16 @@ describe("PATCH /api/users/me", () => {
   });
 
   it("returns 403 for an account deactivated after sign-in", async () => {
-    signedInAs(ALICE, { deactivated: true });
+    await pool.query("update users set deactivated_at = now() where id = $1", [ALICE]);
+    signedInAs(ALICE);
     const response = await rename({ name: "Al" });
     expect(response.status).toBe(403);
     expect(await nameOf(ALICE)).toBe("Alice");
   });
 
-  it("returns 404 when the account no longer exists", async () => {
+  it("returns 401 when the account no longer exists", async () => {
     signedInAs("abababab-0000-4000-8000-0000000000ff");
-    expect((await rename({ name: "Al" })).status).toBe(404);
+    expect((await rename({ name: "Al" })).status).toBe(401);
   });
 
   it("only ever touches the signed-in user", async () => {
@@ -163,7 +164,8 @@ describe("PATCH /api/users/me", () => {
     expect(own.status).toBe(200);
     expect(JSON.stringify(await own.json())).toContain("Alice Tan");
 
-    signedInAs(BOB, { role: "admin" });
+    await pool.query("update users set role = 'admin' where id = $1", [BOB]);
+    signedInAs(BOB);
     const shared = await allHistory(new Request("https://test.local/api/history"));
     const text = JSON.stringify(await shared.json());
     expect(text).toContain("Alice Tan");
