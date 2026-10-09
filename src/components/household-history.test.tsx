@@ -8,6 +8,7 @@ const visit = (over: Partial<Visit> = {}): Visit => ({
   householdId: "h1",
   sessionId: "s1",
   member: { id: "u1", name: "Alice", image: null },
+  team: null,
   interestLevel: "medium",
   description: "Listened for a while.",
   clientCreatedAt: "2026-03-14T10:00:00.000Z",

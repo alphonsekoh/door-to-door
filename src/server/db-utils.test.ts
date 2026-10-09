@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
+import { firstOrThrow, getOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
 import { InternalError } from "@/server/http/errors";
 
 describe("firstOrThrow", () => {
@@ -66,5 +66,19 @@ describe("presentOrThrow", () => {
 
   it("fails loudly on null, naming what was missing", () => {
     expect(() => presentOrThrow(null, "a start")).toThrow(/a start/);
+  });
+});
+
+describe("getOrThrow", () => {
+  it("returns the value for a key that is there", () => {
+    expect(getOrThrow(new Map([["a", 1]]), "a", "the entry")).toBe(1);
+  });
+
+  it("returns a falsy value rather than treating it as missing", () => {
+    expect(getOrThrow(new Map([["a", 0]]), "a", "the entry")).toBe(0);
+  });
+
+  it("throws, naming what was expected, when the key is absent", () => {
+    expect(() => getOrThrow(new Map<string, number>(), "a", "the team")).toThrow(/the team/);
   });
 });

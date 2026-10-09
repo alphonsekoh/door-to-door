@@ -41,6 +41,7 @@ function unit(unitNumber: string, options: Options = {}): HouseholdSummary {
             householdId: unitNumber,
             sessionId,
             member: { id: "u1", name: "Ben Lim", image: null },
+            team: null,
             interestLevel,
             description: "",
             clientCreatedAt: "2026-08-01T00:00:00.000Z",

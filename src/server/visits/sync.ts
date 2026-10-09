@@ -1,11 +1,12 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { InterestLevel } from "@/db/schema";
-import { blocks, outingSessions, sessionBlocks, visits } from "@/db/schema";
+import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import { and } from "drizzle-orm";
 import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
-import { presentOrThrow } from "@/server/db-utils";
+import { firstOrThrow, presentOrThrow } from "@/server/db-utils";
+import { autoJoin, canAmend, stampVisit, teamIdFor } from "@/server/teams/access";
 import { ApiError, ConflictError, NotFoundError } from "@/server/http/errors";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
@@ -42,8 +43,11 @@ export type SyncOutcome = {
 
 type ResolvedSession = { id: string; startedAt: Date };
 
-async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSession> {
-  if (item.sessionId !== undefined) {
+async function resolveSession(
+  db: Database,
+  sessionId: string | undefined,
+): Promise<ResolvedSession> {
+  if (sessionId !== undefined) {
     const found = await db
       .select({
         id: outingSessions.id,
@@ -51,7 +55,7 @@ async function resolveSession(db: Database, item: SyncItem): Promise<ResolvedSes
         startedAt: outingSessions.startedAt,
       })
       .from(outingSessions)
-      .where(eq(outingSessions.id, item.sessionId))
+      .where(eq(outingSessions.id, sessionId))
       .limit(1);
 
     const session = found[0];
@@ -110,16 +114,42 @@ async function applyItem(
   }
 
   const existing = await db
-    .select({ updatedAt: visits.updatedAt, memberId: visits.memberId })
+    .select({
+      updatedAt: visits.updatedAt,
+      memberId: visits.memberId,
+      teamId: visits.teamId,
+      sessionId: visits.sessionId,
+      blockId: households.blockId,
+      unitNumber: households.unitNumber,
+    })
     .from(visits)
+    .innerJoin(households, eq(households.id, visits.householdId))
     .where(eq(visits.id, item.id))
     .limit(1);
 
   const stored = existing[0];
 
   if (stored) {
-    if (stored.memberId !== memberId) {
+    /*
+     * Sync never judges an admin: they amend through PATCH /visits/{id}. So
+     * this asks the member question - the author, or a CURRENT teammate.
+     */
+    if (!(await canAmend(db, { id: memberId, role: "member" }, stored))) {
       throw new ConflictError("conflict", "That visit belongs to another member.");
+    }
+    /*
+     * An item amends a stored visit in place; it never relocates it. Applies
+     * to the author too: moving a record to another unit is a new record.
+     */
+    if (
+      item.blockId !== stored.blockId ||
+      item.unitNumber.trim() !== stored.unitNumber ||
+      (item.sessionId !== undefined && item.sessionId !== stored.sessionId)
+    ) {
+      throw new ConflictError(
+        "conflict",
+        "A saved visit cannot be moved to another unit or outing.",
+      );
     }
     if (incomingUpdatedAt < stored.updatedAt) {
       /*
@@ -142,7 +172,8 @@ async function applyItem(
   assertNotInFuture(incomingUpdatedAt, clock);
   assertNotInFuture(incomingCreatedAt, clock);
 
-  const session = await resolveSession(db, item);
+  // A stored visit keeps its own outing even when the item names none.
+  const session = await resolveSession(db, stored?.sessionId ?? item.sessionId);
   const sessionId = session.id;
 
   /*
@@ -162,32 +193,54 @@ async function applyItem(
     throw new ConflictError("conflict", "That block is not part of the session.");
   }
 
-  const household = await upsertHousehold(db, {
-    blockId: item.blockId,
-    unitNumber: item.unitNumber,
-    name: item.name,
-    contact: item.contact,
-    religion: item.religion,
+  await db.transaction(async (tx) => {
+    const household = await upsertHousehold(tx, {
+      blockId: item.blockId,
+      unitNumber: item.unitNumber,
+      name: item.name,
+      contact: item.contact,
+      religion: item.religion,
+    });
+    const teamId = await teamIdFor(tx, memberId, sessionId);
+
+    /*
+     * Upsert on the client-generated id. Two devices flushing the same queued
+     * record concurrently both land here, and the row is written once.
+     *
+     * The conflict branch rewrites only what an amend may change. Author,
+     * session, team, household and clientCreatedAt are set once at insert
+     * (D-29-2, D-74-16): a teammate's flush must not take the record over.
+     */
+    const written = await tx
+      .insert(visits)
+      .values({
+        id: item.id,
+        householdId: household.id,
+        sessionId,
+        memberId,
+        teamId,
+        interestLevel: item.interestLevel,
+        description: item.description ?? "",
+        clientCreatedAt: incomingCreatedAt,
+        updatedAt: incomingUpdatedAt,
+      })
+      .onConflictDoUpdate({
+        target: visits.id,
+        set: {
+          interestLevel: item.interestLevel,
+          description: item.description ?? "",
+          updatedAt: incomingUpdatedAt,
+        },
+      })
+      // xmax is zero only on a row this statement inserted, which is what
+      // decides who writes the teammate snapshot when two flushes race.
+      .returning({ inserted: sql<boolean>`(xmax = 0)` });
+
+    if (firstOrThrow(written, "the visit upsert").inserted) {
+      await stampVisit(tx, item.id, teamId, memberId);
+      await autoJoin(tx, sessionId, memberId);
+    }
   });
-
-  const values = {
-    householdId: household.id,
-    sessionId,
-    memberId,
-    interestLevel: item.interestLevel,
-    description: item.description ?? "",
-    clientCreatedAt: incomingCreatedAt,
-    updatedAt: incomingUpdatedAt,
-  };
-
-  /*
-   * Upsert on the client-generated id. Two devices flushing the same queued
-   * record concurrently both land here, and the row is written once.
-   */
-  await db
-    .insert(visits)
-    .values({ id: item.id, ...values })
-    .onConflictDoUpdate({ target: visits.id, set: values });
 
   return { id: item.id, status: "applied", visit: await getVisit(db, item.id), error: null };
 }

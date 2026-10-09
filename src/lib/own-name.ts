@@ -5,9 +5,9 @@ export type NameCheck = { ok: true; name: string } | { ok: false; message: strin
 
 /* Characters that print nothing or reorder what is around them: controls, and
    format characters such as zero-width spaces and the bidi overrides. */
-const NON_PRINTING = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+export const NON_PRINTING = /[\p{Cc}\p{Cf}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
 /* Pictographs count: an emoji-only name is a name, but "..." is not. */
-const HAS_SUBSTANCE = /[\p{L}\p{N}\p{Extended_Pictographic}]/u;
+export const HAS_SUBSTANCE = /[\p{L}\p{N}\p{Extended_Pictographic}]/u;
 
 /* Length in code points, so an emoji is one character here as it is to the
    person typing it and to OpenAPI's maxLength. */

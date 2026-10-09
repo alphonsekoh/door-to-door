@@ -48,6 +48,7 @@ function entryFor(options: Options = {}): HouseholdSummary {
           householdId: "h1",
           sessionId: "s1",
           member: { id: memberId, name: "Ben Lim", image: null },
+          team: null,
           interestLevel,
           description: "Asked us to come back",
           clientCreatedAt: "2026-08-01T00:00:00.000Z",

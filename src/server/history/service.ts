@@ -1,11 +1,12 @@
-import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
 import type { InterestLevel, Religion } from "@/db/schema";
-import { blocks, households, outingSessions, users, visits } from "@/db/schema";
+import { blocks, households, outingSessions, sessionTeamMembers, users, visits } from "@/db/schema";
 import { firstOrThrow } from "@/server/db-utils";
 import type { BlockRow } from "@/server/blocks/service";
 import type { SessionRow } from "@/server/sessions/service";
+import { attachTeams } from "@/server/teams/access";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
 
 /*
@@ -28,6 +29,13 @@ const sessionCreator = alias(users, "session_creator");
 
 export type HistoryFilters = {
   memberId?: string | undefined;
+  /*
+   * With memberId, also matches records stamped with a team this user is on
+   * RIGHT NOW. The id is the viewer's own, taken from the session by the
+   * handler - never a request parameter.
+   */
+  includeTeamOf?: string | undefined;
+  teamId?: string | undefined;
   blockId?: string | undefined;
   sessionId?: string | undefined;
   interestLevel?: InterestLevel | undefined;
@@ -40,8 +48,26 @@ export async function listHistory(
   db: Database,
   filters: HistoryFilters & { limit: number; offset: number },
 ): Promise<{ rows: HistoryEntryRow[]; total: number }> {
+  const teamsOfViewer = (userId: string) =>
+    inArray(
+      visits.teamId,
+      db
+        .select({ teamId: sessionTeamMembers.teamId })
+        .from(sessionTeamMembers)
+        .where(eq(sessionTeamMembers.userId, userId)),
+    );
+  const memberScope =
+    filters.memberId === undefined
+      ? []
+      : [
+          filters.includeTeamOf === undefined
+            ? eq(visits.memberId, filters.memberId)
+            : or(eq(visits.memberId, filters.memberId), teamsOfViewer(filters.includeTeamOf)),
+        ];
+
   const conditions = [
-    ...(filters.memberId === undefined ? [] : [eq(visits.memberId, filters.memberId)]),
+    ...memberScope,
+    ...(filters.teamId === undefined ? [] : [eq(visits.teamId, filters.teamId)]),
     ...(filters.blockId === undefined ? [] : [eq(households.blockId, filters.blockId)]),
     ...(filters.sessionId === undefined ? [] : [eq(visits.sessionId, filters.sessionId)]),
     ...(filters.interestLevel === undefined
@@ -54,9 +80,10 @@ export async function listHistory(
   /* Filters compose: every supplied one narrows the same set. */
   const filter = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const rows = await db
+  const found = await db
     .select({
-      visitId: visits.id,
+      id: visits.id,
+      teamId: visits.teamId,
       visitHouseholdId: visits.householdId,
       visitSessionId: visits.sessionId,
       interestLevel: visits.interestLevel,
@@ -96,6 +123,8 @@ export async function listHistory(
     .limit(filters.limit)
     .offset(filters.offset);
 
+  const rows = await attachTeams(db, found);
+
   const counted = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(visits)
@@ -105,7 +134,9 @@ export async function listHistory(
   return {
     rows: rows.map((row) => ({
       visit: {
-        id: row.visitId,
+        id: row.id,
+        teamId: row.teamId,
+        team: row.team,
         householdId: row.visitHouseholdId,
         sessionId: row.visitSessionId,
         interestLevel: row.interestLevel,

@@ -34,6 +34,7 @@ export function toVisit(row: VisitRow): Visit {
     householdId: row.householdId,
     sessionId: row.sessionId,
     member: { id: row.memberId, name: row.memberName, image: row.memberImage },
+    team: row.team,
     interestLevel: row.interestLevel,
     description: row.description,
     clientCreatedAt: row.clientCreatedAt.toISOString(),

@@ -17,6 +17,7 @@ function entry(overrides: {
       householdId: "h1",
       sessionId: "s1",
       member: { id: "u1", name: member, image: null },
+      team: null,
       interestLevel: "high",
       description,
       clientCreatedAt: AT,

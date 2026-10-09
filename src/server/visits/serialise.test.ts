@@ -20,6 +20,8 @@ const visit: VisitRow = {
   id: "v1",
   householdId: "h1",
   sessionId: "s1",
+  teamId: null,
+  team: null,
   interestLevel: "medium",
   description: "Listened for a while.",
   clientCreatedAt: at,
@@ -64,6 +66,15 @@ describe("toHousehold", () => {
 describe("toVisit", () => {
   it("nests the member who recorded it", () => {
     expect(toVisit(visit).member).toEqual({ id: "u1", name: "Alice", image: null });
+  });
+
+  it("is null for a visit made on no team", () => {
+    expect(toVisit(visit).team).toBeNull();
+  });
+
+  it("carries the stamped team with its snapshot of teammates", () => {
+    const team = { id: "t1", name: "Pair 1", members: [{ id: "u2", name: "Ben", image: null }] };
+    expect(toVisit({ ...visit, teamId: "t1", team }).team).toEqual(team);
   });
 
   it("keeps client and server capture times apart", () => {

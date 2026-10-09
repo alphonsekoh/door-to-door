@@ -54,8 +54,12 @@ describe("migrations", () => {
       "households",
       "outing_sessions",
       "session_blocks",
+      "session_participants",
+      "session_team_members",
+      "session_teams",
       "users",
       "verification_tokens",
+      "visit_teammates",
       "visits",
     ]);
   });

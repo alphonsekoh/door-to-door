@@ -4,23 +4,11 @@ import type { Database } from "@/db/client";
 import { blocks, followUps, households, users, visits } from "@/db/schema";
 import { firstOrThrow } from "@/server/db-utils";
 import { NotFoundError } from "@/server/http/errors";
+import { attachTeams } from "@/server/teams/access";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
+import { visitColumns } from "@/server/visits/service";
 
 /* Reads over households and their accumulated history. */
-
-const visitColumns = {
-  id: visits.id,
-  householdId: visits.householdId,
-  sessionId: visits.sessionId,
-  interestLevel: visits.interestLevel,
-  description: visits.description,
-  clientCreatedAt: visits.clientCreatedAt,
-  createdAt: visits.createdAt,
-  updatedAt: visits.updatedAt,
-  memberId: users.id,
-  memberName: users.name,
-  memberImage: users.image,
-};
 
 export type FollowUpRow = {
   id: string;
@@ -46,8 +34,9 @@ export type HouseholdSummaryRow = {
 };
 
 /*
- * Four queries regardless of page size: the page of households, their visits,
- * and their outstanding follow-up counts, plus the total. Summarising each
+ * A fixed number of queries regardless of page size: the page of households,
+ * their visits, their outstanding follow-up counts, the total, and two to
+ * attach teams (none when no visit is stamped). Summarising each
  * household with its own round trip would be N+1 on a block with a hundred
  * units, which is the normal case.
  */
@@ -96,7 +85,7 @@ export async function listHouseholds(
   }
 
   const ids = page.map((household) => household.id);
-  const history = await db
+  const rawHistory = await db
     .select(visitColumns)
     .from(visits)
     .innerJoin(users, eq(users.id, visits.memberId))
@@ -106,6 +95,8 @@ export async function listHouseholds(
         : and(inArray(visits.householdId, ids), eq(visits.sessionId, options.sessionId)),
     )
     .orderBy(desc(visits.createdAt));
+
+  const history = await attachTeams(db, rawHistory);
 
   const outstanding = await db
     .select({ householdId: followUps.householdId, total: sql<number>`count(*)::int` })
@@ -160,12 +151,15 @@ export async function getHouseholdHistory(
   }
 
   /* Oldest first, so the interest trajectory reads left to right. */
-  const history = await db
-    .select(visitColumns)
-    .from(visits)
-    .innerJoin(users, eq(users.id, visits.memberId))
-    .where(eq(visits.householdId, householdId))
-    .orderBy(asc(visits.createdAt));
+  const history = await attachTeams(
+    db,
+    await db
+      .select(visitColumns)
+      .from(visits)
+      .innerJoin(users, eq(users.id, visits.memberId))
+      .where(eq(visits.householdId, householdId))
+      .orderBy(asc(visits.createdAt)),
+  );
 
   return {
     household: row.household,
@@ -260,7 +254,7 @@ export async function listHouseholdsNeedingAttention(
   ];
   const filter = and(...conditions);
 
-  const rows = await db
+  const found = await db
     .select({
       ...visitColumns,
       household: households,
@@ -279,6 +273,8 @@ export async function listHouseholdsNeedingAttention(
     .limit(options.limit)
     .offset(options.offset);
 
+  const rows = await attachTeams(db, found);
+
   const counted = await db
     .select({ total: sql<number>`count(*)::int` })
     .from(visits)
@@ -293,6 +289,8 @@ export async function listHouseholdsNeedingAttention(
         id: row.id,
         householdId: row.householdId,
         sessionId: row.sessionId,
+        teamId: row.teamId,
+        team: row.team,
         interestLevel: row.interestLevel,
         description: row.description,
         clientCreatedAt: row.clientCreatedAt,

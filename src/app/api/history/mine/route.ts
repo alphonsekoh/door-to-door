@@ -10,6 +10,9 @@ import { withContract } from "@/server/http/contract";
  * The caller's own records. memberId is taken from the session and never from
  * the request, so there is nothing to widen - that is the point of this being
  * a separate operation rather than a filter on /history.
+ *
+ * includeTeam is a flag, not an identity: the teams come from the session
+ * user's CURRENT membership, so it cannot be pointed at anyone else's.
  */
 export const GET = withContract(
   {
@@ -23,6 +26,7 @@ export const GET = withContract(
 
     const { rows, total } = await listHistory(getDatabase(), {
       memberId: user.id,
+      ...(query.includeTeam ? { includeTeamOf: user.id } : {}),
       limit,
       offset,
       ...(query.blockId === undefined ? {} : { blockId: query.blockId }),
