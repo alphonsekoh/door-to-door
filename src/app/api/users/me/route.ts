@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import {
   zGetCurrentUserResponse,
@@ -21,9 +21,8 @@ export const GET = withContract(
     responses: { 200: zGetCurrentUserResponse },
   },
   async () => {
-    const current = requireUser(await auth());
-    // The token names a user that no longer exists.
-    const user = await getUser(getDatabase(), current.id, "Your account no longer exists.");
+    const current = requireUser(await currentSession());
+    const user = await getUser(getDatabase(), current.id);
     return { status: 200, body: toUser(user) };
   },
 );
@@ -35,7 +34,7 @@ export const PATCH = withContract(
     responses: { 200: zUpdateOwnProfileResponse },
   },
   async ({ body }) => {
-    const current = requireUser(await auth());
+    const current = requireUser(await currentSession());
     const user = await updateOwnName(getDatabase(), current.id, body.name);
     return { status: 200, body: toUser(user) };
   },

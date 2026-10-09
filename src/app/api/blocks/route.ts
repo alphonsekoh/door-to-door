@@ -8,7 +8,7 @@ import {
 import { toBlock } from "@/server/blocks/serialise";
 import { createBlock, listBlocks } from "@/server/blocks/service";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 
 /* Readable by anyone signed in: members pick blocks from this registry. */
 export const GET = withContract(

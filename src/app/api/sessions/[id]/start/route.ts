@@ -1,7 +1,7 @@
 import { getDatabase } from "@/db/client";
 import { zStartSessionPath, zStartSessionResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toOutingSession } from "@/server/sessions/serialise";
 import { transitionSession } from "@/server/sessions/service";
 

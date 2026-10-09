@@ -1,7 +1,7 @@
 import { getDatabase } from "@/db/client";
 import { zUpdateUserBody, zUpdateUserPath, zUpdateUserResponse } from "@/generated/zod.gen";
 import { requireChanges, withContract } from "@/server/http/contract";
-import { currentUser } from "@/server/sessions/handlers";
+import { currentUser } from "@/server/auth/session";
 import { toUser } from "@/server/users/serialise";
 import { updateUser } from "@/server/users/service";
 

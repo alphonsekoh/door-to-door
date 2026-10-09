@@ -144,7 +144,8 @@ describe("POST /api/visits/sync", () => {
   });
 
   it("refuses a deactivated account", async () => {
-    auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: true } });
+    await pool.query("update users set deactivated_at = now() where id = $1", [ALICE]);
+    asAlice();
     expect((await sync({ items: [item()] })).status).toBe(403);
   });
 

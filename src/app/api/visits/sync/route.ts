@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import { zSyncVisitsBody, zSyncVisitsResponse } from "@/generated/zod.gen";
 import { requireUser } from "@/server/auth/guards";
@@ -22,7 +22,7 @@ export const POST = withContract(
     responses: { 200: zSyncVisitsResponse },
   },
   async ({ body }) => {
-    const user = requireUser(await auth());
+    const user = requireUser(await currentSession());
 
     if (!limiter.consume(user.id).allowed) {
       throw new RateLimitedError("Too many sync requests. Try again shortly.");

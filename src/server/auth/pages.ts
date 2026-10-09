@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { auth } from "@/../auth";
 import { isAdmin } from "@/server/auth/guards";
+import { currentSession } from "@/server/auth/session";
 
 /*
  * Keeps a member off the admin screens.
@@ -13,7 +13,7 @@ import { isAdmin } from "@/server/auth/guards";
  * notFound rather than a redirect: the admin area should not advertise itself.
  */
 export async function requireAdminPage(): Promise<void> {
-  if (!isAdmin(await auth())) {
+  if (!isAdmin(await currentSession())) {
     notFound();
   }
 }

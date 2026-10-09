@@ -8,8 +8,9 @@ import {
 /*
  * Authorization for route handlers.
  *
- * These are the real guard. The proxy only performs an optimistic redirect, so
- * every handler re-checks here - a request that never passes through the proxy
+ * These are the real guard. The proxy only performs an optimistic redirect,
+ * so every handler re-checks here, against the user's current database row
+ * (see session.ts) - a request that never passes through the proxy
  * (a direct API call, a stale client) must still be rejected.
  */
 
@@ -30,8 +31,9 @@ export function requireUser(session: SessionLike): SessionUser {
   }
 
   /*
-   * Sessions are JWTs, so one issued before an account was deactivated stays
-   * cryptographically valid. Checked on every request rather than at sign-in.
+   * Pure: it believes the session it is given. A JWT issued before an account
+   * was deactivated stays cryptographically valid, so callers must pass a
+   * session built from the database (currentSession), never the raw token.
    */
   if (user.deactivated === true) {
     throw new AccountDeactivatedError();
@@ -59,7 +61,13 @@ export function requireAdmin(session: SessionLike): SessionUser {
 }
 
 export function isAdmin(session: SessionLike): boolean {
-  return session?.user?.role === "admin" && session.user.deactivated !== true;
+  const user = session?.user;
+  return (
+    typeof user?.id === "string" &&
+    user.id !== "" &&
+    user.role === "admin" &&
+    user.deactivated !== true
+  );
 }
 
 /*

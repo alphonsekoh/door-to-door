@@ -71,7 +71,8 @@ describe("GET /api/users/me", () => {
      * the case #10's contract added after the spec review.
      */
     await seedUser();
-    signedInAs({ deactivated: true });
+    await pool.query("update users set deactivated_at = now() where id = $1", [USER_ID]);
+    signedInAs();
 
     const response = await GET(request());
     expect(response.status).toBe(403);
@@ -79,10 +80,10 @@ describe("GET /api/users/me", () => {
     expect(body.error.code).toBe("account_deactivated");
   });
 
-  it("returns 404 when the token names a user that no longer exists", async () => {
+  it("returns 401 when the token names a user that no longer exists", async () => {
     signedInAs();
     const response = await GET(request());
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(401);
   });
 
   it("serialises timestamps as ISO strings, as the contract requires", async () => {

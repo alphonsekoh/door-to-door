@@ -112,6 +112,13 @@ describe("isAdmin", () => {
     expect(isAdmin(null)).toBe(false);
   });
 
+  it.each([{ role: "admin" }, { id: "", role: "admin" }])(
+    "is false for an admin claim with no usable id: %j",
+    (user) => {
+      expect(isAdmin(session(user))).toBe(false);
+    },
+  );
+
   it("is false for a deactivated admin", () => {
     expect(isAdmin(session({ id: "a1", role: "admin", deactivated: true }))).toBe(false);
   });

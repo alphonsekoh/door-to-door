@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/server/auth/session", () => ({ currentSession: auth }));
 
 const { notFound } = vi.hoisted(() => ({
   notFound: vi.fn(() => {
@@ -37,6 +37,11 @@ describe("requireAdminPage", () => {
   it("hides the page from a deactivated admin", async () => {
     // The role survives in the JWT until it expires; deactivation must win.
     auth.mockResolvedValue({ user: { id: "u1", role: "admin", deactivated: true } });
+    await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it("hides the page from an admin claim that names no user", async () => {
+    auth.mockResolvedValue({ user: { role: "admin" } });
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
 });

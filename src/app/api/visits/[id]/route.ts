@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import { zUpdateVisitBody, zUpdateVisitPath, zUpdateVisitResponse } from "@/generated/zod.gen";
 import { requireUser } from "@/server/auth/guards";
@@ -14,7 +14,7 @@ export const PATCH = withContract(
     responses: { 200: zUpdateVisitResponse },
   },
   async ({ path, body }) => {
-    const user = requireUser(await auth());
+    const user = requireUser(await currentSession());
     const changes = requireChanges(body);
     const visit = await updateVisit(getDatabase(), path.id, changes, {
       id: user.id,

@@ -643,7 +643,10 @@ export type ListSessionsErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -679,7 +682,10 @@ export type CreateSessionErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -715,7 +721,10 @@ export type GetActiveSessionData = {
 
 export type GetActiveSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -748,7 +757,10 @@ export type GetSessionData = {
 
 export type GetSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -786,7 +798,10 @@ export type StartSessionData = {
 
 export type StartSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -828,7 +843,10 @@ export type EndSessionData = {
 
 export type EndSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -870,7 +888,10 @@ export type ReopenSessionData = {
 
 export type ReopenSessionErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -912,7 +933,10 @@ export type ListSessionBlocksData = {
 
 export type ListSessionBlocksErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -947,7 +971,10 @@ export type AttachSessionBlocksErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -986,7 +1013,10 @@ export type DetachSessionBlockData = {
 
 export type DetachSessionBlockErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1042,7 +1072,10 @@ export type ListBlocksErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
 };
@@ -1071,7 +1104,10 @@ export type CreateBlockErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1113,7 +1149,10 @@ export type UpdateBlockErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1168,7 +1207,10 @@ export type ListHouseholdsErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1214,7 +1256,10 @@ export type ListHouseholdsNeedingAttentionErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1248,7 +1293,10 @@ export type GetHouseholdHistoryData = {
 
 export type GetHouseholdHistoryErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1296,7 +1344,10 @@ export type ListVisitsErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1332,7 +1383,10 @@ export type CreateVisitErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1383,7 +1437,10 @@ export type UpdateVisitErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1426,7 +1483,10 @@ export type SyncVisitsErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1485,7 +1545,10 @@ export type ListFollowUpsErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1521,7 +1584,10 @@ export type CreateFollowUpErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1552,7 +1618,10 @@ export type DeleteFollowUpData = {
 
 export type DeleteFollowUpErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1594,7 +1663,10 @@ export type UpdateFollowUpErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1647,7 +1719,10 @@ export type ListHistoryErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1694,7 +1769,10 @@ export type ListOwnHistoryErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
 };
@@ -1729,7 +1807,10 @@ export type ListOwnSessionHistoryErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
 };
@@ -1766,7 +1847,10 @@ export type ListUsersErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1802,7 +1886,10 @@ export type CreateUserErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1838,7 +1925,10 @@ export type GetCurrentUserData = {
 
 export type GetCurrentUserErrors = {
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1874,7 +1964,10 @@ export type UpdateOwnProfileErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**
@@ -1883,7 +1976,10 @@ export type UpdateOwnProfileErrors = {
      */
     403: Error;
     /**
-     * The token names a user that no longer exists.
+     * The account was deleted between the per-request check and this
+     * update. Normally a deleted account is answered with 401 before the
+     * handler runs.
+     *
      */
     404: Error;
 };
@@ -1914,7 +2010,10 @@ export type UpdateUserErrors = {
      */
     400: Error;
     /**
-     * No valid session.
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
      */
     401: Error;
     /**

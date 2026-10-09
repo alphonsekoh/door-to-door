@@ -1,4 +1,4 @@
-import { auth } from "@/../auth";
+import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import { zListOwnHistoryQuery, zListOwnHistoryResponse } from "@/generated/zod.gen";
 import { requireUser } from "@/server/auth/guards";
@@ -18,7 +18,7 @@ export const GET = withContract(
     responses: { 200: zListOwnHistoryResponse },
   },
   async ({ query }) => {
-    const user = requireUser(await auth());
+    const user = requireUser(await currentSession());
     const { limit, offset } = query;
 
     const { rows, total } = await listHistory(getDatabase(), {
