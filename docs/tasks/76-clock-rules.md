@@ -50,6 +50,8 @@ clock_skew`). _Why:_ same rule on every write path. No lower bound there.
 - An item omitting `sessionId` resolves to the current active session, so the lower
   bound compares an old visit's `clientCreatedAt` to the new session's start. The queue
   (#33) must always send the visit's own `sessionId`, including on amends.
+- (Closed for stored visits by D-74-32: a stored visit keeps its own outing when an item
+  omits `sessionId`. A NEW item without one still resolves to the active session.)
 - `sentAt` is client-chosen; see D-76-3 and D-76-4.
 
 ## Relies on

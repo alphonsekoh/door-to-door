@@ -34,6 +34,19 @@ hold, not drop, items on that response and show a message; an admin may reactiva
 account and the records then sync. A `401` (account deleted) is likewise not a reason to
 discard.
 
+## Teams (D-74)
+
+Per-item results the queue must handle, from PR #82:
+
+- `conflict` is HELD for review, never retried (D-74-23): a removed teammate's amend, a
+  stranger's record, or an attempt to move a stored visit.
+- `internal_error` is RETRYABLE (D-74-30): retry with backoff and a CAP, then quarantine
+  as a poison item. A deterministic failure (for example `InternalError` from
+  `presentOrThrow`) must not retry forever.
+- Never queue join, create, add or leave (D-74-19); they are online-only.
+- Send the visit's own `sessionId` on amends, since a stored visit now keeps its own
+  outing and an item naming another is `conflict` (D-74-32).
+
 ## Inherited
 
 Two acceptance criteria from #26: queued units appear in the unit list and look

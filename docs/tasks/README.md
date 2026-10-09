@@ -67,47 +67,47 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 
 ## Index
 
-| #   | Task                                                    | Status      |
-| --- | ------------------------------------------------------- | ----------- |
-| 1   | [Scaffold](01-scaffold.md)                              | Done        |
-| 2   | [Docs and project rules](02-docs-and-rules.md)          | Done        |
-| 3   | [Lint, format, strict TypeScript](03-lint-and-types.md) | Done        |
-| 4   | [Vitest and coverage](04-vitest-coverage.md)            | Done        |
-| 5   | [Docker Compose](05-docker.md)                          | Done        |
-| 6   | [CI pipeline](06-ci.md)                                 | Done        |
-| 7   | [Drizzle schema](07-schema.md)                          | Done        |
-| 8   | [Migrations](08-migrations.md)                          | Done        |
-| 9   | [Seed](09-seed.md)                                      | Done        |
-| 10  | [OpenAPI contract](10-openapi.md)                       | Done        |
-| 11  | [Codegen](11-codegen.md)                                | Done        |
-| 12  | [withContract](12-with-contract.md)                     | Done        |
-| 13  | [Auth.js setup](13-authjs.md)                           | Done        |
-| 14  | [Google SSO](14-google-sso.md)                          | Open        |
-| 15  | [Credentials sign-in](15-credentials.md)                | Done        |
-| 16  | [Route guards](16-route-guards.md)                      | Done        |
-| 17  | [Sessions API](17-sessions-api.md)                      | Done        |
-| 18  | [Session-blocks API](18-session-blocks-api.md)          | Done        |
-| 19  | [Blocks API](19-blocks-api.md)                          | Done        |
-| 20  | [Households and visits API](20-visits-api.md)           | Done        |
-| 21  | [Sync endpoint](21-sync-endpoint.md)                    | Done        |
-| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done        |
-| 23  | [History API](23-history-api.md)                        | Done        |
-| 24  | [Active session screen](24-active-session-screen.md)    | Done        |
-| 25  | [Recording form](25-recording-form.md)                  | Done        |
-| 26  | [Block unit list](26-unit-list.md)                      | Done        |
-| 27  | [Own history](27-own-history.md)                        | Done        |
-| 28  | [Admin sessions](28-admin-sessions.md)                  | Done        |
-| 29  | [Admin records](29-admin-records.md)                    | Done        |
-| 30  | [Consolidated history](30-consolidated-history.md)      | Done        |
-| 31  | [Member management](31-member-management.md)            | Done        |
-| 32  | [PWA and service worker](32-pwa.md)                     | In review   |
-| 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open        |
-| 34  | [Offline sync tests](34-offline-tests.md)               | Open        |
-| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Open        |
-| 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open        |
-| 37  | [E2E smoke](37-e2e.md)                                  | In review   |
-| 38  | [Documentation pass](38-docs-pass.md)                   | Open        |
-| 74  | [Teams and own name](74-teams.md)                       | In progress |
-| 75  | [Config in YAML](75-config-yaml.md)                     | In review   |
-| 76  | [Clock rules](76-clock-rules.md)                        | In review   |
-| 83  | [Per-request auth](83-per-request-auth.md)              | In review   |
+| #   | Task                                                    | Status                                 |
+| --- | ------------------------------------------------------- | -------------------------------------- |
+| 1   | [Scaffold](01-scaffold.md)                              | Done                                   |
+| 2   | [Docs and project rules](02-docs-and-rules.md)          | Done                                   |
+| 3   | [Lint, format, strict TypeScript](03-lint-and-types.md) | Done                                   |
+| 4   | [Vitest and coverage](04-vitest-coverage.md)            | Done                                   |
+| 5   | [Docker Compose](05-docker.md)                          | Done                                   |
+| 6   | [CI pipeline](06-ci.md)                                 | Done                                   |
+| 7   | [Drizzle schema](07-schema.md)                          | Done                                   |
+| 8   | [Migrations](08-migrations.md)                          | Done                                   |
+| 9   | [Seed](09-seed.md)                                      | Done                                   |
+| 10  | [OpenAPI contract](10-openapi.md)                       | Done                                   |
+| 11  | [Codegen](11-codegen.md)                                | Done                                   |
+| 12  | [withContract](12-with-contract.md)                     | Done                                   |
+| 13  | [Auth.js setup](13-authjs.md)                           | Done                                   |
+| 14  | [Google SSO](14-google-sso.md)                          | Open                                   |
+| 15  | [Credentials sign-in](15-credentials.md)                | Done                                   |
+| 16  | [Route guards](16-route-guards.md)                      | Done                                   |
+| 17  | [Sessions API](17-sessions-api.md)                      | Done                                   |
+| 18  | [Session-blocks API](18-session-blocks-api.md)          | Done                                   |
+| 19  | [Blocks API](19-blocks-api.md)                          | Done                                   |
+| 20  | [Households and visits API](20-visits-api.md)           | Done                                   |
+| 21  | [Sync endpoint](21-sync-endpoint.md)                    | Done                                   |
+| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done                                   |
+| 23  | [History API](23-history-api.md)                        | Done                                   |
+| 24  | [Active session screen](24-active-session-screen.md)    | Done                                   |
+| 25  | [Recording form](25-recording-form.md)                  | Done                                   |
+| 26  | [Block unit list](26-unit-list.md)                      | Done                                   |
+| 27  | [Own history](27-own-history.md)                        | Done                                   |
+| 28  | [Admin sessions](28-admin-sessions.md)                  | Done                                   |
+| 29  | [Admin records](29-admin-records.md)                    | Done                                   |
+| 30  | [Consolidated history](30-consolidated-history.md)      | Done                                   |
+| 31  | [Member management](31-member-management.md)            | Done                                   |
+| 32  | [PWA and service worker](32-pwa.md)                     | In review                              |
+| 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open                                   |
+| 34  | [Offline sync tests](34-offline-tests.md)               | Open                                   |
+| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Open                                   |
+| 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                   |
+| 37  | [E2E smoke](37-e2e.md)                                  | In review                              |
+| 38  | [Documentation pass](38-docs-pass.md)                   | Open                                   |
+| 74  | [Teams and own name](74-teams.md)                       | In progress (PR 2 of 4 in review: #82) |
+| 75  | [Config in YAML](75-config-yaml.md)                     | In review                              |
+| 76  | [Clock rules](76-clock-rules.md)                        | In review                              |
+| 83  | [Per-request auth](83-per-request-auth.md)              | In review                              |
