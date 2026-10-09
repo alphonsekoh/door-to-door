@@ -4,7 +4,7 @@ import {
   type Page,
   type PlaywrightWorkerArgs,
 } from "@playwright/test";
-import { ADMIN_STATE, MEMBER_STATE, SEED_BLOCK } from "./accounts";
+import { ADMIN_STATE, MEMBER_STATE, PARTNER_STATE, SEED_BLOCK } from "./accounts";
 
 /*
  * An API context carrying the admin's cookies. Shared rather than rebuilt in
@@ -29,6 +29,8 @@ export async function adminRequest(
 type Fixtures = {
   adminPage: Page;
   memberPage: Page;
+  /* A second member (Ben), for anything that needs two people on one outing. */
+  partnerPage: Page;
   /* Admin's cookies, for setting state up over the API rather than by driving
      six screens to reach the one under test. */
   adminApi: APIRequestContext;
@@ -44,6 +46,13 @@ export const test = base.extend<Fixtures>({
 
   memberPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: MEMBER_STATE });
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
+  },
+
+  partnerPage: async ({ browser }, use) => {
+    const context = await browser.newContext({ storageState: PARTNER_STATE });
     const page = await context.newPage();
     await use(page);
     await context.close();

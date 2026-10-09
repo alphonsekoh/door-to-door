@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { BlockCard } from "@/components/block-card";
+import { OutingTeam } from "@/components/outing-team";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 
@@ -18,12 +19,15 @@ type State =
 export function ActiveSessionScreen() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
+  /* Tells the team card to re-read along with every load. */
+  const [tick, setTick] = useState(0);
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
     try {
       const data = await apiFetch<ActiveSession>("/sessions/active");
       setState({ status: "ready", data });
+      setTick((current) => current + 1);
     } catch (error) {
       // No active session is an ordinary state, not a failure.
       if (error instanceof ApiRequestError && error.status === 404) {
@@ -112,6 +116,8 @@ export function ActiveSessionScreen() {
           ))}
         </ul>
       )}
+
+      <OutingTeam sessionId={session.id} tick={tick} />
     </div>
   );
 }

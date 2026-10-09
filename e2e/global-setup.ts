@@ -4,7 +4,15 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Pool } from "pg";
-import { ADMIN_STATE, MEMBER_STATE, SEED_ADMIN, SEED_MEMBER, SEED_PASSWORD } from "./accounts";
+import {
+  ADMIN_STATE,
+  MEMBER_STATE,
+  PARTNER_STATE,
+  SEED_ADMIN,
+  SEED_MEMBER,
+  SEED_PARTNER,
+  SEED_PASSWORD,
+} from "./accounts";
 
 /*
  * Brings the e2e database to exactly the seeded state, then signs both roles
@@ -83,4 +91,5 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   await resetAndSeed();
   await signInAndSave(baseURL, SEED_ADMIN, ADMIN_STATE);
   await signInAndSave(baseURL, SEED_MEMBER, MEMBER_STATE);
+  await signInAndSave(baseURL, SEED_PARTNER, PARTNER_STATE);
 }

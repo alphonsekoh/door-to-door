@@ -11,6 +11,12 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+vi.mock("@/components/outing-team", () => ({
+  OutingTeam: ({ sessionId, tick }: { sessionId: string; tick: number }) => (
+    <p>{`team card ${sessionId} tick ${String(tick)}`}</p>
+  ),
+}));
+
 const block = (name: string, over: Record<string, unknown> = {}) => ({
   block: { id: `b-${name}`, name, street: "Ang Mo Kio Ave 3", postalCode: null, createdAt: "" },
   visitCount: 0,
@@ -117,6 +123,29 @@ describe("a session with no blocks yet", () => {
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("No blocks yet.")).toBeInTheDocument();
     expect(screen.getByText(/add blocks while the outing is running/)).toBeInTheDocument();
+  });
+});
+
+describe("the team card", () => {
+  it("is shown for the running outing", async () => {
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText(/team card s1 tick 1/)).toBeInTheDocument();
+  });
+
+  it("is told to re-read whenever the screen does", async () => {
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/tick 1/);
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText(/tick 2/)).toBeInTheDocument();
+  });
+
+  it("is absent when no outing is running", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("No outing is running.");
+    expect(screen.queryByText(/team card/)).not.toBeInTheDocument();
   });
 });
 
