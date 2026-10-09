@@ -110,3 +110,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 74  | [Teams and own name](74-teams.md)                       | In progress |
 | 75  | [Config in YAML](75-config-yaml.md)                     | In review   |
 | 76  | [Clock rules](76-clock-rules.md)                        | In review   |
+| 83  | [Per-request auth](83-per-request-auth.md)              | In review   |

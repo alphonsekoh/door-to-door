@@ -245,3 +245,20 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   beyond the Chromium behaviour observed in #74.)
 - **Source:** Browser behaviour (web.dev bfcache guidance); observed in #74
 - **Used by:** D-74-11
+
+### R-32 · Auth.js JWT sessions are stateless
+
+- **Finding:** With the JWT strategy there is no server-side session record, so a token
+  stays valid until it expires and cannot be revoked; claims in it reflect sign-in time.
+  Sign-out only clears the cookie. Anything that must change sooner has to be read from
+  the database per request.
+- **Source:** [Auth.js session strategies](https://authjs.dev/concepts/session-strategies); observed in #83
+- **Used by:** D-83-1, D-83-15
+
+### R-33 · `next build` prerenders pages that do not call `auth()`
+
+- **Finding:** A page that reads nothing dynamic is prerendered at build time, so a
+  database call placed before `auth()` runs during `next build`. Calling `auth()` first
+  (it reads request headers) makes the page dynamic. Observed in #83.
+- **Source:** Observed in #83 build
+- **Used by:** D-83-8

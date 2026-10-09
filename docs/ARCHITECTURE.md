@@ -75,8 +75,11 @@ households ─< follow_ups (optional visit_id, set null on delete)
 2. The route handler is wrapped in `withContract(operation, handler)`: path, query
    (schema-driven coercion) and body are parsed with generated Zod; PATCH bodies go
    through `requireChanges`.
-3. The handler calls `requireUser` / `requireRole`. Deactivation is re-checked here on
-   every request because sessions are JWTs.
+3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
+   which reads the user's role and deactivation from the database on every request (one
+   primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
+   Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
+   `500`, never allowed.
 4. The service does the work. Sync and `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
@@ -99,7 +102,9 @@ households ─< follow_ups (optional visit_id, set null on delete)
 ## Auth
 
 Auth.js v5, JWT strategy (forced: the Credentials provider cannot use database
-sessions). Role and deactivation travel on the token. Credentials use argon2id
+sessions). The token carries identity; its role and deactivation claims are UI hints and
+are never used for authorization, which reads the database per request (also for admin
+pages, with `admin/layout.tsx` as a structural guard). Credentials use argon2id
 (`@node-rs/argon2`) with a decoy hash for unknown emails and a per-email rate limit.
 Google SSO (#14) is not built.
 

@@ -27,6 +27,13 @@ Findings from #32 that shape the design (R-19, R-20):
   Background Sync on iOS. Flush on `online`, focus and app start; do not rely on
   Background Sync. Show unsynced state so a member knows to open the app.
 
+## Deactivation (D-83-4)
+
+A deactivated user's queued records get `403 account_deactivated` on flush. The queue must
+hold, not drop, items on that response and show a message; an admin may reactivate the
+account and the records then sync. A `401` (account deleted) is likewise not a reason to
+discard.
+
 ## Inherited
 
 Two acceptance criteria from #26: queued units appear in the unit list and look

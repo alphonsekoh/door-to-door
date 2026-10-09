@@ -11,7 +11,8 @@ Adapter, session strategy, and how a role reaches the app.
 
 - **D-13-1 · JWT session strategy.** Forced, not chosen: the Credentials provider cannot
   use database sessions. **Invariant.** _Research:_ R-2.
-- **D-13-2 · Role and deactivation travel on the token.** _Research:_ R-3.
+- ~~**D-13-2 · Role and deactivation travel on the token.** _Research:_ R-3.~~ Superseded
+  by D-83-1 and D-83-3 for authorization: the token still carries them, as UI hints only.
 - **D-13-3 · A user with no role defaults to `member`, never `admin`.** _Why:_ an SSO
   sign-up must not grant itself privileges.
 - **D-13-4 · `NextAuth()` takes a config function, not an object.** _Why:_ an object
