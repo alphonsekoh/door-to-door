@@ -1,6 +1,6 @@
 # #74 · Teams: pairs share and edit each other's records
 
-- **Status:** In progress (PR 2 of 4 in review: #82)
+- **Status:** In progress (PR 3 of 4 in review: #89)
 - **Phase:** 4 - Member UI (added later)
 - **Depends on:** #31
 
@@ -10,8 +10,7 @@ Door-to-door is done in pairs: one talks, one records, and they swap. Members jo
 outing and form a team for it, and teammates can view and edit each other's records.
 Members also set their own display name.
 
-Delivery: PR 1 (#81) is the own-name feature and sign-out hardening. PR 2 (#82) is the server half of participants, teams and teammate access. PRs 3 and 4
-(screens) are not built.
+Delivery: PR 1 (#81) is the own-name feature and sign-out hardening. PR 2 (#82) is the server half of participants, teams and teammate access. PR 3 (#89) is the outing screen: Join and the team card. PR 4 is not built.
 
 ## Decisions
 
@@ -65,7 +64,7 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 
 ## Decisions built in PR 2 (#82, server half)
 
-Numbering continues from D-74-12. Screens are PRs 3 and 4 and are not built.
+Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4.
 
 - **D-74-13 · Outing participants.** `session_participants`, primary key
   `(session_id, user_id)`. `POST /sessions/{id}/join` is the explicit "Join this outing"
@@ -174,6 +173,67 @@ Numbering continues from D-74-12. Screens are PRs 3 and 4 and are not built.
 - **D-74-35 · `attachTeams` costs two extra queries per page**, however many rows
   (names of stamped teams; snapshots joined to current user names). _Why:_ D-20-3.
 
+## Decisions built in PR 3 (#89, outing screen)
+
+- **D-74-36 · "Join this outing" and "Your team" on the active-session screen.** Join
+  shows until the caller appears in `GET` participants, so it is derived from the server
+  and recording's auto-join (D-74-13) needs no extra client code. The card offers Pair
+  up, rename, add member and leave. Members get no delete (D-74-18: a team with visits
+  cannot be deleted anyway). _Why:_ the server is the only truth about who is joined.
+- **D-74-37 · The card reads identity from `GET /users/me`, never the JWT.** Relies on
+  D-74-7 and D-83-3.
+- **D-74-38 · Pair up needs a chosen partner** (the button reads "Choose a teammate"),
+  although the API allows a solo team. _Why:_ the screen exists for pairs; a solo team
+  is a mistake from a phone.
+- **D-74-39 · Default name "Ann & Ben" follows the chosen partner until the user types
+  their own.** Truncated to 60 code points, falling back to "Team". Names use the same
+  validator as the server (`src/lib/team-name.ts`). _Why:_ client and server cannot
+  disagree about what is valid.
+- **D-74-40 · An admin forming a team adds themself by listing their own id in
+  `memberIds`.** The server does not place admins (D-74-15). The card is not shown for a
+  DRAFT outing, because `/sessions/active` returns only active ones.
+- **D-74-41 · Picker candidates = participants not already on a team, excluding the
+  caller.** After a `409` the card reloads, so people no longer free drop out. One generic
+  409 line is shown: the API does not separate "already on a team" from "not joined".
+- **D-74-42 · Online-only, nothing queued or stored (applies D-74-19).** Every control is
+  disabled with "Connect to change your team" when `navigator.onLine` is false, or after
+  a fetch `TypeError` marks the card unreachable until the next successful read or
+  `online` event. _Why:_ team state is server truth.
+- **D-74-43 · Honest failure wording.** A failed CHANGE says "Could not confirm. Refresh
+  to see whether it went through."; never "Nothing was changed". A failed READ says
+  "You seem to be offline." Raw server text is never shown; `src/lib/team-ui.ts` maps
+  codes to friendly text. _Why:_ a `TypeError` cannot tell a request that never left from
+  a reply that was lost (R-36).
+- **D-74-44 · One request per tap.** A synchronous in-flight ref guards `change()` and
+  the sheet's `submit()`. _Why:_ a double tap used to send two requests and show a false
+  409 after the first succeeded.
+- **D-74-45 · Stale responses are discarded with a generation counter**, including late
+  failures and responses after unmount. The card polls by piggybacking on the screen's
+  existing 30s poll and Refresh, and stops on unmount. An auth failure (401 or
+  `account_deactivated`) on a poll is shown and disables the controls; a global message
+  is issue #85.
+- **D-74-46 · The D-74-1 limit is stated under every card state:** "A teammate sees and
+  edits your records once they have synced. A record still waiting on your phone is only
+  on your phone." The leave dialog says teammates keep access to what you recorded AND
+  you lose access to theirs (D-74-17).
+- **D-74-47 · Layout.** Sheet `z-50` with a sticky primary button, confirm `z-60`
+  (D-30-7), tap targets at least 44px, 16px inputs, long names wrap (`break-words`),
+  nothing truncated. The name field sits ABOVE the picker, with `scroll-pb-28` and
+  `max-h-[85dvh]`, so the on-screen keyboard can never leave the focused field under the
+  sticky Create button. _Why:_ same class of bug as D-30-7. Proven by an E2E
+  `elementFromPoint` measurement on both browsers, with the keyboard emulated by
+  shrinking the viewport (R-37).
+- **D-74-48 · E2E `e2e/teams.spec.ts`.** Two members join, Alice forms a team with Ben,
+  Ben sees it after Refresh, Ben leaves. Adds `PARTNER_STATE` (Ben) to the fixtures, ends
+  the outing after each test, uses `expect.poll` for layout and exact locators
+  (D-37-4, D-37-7, D-74-12).
+
+Known limits: sheets and the confirm dialog have no focus trap, Escape or focus return
+(issue #90, shared with `ConfirmDialog`). An admin may Pair up without tapping Join (the
+server auto-joins them, D-74-13). The character counter and refusal-reason handling are
+cosmetic; the server decides. The real two-phone check that A's unsynced record is
+invisible to B until it syncs cannot run until the queue (#33) exists.
+
 ### How existing decisions are handled
 
 - **D-16-4 / D-20-2:** amended. Members act on their own records, plus current
@@ -196,14 +256,18 @@ Numbering continues from D-74-12. Screens are PRs 3 and 4 and are not built.
 
 ## Follow-ups
 
-Issues #85, #86, #87 and #88 exist for related work found along the way; no decisions
-are recorded for them here.
+Issues #85 (a global auth-failure message), #86, #87, #88 and #90 (focus trap, Escape and
+focus return for sheets and dialogs) exist for related work found along the way; no
+decisions are recorded for them here.
 
 ## Relies on
 
 D-21-5 (amended), D-16-4, D-20-2,
 D-29-2 (authorship is never reassigned), D-23-1, D-27-4, D-16-2, D-32-7, D-32-4, D-07-3.
 D-31-6 uses "team screen" for the admin member list; that is not a team in this task.
+
+D-74-1, D-74-7, D-74-19 and D-83-3 are relied on by PR 3 (D-74-36 to D-74-48), along
+with D-30-7, D-37-4 and D-37-7.
 
 ## Open questions
 

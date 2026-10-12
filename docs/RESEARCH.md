@@ -286,3 +286,19 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   docs.
 - **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
 - **Used by:** D-74-31, D-74-23
+
+### R-36 · A fetch `TypeError` cannot tell "not sent" from "reply lost"
+
+- **Finding:** `fetch` rejects with a `TypeError` for any network-level failure, including
+  when the request reached the server and only the response was lost. The client cannot
+  tell whether a change was applied. Not tested here; from the Fetch specification.
+- **Source:** [Fetch Standard, network error](https://fetch.spec.whatwg.org/#concept-network-error); #74
+- **Used by:** D-74-43
+
+### R-37 · The on-screen keyboard shrinks the viewport (observed, unverified)
+
+- **Finding:** On a phone the on-screen keyboard reduces the visible area, so a sticky
+  button can sit over a focused field. The E2E emulates it by shrinking the viewport; this
+  is not a real keyboard, and real-device behaviour differs by browser and is unverified.
+- **Source:** observed during #74 PR 3 (`e2e/teams.spec.ts`)
+- **Used by:** D-74-47
