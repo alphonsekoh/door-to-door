@@ -124,6 +124,10 @@ Google SSO (#14) is not built.
   by `overlay-layers.test.ts`.
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
+- Active-session screen: "Join this outing" (shown until the caller is in the server's
+  participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
+  `src/lib/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
+  stored. The card refreshes with the screen's 30s poll and Refresh.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
