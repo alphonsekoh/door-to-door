@@ -11,9 +11,13 @@ import {
   religionEnum,
   roleEnum,
   sessionBlocks,
+  sessionParticipants,
   sessionStatusEnum,
+  sessionTeamMembers,
+  sessionTeams,
   users,
   verificationTokens,
+  visitTeammates,
   visits,
 } from "@/db/schema";
 
@@ -180,7 +184,44 @@ describe("visits", () => {
       household_id: "cascade",
       session_id: "restrict",
       member_id: "restrict",
+      team_id: "restrict",
     });
+  });
+
+  it("starts with no team and indexes the column history filters on", () => {
+    expect(column(visits, "team_id")?.notNull).toBe(false);
+    expect(indexNames(visits)).toContain("visits_team_idx");
+  });
+});
+
+describe("participants and teams", () => {
+  it("keeps participants with the outing, and the user protected", () => {
+    expect(deleteActions(sessionParticipants)).toEqual({
+      session_id: "cascade",
+      user_id: "restrict",
+    });
+  });
+
+  it("cannot lose a team that has an outing or author, nor an outing its teams", () => {
+    expect(deleteActions(sessionTeams)).toEqual({
+      session_id: "restrict",
+      created_by: "restrict",
+    });
+  });
+
+  it("follows the team on delete, and ties every member row to the team's own outing", () => {
+    expect(deleteActions(sessionTeamMembers)).toEqual({
+      user_id: "restrict",
+      "team_id+session_id": "cascade",
+    });
+  });
+
+  it("allows one team per member per outing", () => {
+    expect(uniqueNames(sessionTeamMembers)).toContain("session_team_members_session_user_unique");
+  });
+
+  it("snapshots teammates with the visit and protects the user", () => {
+    expect(deleteActions(visitTeammates)).toEqual({ visit_id: "cascade", user_id: "restrict" });
   });
 });
 

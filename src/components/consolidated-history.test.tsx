@@ -56,6 +56,7 @@ function entry(
       householdId,
       sessionId: "s1",
       member: { id: "u1", name: "Alice", image: null },
+      team: null,
       interestLevel,
       description,
       clientCreatedAt: createdAt,

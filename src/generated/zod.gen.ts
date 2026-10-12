@@ -139,16 +139,52 @@ export const zHousehold = z.object({
     updatedAt: z.iso.datetime()
 });
 
+/**
+ * A team as stamped on a visit. `name` is the team's current name;
+ * `members` is the snapshot described on `Visit.team`.
+ *
+ */
+export const zTeamSummary = z.object({
+    id: z.uuid(),
+    name: z.string(),
+    members: z.array(zUserSummary)
+});
+
 export const zVisit = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
     sessionId: z.uuid(),
     member: zUserSummary,
+    team: zTeamSummary.nullable(),
     interestLevel: zInterestLevel,
     description: z.string().max(4000),
     clientCreatedAt: z.iso.datetime(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime()
+});
+
+/**
+ * A pair or small group working one outing, with its **current**
+ * members; a deactivated person is not listed. A user is on at most one
+ * team per outing.
+ *
+ */
+export const zTeam = z.object({
+    id: z.uuid(),
+    sessionId: z.uuid(),
+    name: z.string().min(1).max(60),
+    members: z.array(zUserSummary),
+    createdAt: z.iso.datetime()
+});
+
+/**
+ * Someone who has started on an outing. Deactivated people are not listed.
+ *
+ */
+export const zParticipant = z.object({
+    user: zUserSummary,
+    teamId: z.uuid().nullable(),
+    joinedAt: z.iso.datetime()
 });
 
 export const zFollowUp = z.object({
@@ -289,6 +325,19 @@ export const zCreateUserRequest = z.object({
     role: zRole.optional().default('member')
 });
 
+export const zCreateTeamRequest = z.object({
+    name: z.string().min(1).max(60),
+    memberIds: z.array(z.uuid()).optional()
+});
+
+export const zUpdateTeamRequest = z.object({
+    name: z.string().min(1).max(60)
+});
+
+export const zAddTeamMemberRequest = z.object({
+    userId: z.uuid()
+});
+
 export const zUpdateUserRequest = z.object({
     role: zRole.optional(),
     deactivated: z.boolean().optional()
@@ -296,6 +345,14 @@ export const zUpdateUserRequest = z.object({
 
 export const zUpdateOwnProfileRequest = z.object({
     name: z.string().min(1).max(400)
+});
+
+export const zParticipantList = z.object({
+    data: z.array(zParticipant)
+});
+
+export const zTeamList = z.object({
+    data: z.array(zTeam)
 });
 
 export const zSessionList = z.object({
@@ -495,6 +552,85 @@ export const zDetachSessionBlockPath = z.object({
  */
 export const zDetachSessionBlockResponse = z.void();
 
+export const zListParticipantsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * Participants, earliest joined first.
+ */
+export const zListParticipantsResponse = zParticipantList;
+
+export const zJoinSessionPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The caller's participation.
+ */
+export const zJoinSessionResponse = zParticipant;
+
+export const zListTeamsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * Every team, with current members.
+ */
+export const zListTeamsResponse = zTeamList;
+
+export const zCreateTeamBody = zCreateTeamRequest;
+
+export const zCreateTeamPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The new team.
+ */
+export const zCreateTeamResponse = zTeam;
+
+export const zDeleteTeamPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * Disbanded.
+ */
+export const zDeleteTeamResponse = z.void();
+
+export const zUpdateTeamBody = zUpdateTeamRequest;
+
+export const zUpdateTeamPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The updated team.
+ */
+export const zUpdateTeamResponse = zTeam;
+
+export const zAddTeamMemberBody = zAddTeamMemberRequest;
+
+export const zAddTeamMemberPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The updated team.
+ */
+export const zAddTeamMemberResponse = zTeam;
+
+export const zRemoveTeamMemberPath = z.object({
+    id: z.uuid(),
+    userId: z.uuid()
+});
+
+/**
+ * The team after removal.
+ */
+export const zRemoveTeamMemberResponse = zTeam;
+
 export const zListBlocksQuery = z.object({
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).optional().default(0),
@@ -641,6 +777,7 @@ export const zListHistoryQuery = z.object({
     blockId: z.uuid().optional(),
     sessionId: z.uuid().optional(),
     memberId: z.uuid().optional(),
+    teamId: z.uuid().optional(),
     interestLevel: zInterestLevel.optional(),
     religion: zReligion.optional(),
     from: z.iso.datetime().optional(),
@@ -655,6 +792,7 @@ export const zListHistoryQuery = z.object({
 export const zListHistoryResponse = zHistoryList;
 
 export const zListOwnHistoryQuery = z.object({
+    includeTeam: z.boolean().optional().default(false),
     blockId: z.uuid().optional(),
     sessionId: z.uuid().optional(),
     interestLevel: zInterestLevel.optional(),

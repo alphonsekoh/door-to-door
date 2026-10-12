@@ -24,6 +24,7 @@ export const GET = withContract(
       limit,
       offset,
       ...(query.memberId === undefined ? {} : { memberId: query.memberId }),
+      ...(query.teamId === undefined ? {} : { teamId: query.teamId }),
       ...(query.blockId === undefined ? {} : { blockId: query.blockId }),
       ...(query.sessionId === undefined ? {} : { sessionId: query.sessionId }),
       ...(query.interestLevel === undefined ? {} : { interestLevel: query.interestLevel }),

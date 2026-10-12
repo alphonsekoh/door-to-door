@@ -56,6 +56,9 @@ users ─┐
 outing_sessions ─┘        │
        └─< session_blocks >┘
 households ─< follow_ups (optional visit_id, set null on delete)
+outing_sessions ─< session_participants (never removed)
+outing_sessions ─< session_teams ─< session_team_members (unique per session+user)
+visits >── session_teams (team_id, nullable, restrict); visits ─< visit_teammates
 ```
 
 - **Household** = `(block_id, unit_number)`, unique. Name, contact, religion are
@@ -66,6 +69,11 @@ households ─< follow_ups (optional visit_id, set null on delete)
 - **Session** (`outing_sessions`): `draft → active → ended`, reopenable. At most one
   `active`, by partial unique index.
 - **Blocks** are shared across members and sessions, never locked.
+- **Teams** (#74) are per outing. A visit is stamped once with its author's team and a
+  `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
+  always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
+  `canAmend`). Participants and team operations are in `src/server/teams/service.ts`
+  and are online-only.
 
 ## Request path
 
@@ -150,11 +158,20 @@ future or before their outing are rejected `clock_skew` while siblings apply. Th
 (#32); a cold offline launch shows `/offline`. The IndexedDB queue and sync engine are
 #33–#34.
 
+**Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
+NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
+snapshot and auto-join), otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
+(`canAmend`, newer `updatedAt`, same household and outing), then a narrow `UPDATE` of
+interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
+`internal_error` (retryable). The request path above is unchanged; the new endpoints
+(`/sessions/{id}/join`, `/participants`, `/teams`, `/teams/{id}/members`) are ordinary
+`withContract` handlers.
+
 **Limit: pairs and the queue.** The queue lives in one phone's IndexedDB. Teammates (#74)
 see and edit each other's records only once they have synced; unsynced records are
 visible on the phone that made them and nowhere else, because two phones with no
 reception cannot exchange data. The sync endpoint's rule that a member cannot overwrite
-another member's visit (D-21-5) gains a team exception, not a way around the queue.
+another member's visit (D-21-5) has a team exception (D-74-22), not a way around the queue.
 
 ## Testing
 

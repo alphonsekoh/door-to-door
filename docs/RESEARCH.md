@@ -262,3 +262,27 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   (it reads request headers) makes the page dynamic. Observed in #83.
 - **Source:** Observed in #83 build
 - **Used by:** D-83-8
+
+### R-34 · `INSERT ... ON CONFLICT DO NOTHING` and row locks
+
+- **Finding:** `ON CONFLICT DO NOTHING ... RETURNING` returns a row only for rows it
+  actually inserted, so "a row came back" is a reliable "this call created it". It does
+  not block on a conflicting row that is merely locked (for example by `FOR UPDATE`), only
+  on an uncommitted conflicting insert. `xmax = 0` is NOT a guaranteed way to tell insert
+  from update, so it is not used. Verified by test for the returned-row behaviour
+  (`sync-races.integration.test.ts`); the `xmax` and lock-only points are from the
+  PostgreSQL docs and unverified here.
+- **Source:** [PostgreSQL INSERT](https://www.postgresql.org/docs/current/sql-insert.html); #74
+- **Used by:** D-74-31
+
+### R-35 · `FOR UPDATE` re-reads committed state; a subquery keeps the statement snapshot
+
+- **Finding:** Under READ COMMITTED, a statement that waits for a row lock (`FOR UPDATE`)
+  re-reads the locked row's committed version; a separate later statement takes a fresh
+  snapshot. A subquery inside one statement, however, uses that statement's snapshot, so
+  an `IN (select ...)` over team membership does not see a removal committed during the
+  lock wait. Verified by test (the "teammate was removed while it waited" case holds a
+  real row lock from a second connection); the general rules are from the PostgreSQL
+  docs.
+- **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
+- **Used by:** D-74-31, D-74-23

@@ -30,6 +30,7 @@ const history: HouseholdHistory = {
       householdId: "h1",
       sessionId: "s1",
       member: { id: "u2", name: "Ben Lim", image: null },
+      team: null,
       interestLevel: "medium",
       description: "Asked us to come back",
       clientCreatedAt: AT,

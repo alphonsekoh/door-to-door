@@ -5,6 +5,14 @@ import { blocks, households, outingSessions, sessionBlocks, users, visits } from
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
+import {
+  attachTeams,
+  autoJoin,
+  canAmend,
+  stampVisit,
+  teamIdFor,
+  type TeamStamp,
+} from "@/server/teams/access";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 
 /*
@@ -70,10 +78,11 @@ export async function upsertHousehold(
   return firstOrThrow(inserted, "the household upsert");
 }
 
-export type VisitRow = {
+export type VisitBase = {
   id: string;
   householdId: string;
   sessionId: string;
+  teamId: string | null;
   interestLevel: InterestLevel;
   description: string;
   clientCreatedAt: Date;
@@ -84,10 +93,14 @@ export type VisitRow = {
   memberImage: string | null;
 };
 
-const visitColumns = {
+/* A visit as the API shows it: the stamped team and its snapshot attached. */
+export type VisitRow = VisitBase & { team: TeamStamp | null };
+
+export const visitColumns = {
   id: visits.id,
   householdId: visits.householdId,
   sessionId: visits.sessionId,
+  teamId: visits.teamId,
   interestLevel: visits.interestLevel,
   description: visits.description,
   clientCreatedAt: visits.clientCreatedAt,
@@ -134,7 +147,7 @@ export async function getVisit(db: Database, id: string): Promise<VisitRow> {
   if (!visit) {
     throw new NotFoundError("No such visit.");
   }
-  return visit;
+  return firstOrThrow(await attachTeams(db, [visit]), "the visit's team");
 }
 
 export async function createVisit(
@@ -179,38 +192,49 @@ export async function createVisit(
 
   const sessionId = await requireActiveSessionWithBlock(db, input.blockId);
 
-  const existing = await db
-    .select({ id: visits.id })
-    .from(visits)
-    .where(eq(visits.id, input.id))
-    .limit(1);
+  /*
+   * One transaction, so a duplicate id rolls the household upsert back and a
+   * visit never exists without the stamp and snapshot that describe it.
+   */
+  await db.transaction(async (tx) => {
+    const household = await upsertHousehold(tx, {
+      blockId: input.blockId,
+      unitNumber: input.unitNumber,
+      name: input.name,
+      contact: input.contact,
+      religion: input.religion,
+    });
 
-  if (existing.length > 0) {
     /*
-     * The client generates the id, so a repeat means a genuine duplicate here.
-     * Replaying a queued write is what /visits/sync is for (#21).
+     * The team is the AUTHOR's, so an admin recording on someone's behalf
+     * stamps that member's team, not their own.
      */
-    throw new ConflictError("conflict", "A visit with that id already exists.");
-  }
+    const teamId = await teamIdFor(tx, input.memberId, sessionId);
 
-  const household = await upsertHousehold(db, {
-    blockId: input.blockId,
-    unitNumber: input.unitNumber,
-    name: input.name,
-    contact: input.contact,
-    religion: input.religion,
-  });
+    const inserted = await tx
+      .insert(visits)
+      .values({
+        id: input.id,
+        householdId: household.id,
+        sessionId,
+        memberId: input.memberId,
+        teamId,
+        interestLevel: input.interestLevel,
+        description: input.description ?? "",
+        ...(input.clientCreatedAt === undefined
+          ? {}
+          : { clientCreatedAt: new Date(input.clientCreatedAt) }),
+      })
+      // The client generates the id, so a repeat is a genuine duplicate here;
+      // replaying a queued write is what /visits/sync is for (#21).
+      .onConflictDoNothing()
+      .returning({ id: visits.id });
 
-  await db.insert(visits).values({
-    id: input.id,
-    householdId: household.id,
-    sessionId,
-    memberId: input.memberId,
-    interestLevel: input.interestLevel,
-    description: input.description ?? "",
-    ...(input.clientCreatedAt === undefined
-      ? {}
-      : { clientCreatedAt: new Date(input.clientCreatedAt) }),
+    if (inserted.length === 0) {
+      throw new ConflictError("conflict", "A visit with that id already exists.");
+    }
+    await stampVisit(tx, input.id, teamId, input.memberId);
+    await autoJoin(tx, sessionId, input.memberId);
   });
 
   return getVisit(db, input.id);
@@ -227,10 +251,11 @@ export async function updateVisit(
 ): Promise<VisitRow> {
   const visit = await getVisit(db, id);
 
+  if (!(await canAmend(db, actor, visit))) {
+    throw new ForbiddenError("You can only amend your own records, or your team's.");
+  }
+
   if (actor.role !== "admin") {
-    if (visit.memberId !== actor.id) {
-      throw new ForbiddenError("You can only amend your own records.");
-    }
     const session = await db
       .select({ status: outingSessions.status })
       .from(outingSessions)

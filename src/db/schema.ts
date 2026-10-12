@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  foreignKey,
   index,
   integer,
   pgEnum,
@@ -154,6 +155,67 @@ export const sessionBlocks = pgTable(
   ],
 );
 
+/* ------------------------------------------------------ participants, teams */
+
+/* Who has started on an outing. Rows are never removed: there is no un-join. */
+export const sessionParticipants = pgTable(
+  "session_participants",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.sessionId, table.userId] })],
+);
+
+export const sessionTeams = pgTable(
+  "session_teams",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("session_teams_session_idx").on(table.sessionId),
+    // Target of the composite key below, so a member row cannot name a team
+    // from a different session than its own.
+    unique("session_teams_id_session_unique").on(table.id, table.sessionId),
+  ],
+);
+
+export const sessionTeamMembers = pgTable(
+  "session_team_members",
+  {
+    teamId: uuid("team_id").notNull(),
+    sessionId: uuid("session_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    joinedAt: timestamp("joined_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.teamId, table.userId] }),
+    // One team per member per outing, enforced here so two concurrent
+    // "create a team" requests cannot both place the same person.
+    unique("session_team_members_session_user_unique").on(table.sessionId, table.userId),
+    foreignKey({
+      columns: [table.teamId, table.sessionId],
+      foreignColumns: [sessionTeams.id, sessionTeams.sessionId],
+      name: "session_team_members_team_session_fk",
+    }).onDelete("cascade"),
+  ],
+);
+
 /* ------------------------------------------------------------- households */
 
 /*
@@ -206,6 +268,9 @@ export const visits = pgTable(
     memberId: uuid("member_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // Stamped once on insert and never updated: the team the author was on
+    // when the server first stored the visit. Null when they were on none.
+    teamId: uuid("team_id").references(() => sessionTeams.id, { onDelete: "restrict" }),
     interestLevel: interestLevelEnum("interest_level").notNull(),
     description: text("description").notNull().default(""),
     // When the device recorded it, which can be well before it reached us.
@@ -221,7 +286,26 @@ export const visits = pgTable(
     index("visits_household_created_idx").on(table.householdId, table.createdAt),
     index("visits_session_idx").on(table.sessionId),
     index("visits_member_idx").on(table.memberId),
+    index("visits_team_idx").on(table.teamId),
   ],
+);
+
+/*
+ * Who was on the author's team when the visit was stored: a snapshot, written
+ * with the visit and never updated or deleted. Only present when team_id is.
+ * Names are resolved at read time, so a rename shows and a leaver stays shown.
+ */
+export const visitTeammates = pgTable(
+  "visit_teammates",
+  {
+    visitId: uuid("visit_id")
+      .notNull()
+      .references(() => visits.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [primaryKey({ columns: [table.visitId, table.userId] })],
 );
 
 /* -------------------------------------------------------------- follow-ups */
@@ -267,6 +351,7 @@ export type Household = typeof households.$inferSelect;
 export type NewHousehold = typeof households.$inferInsert;
 export type Visit = typeof visits.$inferSelect;
 export type NewVisit = typeof visits.$inferInsert;
+export type SessionTeam = typeof sessionTeams.$inferSelect;
 export type FollowUp = typeof followUps.$inferSelect;
 export type NewFollowUp = typeof followUps.$inferInsert;
 

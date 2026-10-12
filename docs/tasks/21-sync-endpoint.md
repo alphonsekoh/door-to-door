@@ -28,6 +28,11 @@
   rejected `clock_skew`. Replays stay `unchanged` (D-76-6). See
   [76-clock-rules.md](76-clock-rules.md).
 
+- #74 (PR #82) amended D-21-5: a current teammate may amend; the upsert is now an
+  insert-or-narrow-update that never rewrites author, outing, team or household;
+  unexpected failures are `internal_error` (retryable), not `conflict`. See
+  [74-teams.md](74-teams.md) (D-74-22, D-74-30 to D-74-34).
+
 ## Relies on
 
 D-07-1, D-07-3, D-10-5.

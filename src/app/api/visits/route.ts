@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDatabase } from "@/db/client";
 import { households, users, visits } from "@/db/schema";
+import { attachTeams } from "@/server/teams/access";
 import {
   zCreateVisitBody,
   zCreateVisitResponse,
@@ -13,7 +14,7 @@ import { firstOrThrow } from "@/server/db-utils";
 import { withContract } from "@/server/http/contract";
 import { toVisit } from "@/server/visits/serialise";
 import { currentClock } from "@/server/visits/clock-rules";
-import { createVisit } from "@/server/visits/service";
+import { createVisit, visitColumns } from "@/server/visits/service";
 
 export const GET = withContract(
   {
@@ -42,20 +43,8 @@ export const GET = withContract(
     ];
     const filter = conditions.length > 0 ? and(...conditions) : undefined;
 
-    const rows = await db
-      .select({
-        id: visits.id,
-        householdId: visits.householdId,
-        sessionId: visits.sessionId,
-        interestLevel: visits.interestLevel,
-        description: visits.description,
-        clientCreatedAt: visits.clientCreatedAt,
-        createdAt: visits.createdAt,
-        updatedAt: visits.updatedAt,
-        memberId: users.id,
-        memberName: users.name,
-        memberImage: users.image,
-      })
+    const found = await db
+      .select(visitColumns)
       .from(visits)
       .innerJoin(users, eq(users.id, visits.memberId))
       .innerJoin(households, eq(households.id, visits.householdId))
@@ -63,6 +52,8 @@ export const GET = withContract(
       .orderBy(desc(visits.createdAt))
       .limit(limit)
       .offset(offset);
+
+    const rows = await attachTeams(db, found);
 
     const counted = await db
       .select({ total: sql<number>`count(*)::int` })

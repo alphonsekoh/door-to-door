@@ -67,6 +67,8 @@ tags:
     description: Consolidated and per-member historical records
   - name: Users
     description: Member and role management
+  - name: Teams
+    description: Joining an outing and working it as a pair or small group
 
 components:
   securitySchemes:
@@ -317,6 +319,7 @@ components:
           householdId,
           sessionId,
           member,
+          team,
           interestLevel,
           description,
           clientCreatedAt,
@@ -332,7 +335,20 @@ components:
             This is what makes a replayed offline write idempotent.
         householdId: { type: string, format: uuid }
         sessionId: { type: string, format: uuid }
-        member: { $ref: "#/components/schemas/UserSummary" }
+        member:
+          allOf: [{ $ref: "#/components/schemas/UserSummary" }]
+          description: The author. Set once at creation and never reassigned.
+        team:
+          description: |
+            The team the author was on when the server first stored this record,
+            or null if none. Stamped once at insert and never changed by a later
+            join, leave or amend. `members` is a snapshot:
+            the teammates (author excluded) who were on the team at that moment,
+            shown with their **current** names. A later joiner is not listed; a
+            leaver still is.
+          oneOf:
+            - $ref: "#/components/schemas/TeamSummary"
+            - type: "null"
         interestLevel: { $ref: "#/components/schemas/InterestLevel" }
         description:
           type: string
@@ -347,6 +363,51 @@ components:
           type: string
           format: date-time
           description: Drives last-write-wins when a queued edit arrives out of order.
+
+    TeamSummary:
+      description: |
+        A team as stamped on a visit. `name` is the team's current name;
+        `members` is the snapshot described on `Visit.team`.
+      type: object
+      additionalProperties: false
+      required: [id, name, members]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/UserSummary" }
+
+    Team:
+      description: |
+        A pair or small group working one outing, with its **current**
+        members; a deactivated person is not listed. A user is on at most one
+        team per outing.
+      type: object
+      additionalProperties: false
+      required: [id, sessionId, name, members, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        sessionId: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 60 }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/UserSummary" }
+        createdAt: { type: string, format: date-time }
+
+    Participant:
+      description: |
+        Someone who has started on an outing. Deactivated people are not listed.
+      type: object
+      additionalProperties: false
+      required: [user, teamId, joinedAt]
+      properties:
+        user: { $ref: "#/components/schemas/UserSummary" }
+        teamId:
+          type: [string, "null"]
+          format: uuid
+          description: The team they are on in this outing, if any.
+        joinedAt: { type: string, format: date-time }
 
     FollowUp:
       type: object
@@ -635,6 +696,34 @@ components:
           allOf: [{ $ref: "#/components/schemas/Role" }]
           default: member
 
+    CreateTeamRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+        memberIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+          description: |
+            Others to place on the team. A member creating a team is always
+            included; an admin is not unless listed.
+
+    UpdateTeamRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 60 }
+
+    AddTeamMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      properties:
+        userId: { type: string, format: uuid }
+
     UpdateUserRequest:
       type: object
       additionalProperties: false
@@ -670,6 +759,24 @@ components:
             changes nothing.
 
     # -------------------------------------------------------------- listings
+
+    ParticipantList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Participant" }
+
+    TeamList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/Team" }
 
     SessionList:
       type: object
@@ -1129,6 +1236,241 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
 
+  # ================================================================= Teams
+  /sessions/{id}/participants:
+    get:
+      tags: [Teams]
+      operationId: listParticipants
+      summary: Who has joined an outing
+      description: |
+        Members may read the active session's participants; a draft or ended
+        session is admin-only (`403` for a member). Each
+        participant carries the team they are on, so a picker can offer only
+        people who are free to be added.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: Participants, earliest joined first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ParticipantList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /sessions/{id}/join:
+    post:
+      tags: [Teams]
+      operationId: joinSession
+      summary: Join an outing
+      description: |
+        Acts on the caller; there is no user parameter. Idempotent: joining
+        twice returns the same participant. Members may join only the active
+        session (`409 session_not_active` otherwise); an admin may also join a
+        draft. Recording a visit or joining a team joins the caller as well, so
+        this tap only matters to someone who wants to be addable before they
+        have knocked. There is no un-join. **Online only**: never queued.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The caller's participation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Participant" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            `session_not_active`: the session is not active (an admin joining a
+            draft is allowed; an ended session is refused to everyone).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /sessions/{id}/teams:
+    get:
+      tags: [Teams]
+      operationId: listTeams
+      summary: Teams in an outing
+      description: Same visibility as participants.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: Every team, with current members.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TeamList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [Teams]
+      operationId: createTeam
+      summary: Form a team
+      description: |
+        A member forms a team on the **active** session and is placed on it. An
+        admin may form one on a draft or active session and is not placed on it
+        unless listed. Anyone listed becomes a participant.
+
+        A member may list only people who have already joined (or recorded).
+        An admin may list any active user. **Online only**: never queued.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateTeamRequest" }
+      responses:
+        "201":
+          description: The new team.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such session, or a listed user does not exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `session_not_active` for a member when the session is not active,
+            or for anyone when it has ended. `conflict` when the caller or a
+            listed user is already on a team in this session, is deactivated,
+            or (for a member caller) has not joined.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /teams/{id}:
+    patch:
+      tags: [Teams]
+      operationId: updateTeam
+      summary: Rename a team
+      description: |
+        A current member of the team, or an admin. A member who is not on the
+        team is `403`; a member of the team gets `409 session_not_active` once
+        the outing is not active (admins are exempt).
+        A team you are not on is `403`, not `404`: team ids are listed by
+        `GET /sessions/{id}/teams`, so they are not secret.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateTeamRequest" }
+      responses:
+        "200":
+          description: The updated team.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`session_not_active`: the outing is not active (members only)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Teams]
+      operationId: deleteTeam
+      summary: Disband a team
+      description: |
+        A current member or an admin. Refused `409 conflict` once any visit is
+        stamped with the team: a team that did work cannot vanish from history.
+        Remove members instead.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "204": { description: Disbanded. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            `conflict`: visits are stamped with this team. `session_not_active`:
+            the outing is not active (members only).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /teams/{id}/members:
+    post:
+      tags: [Teams]
+      operationId: addTeamMember
+      summary: Add someone to a team
+      description: |
+        A current member or an admin. A member may add only a participant who
+        is active and on no team in this session; an admin may add any active
+        user. The added user becomes a participant. They can then amend records
+        already stamped with this team, but are not named on earlier records
+        (the teammate list on a visit is a snapshot). **Online only.**
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddTeamMemberRequest" }
+      responses:
+        "200":
+          description: The updated team.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such team, or no such user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `conflict`: already on a team in this session, deactivated, or (for
+            a member caller) has not joined. `session_not_active`: the outing is
+            not active (members only).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /teams/{id}/members/{userId}:
+    delete:
+      tags: [Teams]
+      operationId: removeTeamMember
+      summary: Leave a team, or remove someone
+      description: |
+        A member may remove only themselves; naming anyone else is `403`. An
+        admin may remove anyone. The leaver stays the author of their records,
+        which keep the team stamp and still show them to their old teammates;
+        they lose the right to amend teammates' records. Removing someone who
+        is not on the team is `404`. **Online only.**
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - name: userId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: The team after removal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Team" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`session_not_active`: the outing is not active (members only)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   # ================================================================ Blocks
   /blocks:
     get:
@@ -1340,7 +1682,9 @@ paths:
         overwrite an earlier one.
 
         The visit's block must be attached to the session, and the session must
-        be active.
+        be active. The visit is stamped with the author's current team, if any
+        (an admin recording on someone's behalf stamps that member's team), and
+        the author joins the outing.
       requestBody:
         required: true
         content:
@@ -1385,8 +1729,10 @@ paths:
       operationId: updateVisit
       summary: Amend a visit
       description: |
-        Members may amend their own visits while the session is active; admins
-        may amend any visit at any time, including historical records.
+        Members may amend their own visits, and visits stamped with a team they
+        are **currently** on, while the session is active; admins may amend any
+        visit at any time, including historical records. The author and team
+        stamp never change.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
         required: true
@@ -1402,7 +1748,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403":
-          description: A member attempting to amend another member's visit.
+          description: A member who is neither the author nor a current member of the visit's team.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1430,6 +1776,21 @@ paths:
 
         Conflicts resolve last-write-wins on `updatedAt`; an item older than the
         stored row is acknowledged as `stale` and not applied.
+
+        Another member's record is refused as `conflict` unless the caller is a
+        **current** member of the team the record is stamped with. An item for a
+        stored record, from its author or a teammate, amends interest level,
+        description and household identity only: the author, session, team,
+        teammate snapshot, `clientCreatedAt` and household are never changed.
+        An item naming a different block, unit or `sessionId` than the stored
+        record is `conflict` for everyone, the author included. A teammate who was
+        removed from the team before the item arrived gets `conflict` too, and a
+        queue should hold such an item for review rather than retry it. A
+        `rejected` item with error code `internal_error` is different: the server
+        failed to save it for a reason unrelated to the record (a dropped
+        connection, a deadlock), so it should be retried unchanged. Only
+        what has already synced can be amended. New records are stamped with the
+        author's team when first stored.
 
         Clock skew is reported at two levels, using one tolerance
         (`sync.clockSkewToleranceSeconds` in config.yaml, default 300). A batch
@@ -1595,6 +1956,10 @@ paths:
         - name: memberId
           in: query
           schema: { type: string, format: uuid }
+        - name: teamId
+          in: query
+          description: Records stamped with this team.
+          schema: { type: string, format: uuid }
         - name: interestLevel
           in: query
           schema: { $ref: "#/components/schemas/InterestLevel" }
@@ -1625,9 +1990,15 @@ paths:
       operationId: listOwnHistory
       summary: The calling member's own records
       description: |
-        Scoped to the authenticated user by the server. There is no parameter to
-        widen it — that is the point of a separate operation.
+        Scoped to the authenticated user by the server; no parameter names
+        another member. `includeTeam=true` also returns records stamped with a
+        team the caller is **currently** on (their own are always included). It
+        carries no id, so it cannot be pointed at anyone else's team. Records
+        still waiting on a teammate's phone are not here until they sync.
       parameters:
+        - name: includeTeam
+          in: query
+          schema: { type: boolean, default: false }
         - name: blockId
           in: query
           schema: { type: string, format: uuid }

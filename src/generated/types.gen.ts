@@ -223,7 +223,20 @@ export type Visit = {
     id: string;
     householdId: string;
     sessionId: string;
+    /**
+     * The author. Set once at creation and never reassigned.
+     */
     member: UserSummary;
+    /**
+     * The team the author was on when the server first stored this record,
+     * or null if none. Stamped once at insert and never changed by a later
+     * join, leave or amend. `members` is a snapshot:
+     * the teammates (author excluded) who were on the team at that moment,
+     * shown with their **current** names. A later joiner is not listed; a
+     * leaver still is.
+     *
+     */
+    team: TeamSummary | null;
     interestLevel: InterestLevel;
     /**
      * Required, but may be empty — a silent door has nothing to say.
@@ -238,6 +251,44 @@ export type Visit = {
      * Drives last-write-wins when a queued edit arrives out of order.
      */
     updatedAt: string;
+};
+
+/**
+ * A team as stamped on a visit. `name` is the team's current name;
+ * `members` is the snapshot described on `Visit.team`.
+ *
+ */
+export type TeamSummary = {
+    id: string;
+    name: string;
+    members: Array<UserSummary>;
+};
+
+/**
+ * A pair or small group working one outing, with its **current**
+ * members; a deactivated person is not listed. A user is on at most one
+ * team per outing.
+ *
+ */
+export type Team = {
+    id: string;
+    sessionId: string;
+    name: string;
+    members: Array<UserSummary>;
+    createdAt: string;
+};
+
+/**
+ * Someone who has started on an outing. Deactivated people are not listed.
+ *
+ */
+export type Participant = {
+    user: UserSummary;
+    /**
+     * The team they are on in this outing, if any.
+     */
+    teamId: string | null;
+    joinedAt: string;
 };
 
 export type FollowUp = {
@@ -468,6 +519,24 @@ export type CreateUserRequest = {
     role?: Role;
 };
 
+export type CreateTeamRequest = {
+    name: string;
+    /**
+     * Others to place on the team. A member creating a team is always
+     * included; an admin is not unless listed.
+     *
+     */
+    memberIds?: Array<string>;
+};
+
+export type UpdateTeamRequest = {
+    name: string;
+};
+
+export type AddTeamMemberRequest = {
+    userId: string;
+};
+
 export type UpdateUserRequest = {
     role?: Role;
     /**
@@ -495,6 +564,14 @@ export type UpdateOwnProfileRequest = {
      *
      */
     name: string;
+};
+
+export type ParticipantList = {
+    data: Array<Participant>;
+};
+
+export type TeamList = {
+    data: Array<Team>;
 };
 
 export type SessionList = {
@@ -1047,6 +1124,382 @@ export type DetachSessionBlockResponses = {
 
 export type DetachSessionBlockResponse = DetachSessionBlockResponses[keyof DetachSessionBlockResponses];
 
+export type ListParticipantsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/participants';
+};
+
+export type ListParticipantsErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+};
+
+export type ListParticipantsError = ListParticipantsErrors[keyof ListParticipantsErrors];
+
+export type ListParticipantsResponses = {
+    /**
+     * Participants, earliest joined first.
+     */
+    200: ParticipantList;
+};
+
+export type ListParticipantsResponse = ListParticipantsResponses[keyof ListParticipantsResponses];
+
+export type JoinSessionData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/join';
+};
+
+export type JoinSessionErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `session_not_active`: the session is not active (an admin joining a
+     * draft is allowed; an ended session is refused to everyone).
+     *
+     */
+    409: Error;
+};
+
+export type JoinSessionError = JoinSessionErrors[keyof JoinSessionErrors];
+
+export type JoinSessionResponses = {
+    /**
+     * The caller's participation.
+     */
+    200: Participant;
+};
+
+export type JoinSessionResponse = JoinSessionResponses[keyof JoinSessionResponses];
+
+export type ListTeamsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/teams';
+};
+
+export type ListTeamsErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+};
+
+export type ListTeamsError = ListTeamsErrors[keyof ListTeamsErrors];
+
+export type ListTeamsResponses = {
+    /**
+     * Every team, with current members.
+     */
+    200: TeamList;
+};
+
+export type ListTeamsResponse = ListTeamsResponses[keyof ListTeamsResponses];
+
+export type CreateTeamData = {
+    body: CreateTeamRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/teams';
+};
+
+export type CreateTeamErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such session, or a listed user does not exist.
+     */
+    404: Error;
+    /**
+     * `session_not_active` for a member when the session is not active,
+     * or for anyone when it has ended. `conflict` when the caller or a
+     * listed user is already on a team in this session, is deactivated,
+     * or (for a member caller) has not joined.
+     *
+     */
+    409: Error;
+};
+
+export type CreateTeamError = CreateTeamErrors[keyof CreateTeamErrors];
+
+export type CreateTeamResponses = {
+    /**
+     * The new team.
+     */
+    201: Team;
+};
+
+export type CreateTeamResponse = CreateTeamResponses[keyof CreateTeamResponses];
+
+export type DeleteTeamData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/teams/{id}';
+};
+
+export type DeleteTeamErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `conflict`: visits are stamped with this team. `session_not_active`:
+     * the outing is not active (members only).
+     *
+     */
+    409: Error;
+};
+
+export type DeleteTeamError = DeleteTeamErrors[keyof DeleteTeamErrors];
+
+export type DeleteTeamResponses = {
+    /**
+     * Disbanded.
+     */
+    204: void;
+};
+
+export type DeleteTeamResponse = DeleteTeamResponses[keyof DeleteTeamResponses];
+
+export type UpdateTeamData = {
+    body: UpdateTeamRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/teams/{id}';
+};
+
+export type UpdateTeamErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `session_not_active`: the outing is not active (members only).
+     */
+    409: Error;
+};
+
+export type UpdateTeamError = UpdateTeamErrors[keyof UpdateTeamErrors];
+
+export type UpdateTeamResponses = {
+    /**
+     * The updated team.
+     */
+    200: Team;
+};
+
+export type UpdateTeamResponse = UpdateTeamResponses[keyof UpdateTeamResponses];
+
+export type AddTeamMemberData = {
+    body: AddTeamMemberRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/teams/{id}/members';
+};
+
+export type AddTeamMemberErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such team, or no such user.
+     */
+    404: Error;
+    /**
+     * `conflict`: already on a team in this session, deactivated, or (for
+     * a member caller) has not joined. `session_not_active`: the outing is
+     * not active (members only).
+     *
+     */
+    409: Error;
+};
+
+export type AddTeamMemberError = AddTeamMemberErrors[keyof AddTeamMemberErrors];
+
+export type AddTeamMemberResponses = {
+    /**
+     * The updated team.
+     */
+    200: Team;
+};
+
+export type AddTeamMemberResponse = AddTeamMemberResponses[keyof AddTeamMemberResponses];
+
+export type RemoveTeamMemberData = {
+    body?: never;
+    path: {
+        id: string;
+        userId: string;
+    };
+    query?: never;
+    url: '/teams/{id}/members/{userId}';
+};
+
+export type RemoveTeamMemberErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `session_not_active`: the outing is not active (members only).
+     */
+    409: Error;
+};
+
+export type RemoveTeamMemberError = RemoveTeamMemberErrors[keyof RemoveTeamMemberErrors];
+
+export type RemoveTeamMemberResponses = {
+    /**
+     * The team after removal.
+     */
+    200: Team;
+};
+
+export type RemoveTeamMemberResponse = RemoveTeamMemberResponses[keyof RemoveTeamMemberResponses];
+
 export type ListBlocksData = {
     body?: never;
     path?: never;
@@ -1444,7 +1897,7 @@ export type UpdateVisitErrors = {
      */
     401: Error;
     /**
-     * A member attempting to amend another member's visit.
+     * A member who is neither the author nor a current member of the visit's team.
      */
     403: Error;
     /**
@@ -1700,6 +2153,10 @@ export type ListHistoryData = {
         blockId?: string;
         sessionId?: string;
         memberId?: string;
+        /**
+         * Records stamped with this team.
+         */
+        teamId?: string;
         interestLevel?: InterestLevel;
         religion?: Religion;
         from?: string;
@@ -1749,6 +2206,7 @@ export type ListOwnHistoryData = {
     body?: never;
     path?: never;
     query?: {
+        includeTeam?: boolean;
         blockId?: string;
         sessionId?: string;
         interestLevel?: InterestLevel;
