@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Participant } from "@/generated/types.gen";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
 import { nameLength } from "@/lib/own-name";
@@ -38,6 +38,8 @@ export function TeamSheet({
   const [typedName, setTypedName] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* Synchronous, so two taps in one frame send one request. */
+  const sending = useRef(false);
 
   const showPicker = mode !== "rename";
   const showName = mode !== "add";
@@ -51,7 +53,10 @@ export function TeamSheet({
   const needsPartner = showPicker && partner === undefined;
   const nameLengthNow = nameLength(name.trim());
 
+  const nameCheck = checkTeamName(name);
+
   async function submit(): Promise<void> {
+    if (sending.current) return;
     if (showName) {
       const checked = checkTeamName(name);
       if (!checked.ok) {
@@ -60,12 +65,14 @@ export function TeamSheet({
       }
     }
     setFailure(null);
+    sending.current = true;
     setBusy(true);
     try {
       await onSubmit({ name: name.trim(), partnerId: partnerId ?? "" });
     } catch (error) {
       setFailure(describeTeamFailure(error).message);
     } finally {
+      sending.current = false;
       setBusy(false);
     }
   }
@@ -80,7 +87,7 @@ export function TeamSheet({
         role="dialog"
         aria-modal="true"
         aria-label={TITLE[mode]}
-        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
+        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold">{TITLE[mode]}</p>
@@ -97,6 +104,30 @@ export function TeamSheet({
             {failure}
           </p>
         )}
+
+        {showName ? (
+          <div className="mt-3">
+            <div className="mb-1 flex items-baseline justify-between gap-3">
+              <label htmlFor="team-name" className="text-body font-medium">
+                Team name
+              </label>
+              <span className="text-caption text-foreground-muted">
+                {String(nameLengthNow)} of {String(MAX_TEAM_NAME_LENGTH)}
+              </span>
+            </div>
+            <input
+              id="team-name"
+              value={name}
+              onChange={(event) => {
+                setTypedName(event.target.value);
+              }}
+              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            />
+            {name.trim() !== "" && !nameCheck.ok ? (
+              <p className="mt-1 text-caption text-foreground-muted">{nameCheck.message}</p>
+            ) : null}
+          </div>
+        ) : null}
 
         {showPicker ? (
           candidates.length === 0 ? (
@@ -130,27 +161,6 @@ export function TeamSheet({
               })}
             </ul>
           )
-        ) : null}
-
-        {showName ? (
-          <div className="mt-3">
-            <div className="mb-1 flex items-baseline justify-between gap-3">
-              <label htmlFor="team-name" className="text-body font-medium">
-                Team name
-              </label>
-              <span className="text-caption text-foreground-muted">
-                {String(nameLengthNow)} of {String(MAX_TEAM_NAME_LENGTH)}
-              </span>
-            </div>
-            <input
-              id="team-name"
-              value={name}
-              onChange={(event) => {
-                setTypedName(event.target.value);
-              }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-            />
-          </div>
         ) : null}
 
         <div className="sticky bottom-0 -mx-4 mt-4 bg-background/95 px-4 py-3 backdrop-blur">

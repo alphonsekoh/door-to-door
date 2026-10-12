@@ -200,6 +200,89 @@ describe("with no team", () => {
     );
   });
 
+  it("sends one request when the button is tapped twice in one frame", async () => {
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Pair up" }));
+    const sheet = screen.getByRole("dialog", { name: "Pair up" });
+    await userEvent.click(within(sheet).getByRole("button", { name: /Ben Lim/ }));
+    writes = () => {
+      world.teams = [team("Ann & Ben")];
+      world.participants = [
+        participant("me", "Ann Tan", "t1"),
+        participant("ben", "Ben Lim", "t1"),
+      ];
+      return world.teams[0];
+    };
+    const create = within(sheet).getByRole("button", { name: "Create team" });
+    act(() => {
+      create.click();
+      create.click();
+    });
+    expect(await screen.findByText("Ann & Ben")).toBeInTheDocument();
+    expect(writesTo()).toHaveLength(1);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("does not repeat a change started by the card itself", async () => {
+    world.participants = [participant("me", "Ann Tan", "t1"), participant("ben", "Ben Lim", "t1")];
+    world.teams = [team("Ann & Ben")];
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Leave" }));
+    writes = () => {
+      world.teams = [];
+      world.participants = [participant("me", "Ann Tan")];
+    };
+    const confirm = screen.getByRole("button", { name: "Leave team" });
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
+    expect(await screen.findByRole("button", { name: "Pair up" })).toBeInTheDocument();
+    expect(writesTo()).toHaveLength(1);
+  });
+
+  it("re-reads after a 409 so the picker drops someone no longer free", async () => {
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Pair up" }));
+    const sheet = screen.getByRole("dialog", { name: "Pair up" });
+    await userEvent.click(within(sheet).getByRole("button", { name: /Ben Lim/ }));
+    world.participants = [participant("me", "Ann Tan"), participant("ben", "Ben Lim", "other")];
+    apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        return Promise.reject(
+          new ApiRequestError(409, { error: { code: "conflict", message: "x" } } as never),
+        );
+      }
+      return Promise.resolve(
+        path === "/users/me"
+          ? world.me
+          : { data: path.endsWith("/teams") ? world.teams : world.participants },
+      );
+    });
+    await userEvent.click(within(sheet).getByRole("button", { name: "Create team" }));
+    await within(sheet).findByRole("alert");
+    await waitFor(() => {
+      expect(within(sheet).queryByText("Ben Lim")).not.toBeInTheDocument();
+    });
+  });
+
+  it("explains a name that cannot be shown while it is being typed", async () => {
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Pair up" }));
+    const sheet = screen.getByRole("dialog", { name: "Pair up" });
+    await userEvent.type(within(sheet).getByLabelText(/Team name/), "\u200b");
+    expect(within(sheet).getByText(/cannot be shown/)).toBeInTheDocument();
+  });
+
+  it("puts the name above the picker so a keyboard cannot hide it", async () => {
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Pair up" }));
+    const sheet = screen.getByRole("dialog", { name: "Pair up" });
+    const name = within(sheet).getByLabelText(/Team name/);
+    const pick = within(sheet).getByRole("button", { name: /Ben Lim/ });
+    expect(name.compareDocumentPosition(pick) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("makes an admin who forms a team part of it", async () => {
     world.me = { ...ME, role: "admin" };
     render(<OutingTeam sessionId="s1" tick={0} />);
@@ -407,7 +490,8 @@ describe("offline", () => {
         : Promise.resolve({}),
     );
     await userEvent.click(within(sheet).getByRole("button", { name: "Create team" }));
-    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/offline/);
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/Could not confirm/);
+    expect(within(sheet).getByRole("alert")).not.toHaveTextContent(/Nothing was changed/);
     expect(within(sheet).getByLabelText(/Team name/)).toHaveValue("Ann & Ben");
     // The card behind now reads as offline, too.
     expect(within(sheet).getByRole("button", { name: "Create team" })).toBeDisabled();
@@ -439,7 +523,7 @@ describe("loading", () => {
   it("treats an unreachable first read as offline", async () => {
     apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<OutingTeam sessionId="s1" tick={0} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent(/offline/);
+    expect(await screen.findByRole("alert")).toHaveTextContent("You seem to be offline.");
   });
 
   it("keeps the last good card when a refresh fails", async () => {
@@ -452,6 +536,33 @@ describe("loading", () => {
       expect(screen.getByText("Connect to change your team")).toBeInTheDocument();
     });
     expect(screen.getByText("You've joined this outing")).toBeInTheDocument();
+  });
+});
+
+describe("coming back online", () => {
+  it("re-reads at once instead of waiting for the next poll", async () => {
+    useOnline.mockReturnValue(false);
+    world.participants = [participant("me", "Ann Tan")];
+    const view = render(<OutingTeam sessionId="s1" tick={0} />);
+    await screen.findByText("You've joined this outing");
+    world.participants = [participant("me", "Ann Tan", "t1"), participant("ben", "Ben Lim", "t1")];
+    world.teams = [team("Ben & Ann")];
+
+    useOnline.mockReturnValue(true);
+    view.rerender(<OutingTeam sessionId="s1" tick={0} />);
+    expect(await screen.findByText("Ben & Ann")).toBeInTheDocument();
+  });
+
+  it("keeps the card visible and disabled when the poll finds the sign-in gone", async () => {
+    world.participants = [participant("me", "Ann Tan")];
+    const view = render(<OutingTeam sessionId="s1" tick={0} />);
+    await screen.findByText("You've joined this outing");
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } } as never),
+    );
+    view.rerender(<OutingTeam sessionId="s1" tick={1} />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Sign in again/);
+    expect(screen.getByRole("button", { name: "Pair up" })).toBeDisabled();
   });
 });
 

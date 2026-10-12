@@ -1,5 +1,6 @@
 import type { Participant, Team } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
+import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
 
 /* D-74-1: the one limit of teams, said where people form them. */
 export const UNSYNCED_LIMIT_NOTE =
@@ -18,9 +19,13 @@ export function firstName(name: string | null): string {
   return displayName(name).replace(/\s.*$/, "");
 }
 
-/* "Ann & Ben" from the caller's and partner's first names. */
+/* "Ann & Ben" from the caller's and partner's first names. Two long first
+   names can exceed the limit, so it is cut by code point, and a cut that
+   leaves something unshowable falls back to a plain word. */
 export function defaultTeamName(me: string | null, partner: string | null): string {
-  return `${firstName(me)} & ${firstName(partner)}`;
+  const full = `${firstName(me)} & ${firstName(partner)}`;
+  const cut = Array.from(full).slice(0, MAX_TEAM_NAME_LENGTH).join("");
+  return checkTeamName(cut).ok ? cut : "Team";
 }
 
 /* Joined people who are free to be added: not me, not already on a team. The
@@ -44,8 +49,10 @@ export function canChangeTeam(online: boolean, outingActive: boolean): boolean {
 
 export type TeamFailure = {
   message: string;
-  /* The request never reached the server. */
+  /* The request never got an answer: offline, or the connection dropped. */
   network: boolean;
+  /* The sign-in is gone; nothing on the card can work. */
+  auth: boolean;
 };
 
 /* fetch rejects with a TypeError when there is no connection. */
@@ -53,19 +60,38 @@ export function isNetworkFailure(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-export function describeTeamFailure(error: unknown): TeamFailure {
+/*
+ * A read that fails with no answer changed nothing. A change that fails with
+ * no answer may have: the connection can drop after the request was sent, so
+ * it must never claim that nothing happened.
+ */
+export function describeTeamFailure(
+  error: unknown,
+  kind: "read" | "change" = "change",
+): TeamFailure {
   if (isNetworkFailure(error)) {
-    return { message: "You seem to be offline. Nothing was changed.", network: true };
+    return {
+      message:
+        kind === "read"
+          ? "You seem to be offline."
+          : "Could not confirm. Refresh to see whether it went through.",
+      network: true,
+      auth: false,
+    };
   }
-  const generic = { message: "Could not change your team. Try again.", network: false };
+  const generic = {
+    message: "Could not change your team. Try again.",
+    network: false,
+    auth: false,
+  };
   if (!(error instanceof ApiRequestError)) return generic;
 
+  if (error.code === "account_deactivated" || error.status === 401) {
+    return { message: "Your sign-in has ended. Sign in again.", network: false, auth: true };
+  }
   const message = (() => {
     if (error.code === "session_not_active") {
       return "This outing is not running, so teams can no longer change.";
-    }
-    if (error.code === "account_deactivated" || error.status === 401) {
-      return "Your sign-in has ended. Sign in again.";
     }
     switch (error.status) {
       case 400:
@@ -80,5 +106,5 @@ export function describeTeamFailure(error: unknown): TeamFailure {
         return generic.message;
     }
   })();
-  return { message, network: false };
+  return { message, network: false, auth: false };
 }

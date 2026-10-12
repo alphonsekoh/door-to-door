@@ -38,6 +38,20 @@ describe("names", () => {
     expect(defaultTeamName("Ann Tan", "Ben Lim")).toBe("Ann & Ben");
   });
 
+  it("cuts a default that would pass the limit, by code point", () => {
+    const long = "A".repeat(50);
+    expect(Array.from(defaultTeamName(long, long))).toHaveLength(60);
+    const emoji = "\u{1F600}".repeat(50);
+    expect(Array.from(defaultTeamName(emoji, emoji))).toHaveLength(60);
+    expect(checkTeamName(defaultTeamName(emoji, emoji)).ok).toBe(true);
+  });
+
+  it("falls back to 'Team' when the cut leaves something unshowable", () => {
+    // A joiner (format character) where the cut lands is refused by the name rule.
+    const joined = "\u200d".repeat(70);
+    expect(defaultTeamName("A", joined)).toBe("Team");
+  });
+
   it("builds a default that the team-name rule accepts", () => {
     expect(checkTeamName(defaultTeamName(null, null)).ok).toBe(true);
   });
@@ -75,7 +89,21 @@ describe("canChangeTeam", () => {
 describe("describeTeamFailure", () => {
   it("treats a fetch TypeError as offline", () => {
     expect(isNetworkFailure(new TypeError("Failed to fetch"))).toBe(true);
-    expect(describeTeamFailure(new TypeError("x"))).toMatchObject({ network: true });
+    expect(describeTeamFailure(new TypeError("x"), "read")).toMatchObject({
+      network: true,
+      message: "You seem to be offline.",
+    });
+  });
+
+  it("does not claim a failed change changed nothing", () => {
+    const failure = describeTeamFailure(new TypeError("x"), "change");
+    expect(failure.message).toBe("Could not confirm. Refresh to see whether it went through.");
+    expect(failure.message).not.toMatch(/Nothing was changed/);
+  });
+
+  it("flags a lost sign-in", () => {
+    expect(describeTeamFailure(error(401, "unauthenticated")).auth).toBe(true);
+    expect(describeTeamFailure(error(409, "conflict")).auth).toBe(false);
   });
 
   it.each([

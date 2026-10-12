@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TeamSheet, type TeamSheetSubmit } from "@/components/team-sheet";
 import type { Participant, ParticipantList, Team, TeamList, User } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
   OFFLINE_NOTE,
   UNSYNCED_LIMIT_NOTE,
@@ -43,10 +43,14 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
   const [sheet, setSheet] = useState<Sheet>(null);
   const [leaving, setLeaving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
   const [actionFailure, setActionFailure] = useState<string | null>(null);
 
   /* Two reads can cross on a bad connection; only the newest may land. */
   const generation = useRef(0);
+  /* Set synchronously: state is not updated between two taps in one frame. */
+  const inFlight = useRef(false);
+  const wasOnline = useRef(online);
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -60,10 +64,12 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       setData({ me, participants: participants.data, teams: teams.data });
       setLoadFailure(null);
       setUnreachable(false);
+      setAuthFailed(false);
     } catch (error) {
       if (mine !== generation.current) return;
-      const failure = describeTeamFailure(error);
+      const failure = describeTeamFailure(error, "read");
       setUnreachable(failure.network);
+      setAuthFailed(failure.auth);
       setLoadFailure(failure.message);
     }
   }, [sessionId]);
@@ -77,8 +83,21 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
     };
   }, [load, tick]);
 
+  /* Coming back online re-reads at once rather than at the next poll. */
+  useEffect(() => {
+    const returned = online && !wasOnline.current;
+    wasOnline.current = online;
+    if (!returned) return;
+    const timer = setTimeout(() => void load(), 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [online, load]);
+
   /* Runs a change, then re-reads so every list agrees with the server. */
   async function change(action: () => Promise<unknown>): Promise<void> {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setActionFailure(null);
     setBusy(true);
     try {
@@ -86,11 +105,15 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       setUnreachable(false);
       await load();
     } catch (error) {
-      const failure = describeTeamFailure(error);
+      const failure = describeTeamFailure(error, "change");
       if (isNetworkFailure(error)) setUnreachable(true);
+      if (failure.auth) setAuthFailed(true);
+      /* The picker may be offering someone who is no longer free. */
+      if (error instanceof ApiRequestError && error.status === 409) void load();
       setActionFailure(failure.message);
       throw error;
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -109,9 +132,10 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
   const { me, participants, teams } = data;
   const joined = hasJoined(participants, me.id);
   const team = findMyTeam(teams, me.id);
-  const canChange = canChangeTeam(online && !unreachable, true);
+  const canChange = canChangeTeam(online && !unreachable && !authFailed, true);
   const candidates = pickerCandidates(participants, me.id);
-  /* An admin forms a team without being on it unless they list themselves. */
+  /* The server only places a member on their own team; an admin is added
+     explicitly so the team they form is theirs. */
   const alsoMe = me.role === "admin" ? [me.id] : [];
 
   async function submit(
@@ -244,6 +268,15 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
         <p className="text-caption font-medium text-foreground-muted">{OFFLINE_NOTE}</p>
       )}
 
+      {authFailed && loadFailure !== null && actionFailure === null ? (
+        <p
+          role="alert"
+          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+        >
+          {loadFailure}
+        </p>
+      ) : null}
+
       {actionFailure !== null && sheet === null ? (
         <p
           role="alert"
@@ -274,7 +307,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       {leaving && team ? (
         <ConfirmDialog
           title="Leave this team?"
-          detail="Your teammates keep access to what you recorded."
+          detail="Your teammates keep access to what you recorded. You lose access to theirs."
           confirmLabel="Leave team"
           busy={busy}
           onConfirm={() => void leave(team.id)}
