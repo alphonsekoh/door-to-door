@@ -1,6 +1,6 @@
 # #74 · Teams: pairs share and edit each other's records
 
-- **Status:** In progress (PR 3 of 4 in review: #89)
+- **Status:** In review (PR 4 of 4: #92) - closes #74 on merge
 - **Phase:** 4 - Member UI (added later)
 - **Depends on:** #31
 
@@ -10,7 +10,9 @@ Door-to-door is done in pairs: one talks, one records, and they swap. Members jo
 outing and form a team for it, and teammates can view and edit each other's records.
 Members also set their own display name.
 
-Delivery: PR 1 (#81) is the own-name feature and sign-out hardening. PR 2 (#82) is the server half of participants, teams and teammate access. PR 3 (#89) is the outing screen: Join and the team card. PR 4 is not built.
+Delivery: PR 1 (#81) is the own-name feature and sign-out hardening. PR 2 (#82) is the server half of participants, teams and teammate access. PR 3 (#89) is the outing screen: Join and the team card. PR 4 (#92) puts names and teams
+on records, adds the Me / My team view, team filters and CSV columns, and the admin team
+panel.
 
 ## Decisions
 
@@ -64,7 +66,7 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 
 ## Decisions built in PR 2 (#82, server half)
 
-Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4.
+Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-74-49 on).
 
 - **D-74-13 · Outing participants.** `session_participants`, primary key
   `(session_id, user_id)`. `POST /sessions/{id}/join` is the explicit "Join this outing"
@@ -234,6 +236,89 @@ server auto-joins them, D-74-13). The character counter and refusal-reason handl
 cosmetic; the server decides. The real two-phone check that A's unsynced record is
 invisible to B until it syncs cannot run until the queue (#33) exists.
 
+## Decisions built in PR 4 (#92, names on records, team view, admin panel)
+
+- **D-74-49 · One byline helper (`src/lib/team-label.ts`).** The author first, then the
+  SNAPSHOT teammates with CURRENT names ("Alice Tan with Ben Lim, Chris Ong"); a null
+  name reads "Someone". Display-only, never used for edit rights. _Why:_ D-74-20 makes
+  the snapshot a record of who was there, not who may edit.
+- **D-74-50 · Where the byline shows.** Household timeline entries and the household
+  header ("Last visit by ...") with a "Team: ..." chip; admin records and all-records with
+  the chip; the amend sheet (also when read-only) for someone else's record. Unit rows
+  show the byline WITHOUT the chip. Long names wrap, never truncate. _Why:_ the unit row
+  is the densest list on a phone.
+- **D-74-51 · Outside the team card, the viewer's id comes from the token (`useRole`).**
+  _Why:_ D-83-3 keeps identity in the token, and it is only affordance (D-16-2). D-74-37
+  is scoped to the card, which also needs the current name.
+- **D-74-52 · UI teammate edit rights come only from SERVER-VOUCHED team ids**, never
+  the snapshot. On the block screen: `GET /sessions/{id}/teams`, asked once both outing
+  and user id are known, newest answer only (generation guard). In the team view: the
+  teams of OTHERS' records returned by `includeTeam` (the server only returns them for a
+  team the caller is on now). _Why:_ D-74-17; a late empty reply must not hide Amend,
+  and asking before the user id was known caused a double fetch.
+- **D-74-53 · Amend is a separate button on each own/team history row**, offered only on
+  an active outing; the row itself still opens the unit. _Why:_ members can amend only
+  while the outing runs (D-16-4 as amended).
+- **D-74-54 · A 403 on amend is worded by the right the screen believed in.** Only a
+  team route says "You are not on this record's team any more..."; author or admin routes
+  say "You can no longer amend this record." Network failures use D-74-43 wording. _Why:_
+  a demoted admin was never on the team (D-83-3).
+- **D-74-55 · Me / My team lives in the URL as `?view=team`** on `/history` and
+  `/history/[id]`; any other value reads as Me. It survives Back and reload; the History
+  nav link has no query, so it resets to Me. _Why:_ D-29-4.
+- **D-74-56 · The `/history` team view is a flat newest-first list** (20 per page, "Show
+  earlier records"), not outing cards. _Why:_ `/history/mine/sessions` lists only outings
+  the member recorded in, and its counts stay own (D-27-1); the screen says so.
+  Outstanding follow-ups show in both views. The outing page heading is now "Outing
+  records".
+- **D-74-57 · Empty-state wording.** "Nothing here matches those filters." only when a
+  server filter is set, or the client search hides loaded rows; otherwise each screen
+  says nothing was recorded (on `/history/[id]`: "You recorded nothing on this outing." or
+  "Neither you nor your team recorded anything on this outing."). _Why:_ an empty filtered
+  page says nothing about whether anything was recorded.
+- **D-74-58 · Admin team filter.** UUID-validated on read; on all-records offered and
+  kept only once an outing is chosen and cleared when the outing changes; DROPPED from the
+  URL once the loaded team list lacks it, kept if the list cannot be read. _Why:_ D-29-4;
+  a team name repeats across outings, and an unknown id would filter to nothing under
+  "Any team".
+- **D-74-59 · CSV adds Team and Teammates** (teammates joined with `; `), both through
+  `escapeCell` (D-30-4). A nameless recorder or teammate exports as "Someone". _Why:_
+  team and member names are typed by people; the two columns must agree.
+- **D-74-60 · Admin team panel on the outing detail** follows the server's rules: New
+  team on draft and active, not ended (the server refuses create on an ended outing for
+  everyone); rename, add, remove and delete still allowed on ended. Any active user not
+  already placed is offered; the admin is on a team only if they pick themselves
+  (D-74-15, D-74-40); the suggested name follows pick order. Deleting a team with records
+  is explained with D-74-18 wording. Online-only, one request per tap, honest failure
+  wording (D-74-19, D-74-43, D-74-44); it re-reads on the detail screen's 30s poll; the
+  sheet follows D-74-47. _Why:_ admins keep full control and can fix a team (issue scope).
+- **D-74-61 · Every user picker pages through all users (`loadAllUsers`)**, stopping on
+  `hasMore: false` or an empty page. _Why:_ a single `limit=100` page silently dropped the
+  101st person.
+- **D-74-62 · Native selects carry `h-12`.** iOS WebKit ignores `min-height` on a
+  `<select>`; the admin filters measured 26px, now 48px, guarded in `e2e/pwa.spec.ts`.
+  Extends D-30-8. _Research:_ R-39.
+- **D-74-63 · Double-tap tests click twice inside one `act`.** _Why:_ the earlier tests
+  passed with the in-flight guards removed; each guard was broken on purpose and its test
+  now fails (D-74-44).
+
+Known limits (PR 4): admin create-user accepts a name with a leading tab (pre-existing;
+trimmed on display). One unreproduced WebKit E2E failure ("Save not visible in 30s"),
+likely the old double teams fetch fixed by D-74-52.
+
+### Acceptance criteria (#74)
+
+- [x] A member can change their own name (#81).
+- [x] Members can form a team before an outing starts - changed: admins on a draft,
+      members once it is active (D-74-13, D-74-14).
+- [x] Teammates can view and amend each other's synced records; non-teammates cannot
+      (#82 server, #89 and #92 screens).
+- [x] Authorship never changes when a name or team changes (D-74-3, D-29-2).
+- [x] Sync accepts a teammate's amend and refuses a stranger's (D-74-22).
+- [x] Refusal tests per rule; phone-width pass in Playwright Chromium and WebKit. The
+      PR's real-phone checks are still for the owner.
+- [ ] Scope item "the block picker shows the team": not done, see Open questions.
+
 ### How existing decisions are handled
 
 - **D-16-4 / D-20-2:** amended. Members act on their own records, plus current
@@ -267,9 +352,15 @@ D-29-2 (authorship is never reassigned), D-23-1, D-27-4, D-16-2, D-32-7, D-32-4,
 D-31-6 uses "team screen" for the admin member list; that is not a team in this task.
 
 D-74-1, D-74-7, D-74-19 and D-83-3 are relied on by PR 3 (D-74-36 to D-74-48), along
-with D-30-7, D-37-4 and D-37-7.
+with D-30-7, D-37-4 and D-37-7. PR 4 relies on D-27-1, D-27-4, D-29-4, D-29-6, D-30-4
+and D-30-8.
 
 ## Open questions
 
-None open. (The `additionalProperties: false` flag on `UpdateOwnProfileRequest` was dropped in
+- **Block picker label.** The issue scope says "the block picker and record lists show
+  the team". PR 4 shows teams on units and record lists, but the picker's "X here now"
+  label is unchanged (derived from who recorded on the block). Should it read "Alice &
+  Ben here now" for a team? Owner to decide.
+
+Answered: (The `additionalProperties: false` flag on `UpdateOwnProfileRequest` was dropped in
 PR #81; the spec now says unknown fields are ignored, as D-74-5 records.)

@@ -321,3 +321,12 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   `node_modules/pg-pool/index.js` lines 51-63 (`makeIdleListener`), 266-283 (connect
   callback), 335-344 (`_acquireClient`), 384-385 (`_release`); #87
 - **Used by:** D-87-1, D-87-2
+
+### R-39 · iOS WebKit ignores `min-height` on a native `<select>` (observed, unverified)
+
+- **Finding:** A `<select>` styled `min-h-12` rendered 26px tall in Playwright's WebKit at a
+  phone viewport; adding `height` (`h-12`) rendered it 48px. Chromium honoured
+  `min-height`. Observed in Playwright WebKit only; unverified on a real iPhone.
+- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filter selects are at
+  least 44px tall")
+- **Used by:** D-74-62
