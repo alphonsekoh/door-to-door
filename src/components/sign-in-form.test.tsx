@@ -125,6 +125,21 @@ describe("SignInForm", () => {
     });
   });
 
+  it("still leaves when the cached answers cannot be cleared", async () => {
+    signIn.mockResolvedValue(ok);
+    clearCaches.mockRejectedValueOnce(new Error("storage is restricted"));
+    const user = userEvent.setup();
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledWith("/");
+    });
+  });
+
   it("returns to where the user was headed", async () => {
     signIn.mockResolvedValue(ok);
     get.mockReturnValue("/history");

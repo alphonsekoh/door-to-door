@@ -53,8 +53,10 @@ export function SignInForm() {
       return;
     }
     /* A second member signing in on a shared phone must not read the first
-       one's cached API answers. */
-    await clearServiceWorkerCaches();
+       one's cached API answers. A failed clear still lets them in, as on
+       sign-out (D-74-9): the session is already set, and a rejection here
+       would leave the button disabled with nothing to say why. */
+    await clearServiceWorkerCaches().catch(() => undefined);
     /* A full load, not refresh() then push(): the router holds responses fetched
        while signed out, each a redirect back here, and the refresh of /sign-in
        could outlive the push. When that refetch failed (a dropped request, or

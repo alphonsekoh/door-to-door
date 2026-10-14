@@ -20,14 +20,21 @@ describe("destinationAfterSignIn", () => {
   });
 
   it("returns to a path on this origin, query and all", () => {
-    expect(destinationAfterSignIn("/units/7?tab=visits")).toBe("/units/7?tab=visits");
+    expect(destinationAfterSignIn("/units/7?tab=visits#latest")).toBe("/units/7?tab=visits#latest");
   });
 
   it.each([
     "https://evil.example/",
     "//evil.example/",
     "/\\evil.example/",
+    "/\t/evil.example/",
+    "/\n/evil.example/",
+    "/\r\\evil.example/",
+    "\t//evil.example/",
+    "/.//evil.example/",
+    "/a/..//evil.example/",
     "javascript:alert(1)",
+    "http://[evil",
     "",
   ])("refuses %j and goes home instead", (callback) => {
     expect(destinationAfterSignIn(callback)).toBe("/");
