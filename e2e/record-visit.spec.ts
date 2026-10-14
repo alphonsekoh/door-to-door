@@ -1,3 +1,4 @@
+import type { Locator } from "@playwright/test";
 import { adminRequest, endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
 
 /*
@@ -9,6 +10,25 @@ import { adminRequest, endActiveSession, ensureActiveSession, expect, test } fro
 
 /* A unit no seed row uses, so the assertions describe this run's work. */
 const UNIT = "#21-07";
+const NOTED_UNIT = "#21-11";
+
+/* In the viewport and actually what a tap would land on: elementFromPoint is
+   the stacking check jsdom cannot make. */
+async function expectTappable(target: Locator): Promise<void> {
+  await target.scrollIntoViewIfNeeded();
+  await expect(target).toBeInViewport();
+  await expect
+    .poll(
+      () =>
+        target.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+          return top !== null && element.contains(top);
+        }),
+      { message: "something covers the button" },
+    )
+    .toBe(true);
+}
 
 test.beforeEach(async ({ adminApi }) => {
   await ensureActiveSession(adminApi);
@@ -51,7 +71,9 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
 test("what the member recorded is on their own history", async ({ memberPage }) => {
   await memberPage.goto("/history");
 
-  const outing = memberPage.getByRole("link").filter({ hasText: "Blk 123" }).first();
+  /* Outing cards only: the outstanding follow-ups above them name their door
+     ("Blk 123 · #06-203") and would otherwise match first. */
+  const outing = memberPage.locator('a[href^="/history/"]').filter({ hasText: "Blk 123" }).first();
   await expect(outing).toBeVisible();
   await outing.click();
 
@@ -78,4 +100,34 @@ test("an amendment sticks, and the sheet's save is reachable", async ({ memberPa
 
   await expect(sheet).toBeHidden();
   await expect(memberPage.getByRole("button", { name: new RegExp(UNIT) })).toContainText("Low");
+});
+
+test("a follow-up added after saving is waiting the next time the unit is typed", async ({
+  memberPage,
+}) => {
+  await memberPage.goto("/");
+  await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+
+  await memberPage.getByLabel("Unit number").fill(NOTED_UNIT);
+  await memberPage.getByRole("radio", { name: "Medium" }).click();
+  await memberPage.getByRole("button", { name: "Save and next" }).click();
+  await expect(memberPage.getByRole("status")).toContainText(`Saved ${NOTED_UNIT}.`);
+
+  await memberPage.getByRole("button", { name: "Add follow-up" }).click();
+  const sheet = memberPage.getByRole("dialog", { name: `Follow-up for ${NOTED_UNIT}` });
+  await sheet.getByLabel("Note").fill("Bring the festival flyer on Sunday.");
+
+  /* The sheet opens over the recording form and the bottom nav: the same
+     place a Save button has been buried before. */
+  const save = sheet.getByRole("button", { name: "Save follow-up" });
+  await expectTappable(save);
+  await save.click();
+  await expect(sheet).toBeHidden();
+  await expect(memberPage.getByRole("status")).toContainText("Follow-up added.");
+
+  /* Back at the same door: the note shows before knocking. */
+  await memberPage.getByLabel("Unit number").fill(NOTED_UNIT);
+  const owed = memberPage.getByRole("list", { name: "Outstanding follow-ups" });
+  await expect(owed).toContainText("Bring the festival flyer on Sunday.");
+  await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
 });

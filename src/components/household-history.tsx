@@ -1,5 +1,11 @@
+"use client";
+
+import { useState } from "react";
+import { FollowUpItem } from "@/components/follow-up-item";
+import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-up-sheet";
 import { VisitByline } from "@/components/visit-byline";
-import type { HouseholdHistory } from "@/generated/types.gen";
+import type { FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
+import { buildTimeline, sortOutstanding } from "@/lib/follow-ups";
 
 const INTEREST_LABEL: Record<string, string> = {
   no_response: "No response",
@@ -12,11 +18,40 @@ const INTEREST_LABEL: Record<string, string> = {
  * What is already known about this unit, shown before the member knocks.
  *
  * This is the reason the household/visit split exists: arriving at a door
- * already knowing what was said last time, and what was promised.
+ * already knowing what was said last time, and what was promised. What is
+ * still owed sits on top; below it, visits and notes read in one line,
+ * oldest first.
+ *
+ * After any change the parent re-reads the unit from the server rather than
+ * patching it here: the server stamps who resolved a note and when.
  */
-export function HouseholdHistoryPanel({ history }: { history: HouseholdHistory }) {
+export function HouseholdHistoryPanel({
+  history,
+  onChanged,
+  anchorVisits = false,
+}: {
+  history: HouseholdHistory;
+  onChanged: () => void;
+  /* Offer "Follow up on this visit" on each visit row. */
+  anchorVisits?: boolean;
+}) {
   const { household, visits, followUps } = history;
-  const outstanding = followUps.filter((note) => note.doneAt === null);
+  const [now] = useState(() => new Date());
+  const [sheet, setSheet] = useState<FollowUpSheetMode | null>(null);
+  const outstanding = sortOutstanding(followUps);
+  const timeline = buildTimeline(visits, followUps);
+
+  const edit = (note: FollowUp) => {
+    setSheet({ kind: "edit", note });
+  };
+  const anchor = (visit: Visit) => {
+    setSheet({
+      kind: "create",
+      householdId: household.id,
+      visitId: visit.id,
+      unitNumber: household.unitNumber,
+    });
+  };
 
   return (
     <section
@@ -29,40 +64,78 @@ export function HouseholdHistoryPanel({ history }: { history: HouseholdHistory }
       )}
 
       {outstanding.length > 0 ? (
-        <div className="mt-3 rounded-lg border border-interest-medium/50 bg-interest-medium/10 p-3">
+        <div className="mt-3">
           <p className="text-caption font-semibold tracking-wide uppercase">
             {outstanding.length === 1 ? "Outstanding follow-up" : "Outstanding follow-ups"}
           </p>
-          <ul className="mt-1 space-y-1">
+          <ul aria-label="Outstanding follow-ups" className="mt-1 space-y-2">
             {outstanding.map((note) => (
-              <li key={note.id} className="text-body">
-                {note.note}
-                <span className="text-foreground-muted"> — {note.author.name ?? "someone"}</span>
+              <li key={note.id}>
+                <FollowUpItem note={note} now={now} controls onChanged={onChanged} onEdit={edit} />
               </li>
             ))}
           </ul>
         </div>
       ) : null}
 
-      {visits.length > 0 ? (
-        <ol className="mt-3 space-y-2">
-          {visits.map((visit) => (
-            <li key={visit.id} className="text-caption">
-              <span className="font-medium">
-                {INTEREST_LABEL[visit.interestLevel] ?? visit.interestLevel}
-              </span>
-              <span className="text-foreground-muted">
-                {" · "}
-                {new Date(visit.createdAt).toLocaleDateString()}
-              </span>
-              <VisitByline visit={visit} />
-              {visit.description === "" ? null : (
-                <p className="text-body text-foreground-muted">{visit.description}</p>
-              )}
-            </li>
-          ))}
+      {timeline.length > 0 ? (
+        <ol aria-label="Timeline" className="mt-3 space-y-3">
+          {timeline.map((entry) =>
+            entry.kind === "visit" ? (
+              <li key={entry.item.id} className="text-caption">
+                <span className="font-medium">
+                  {INTEREST_LABEL[entry.item.interestLevel] ?? entry.item.interestLevel}
+                </span>
+                <span className="text-foreground-muted">
+                  {" · "}
+                  {new Date(entry.item.createdAt).toLocaleDateString()}
+                </span>
+                <VisitByline visit={entry.item} />
+                {entry.item.description === "" ? null : (
+                  <p className="text-body text-foreground-muted">{entry.item.description}</p>
+                )}
+                {anchorVisits ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      anchor(entry.item);
+                    }}
+                    className="min-h-11 text-body font-medium text-primary"
+                  >
+                    Follow up on this visit
+                  </button>
+                ) : null}
+              </li>
+            ) : (
+              <li key={entry.item.id}>
+                <p className="mb-1 text-caption font-medium text-foreground-muted">Follow-up</p>
+                {/* An outstanding note's controls live in the section above,
+                    so one note never shows two Mark done buttons. */}
+                <FollowUpItem
+                  note={entry.item}
+                  now={now}
+                  controls={entry.item.doneAt !== null}
+                  onChanged={onChanged}
+                  onEdit={edit}
+                />
+              </li>
+            ),
+          )}
         </ol>
       ) : null}
+
+      {sheet === null ? null : (
+        <FollowUpSheet
+          mode={sheet}
+          onClose={() => {
+            setSheet(null);
+          }}
+          onSaved={() => {
+            setSheet(null);
+            onChanged();
+          }}
+        />
+      )}
     </section>
   );
 }

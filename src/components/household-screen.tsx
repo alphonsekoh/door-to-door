@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
 import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
@@ -20,18 +21,26 @@ type State =
  */
 export function HouseholdScreen({ householdId }: { householdId: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
+  const [adding, setAdding] = useState(false);
+  /* Two quick changes re-read twice; only the newest answer may land. */
+  const generation = useRef(0);
 
   const load = useCallback(async () => {
+    const mine = ++generation.current;
     try {
-      setState({
-        status: "ready",
-        history: await apiFetch<HouseholdHistory>(`/households/${householdId}`),
-      });
+      const history = await apiFetch<HouseholdHistory>(`/households/${householdId}`);
+      if (mine === generation.current) setState({ status: "ready", history });
     } catch (error) {
-      setState({
-        status: "error",
-        message: error instanceof Error ? error.message : "Could not load this unit.",
-      });
+      /* A failed re-read after a change keeps the unit on screen, so a late
+         failure cannot replace a newer answer either. */
+      setState((current) =>
+        current.status === "ready"
+          ? current
+          : {
+              status: "error",
+              message: error instanceof Error ? error.message : "Could not load this unit.",
+            },
+      );
     }
   }, [householdId]);
 
@@ -41,6 +50,10 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
       clearTimeout(timer);
     };
   }, [load]);
+
+  const reload = () => {
+    void load();
+  };
 
   if (state.status === "loading") {
     return <p className="text-body text-foreground-muted">Loading…</p>;
@@ -64,7 +77,18 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-heading font-semibold tabular-nums">{household.unitNumber}</p>
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-heading font-semibold tabular-nums">{household.unitNumber}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setAdding(true);
+            }}
+            className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium text-primary"
+          >
+            Add follow-up
+          </button>
+        </div>
         <p className="text-body text-foreground-muted">
           Blk {block.name}, {block.street}
         </p>
@@ -75,7 +99,25 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
         )}
       </div>
 
-      <HouseholdHistoryPanel history={state.history} />
+      <HouseholdHistoryPanel history={state.history} onChanged={reload} anchorVisits />
+
+      {adding ? (
+        <FollowUpSheet
+          mode={{
+            kind: "create",
+            householdId: household.id,
+            visitId: null,
+            unitNumber: household.unitNumber,
+          }}
+          onClose={() => {
+            setAdding(false);
+          }}
+          onSaved={() => {
+            setAdding(false);
+            reload();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

@@ -190,6 +190,8 @@ export const zParticipant = z.object({
 export const zFollowUp = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
+    blockName: z.string(),
+    unitNumber: z.string(),
     visitId: z.uuid().nullable(),
     author: zUserSummary,
     note: z.string().min(1).max(2000),

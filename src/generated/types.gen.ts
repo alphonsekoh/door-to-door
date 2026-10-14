@@ -297,9 +297,24 @@ export type FollowUp = {
      * Attached to the household, so it survives across sessions.
      */
     householdId: string;
+    /**
+     * The household's block, so a list of notes can name the door without
+     * a lookup per note.
+     *
+     */
+    blockName: string;
+    /**
+     * The household's unit number, for the same reason.
+     */
+    unitNumber: string;
     visitId: string | null;
     author: UserSummary;
     note: string;
+    /**
+     * The start of the due day in the author's time zone. A note is
+     * overdue once that whole day has passed.
+     *
+     */
     dueDate: string | null;
     doneAt: string | null;
     doneBy: UserSummary | null;
@@ -1980,7 +1995,10 @@ export type ListFollowUpsData = {
          */
         outstanding?: boolean;
         /**
-         * Notes due before this instant, for the overdue list.
+         * Notes due strictly before this instant. For the overdue list, pass the
+         * start of today in the caller's time zone, so a note due today is not
+         * yet overdue. Undated notes never match.
+         *
          */
         dueBefore?: string;
         /**

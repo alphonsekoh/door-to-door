@@ -35,6 +35,8 @@ const visit: VisitRow = {
 const followUp: FollowUpRow = {
   id: "f1",
   householdId: "h1",
+  blockName: "123",
+  unitNumber: "#05-123",
   visitId: "v1",
   note: "Bring the flyer.",
   dueDate: at,
@@ -86,6 +88,10 @@ describe("toVisit", () => {
 });
 
 describe("toFollowUp", () => {
+  it("names the door it belongs to", () => {
+    expect(toFollowUp(followUp)).toMatchObject({ blockName: "123", unitNumber: "#05-123" });
+  });
+
   it("nests author and resolver when resolved", () => {
     const serialised = toFollowUp(followUp);
     expect(serialised.author).toEqual({ id: "u1", name: "Alice", image: null });

@@ -13,6 +13,8 @@ import { visitColumns } from "@/server/visits/service";
 export type FollowUpRow = {
   id: string;
   householdId: string;
+  blockName: string;
+  unitNumber: string;
   visitId: string | null;
   note: string;
   dueDate: Date | null;
@@ -169,15 +171,22 @@ export async function getHouseholdHistory(
   };
 }
 
-export async function listFollowUpsFor(db: Database, householdId: string): Promise<FollowUpRow[]> {
-  /* Aliased so author and resolver can both be joined from the users table. */
-  const author = alias(users, "author");
-  const resolver = alias(users, "resolver");
+/* Aliased so author and resolver can both be joined from the users table. */
+const author = alias(users, "author");
+const resolver = alias(users, "resolver");
 
+/*
+ * The one SELECT every follow-up read goes through, so the list, a single
+ * note and a household's history can never disagree on what a note carries.
+ * Callers add their own filter and order.
+ */
+export function selectFollowUps(db: Database) {
   return db
     .select({
       id: followUps.id,
       householdId: followUps.householdId,
+      blockName: blocks.name,
+      unitNumber: households.unitNumber,
       visitId: followUps.visitId,
       note: followUps.note,
       dueDate: followUps.dueDate,
@@ -191,8 +200,14 @@ export async function listFollowUpsFor(db: Database, householdId: string): Promi
       doneByImage: resolver.image,
     })
     .from(followUps)
+    .innerJoin(households, eq(households.id, followUps.householdId))
+    .innerJoin(blocks, eq(blocks.id, households.blockId))
     .innerJoin(author, eq(author.id, followUps.authorId))
-    .leftJoin(resolver, eq(resolver.id, followUps.doneBy))
+    .leftJoin(resolver, eq(resolver.id, followUps.doneBy));
+}
+
+export async function listFollowUpsFor(db: Database, householdId: string): Promise<FollowUpRow[]> {
+  return selectFollowUps(db)
     .where(eq(followUps.householdId, householdId))
     .orderBy(asc(followUps.createdAt));
 }

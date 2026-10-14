@@ -47,6 +47,8 @@ export function toFollowUp(row: FollowUpRow): FollowUp {
   return {
     id: row.id,
     householdId: row.householdId,
+    blockName: row.blockName,
+    unitNumber: row.unitNumber,
     visitId: row.visitId,
     author: { id: row.authorId, name: row.authorName, image: row.authorImage },
     note: row.note,

@@ -42,15 +42,12 @@ vi.mock("@/lib/use-role", () => ({
   }),
 }));
 
-describe("placeholder screens", () => {
-  it.each([["follow-ups", FollowUpsPage, "Follow-ups", 35]])(
-    "%s renders its heading and names its issue",
-    (_name, Page, heading, issue) => {
-      render(<Page />);
-      expect(screen.getByRole("heading", { level: 1, name: heading })).toBeInTheDocument();
-      expect(screen.getByText(`Arrives in issue #${String(issue)}`)).toBeInTheDocument();
-    },
-  );
+describe("follow-ups screen", () => {
+  it("renders its heading and the list, which reports a failed read", async () => {
+    render(<FollowUpsPage />);
+    expect(screen.getByRole("heading", { level: 1, name: "Follow-ups" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
 });
 
 describe("account screen", () => {
@@ -127,6 +124,8 @@ describe("admin screens", () => {
     expect(requireAdminPage).toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Outings" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    // The overdue card failing must not stand in for the outing list's own state.
+    expect(await screen.findByText("Could not check for overdue follow-ups.")).toBeInTheDocument();
   });
 
   it("guards the record list before rendering it", async () => {

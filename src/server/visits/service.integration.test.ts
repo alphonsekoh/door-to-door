@@ -396,6 +396,16 @@ describe("household history", () => {
     expect(history.followUps[0]?.doneByName).toBe("Ben");
   });
 
+  it("names the door on each follow-up", async () => {
+    const visit = await record("#05-123");
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Todo')`,
+      [visit.householdId, ALICE],
+    );
+    const history = await getHouseholdHistory(db, visit.householdId);
+    expect(history.followUps[0]).toMatchObject({ blockName: "123", unitNumber: "#05-123" });
+  });
+
   it("leaves doneBy null on an outstanding note", async () => {
     const visit = await record("#05-123");
     await pool.query(

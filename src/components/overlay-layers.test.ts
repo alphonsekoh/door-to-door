@@ -34,6 +34,7 @@ describe("overlay stacking", () => {
       "amend-visit-sheet.tsx",
       "block-attach-sheet.tsx",
       "confirm-dialog.tsx",
+      "follow-up-sheet.tsx",
       "record-on-behalf-form.tsx",
       "team-sheet.tsx",
     ]);

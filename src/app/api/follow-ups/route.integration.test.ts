@@ -88,6 +88,14 @@ describe("creating a note", () => {
     expect(body).toMatchObject({ note: "Bring the flyer.", author: { name: "Alice" } });
   });
 
+  it("names the door it was left at", async () => {
+    asAlice();
+    const body = (await (
+      await create({ householdId: HOUSEHOLD, note: "Bring the flyer." })
+    ).json()) as unknown;
+    expect(body).toMatchObject({ householdId: HOUSEHOLD, blockName: "123", unitNumber: "#05-123" });
+  });
+
   it("can anchor it to a specific visit", async () => {
     asAlice();
     const body = (await (
@@ -205,6 +213,13 @@ describe("resolving a note", () => {
     const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
     asBen();
     expect((await patch(id, { done: true, note: "and rewritten" })).status).toBe(403);
+  });
+
+  it("still names the door after an update", async () => {
+    asAlice();
+    const id = await noteId(await create({ householdId: OTHER_HOUSEHOLD, note: "Call back" }));
+    const body = (await (await patch(id, { done: true })).json()) as unknown;
+    expect(body).toMatchObject({ blockName: "123", unitNumber: "#06-201" });
   });
 
   it("can reopen a note that was closed too early", async () => {
@@ -348,6 +363,38 @@ describe("listing", () => {
       await GET(new Request(url("?outstanding=true&dueBefore=2026-08-01T00:00:00.000Z")))
     ).json()) as { data: { note: string }[] };
     expect(body.data.map((n) => n.note)).toEqual(["Due soon"]);
+  });
+
+  it("treats dueBefore as strictly before, so a note due today is not yet overdue", async () => {
+    // Callers pass the start of today; a note due on that day starts at that instant.
+    asAlice();
+    await create({
+      householdId: HOUSEHOLD,
+      note: "Due today",
+      dueDate: "2026-10-13T16:00:00.000Z",
+    });
+    await create({
+      householdId: HOUSEHOLD,
+      note: "Due yesterday",
+      dueDate: "2026-10-12T16:00:00.000Z",
+    });
+    await create({ householdId: HOUSEHOLD, note: "Undated" });
+    const body = (await (
+      await GET(new Request(url("?outstanding=true&dueBefore=2026-10-13T16:00:00.000Z")))
+    ).json()) as { data: { note: string }[] };
+    expect(body.data.map((n) => n.note)).toEqual(["Due yesterday"]);
+  });
+
+  it("names each note's door in a list across households", async () => {
+    await seedNotes();
+    const body = (await (await GET(new Request(url()))).json()) as {
+      data: { note: string; blockName: string; unitNumber: string }[];
+    };
+    expect(body.data.map((n) => [n.note, n.blockName, n.unitNumber])).toEqual([
+      ["Due soon", "123", "#05-123"],
+      ["Due later", "123", "#05-123"],
+      ["Finished", "123", "#06-201"],
+    ]);
   });
 
   it("lets a member filter to their own notes", async () => {
