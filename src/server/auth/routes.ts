@@ -10,16 +10,22 @@
  * page the worker shows when the network is gone, so it must be precachable by
  * a worker that has no session of its own. None of them carry member data.
  */
-export const PUBLIC_PATHS = ["/sign-in", "/offline", "/manifest.webmanifest", "/serwist"] as const;
+export const PWA_PATHS = ["/offline", "/manifest.webmanifest", "/serwist"] as const;
+
+export const PUBLIC_PATHS = ["/sign-in", ...PWA_PATHS] as const;
 
 /* Auth.js owns these; guarding them would make signing in impossible. */
 export const AUTH_PREFIX = "/api/auth";
 
+const under = (pathname: string, path: string) =>
+  pathname === path || pathname.startsWith(`${path}/`);
+
 export function isPublicPath(pathname: string): boolean {
-  if (pathname === AUTH_PREFIX || pathname.startsWith(`${AUTH_PREFIX}/`)) {
-    return true;
-  }
-  return PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+  return under(pathname, AUTH_PREFIX) || PUBLIC_PATHS.some((path) => under(pathname, path));
+}
+
+export function isPwaPath(pathname: string): boolean {
+  return PWA_PATHS.some((path) => under(pathname, path));
 }
 
 export function isApiPath(pathname: string): boolean {
