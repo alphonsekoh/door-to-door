@@ -7,6 +7,7 @@ import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generat
 import { amendRoute, describeAmendFailure } from "@/lib/amend";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
+import { useModal } from "@/lib/use-modal";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
   { value: "buddhist", label: "Buddhist" },
@@ -126,17 +127,21 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
     }
   }
 
+  const { overlay, panel } = useModal(onClose);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       {/* Tapping the backdrop closes; it is a plain button so it is reachable
           by keyboard and screen reader rather than being a click trap. */}
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Amend ${entry.household.unitNumber}`}
-        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
+        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold">{entry.household.unitNumber}</p>

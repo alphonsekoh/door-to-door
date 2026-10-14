@@ -130,4 +130,11 @@ describe("AdminTeamSheet", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(props.onClose).toHaveBeenCalledTimes(2);
   });
+
+  it("is a modal: focus moves in and Escape closes", async () => {
+    const props = sheet();
+    expect(screen.getByRole("dialog", { name: "New team" })).toHaveFocus();
+    await userEvent.setup().keyboard("{Escape}");
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
 });

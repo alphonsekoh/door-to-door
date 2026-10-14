@@ -13,6 +13,7 @@ import {
   instantToDueDay,
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
+import { useModal } from "@/lib/use-modal";
 
 export type FollowUpSheetMode =
   | { kind: "create"; householdId: string; visitId: string | null; unitNumber: string }
@@ -111,15 +112,19 @@ export function FollowUpSheet({
    * Portalled to the body: the panel that opens it sits inside the recording
    * form, where Enter in the date field would otherwise submit the visit.
    */
+  const { overlay, panel } = useModal(onClose);
+
   return createPortal(
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
+        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold break-words">{title}</p>

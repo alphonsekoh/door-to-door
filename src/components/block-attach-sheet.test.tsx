@@ -37,6 +37,15 @@ beforeEach(() => {
 const creates = () => apiFetch.mock.calls.filter(([, init]) => init?.method === "POST");
 
 describe("BlockAttachSheet", () => {
+  it("is a modal: focus moves in and Escape closes", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    const onClose = vi.fn();
+    render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={onClose} />);
+    expect(screen.getByRole("dialog", { name: "Add blocks" })).toHaveFocus();
+    await userEvent.setup().keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("lists the registry", async () => {
     apiFetch.mockResolvedValue(page([block("b1", "123"), block("b2", "125")]));
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);

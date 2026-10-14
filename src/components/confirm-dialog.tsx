@@ -1,5 +1,8 @@
 "use client";
 
+import { useRef } from "react";
+import { useModal } from "@/lib/use-modal";
+
 /*
  * Confirmation for the things that take something away.
  *
@@ -21,15 +24,21 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  /* Focus lands on the way out, not on the button that takes something away. */
+  const keep = useRef<HTMLButtonElement>(null);
+  const { overlay, panel } = useModal(onCancel, keep);
+
   return (
-    <div className="fixed inset-0 z-60 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-60 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Cancel" onClick={onCancel} className="flex-1" />
 
       <div
+        ref={panel}
+        tabIndex={-1}
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
-        className="rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom pb-4"
+        className="rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom pb-4 focus:outline-none"
       >
         <p className="text-title font-semibold">{title}</p>
         <p className="mt-1 text-body text-foreground-muted">{detail}</p>
@@ -44,6 +53,7 @@ export function ConfirmDialog({
             {busy ? "Working…" : confirmLabel}
           </button>
           <button
+            ref={keep}
             type="button"
             onClick={onCancel}
             className="min-h-12 w-full rounded-xl border border-border text-body font-medium"

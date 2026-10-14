@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { TeamSheet } from "@/components/team-sheet";
 
@@ -34,5 +34,24 @@ describe("TeamSheet", () => {
       await Promise.resolve();
     });
     expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a modal: focus moves in and Escape closes", () => {
+    const onClose = vi.fn();
+    render(
+      <TeamSheet
+        mode="create"
+        myName="Ann Tan"
+        initialName=""
+        candidates={[]}
+        canChange
+        onSubmit={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    // The panel, not the name field: a phone would raise the keyboard unasked.
+    expect(screen.getByRole("dialog", { name: "Pair up" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

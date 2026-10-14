@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Block, BlockList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { useModal } from "@/lib/use-modal";
 
 /*
  * Pick blocks from the registry, or add one that is not in it yet.
@@ -97,15 +98,19 @@ export function BlockAttachSheet({
 
   const available = blocks.filter((block) => !attachedIds.includes(block.id));
 
+  const { overlay, panel } = useModal(onClose);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label="Add blocks"
-        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
+        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold">Add blocks</p>

@@ -387,11 +387,13 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.click(screen.getByRole("button", { name: "Record for a member" }));
-    expect(screen.getByRole("form", { name: "Record on behalf of a member" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: "Record on behalf of a member" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(
-      screen.queryByRole("form", { name: "Record on behalf of a member" }),
+      screen.queryByRole("dialog", { name: "Record on behalf of a member" }),
     ).not.toBeInTheDocument();
   });
 

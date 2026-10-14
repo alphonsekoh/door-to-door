@@ -6,6 +6,7 @@ import type { Block, InterestLevel, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { normaliseUnitNumber } from "@/lib/unit-number";
 import { uuidv7 } from "@/lib/uuid";
+import { useModal } from "@/lib/use-modal";
 
 /*
  * An admin entering a record someone else made - phoned in from a corridor, or
@@ -63,18 +64,24 @@ export function RecordOnBehalfForm({
     }
   }
 
+  const { overlay, panel } = useModal<HTMLFormElement>(onClose);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <form
+        ref={panel}
+        tabIndex={-1}
         onSubmit={(event) => {
           event.preventDefault();
           void save();
         }}
         noValidate
+        role="dialog"
+        aria-modal="true"
         aria-label="Record on behalf of a member"
-        className="max-h-[85vh] space-y-4 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom pb-4"
+        className="max-h-[85vh] space-y-4 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom pb-4 focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold">Record for a member</p>
