@@ -105,6 +105,14 @@ export async function authorizeCredentials(
   const email = normaliseEmail(credentials.email);
   const key = attemptKey ?? email;
 
+  /*
+   * Every attempt is charged up front and a success clears the charge
+   * afterwards, so only failures are left counting (#86). Charging only after
+   * a failure would let a burst of concurrent guesses all pass the check
+   * before any of them was counted. A spent budget refuses before the
+   * password is looked at, so the correct one is refused too and never
+   * clears it (D-15-3).
+   */
   if (!limiter.consume(key).allowed) {
     throw new SignInError(RATE_LIMITED_MESSAGE);
   }
@@ -121,6 +129,8 @@ export async function authorizeCredentials(
   if (!found || !passwordMatches || found.deactivatedAt !== null) {
     throw new SignInError();
   }
+
+  limiter.reset(key);
 
   return {
     id: found.id,
