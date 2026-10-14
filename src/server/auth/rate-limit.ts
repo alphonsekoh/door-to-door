@@ -3,7 +3,8 @@
  *
  * In-memory, so the window is per process: it slows credential stuffing
  * against a single instance rather than providing a distributed guarantee.
- * Moving to a shared store means replacing consume() and nothing else.
+ * Moving to a shared store means replacing consume() and reset(), which
+ * sign-in uses to clear an account's failures once it succeeds.
  */
 
 export type RateLimitResult = {

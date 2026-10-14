@@ -112,4 +112,5 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 76  | [Clock rules](76-clock-rules.md)                        | In review                  |
 | 83  | [Per-request auth](83-per-request-auth.md)              | In review                  |
 | 87  | [Pool errors](87-pool-errors.md)                        | In review                  |
+| 86  | [Rate limit counts failures](86-rate-limit-failures.md) | In review                  |
 | 88  | [Flaky load tests](88-flaky-load-tests.md)              | In progress                |

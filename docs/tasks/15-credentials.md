@@ -16,6 +16,9 @@ Email and password sign-in with argon2, and the sign-in form.
   enumeration oracle. _Research:_ R-10.
 - **D-15-3 · Per-email, fixed-window, in-memory rate limit.** Single-instance only;
   replace `consume()` to share it. A spent budget refuses the correct password too.
+  _Narrowed by D-86-1 and D-86-5:_ only failed attempts count, a success clears the
+  count, and sharing means replacing `consume()` and `reset()`. The spent-budget refusal
+  stands (D-86-3).
 - **D-15-4 · `authorizeFromRawCredentials` is extracted and tested directly.** _Why:_
   Auth.js wraps `authorize`, so tests through the provider asserted nothing.
 - **D-15-5 · Admin user creation and password change deferred to #31.** _Why:_ needed

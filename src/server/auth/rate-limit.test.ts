@@ -66,6 +66,25 @@ describe("createRateLimiter", () => {
     expect(limiter.consume("a").allowed).toBe(true);
   });
 
+  it("restores the full budget when a key is reset mid-window", () => {
+    // Sign-in clears an account's failures this way once it succeeds (#86).
+    const clock = fakeClock();
+    const limiter = createRateLimiter({ limit: 3, windowMs: 1000, now: clock.now });
+    limiter.consume("a");
+    limiter.consume("a");
+    clock.advance(500);
+    limiter.reset("a");
+    expect([1, 2, 3, 4].map(() => limiter.consume("a").allowed)).toEqual([true, true, true, false]);
+  });
+
+  it("leaves other keys' spent budgets spent when one key is reset", () => {
+    const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: fakeClock().now });
+    limiter.consume("a");
+    limiter.consume("b");
+    limiter.reset("a");
+    expect(limiter.consume("b").allowed).toBe(false);
+  });
+
   it("resets every key when given none", () => {
     const limiter = createRateLimiter({ limit: 1, windowMs: 1000, now: fakeClock().now });
     limiter.consume("a");

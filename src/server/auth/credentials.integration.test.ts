@@ -12,7 +12,7 @@ import {
   normaliseEmail,
   resetDefaultLimiter,
 } from "@/server/auth/credentials";
-import { createRateLimiter } from "@/server/auth/rate-limit";
+import { createRateLimiter, type RateLimiter } from "@/server/auth/rate-limit";
 import { hashPassword } from "@/server/password";
 
 const { getConfig } = vi.hoisted(() => ({
@@ -178,6 +178,32 @@ describe("timing", () => {
       `unknown=${unknown.toFixed(1)}ms wrong=${wrongPassword.toFixed(1)}ms`,
     ).toBeLessThan(3);
   });
+
+  it("takes comparable time for a correct and a wrong password", async () => {
+    // Clearing the count on success (#86) must not make a success stand out.
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 1000, windowMs: 60_000 });
+
+    const median = async (password: string): Promise<number> => {
+      const samples: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const started = performance.now();
+        await authorizeCredentials({ email: "member@test.local", password }, { db, limiter }).catch(
+          () => undefined,
+        );
+        samples.push(performance.now() - started);
+      }
+      samples.sort((a, b) => a - b);
+      return samples[2] ?? 0;
+    };
+
+    await median(PASSWORD);
+    const correct = await median(PASSWORD);
+    const wrong = await median("wrong-password");
+
+    const ratio = Math.max(correct, wrong) / Math.min(correct, wrong);
+    expect(ratio, `correct=${correct.toFixed(1)}ms wrong=${wrong.toFixed(1)}ms`).toBeLessThan(3);
+  });
 });
 
 describe("rate limiting", () => {
@@ -224,6 +250,118 @@ describe("rate limiting", () => {
   });
 });
 
+describe("only failed attempts count (#86)", () => {
+  /*
+   * Through authorizeFromRawCredentials, the function Auth.js calls (D-15-4).
+   * Every refusal there is null, so whether the counter was cleared is read
+   * from whether a later correct password still gets in.
+   */
+  const signIn = (limiter: RateLimiter, email: string, password: string) =>
+    authorizeFromRawCredentials({ email, password }, undefined, { db, limiter });
+  const fail = (limiter: RateLimiter, email = "member@test.local") =>
+    signIn(limiter, email, "wrong-password");
+  const succeed = (limiter: RateLimiter, email = "member@test.local") =>
+    signIn(limiter, email, PASSWORD);
+
+  it("lets an account sign in again and again without locking it out", async () => {
+    // The reported bug: repeated legitimate sign-ins spent the budget.
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+    for (let i = 0; i < 5; i += 1) {
+      expect(await succeed(limiter)).toMatchObject({ email: "member@test.local" });
+    }
+  });
+
+  it("clears earlier failures when a correct password arrives before the limit", async () => {
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 3, windowMs: 60_000 });
+
+    expect(await fail(limiter)).toBeNull();
+    expect(await fail(limiter)).toBeNull();
+    expect(await succeed(limiter)).toMatchObject({ email: "member@test.local" });
+
+    // Without the clear the window would already hold three attempts.
+    expect(await fail(limiter)).toBeNull();
+    expect(await fail(limiter)).toBeNull();
+    expect(await succeed(limiter)).toMatchObject({ email: "member@test.local" });
+  });
+
+  it("still refuses the correct password once the failures spend the budget", async () => {
+    // D-15-3: the (N+1)th attempt is refused whatever the password.
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+
+    expect(await fail(limiter)).toBeNull();
+    expect(await fail(limiter)).toBeNull();
+    expect(await succeed(limiter)).toBeNull();
+  });
+
+  it("does not let a refused correct password clear a spent budget", async () => {
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+    await fail(limiter);
+    await fail(limiter);
+
+    expect(await succeed(limiter)).toBeNull();
+    expect(await succeed(limiter)).toBeNull();
+    await expect(
+      authorizeCredentials({ email: "member@test.local", password: PASSWORD }, { db, limiter }),
+    ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  });
+
+  it("does not clear the count for a deactivated account's correct password", async () => {
+    // A refusal is a refusal, even when the password matched.
+    await seedUser({ email: "gone@test.local", deactivated: true });
+    const limiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+
+    expect(await fail(limiter, "gone@test.local")).toBeNull();
+    expect(await succeed(limiter, "gone@test.local")).toBeNull();
+    await expect(
+      authorizeCredentials({ email: "gone@test.local", password: PASSWORD }, { db, limiter }),
+    ).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  });
+
+  it("clears only the account that signed in", async () => {
+    await seedUser({ email: "alice@test.local" });
+    await seedUser({ email: "ben@test.local" });
+    const limiter = createRateLimiter({ limit: 1, windowMs: 60_000 });
+
+    await fail(limiter, "ben@test.local");
+    expect(await succeed(limiter, "alice@test.local")).toMatchObject({
+      email: "alice@test.local",
+    });
+    expect(await succeed(limiter, "ben@test.local")).toBeNull();
+  });
+
+  it("counts concurrent failures, so a burst cannot outrun the limit", async () => {
+    /*
+     * The guesses are all in flight before any of them finishes verifying, so
+     * a limiter that only recorded a failure after verifying would let every
+     * one of them through - including the right one at the end of the burst.
+     */
+    await seedUser({ email: "member@test.local" });
+    const limiter = createRateLimiter({ limit: 3, windowMs: 60_000 });
+    const guesses = [...Array.from({ length: 7 }, (_, i) => `wrong-${String(i)}`), PASSWORD];
+
+    const outcomes = await Promise.allSettled(
+      guesses.map((password) =>
+        authorizeCredentials({ email: "member@test.local", password }, { db, limiter }),
+      ),
+    );
+    const messages = outcomes.map((outcome) =>
+      outcome.status === "rejected" && outcome.reason instanceof Error
+        ? outcome.reason.message
+        : "signed in",
+    );
+
+    expect(messages).toEqual([
+      ...Array.from({ length: 3 }, () => SIGN_IN_FAILED_MESSAGE),
+      ...Array.from({ length: 5 }, () => RATE_LIMITED_MESSAGE),
+    ]);
+    expect(await succeed(limiter)).toBeNull();
+  });
+});
+
 describe("the limiter built from config", () => {
   it("allows exactly rateLimit.signInAttempts attempts, then refuses", async () => {
     await seedUser({ email: "member@test.local" });
@@ -233,6 +371,19 @@ describe("the limiter built from config", () => {
     await expect(attempt()).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
     await expect(attempt()).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
     await expect(attempt()).rejects.toThrow(RATE_LIMITED_MESSAGE);
+  });
+
+  it("clears its count on a successful sign-in", async () => {
+    // rateLimit.signInAttempts is 2 here, so without the clear the third is refused.
+    await seedUser({ email: "member@test.local" });
+    const attempt = (password: string) =>
+      authorizeCredentials({ email: "member@test.local", password }, { db });
+
+    await expect(attempt("wrong-password")).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
+    await expect(attempt(PASSWORD)).resolves.toMatchObject({ email: "member@test.local" });
+    await expect(attempt("wrong-password")).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
+    await expect(attempt("wrong-password")).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);
+    await expect(attempt(PASSWORD)).rejects.toThrow(RATE_LIMITED_MESSAGE);
   });
 
   it("reads the config once and reuses the limiter", async () => {
