@@ -26,8 +26,12 @@ shared primitive fixes every one of them.
 - **D-90-5 · Open modals form a module-level stack; only the top handles keys.** A confirm
   raised from a sheet traps focus, and Escape closes only it. _Why:_ issue scope; a
   sheet and its confirm each register independently.
-- **D-90-6 · Escape that ends an IME composition is ignored.** _Why:_ it belongs to the
-  text field, and closing would lose typed text.
+- **D-90-6 · Escape that ends an IME composition is ignored, detected by `isComposing` or
+  `keyCode` 229.** WebKit sends the composition-ending keydown with `isComposing` false
+  and only `keyCode` 229. `keyCode` is read through `Reflect.get` on purpose, because
+  `no-deprecated` rejects it and nothing else carries this signal; removing it brings
+  back text loss on iOS. _Why:_ the Escape belongs to the text field, and closing would
+  lose typed text.
 - **D-90-7 · Background isolation is `inert` on the siblings of each ancestor of the top
   overlay, up to `body`; elements already inert are left alone and stay inert on close.**
   The overlay stays live so the backdrop tap still closes (unchanged behaviour). _Why:_
