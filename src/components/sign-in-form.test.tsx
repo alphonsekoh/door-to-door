@@ -3,18 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/sign-in-form";
 
-const { signIn, push, refresh, get, clearCaches } = vi.hoisted(() => ({
+const { signIn, goTo, get, clearCaches } = vi.hoisted(() => ({
   clearCaches: vi.fn(() => Promise.resolve()),
   signIn: vi.fn(),
-  push: vi.fn(),
-  refresh: vi.fn(),
+  goTo: vi.fn(),
   get: vi.fn<(key: string) => string | null>(),
 }));
 
 vi.mock("next-auth/react", () => ({ signIn }));
 vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
+vi.mock(import("@/lib/navigate"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  goTo,
+}));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push, refresh }),
   useSearchParams: () => ({ get }),
 }));
 
@@ -63,16 +65,15 @@ describe("SignInForm", () => {
     expect(screen.getByLabelText("Email")).toHaveAttribute("aria-invalid", "true");
   });
 
-  it("clears the router cache before navigating", async () => {
+  it("leaves by a full page load, after forgetting the cached answers", async () => {
     /*
-     * Prefetches made while signed out are redirects back to the sign-in page.
-     * Pushing without invalidating them replays one, and the member is left
-     * looking at the form they just completed - which is what happened in the
-     * production build until the e2e suite caught it.
+     * The router holds prefetches made while signed out, each a redirect back
+     * to sign-in. refresh() then push() cleared them, but the refresh of
+     * /sign-in could outlive the push and, if it failed, Next hard-loaded
+     * /sign-in over the home screen. A full load has neither problem.
      */
     const user = userEvent.setup();
     signIn.mockResolvedValue(ok);
-    get.mockReturnValue(null);
     render(<SignInForm />);
 
     await user.type(screen.getByLabelText("Email"), "admin@example.com");
@@ -80,11 +81,13 @@ describe("SignInForm", () => {
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(refresh).toHaveBeenCalled();
+      expect(goTo).toHaveBeenCalledOnce();
     });
-    expect(refresh.mock.invocationCallOrder[0]).toBeLessThan(
-      push.mock.invocationCallOrder[0] ?? Infinity,
+    expect(clearCaches.mock.invocationCallOrder[0]).toBeLessThan(
+      goTo.mock.invocationCallOrder[0] ?? -Infinity,
     );
+    // A second tap while the next page loads would sign in twice.
+    expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
   });
 
   it("signs in and redirects home", async () => {
@@ -103,7 +106,7 @@ describe("SignInForm", () => {
         redirect: false,
       });
     });
-    expect(push).toHaveBeenCalledWith("/");
+    expect(goTo).toHaveBeenCalledWith("/");
   });
 
   it("forgets the previous member's cached API answers on sign-in, not on failure", async () => {
@@ -122,6 +125,21 @@ describe("SignInForm", () => {
     });
   });
 
+  it("still leaves when the cached answers cannot be cleared", async () => {
+    signIn.mockResolvedValue(ok);
+    clearCaches.mockRejectedValueOnce(new Error("storage is restricted"));
+    const user = userEvent.setup();
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledWith("/");
+    });
+  });
+
   it("returns to where the user was headed", async () => {
     signIn.mockResolvedValue(ok);
     get.mockReturnValue("/history");
@@ -133,7 +151,22 @@ describe("SignInForm", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
 
     await waitFor(() => {
-      expect(push).toHaveBeenCalledWith("/history");
+      expect(goTo).toHaveBeenCalledWith("/history");
+    });
+  });
+
+  it("does not follow a callback to another site", async () => {
+    signIn.mockResolvedValue(ok);
+    get.mockReturnValue("//evil.example/");
+    const user = userEvent.setup();
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledWith("/");
     });
   });
 
@@ -150,7 +183,9 @@ describe("SignInForm", () => {
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Email or password is incorrect.");
     expect(alert.textContent).not.toMatch(/unknown|no such|deactivated|exists/i);
-    expect(push).not.toHaveBeenCalled();
+    expect(goTo).not.toHaveBeenCalled();
+    // The member can correct the password and try again.
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });
 
   it("never puts the password in the DOM as readable text", async () => {

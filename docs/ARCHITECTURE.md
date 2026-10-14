@@ -79,7 +79,8 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
 
 1. `src/proxy.ts` redirects page requests with no session to `/sign-in` and returns
    `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `baseAuthConfig` (no adapter).
-   It is an affordance, not a guard.
+   It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
+   return before `auth()` runs (D-32-19).
 2. The route handler is wrapped in `withContract(operation, handler)`: path, query
    (schema-driven coercion) and body are parsed with generated Zod; PATCH bodies go
    through `requireChanges`.
@@ -149,7 +150,9 @@ Google SSO (#14) is not built.
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
 - Sign-out (`src/lib/sign-out.ts`): clears the block cache, warns on unsynced items,
-  `signOut({ redirect: false })`, then a full navigation to `/sign-in`.
+  `signOut({ redirect: false })`, then a full navigation to `/sign-in`. A refusal
+  (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
+  sign out".
 - The proxy sets `Cache-Control: no-store` on signed-in page responses (not API), so Back
   after sign-out revalidates instead of restoring the page from bfcache.
 
@@ -158,7 +161,8 @@ Google SSO (#14) is not built.
 - `src/app/manifest.ts` and icons (`npm run icons` from `public/icon.svg`) make the
   app installable. The worker (`src/app/sw.ts`, `@serwist/turbopack`) is served at
   `/serwist/sw.js` and is disabled outside production builds. Manifest, `/serwist/*`
-  and `/offline` are public to the proxy.
+  and `/offline` are public to the proxy, which returns before `auth()` for them so a
+  cookieless fetch never mints a CSRF cookie (D-32-19).
 - Precache: static assets, icons and `/offline`; never authenticated HTML.
   Navigations are network-only with an `/offline` fallback. API is network-only except
   `GET /api/blocks` (stale-while-revalidate, own cache, 24h / 20 entries).

@@ -1,8 +1,5 @@
+import { goTo } from "@/lib/navigate";
 import { clearServiceWorkerCaches } from "@/lib/sw-client";
-
-function goTo(path: string): void {
-  window.location.assign(path);
-}
 
 /*
  * Leaving the app on a phone somebody else may pick up next.
@@ -17,12 +14,21 @@ function goTo(path: string): void {
  * which changed the origin (127.0.0.1 to localhost) behind the standalone
  * server. A full navigation rather than a router push also drops the signed-in
  * page from memory.
+ *
+ * Auth.js answers a refused sign-out (a CSRF mismatch, say) with 200 and an
+ * error page URL, and the session cookie survives. That has to surface as a
+ * failure: going to /sign-in would tell the member they were out when the
+ * next person to pick up the phone is still signed in as them.
  */
 export async function signOutAndForget(
-  signOut: (options: { redirect: false }) => Promise<unknown>,
+  signOut: (options: { redirect: false }) => Promise<{ url: string }>,
   navigate: (path: string) => void = goTo,
 ): Promise<void> {
   await clearServiceWorkerCaches().catch(() => undefined);
-  await signOut({ redirect: false });
+  const { url } = await signOut({ redirect: false });
+  const refusal = new URL(url, "http://relative.invalid").searchParams.get("error");
+  if (refusal !== null) {
+    throw new Error(`Sign-out was refused: ${refusal}`);
+  }
   navigate("/sign-in");
 }

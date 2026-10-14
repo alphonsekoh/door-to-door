@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isApiPath, isPublicPath, signInRedirect } from "@/server/auth/routes";
+import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
 
 describe("isPublicPath", () => {
   it.each([
@@ -30,6 +30,22 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/offline-secrets")).toBe(false);
     expect(isPublicPath("/serwistx")).toBe(false);
   });
+});
+
+describe("isPwaPath", () => {
+  it.each(["/offline", "/manifest.webmanifest", "/serwist/sw.js", "/serwist/sw.js.map"])(
+    "recognises %s, which the browser may fetch without cookies",
+    (path) => {
+      expect(isPwaPath(path)).toBe(true);
+    },
+  );
+
+  it.each(["/sign-in", "/api/auth/csrf", "/history", "/serwistx", "/offline-secrets"])(
+    "does not match %s",
+    (path) => {
+      expect(isPwaPath(path)).toBe(false);
+    },
+  );
 });
 
 describe("isApiPath", () => {

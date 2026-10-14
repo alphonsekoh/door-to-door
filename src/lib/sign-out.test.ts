@@ -4,6 +4,9 @@ import { signOutAndForget } from "@/lib/sign-out";
 const { clear } = vi.hoisted(() => ({ clear: vi.fn() }));
 vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clear }));
 
+// What Auth.js hands back when the session really ended.
+const signedOut = { url: "http://localhost:3210/account" };
+
 beforeEach(() => {
   vi.clearAllMocks();
   clear.mockResolvedValue(undefined);
@@ -13,7 +16,10 @@ describe("signOutAndForget", () => {
   it("clears the cached lists, signs out, then goes to sign-in by relative path", async () => {
     const order: string[] = [];
     clear.mockImplementation(() => Promise.resolve(void order.push("clear")));
-    const signOut = vi.fn(() => Promise.resolve(void order.push("signOut")));
+    const signOut = vi.fn(() => {
+      order.push("signOut");
+      return Promise.resolve(signedOut);
+    });
     const navigate = vi.fn((path: string) => void order.push(`go ${path}`));
 
     await signOutAndForget(signOut, navigate);
@@ -24,7 +30,7 @@ describe("signOutAndForget", () => {
 
   it("still signs out when the caches cannot be cleared", async () => {
     clear.mockRejectedValue(new Error("storage unavailable"));
-    const signOut = vi.fn(() => Promise.resolve());
+    const signOut = vi.fn(() => Promise.resolve(signedOut));
     const navigate = vi.fn();
 
     await signOutAndForget(signOut, navigate);
@@ -41,10 +47,23 @@ describe("signOutAndForget", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("does not claim success when Auth.js refuses the sign-out", async () => {
+    // A CSRF mismatch comes back as 200 with an error page URL, and the
+    // session cookie is still valid.
+    const navigate = vi.fn();
+    await expect(
+      signOutAndForget(
+        () => Promise.resolve({ url: "http://localhost:3210/sign-in?error=MissingCSRF" }),
+        navigate,
+      ),
+    ).rejects.toThrow("MissingCSRF");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("navigates with window.location by default", async () => {
     const assign = vi.fn();
     vi.stubGlobal("window", { location: { assign } });
-    await signOutAndForget(() => Promise.resolve());
+    await signOutAndForget(() => Promise.resolve(signedOut));
     expect(assign).toHaveBeenCalledWith("/sign-in");
     vi.unstubAllGlobals();
   });

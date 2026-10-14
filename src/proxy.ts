@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import { NextResponse, type NextFetchEvent, type NextProxy, type NextRequest } from "next/server";
 import { buildBaseAuthConfig } from "@/server/auth/base-config";
-import { isApiPath, isPublicPath, signInRedirect } from "@/server/auth/routes";
+import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
 import { getConfig } from "@/server/config";
 
 /*
@@ -63,6 +63,17 @@ const guard = auth((request) => {
  * per request instead of exported directly.
  */
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
+  /*
+   * The PWA files never reach auth(): its session check mints a CSRF cookie on
+   * any request that arrives without one, and these are fetched cookieless.
+   * WebKit stores the cookie from its worker update check anyway, so the
+   * member's token was swapped mid sign-out and Auth.js refused it as
+   * MissingCSRF. /sign-in still goes through: its cookie arriving with the page
+   * is what stops the form's first auth requests each minting their own.
+   */
+  if (isPwaPath(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
   const middleware = (await Promise.resolve(guard)) as unknown as NextProxy;
   return middleware(request, event);
 }

@@ -23,3 +23,14 @@ Email and password sign-in with argon2, and the sign-in form.
   Auth.js wraps `authorize`, so tests through the provider asserted nothing.
 - **D-15-5 · Admin user creation and password change deferred to #31.** _Why:_ needed
   endpoints not yet in the contract.
+- **D-15-6 · The sign-in `callbackUrl` is followed only if it resolves to this origin**,
+  resolved as the browser would (against a placeholder origin), and the resulting path
+  resolved again; anything else goes to `/`. Added in PR #93. _Why:_ it comes from the
+  query string, and the URL parser strips tab/CR/LF and collapses dot segments, so
+  `/\t/evil.example` or `/.//evil.example` pass a string check and leave the site.
+- **D-15-7 · A successful sign-in leaves the page with a full load (`goTo`), not
+  `router.refresh()` then `router.push()`.** Supersedes D-37-3's sign-in clause; added in
+  PR #93. _Why:_ the refresh of `/sign-in` could outlive the push, and when it failed, Next
+  hard-loaded `/sign-in` over the signed-in home. A full load also starts with an empty
+  router cache, so D-37-3's cached-redirect problem (R-13) stays fixed. D-15-6 relies on
+  it, because a full load follows any URL it is given.
