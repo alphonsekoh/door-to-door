@@ -247,9 +247,82 @@ describe("history before knocking", () => {
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(await screen.findByRole("button", { name: "Mark done" }));
 
-    expect(await screen.findByText(/Done by Me/)).toBeInTheDocument();
+    const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
+    expect(await timeline.findByText("Follow-up done")).toBeInTheDocument();
     expect(screen.queryByText("Outstanding follow-up")).not.toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
+  });
+
+  it("keeps a resolved note to one line with no controls, so the picker stays near", async () => {
+    const done = {
+      ...owed,
+      doneAt: "2026-01-02T00:00:00.000Z",
+      doneBy: { id: "u2", name: "Ben", image: null },
+    };
+    apiFetch.mockResolvedValue(history({ followUps: [done] }));
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
+    expect(
+      timeline.getByText("Bring the community event flyer.", { exact: false }),
+    ).toBeInTheDocument();
+    expect(timeline.queryByText(/Added by/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the unit on screen when the re-read after marking done fails", async () => {
+    let reads = 0;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") return Promise.resolve({});
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve(history({ followUps: [owed] }))
+        : Promise.reject(new TypeError("Failed to fetch"));
+    });
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(await screen.findByRole("button", { name: "Mark done" }));
+
+    await waitFor(() => {
+      expect(reads).toBe(2);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("region", { name: "What we know about this unit" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Mr Tan")).toBeInTheDocument();
+    expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
+  });
+
+  it("drops the last unit's history when a different unit's lookup fails", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path === "/households/h1"
+        ? Promise.resolve(history())
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        blockId={BLOCK}
+        known={[summary("#05-123"), summary("#05-125", "h2")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#05-123");
+    expect(await screen.findByText("Mr Tan")).toBeInTheDocument();
+
+    // Straight from one known unit to the next, never through an unknown one.
+    fireEvent.change(unit, { target: { value: "#05-125" } });
+    await waitFor(() => {
+      expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
+    });
   });
 
   it("matches a unit typed without the hash", async () => {

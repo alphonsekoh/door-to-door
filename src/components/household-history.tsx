@@ -24,6 +24,11 @@ const INTEREST_LABEL: Record<string, string> = {
  * in the timeline pushed the interest picker screens below the fold at the
  * door.
  *
+ * At the door (`atDoor`) a resolved note shrinks to one line with no
+ * controls: resolved notes accumulate without limit, and full cards pushed
+ * the required interest picker far below the fold. Reopening and editing
+ * stay on the unit's own screen.
+ *
  * After any change the parent re-reads the unit from the server rather than
  * patching it here: the server stamps who resolved a note and when.
  */
@@ -31,11 +36,13 @@ export function HouseholdHistoryPanel({
   history,
   onChanged,
   anchorVisits = false,
+  atDoor = false,
 }: {
   history: HouseholdHistory;
   onChanged: () => void;
   /* Offer "Follow up on this visit" on each visit row. */
   anchorVisits?: boolean;
+  atDoor?: boolean;
 }) {
   const { household, visits, followUps } = history;
   const [now] = useState(() => new Date());
@@ -110,6 +117,12 @@ export function HouseholdHistoryPanel({
                     Follow up on this visit
                   </button>
                 ) : null}
+              </li>
+            ) : atDoor ? (
+              <li key={entry.item.id} className="truncate text-caption text-foreground-muted">
+                <span className="font-medium">Follow-up done</span>
+                {" · "}
+                {entry.item.note}
               </li>
             ) : (
               <li key={entry.item.id}>

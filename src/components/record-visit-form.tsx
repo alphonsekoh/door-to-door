@@ -93,8 +93,14 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         if (!cancelled) setHistory(data);
       })
       .catch(() => {
-        // A missing history must never block recording a visit.
-        if (!cancelled) setHistory(null);
+        /*
+         * A missing history must never block recording a visit. A failed
+         * re-read after a follow-up change keeps what is already shown for
+         * this unit rather than blanking it just before the knock.
+         */
+        if (!cancelled) {
+          setHistory((current) => (current?.household.id === matchId ? current : null));
+        }
       });
     return () => {
       cancelled = true;
@@ -224,6 +230,7 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
       {history === null ? null : (
         <HouseholdHistoryPanel
           history={history}
+          atDoor
           onChanged={() => {
             setReloadKey((key) => key + 1);
           }}
