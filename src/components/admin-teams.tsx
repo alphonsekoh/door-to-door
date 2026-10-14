@@ -3,14 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminTeamSheet, type AdminTeamSubmit } from "@/components/admin-team-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import type {
-  SessionStatus,
-  Team,
-  TeamList,
-  User,
-  UserList,
-  UserSummary,
-} from "@/generated/types.gen";
+import type { SessionStatus, Team, TeamList, User, UserSummary } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
   ADMIN_OFFLINE_NOTE,
@@ -24,6 +17,7 @@ import {
 } from "@/lib/team-ui";
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
+import { loadAllUsers } from "@/lib/users";
 
 type Loaded = { teams: Team[]; users: User[] };
 
@@ -74,10 +68,10 @@ export function AdminTeams({
     try {
       const [teams, users] = await Promise.all([
         apiFetch<TeamList>(`/sessions/${sessionId}/teams`),
-        apiFetch<UserList>("/users?limit=100"),
+        loadAllUsers(),
       ]);
       if (mine !== generation.current) return;
-      setData({ teams: teams.data, users: users.data });
+      setData({ teams: teams.data, users });
       setLoadFailure(null);
       setUnreachable(false);
       setAuthFailed(false);

@@ -217,9 +217,30 @@ describe("SessionRecords", () => {
     });
   });
 
-  it("says when the filters match nothing", async () => {
+  it("says there is nothing of the member's on this outing when nothing is filtered", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
+    expect(await screen.findByText("You recorded nothing on this outing.")).toBeInTheDocument();
+    expect(screen.queryByText(/matches those filters/)).not.toBeInTheDocument();
+  });
+
+  it("says nothing of the team's either in the team view", async () => {
+    searchParams.value = new URLSearchParams("view=team");
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+    expect(
+      await screen.findByText("Neither you nor your team recorded anything on this outing."),
+    ).toBeInTheDocument();
+  });
+
+  it("says when the filters match nothing", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValueOnce(page([entry("#05-123")]));
+    render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("#05-123");
+
+    apiFetch.mockResolvedValue(page([]));
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
     expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
   });
 
@@ -275,7 +296,7 @@ describe("Me or My team", () => {
     searchParams.value = new URLSearchParams("view=everyone");
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
-    await screen.findByText("Nothing here matches those filters.");
+    await screen.findByText("You recorded nothing on this outing.");
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("includeTeam"));
   });
 

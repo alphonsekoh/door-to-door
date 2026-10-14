@@ -102,7 +102,7 @@ export function RecordOnBehalfForm({
             onChange={(event) => {
               setMemberId(event.target.value);
             }}
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
           >
             <option value="">Choose a member</option>
             {members.map((member) => (
@@ -123,7 +123,7 @@ export function RecordOnBehalfForm({
             onChange={(event) => {
               setBlockId(event.target.value);
             }}
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
           >
             {blocks.map((block) => (
               <option key={block.id} value={block.id}>

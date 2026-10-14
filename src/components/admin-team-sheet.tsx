@@ -51,7 +51,8 @@ export function AdminTeamSheet({
 
   const showPicker = mode !== "rename";
   const showName = mode !== "add";
-  const picked = candidates.filter((user) => chosen.includes(user.id));
+  /* In the order they were tapped, so the name reads as the admin chose. */
+  const picked = chosen.flatMap((id) => candidates.filter((user) => user.id === id));
 
   /* Follows the people chosen until the admin types a name of their own. */
   const name =

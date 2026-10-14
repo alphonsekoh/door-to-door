@@ -133,7 +133,7 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
             onChange={(event) => {
               setBlockId(event.target.value);
             }}
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
           >
             <option value="">All blocks</option>
             {blocks.map((block) => (
@@ -154,7 +154,7 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
             onChange={(event) => {
               setInterestLevel(event.target.value as InterestLevel | "");
             }}
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
           >
             <option value="">Any interest</option>
             {LEVELS.map((level) => (
@@ -168,7 +168,11 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
 
       {entries.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          Nothing here matches those filters.
+          {blockId !== "" || interestLevel !== ""
+            ? "Nothing here matches those filters."
+            : scope === "team"
+              ? "Neither you nor your team recorded anything on this outing."
+              : "You recorded nothing on this outing."}
         </p>
       ) : (
         <OwnRecords

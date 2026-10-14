@@ -459,4 +459,54 @@ describe("AdminRecords", () => {
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by team").querySelectorAll("option")).toHaveLength(1);
   });
+
+  it("drops a team that is not one of this outing's teams from the URL", async () => {
+    // A real-looking id from an earlier outing would filter to nothing while
+    // the picker said "Any team".
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`interestLevel=high&teamId=${other}`);
+    serve([]);
+    render(<AdminRecords />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/admin/records?interestLevel=high");
+    });
+  });
+
+  it("keeps a team that is one of this outing's", async () => {
+    searchParams.value = new URLSearchParams(`teamId=${TEAM_ID}`);
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    expect(screen.getByLabelText("Filter by team")).toHaveValue(TEAM_ID);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the team while the teams cannot be listed, since nothing is known", async () => {
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`teamId=${other}`);
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+      if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
+      if (path.startsWith("/users")) return Promise.resolve(userPage);
+      return Promise.resolve({
+        data: [],
+        pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+      });
+    });
+    render(<AdminRecords />);
+    await screen.findByText("Nothing here matches those filters.");
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it.each([`teamId=${TEAM_ID}`, "memberId=u1", "blockId=b1", "interestLevel=low"])(
+    "says the filters match nothing, not that nothing was recorded, with %s",
+    async (query) => {
+      searchParams.value = new URLSearchParams(query);
+      serve([]);
+      render(<AdminRecords />);
+      expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
+      expect(screen.queryByText(/Nothing has been recorded/)).not.toBeInTheDocument();
+    },
+  );
 });

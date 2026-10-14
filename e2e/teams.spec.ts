@@ -186,7 +186,11 @@ test("a teammate sees who recorded a unit, and the team's records", async ({
   await row.click();
   const sheet = partnerPage.getByRole("dialog", { name: `Amend ${TEAM_UNIT}` });
   await expect(sheet.getByText(`Recorded by ${BYLINE}`, { exact: true })).toBeVisible();
-  await expectTappable(sheet.getByRole("button", { name: "Save changes" }));
+  /* The form appears once the screen has learned Ben's current team; polled on
+     that settled state rather than on a fixed wait. */
+  const save = sheet.getByRole("button", { name: "Save changes" });
+  await expect.poll(() => save.count(), { message: "the teammate is offered Save" }).toBe(1);
+  await expectTappable(save);
   await sheet.getByRole("button", { name: "Cancel" }).click();
 
   // His own history, team view: Alice's record is there with her name on it.

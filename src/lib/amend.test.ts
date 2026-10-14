@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
-import { describeAmendFailure, mayAmendVisit } from "@/lib/amend";
+import { amendRoute, describeAmendFailure, mayAmendVisit } from "@/lib/amend";
 
 const person = (id: string) => ({ id, name: id, image: null });
 const teamVisit = { member: person("alice"), team: { id: "t1", name: "A & B", members: [] } };
@@ -37,6 +37,15 @@ describe("mayAmendVisit", () => {
   });
 });
 
+describe("amendRoute", () => {
+  it("names the right the viewer holds", () => {
+    expect(amendRoute(teamVisit, { userId: "x", isAdmin: true, teamIds: ["t1"] })).toBe("admin");
+    expect(amendRoute(teamVisit, member("alice", ["t1"]))).toBe("author");
+    expect(amendRoute(teamVisit, member("ben", ["t1"]))).toBe("team");
+    expect(amendRoute(teamVisit, member("ben"))).toBeNull();
+  });
+});
+
 describe("describeAmendFailure", () => {
   it("never claims a lost connection changed nothing", () => {
     expect(describeAmendFailure(new TypeError("Failed to fetch"))).toBe(
@@ -45,10 +54,18 @@ describe("describeAmendFailure", () => {
   });
 
   it("explains a refusal after leaving the team instead of showing server text", () => {
-    const message = describeAmendFailure(error(403, "forbidden"));
+    const message = describeAmendFailure(error(403, "forbidden"), "team");
     expect(message).toMatch(/not on this record's team any more/);
     expect(message).not.toContain("server words");
   });
+
+  it.each(["admin", "author", null] as const)(
+    "does not blame the team when the right came as %s",
+    (route) => {
+      const message = describeAmendFailure(error(403, "forbidden"), route);
+      expect(message).toBe("You can no longer amend this record.");
+    },
+  );
 
   it("tells a deactivated account to sign in again", () => {
     expect(describeAmendFailure(error(403, "account_deactivated"))).toBe(

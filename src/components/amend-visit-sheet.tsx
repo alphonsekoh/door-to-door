@@ -4,9 +4,8 @@ import { useRef, useState } from "react";
 import { InterestPicker } from "@/components/interest-picker";
 import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generated/types.gen";
-import { describeAmendFailure, mayAmendVisit } from "@/lib/amend";
+import { amendRoute, describeAmendFailure } from "@/lib/amend";
 import { apiFetch } from "@/lib/api-client";
-import { displayName } from "@/lib/team-ui";
 import { useRole } from "@/lib/use-role";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
@@ -91,7 +90,8 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
    * Affordance only - the handler re-checks. Showing the refusal here saves a
    * member filling in a form that was always going to be rejected.
    */
-  const mayAmend = visit !== null && mayAmendVisit(visit, { userId, isAdmin, teamIds });
+  const route = visit === null ? null : amendRoute(visit, { userId, isAdmin, teamIds });
+  const mayAmend = route !== null;
   const othersRecord = visit !== null && visit.member.id !== userId;
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
@@ -119,7 +119,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
       });
       onSaved();
     } catch (error) {
-      setFailure(describeAmendFailure(error));
+      setFailure(describeAmendFailure(error, route));
     } finally {
       sending.current = false;
       setSaving(false);
@@ -150,10 +150,10 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
             Nothing has been recorded here yet. Record a visit first.
           </p>
         ) : !mayAmend ? (
-          <div className="py-4">
-            <p className="text-body break-words">
-              Recorded by {displayName(visit.member.name)}. Only they, their current teammates or an
-              admin can amend it.
+          <div className="space-y-2 py-4">
+            <VisitByline visit={visit} prefix="Recorded by " />
+            <p className="text-body">
+              Only they, their current teammates or an admin can amend it.
             </p>
           </div>
         ) : (
@@ -240,7 +240,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
                     onChange={(event) => {
                       set("religion", event.target.value as Religion | "");
                     }}
-                    className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                    className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
                   >
                     <option value="">Not known</option>
                     {RELIGIONS.map((option) => (

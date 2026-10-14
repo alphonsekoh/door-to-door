@@ -259,6 +259,29 @@ const recordPage = (rows: HistoryEntry[], total = rows.length) => ({
 });
 
 describe("Me or My team", () => {
+  /* Follow-ups are read alongside the list, so reads are routed by path and
+     the list's answers queued in order. */
+  let queue: (() => unknown)[] = [];
+  let fallback: unknown = recordPage([]);
+  const once = (value: unknown) => queue.push(() => Promise.resolve(value));
+  /* Via a mock, so a non-Error reason can be rejected as a real fetch might. */
+  const onceReject = (error: unknown) =>
+    queue.push(() => vi.fn().mockRejectedValue(error)() as Promise<never>);
+  const setFallback = (value: unknown) => {
+    fallback = value;
+  };
+
+  beforeEach(() => {
+    queue = [];
+    fallback = recordPage([]);
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/follow-ups")) return Promise.resolve(notePage([]));
+      if (path.startsWith("/history/mine/sessions")) return Promise.resolve(sessionPage([]));
+      const next = queue.shift();
+      return next === undefined ? Promise.resolve(fallback) : next();
+    });
+  });
+
   it("writes the team view to the URL", async () => {
     const user = userEvent.setup();
     serve(sessionPage([]));
@@ -271,7 +294,7 @@ describe("Me or My team", () => {
   it("goes back to Me", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValue(recordPage([]));
+    setFallback(recordPage([]));
     render(<OwnHistoryScreen />);
 
     await user.click(await screen.findByRole("button", { name: "Me" }));
@@ -280,7 +303,7 @@ describe("Me or My team", () => {
 
   it("lists records including the team's, and never touches the outing counts", async () => {
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValue(recordPage([record("#05-123")]));
+    setFallback(recordPage([record("#05-123")]));
     render(<OwnHistoryScreen />);
 
     expect(await screen.findByText("By Ben Lim with Ann Tan")).toBeInTheDocument();
@@ -293,7 +316,7 @@ describe("Me or My team", () => {
   it("lets a teammate's record be amended from the list", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValue(recordPage([record("#05-123")]));
+    setFallback(recordPage([record("#05-123")]));
     render(<OwnHistoryScreen />);
 
     await user.click(await screen.findByRole("button", { name: "Amend #05-123" }));
@@ -307,7 +330,7 @@ describe("Me or My team", () => {
 
   it("says so when neither the member nor their team has recorded anything", async () => {
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValue(recordPage([]));
+    setFallback(recordPage([]));
     render(<OwnHistoryScreen />);
     expect(
       await screen.findByText("Nothing recorded by you or your team yet."),
@@ -317,10 +340,10 @@ describe("Me or My team", () => {
   it("appends earlier records", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")], 2));
+    once(recordPage([record("#05-123")], 2));
     render(<OwnHistoryScreen />);
 
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-124")], 2));
+    once(recordPage([record("#05-124")], 2));
     await user.click(await screen.findByRole("button", { name: "Show earlier records" }));
 
     expect(await screen.findByText("#05-124")).toBeInTheDocument();
@@ -332,20 +355,20 @@ describe("Me or My team", () => {
   it("offers a retry when the team records fail to load", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockRejectedValueOnce("boom");
+    onceReject("boom");
     render(<OwnHistoryScreen />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not load your team's records.",
     );
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")]));
+    once(recordPage([record("#05-123")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
   });
 
   it("shows the server's reason for a failure", async () => {
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockRejectedValueOnce(new Error("Your sign-in has ended."));
+    onceReject(new Error("Your sign-in has ended."));
     render(<OwnHistoryScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Your sign-in has ended.");
   });
@@ -353,11 +376,11 @@ describe("Me or My team", () => {
   it("drops a late page that a reload after an amend has overtaken", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")], 2));
+    once(recordPage([record("#05-123")], 2));
     render(<OwnHistoryScreen />);
 
     const slow: { resolve: (value: unknown) => void } = { resolve: () => undefined };
-    apiFetch.mockImplementationOnce(
+    queue.push(
       () =>
         new Promise((resolve) => {
           slow.resolve = resolve;
@@ -365,8 +388,8 @@ describe("Me or My team", () => {
     );
     await user.click(await screen.findByRole("button", { name: "Show earlier records" }));
 
-    apiFetch.mockResolvedValueOnce({}); // the PATCH
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")], 1)); // the reload
+    once({}); // the PATCH
+    once(recordPage([record("#05-123")], 1)); // the reload
     await user.click(screen.getByRole("button", { name: "Amend #05-123" }));
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -384,11 +407,11 @@ describe("Me or My team", () => {
   it("drops a late failure that a newer load has overtaken", async () => {
     const user = userEvent.setup();
     searchParams.value = new URLSearchParams("view=team");
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")], 2));
+    once(recordPage([record("#05-123")], 2));
     render(<OwnHistoryScreen />);
 
     const slow: { reject: (error: unknown) => void } = { reject: () => undefined };
-    apiFetch.mockImplementationOnce(
+    queue.push(
       () =>
         new Promise((_resolve, reject) => {
           slow.reject = reject;
@@ -396,8 +419,8 @@ describe("Me or My team", () => {
     );
     await user.click(await screen.findByRole("button", { name: "Show earlier records" }));
 
-    apiFetch.mockResolvedValueOnce({});
-    apiFetch.mockResolvedValueOnce(recordPage([record("#05-123")], 1));
+    once({});
+    once(recordPage([record("#05-123")], 1));
     await user.click(screen.getByRole("button", { name: "Amend #05-123" }));
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save changes" }));
@@ -411,5 +434,45 @@ describe("Me or My team", () => {
     });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByText("#05-123")).toBeInTheDocument();
+  });
+
+  it("gives the team view its own subtitle, and Me its own", async () => {
+    searchParams.value = new URLSearchParams("view=team");
+    const { unmount } = render(<OwnHistoryScreen />);
+    expect(
+      await screen.findByText("Records by you and the teams you are on now, newest first."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
+    unmount();
+
+    searchParams.value = new URLSearchParams();
+    render(<OwnHistoryScreen />);
+    expect(await screen.findByText("Outings you have worked, newest first.")).toBeInTheDocument();
+  });
+
+  it("keeps the member's outstanding follow-ups in the team view", async () => {
+    searchParams.value = new URLSearchParams("view=team");
+    apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith("/follow-ups")
+          ? notePage([
+              {
+                id: "f1",
+                householdId: "h1",
+                visitId: null,
+                author: { id: "u1", name: "Alice", image: null },
+                note: "Bring the book back",
+                dueDate: null,
+                doneAt: null,
+                doneBy: null,
+                createdAt: AT,
+              },
+            ])
+          : recordPage([record("#05-123")]),
+      ),
+    );
+    render(<OwnHistoryScreen />);
+    expect(await screen.findByText("Bring the book back")).toBeInTheDocument();
+    expect(await screen.findByText("#05-123")).toBeInTheDocument();
   });
 });

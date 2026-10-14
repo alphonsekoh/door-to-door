@@ -7,13 +7,20 @@ import { isNetworkFailure } from "@/lib/team-ui";
  * server has said the viewer is on now - never the snapshot on the visit,
  * which records who was there, not who may edit (D-74-17).
  */
-export function mayAmendVisit(
-  visit: Pick<Visit, "member" | "team">,
-  viewer: { userId: string | undefined; isAdmin: boolean; teamIds: readonly string[] },
-): boolean {
-  if (viewer.isAdmin) return true;
-  if (viewer.userId !== undefined && visit.member.id === viewer.userId) return true;
-  return visit.team !== null && viewer.teamIds.includes(visit.team.id);
+export type AmendRoute = "admin" | "author" | "team" | null;
+
+type Viewer = { userId: string | undefined; isAdmin: boolean; teamIds: readonly string[] };
+
+/* Which right the screen believes the viewer holds, so a refusal can be
+   explained in terms of the right that was lost. */
+export function amendRoute(visit: Pick<Visit, "member" | "team">, viewer: Viewer): AmendRoute {
+  if (viewer.isAdmin) return "admin";
+  if (viewer.userId !== undefined && visit.member.id === viewer.userId) return "author";
+  return visit.team !== null && viewer.teamIds.includes(visit.team.id) ? "team" : null;
+}
+
+export function mayAmendVisit(visit: Pick<Visit, "member" | "team">, viewer: Viewer): boolean {
+  return amendRoute(visit, viewer) !== null;
 }
 
 /*
@@ -21,7 +28,7 @@ export function mayAmendVisit(
  * server then refuses with 403. That is said plainly rather than as a raw
  * server message, and a lost connection never claims nothing happened.
  */
-export function describeAmendFailure(error: unknown): string {
+export function describeAmendFailure(error: unknown, route: AmendRoute = null): string {
   if (isNetworkFailure(error)) {
     return "Could not confirm. Refresh to see whether it went through.";
   }
@@ -29,7 +36,11 @@ export function describeAmendFailure(error: unknown): string {
     return "Your sign-in has ended. Sign in again.";
   }
   if (error instanceof ApiRequestError && error.status === 403) {
-    return "You are not on this record's team any more, so you cannot amend it. Its author or an admin still can.";
+    /* Only someone let in through the team lost it by leaving the team; a
+       demoted admin's token still says admin (D-83-3) and was never on it. */
+    return route === "team"
+      ? "You are not on this record's team any more, so you cannot amend it. Its author or an admin still can."
+      : "You can no longer amend this record.";
   }
   return error instanceof Error ? error.message : "Could not save this change.";
 }

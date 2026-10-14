@@ -67,7 +67,12 @@ beforeEach(() => {
       return Promise.resolve(writes(path, init));
     }
     if (path === "/sessions/s1/teams") return Promise.resolve({ data: world.teams });
-    if (path === "/users?limit=100") return Promise.resolve({ data: world.users });
+    if (path === "/users?limit=100&offset=0") {
+      return Promise.resolve({
+        data: world.users,
+        pagination: { limit: 100, offset: 0, total: world.users.length, hasMore: false },
+      });
+    }
     return Promise.reject(new Error(`unexpected ${path}`));
   });
 });
@@ -297,8 +302,11 @@ describe("changing a team", () => {
     render(<AdminTeams sessionId="s1" status="active" tick={0} />);
     fireEvent.click(await screen.findByRole("button", { name: "Remove Ben Lim from Alice & Ben" }));
     const confirm = screen.getByRole("button", { name: "Remove from team" });
-    fireEvent.click(confirm);
-    fireEvent.click(confirm);
+    /* One act: no re-render between the taps, so only the ref guard holds. */
+    act(() => {
+      confirm.click();
+      confirm.click();
+    });
     await act(async () => {
       finish();
       await Promise.resolve();
@@ -441,6 +449,33 @@ describe("refusals and failures", () => {
     });
     expect(screen.queryByRole("listitem", { name: "Stale" })).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("drops a failed read overtaken by a newer one", async () => {
+    let lateFail: (error: unknown) => void = () => undefined;
+    const { rerender } = render(<AdminTeams sessionId="s1" status="active" tick={0} />);
+    await teamCard("Alice & Ben");
+
+    apiFetch.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          lateFail = reject;
+        }),
+    );
+    rerender(<AdminTeams sessionId="s1" status="active" tick={1} />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(4);
+    });
+    world.teams = [team("t1", "Newest", [ALICE])];
+    rerender(<AdminTeams sessionId="s1" status="active" tick={2} />);
+    expect(await teamCard("Newest")).toBeInTheDocument();
+
+    await act(async () => {
+      lateFail(new TypeError("Failed to fetch"));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect to change teams")).not.toBeInTheDocument();
   });
 
   it("clears the reason when the sheet is closed", async () => {

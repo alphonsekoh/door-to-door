@@ -207,6 +207,30 @@ test.describe("phone layout", () => {
     }
   });
 
+  /* iOS WebKit ignores min-height on a native select and drew the admin
+     filters 26px tall, under the 44px rule (D-30-8); selects carry h-12. */
+  test("admin filter selects are at least 44px tall", async ({ adminPage, adminApi }) => {
+    await ensureActiveSession(adminApi);
+    for (const [path, label] of [
+      ["/admin/records", "Filter by block"],
+      ["/admin/history?sessionId=00000000-0000-4000-8002-000000000001", "Filter by block"],
+    ] as const) {
+      await adminPage.goto(path);
+      await expect(adminPage.getByLabel(label)).toBeVisible();
+      const selects = await adminPage.locator("main select").all();
+      expect(selects.length, `${path} has its filters`).toBeGreaterThan(2);
+      for (const select of selects) {
+        const id = await select.getAttribute("id");
+        await expect
+          .poll(async () => (await select.boundingBox())?.height ?? 0, {
+            message: `${path} #${String(id)}`,
+          })
+          .toBeGreaterThanOrEqual(44);
+      }
+    }
+    await endActiveSession(adminApi);
+  });
+
   test("nav tap targets are at least 44px", async ({ memberPage }) => {
     await memberPage.goto("/");
     const links = memberPage.getByRole("navigation", { name: "Primary" }).getByRole("link");

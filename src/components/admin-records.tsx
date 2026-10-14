@@ -14,12 +14,13 @@ import type {
   Team,
   TeamList,
   User,
-  UserList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { asHouseholdSummary } from "@/lib/history";
+import { loadAllUsers } from "@/lib/users";
 import {
   hasAnyFilter,
+  hasServerFilter,
   matchesSearch,
   parseFilters,
   toHistoryQuery,
@@ -43,7 +44,9 @@ type State =
   | {
       status: "ready";
       session: ActiveSession;
-      teams: Team[];
+      /* Null when the list could not be read: then nothing is known about
+         which team ids are real. */
+      teams: Team[] | null;
       entries: HistoryEntry[];
       total: number;
     }
@@ -51,11 +54,11 @@ type State =
 
 /* The team picker is a convenience; failing to list teams must not take the
    records with it. */
-async function teamsOf(sessionId: string): Promise<Team[]> {
+async function teamsOf(sessionId: string): Promise<Team[] | null> {
   try {
     return (await apiFetch<TeamList>(`/sessions/${sessionId}/teams`)).data;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -100,8 +103,7 @@ export function AdminRecords() {
      not take the records with it. */
   const loadMembers = useCallback(async () => {
     try {
-      const page = await apiFetch<UserList>("/users?limit=100");
-      setMembers(page.data);
+      setMembers(await loadAllUsers());
     } catch {
       setMembers([]);
     }
@@ -121,6 +123,23 @@ export function AdminRecords() {
       clearInterval(timer);
     };
   }, [load, loadMembers, search]);
+
+  /*
+   * A team id that is not one of this outing's teams - the outing changed, the
+   * team was deleted, or the URL was edited - is unknown, and unknown values
+   * are dropped rather than forwarded (D-29-4). Kept, it would filter to
+   * nothing while the picker claimed "Any team".
+   */
+  const knownTeams = state.status === "ready" ? state.teams : null;
+  const unknownTeam =
+    knownTeams !== null &&
+    filters.teamId !== "" &&
+    !knownTeams.some((team) => team.id === filters.teamId);
+  useEffect(() => {
+    if (!unknownTeam) return;
+    const next = toSearchParams({ ...parseFilters(new URLSearchParams(search)), teamId: "" });
+    router.replace(next === "" ? "/admin/records" : `/admin/records?${next}`);
+  }, [unknownTeam, search, router]);
 
   /* Written to the URL rather than to state, so the view can be sent to
      someone else and survives a reload. */
@@ -159,7 +178,8 @@ export function AdminRecords() {
     );
   }
 
-  const { session, teams, entries, total } = state;
+  const { session, entries, total } = state;
+  const teams = state.teams ?? [];
   const visible = entries.filter((entry) => matchesSearch(entry, filters.q));
   const blocks = session.blocks.map((entry) => entry.block);
 
@@ -206,7 +226,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -227,7 +247,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -248,7 +268,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("teamId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Any team</option>
               {teams.map((team) => (
@@ -269,7 +289,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -296,7 +316,7 @@ export function AdminRecords() {
 
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          {entries.length === 0
+          {entries.length === 0 && !hasServerFilter(filters)
             ? "Nothing has been recorded on this outing yet."
             : "Nothing here matches those filters."}
         </p>

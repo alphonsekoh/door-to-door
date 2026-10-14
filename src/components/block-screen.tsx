@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RecordVisitForm } from "@/components/record-visit-form";
 import { UnitList } from "@/components/unit-list";
 import type {
@@ -42,24 +42,13 @@ export function BlockScreen({ blockId }: { blockId: string }) {
      is running only marks tonight's rows, so failing to learn it must not
      take the list down with it. */
   const loadSession = useCallback(async () => {
-    let active: ActiveSession;
     try {
-      active = await apiFetch<ActiveSession>("/sessions/active");
+      const active = await apiFetch<ActiveSession>("/sessions/active");
       setSessionId(active.session.id);
     } catch {
       setSessionId(null);
-      return;
     }
-    /* Which team the viewer is on NOW decides whether a teammate's unit opens
-       for amending (D-74-17). Only an affordance: the server re-checks. */
-    try {
-      const teams = await apiFetch<TeamList>(`/sessions/${active.session.id}/teams`);
-      const mine = userId === undefined ? undefined : findMyTeam(teams.data, userId);
-      setTeamIds(mine === undefined ? [] : [mine.id]);
-    } catch {
-      setTeamIds([]);
-    }
-  }, [userId]);
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -70,6 +59,31 @@ export function BlockScreen({ blockId }: { blockId: string }) {
       clearTimeout(timer);
     };
   }, [load, loadSession]);
+
+  /*
+   * Which team the viewer is on NOW decides whether a teammate's unit opens
+   * for amending (D-74-17). Only an affordance: the server re-checks. Asked
+   * once both the outing and the viewer are known, and only the newest answer
+   * may land (D-74-45): a late empty reply must not take Amend away.
+   */
+  const teamsGeneration = useRef(0);
+  useEffect(() => {
+    if (sessionId === null || userId === undefined) return;
+    const mine = ++teamsGeneration.current;
+    apiFetch<TeamList>(`/sessions/${sessionId}/teams`).then(
+      (teams) => {
+        if (mine !== teamsGeneration.current) return;
+        const team = findMyTeam(teams.data, userId);
+        setTeamIds(team === undefined ? [] : [team.id]);
+      },
+      () => {
+        if (mine === teamsGeneration.current) setTeamIds([]);
+      },
+    );
+    return () => {
+      teamsGeneration.current += 1;
+    };
+  }, [sessionId, userId]);
 
   return (
     <div className="space-y-5">

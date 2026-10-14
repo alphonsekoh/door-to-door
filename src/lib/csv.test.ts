@@ -125,6 +125,12 @@ describe("historyToCsv", () => {
     expect(row).not.toContain("null");
   });
 
+  it("names a nameless recorder the way it names a nameless teammate", () => {
+    const team = { id: "t1", name: "North", members: [{ id: "u2", name: null, image: null }] };
+    const row = historyToCsv([entry({ member: null, team })]).split("\r\n")[1] ?? "";
+    expect(row).toContain("Someone,North,Someone,March outing");
+  });
+
   it("names the team and the teammates who were on it", () => {
     const team = {
       id: "t1",

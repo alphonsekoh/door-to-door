@@ -3,6 +3,7 @@ import type { HistoryEntry } from "@/generated/types.gen";
 import {
   EMPTY_FILTERS,
   hasAnyFilter,
+  hasServerFilter,
   matchesSearch,
   parseFilters,
   toHistoryQuery,
@@ -172,5 +173,16 @@ describe("hasAnyFilter", () => {
 
   it("is true once anything is", () => {
     expect(hasAnyFilter(filters({ memberId: "u1" }))).toBe(true);
+  });
+});
+
+describe("hasServerFilter", () => {
+  it("counts what the server filters on, not the local search", () => {
+    expect(hasServerFilter(EMPTY_FILTERS)).toBe(false);
+    expect(hasServerFilter(filters({ q: "tan" }))).toBe(false);
+    for (const key of ["blockId", "memberId", "teamId"] as const) {
+      expect(hasServerFilter(filters({ [key]: "x" }))).toBe(true);
+    }
+    expect(hasServerFilter(filters({ interestLevel: "high" }))).toBe(true);
   });
 });

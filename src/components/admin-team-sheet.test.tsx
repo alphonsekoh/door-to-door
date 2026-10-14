@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AdminTeamSheet } from "@/components/admin-team-sheet";
@@ -43,6 +43,14 @@ describe("AdminTeamSheet", () => {
     expect(screen.getByLabelText(/Team name/)).toHaveValue("Someone");
     await user.click(screen.getByRole("button", { name: /^Someone\s*Selected$/ }));
     expect(screen.getByRole("button", { name: "Choose who is on it" })).toBeDisabled();
+  });
+
+  it("names the team in the order people were picked", async () => {
+    const user = userEvent.setup();
+    sheet();
+    await user.click(screen.getByRole("button", { name: /Cy Ong/ }));
+    await user.click(screen.getByRole("button", { name: /Ada Admin/ }));
+    expect(screen.getByLabelText(/Team name/)).toHaveValue("Cy & Ada");
   });
 
   it("keeps a typed name when the people change", async () => {
@@ -103,8 +111,11 @@ describe("AdminTeamSheet", () => {
     );
     sheet({ mode: "rename", initialName: "North", onSubmit });
     const save = screen.getByRole("button", { name: "Save name" });
-    fireEvent.click(save);
-    fireEvent.click(save);
+    /* One act: no re-render between the taps, so only the ref guard holds. */
+    act(() => {
+      save.click();
+      save.click();
+    });
     await act(async () => {
       finish();
       await Promise.resolve();

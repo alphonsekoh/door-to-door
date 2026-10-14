@@ -408,10 +408,27 @@ describe("ConsolidatedHistory", () => {
     expect(await screen.findByText("Could not reach the server.")).toBeInTheDocument();
   });
 
-  it("says when the filters match nothing", async () => {
+  it("says nothing has been recorded when nothing is filtered", async () => {
     serve([]);
     render(<ConsolidatedHistory />);
-    expect(await screen.findByText("Nothing matches those filters.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing has been recorded yet.")).toBeInTheDocument();
+  });
+
+  it.each(["religion=hindu", "memberId=u1", "sessionId=s1", "from=2026-01-01"])(
+    "says the filters match nothing with %s",
+    async (query) => {
+      searchParams.value = new URLSearchParams(query);
+      serve([]);
+      render(<ConsolidatedHistory />);
+      expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
+    },
+  );
+
+  it("says the filters match nothing when only the search excludes everything", async () => {
+    searchParams.value = new URLSearchParams("q=zzz");
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
   });
 
   it("amends any historical record", async () => {
@@ -605,5 +622,47 @@ describe("teams", () => {
     await waitFor(() => {
       expect(csv).toContain("Alice,Alice & Ben,Ben Lim,March outing");
     });
+  });
+
+  it("drops a team that is not one of the chosen outing's from the URL", async () => {
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`sessionId=s1&religion=hindu&teamId=${other}`);
+    serve([]);
+    render(<ConsolidatedHistory />);
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/admin/history?sessionId=s1&religion=hindu");
+    });
+  });
+
+  it("keeps a team that belongs to the outing", async () => {
+    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    const picker = await screen.findByLabelText("Filter by team");
+    await waitFor(() => {
+      expect(picker).toHaveValue(TEAM_ID);
+    });
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the team while the outing's teams cannot be listed", async () => {
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${other}`);
+    apiFetch.mockImplementation((path: string) => {
+      if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
+      if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+      if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+      if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+      return Promise.resolve({
+        data: [],
+        pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+      });
+    });
+    render(<ConsolidatedHistory />);
+    await screen.findByText("Nothing here matches those filters.");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    expect(replace).not.toHaveBeenCalled();
   });
 });

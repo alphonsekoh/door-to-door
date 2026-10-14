@@ -85,6 +85,14 @@ export function matchesSearch(entry: HistoryEntry, q: string): boolean {
   );
 }
 
+/* Filters the server applies: with any of these set, an empty page says
+   nothing about whether the outing has records. */
+export function hasServerFilter(filters: RecordFilters): boolean {
+  return [filters.blockId, filters.memberId, filters.teamId, filters.interestLevel].some(
+    (value) => value !== "",
+  );
+}
+
 export function hasAnyFilter(filters: RecordFilters): boolean {
   return toSearchParams(filters) !== "";
 }
