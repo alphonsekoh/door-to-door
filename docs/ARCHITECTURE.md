@@ -65,7 +65,10 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   latest-known and only ever updated with non-null values.
 - **Visit** = one knock. `interest_level` and `description` never overwritten.
   `id` is a client-generated UUIDv7 with no database default.
-- **Follow-up** attaches to the household, so it outlives the session.
+- **Follow-up** attaches to the household, so it outlives the session. `dueDate` is
+  a day (local midnight); overdue once that day has passed. Any member resolves or
+  reopens (D-35-1, pending owner); text, due date and delete are author or admin. The
+  first resolution sticks.
 - **Session** (`outing_sessions`): `draft → active → ended`, reopenable. At most one
   `active`, by partial unique index.
 - **Blocks** are shared across members and sessions, never locked.
@@ -140,6 +143,10 @@ Google SSO (#14) is not built.
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
   (`GET /sessions/{id}/teams` or `includeTeam` results), see `src/lib/amend.ts`.
+- Follow-ups: logic in `src/lib/follow-ups.ts`; `HouseholdHistoryPanel` (unit screen and
+  recording form) pins outstanding notes above a visits-and-resolved-notes timeline.
+  `/follow-ups` lists outstanding notes (`?view=mine`); admins get an overdue card on
+  `/admin/sessions`. Online-only, re-read from the server after each change.
 - `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
   (`src/lib/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin outing detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),

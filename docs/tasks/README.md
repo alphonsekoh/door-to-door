@@ -103,7 +103,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 32  | [PWA and service worker](32-pwa.md)                     | In review (+#93)                          |
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open                                      |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Open                                      |
-| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Open                                      |
+| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | In review (PR #96)                        |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                      |
 | 37  | [E2E smoke](37-e2e.md)                                  | In review; D-37-3 partly superseded (#93) |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Open                                      |

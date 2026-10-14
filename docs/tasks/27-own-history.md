@@ -19,5 +19,5 @@ The outings a member worked, one outing's records, and a unit's full timeline.
   is private; a door's history is shared.
 - **D-27-5 · Zero interest outcomes are dropped from the breakdown.**
 - **D-27-6 · No date-range filter on own history.** The outing list is the date axis.
-- **D-27-7 · Outstanding follow-ups link through without naming the unit.** _Why:_
-  `FollowUp` has no unit number; widening it belongs to #35.
+- ~~**D-27-7 · Outstanding follow-ups link through without naming the unit.** _Why:_
+  `FollowUp` has no unit number; widening it belongs to #35.~~ Superseded by D-35-2.

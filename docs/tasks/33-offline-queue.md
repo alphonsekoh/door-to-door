@@ -57,6 +57,9 @@ false) with a real queue check. The update prompt already calls it and defers wh
 is true (D-32-6). Sign-out already clears the caches (D-74-9) and warns when `hasUnsyncedItems()` is
 true, so the warning only becomes real once this task replaces the stub.
 
+From #35: the recording form offers "Add follow-up" after a save, anchored to the saved
+visit (D-35-10). Hide it while that visit is still queued, or create fails `404`.
+
 From #76 (clock rules): send `sentAt` (the phone's clock, regenerated) on every attempt;
 handle batch `422 clock_skew` (keep everything queued, tell the member to fix the clock)
 and item `clock_skew` (restamp, then retry, throttled); probe clock-blocked records at

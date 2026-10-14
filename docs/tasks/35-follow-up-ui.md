@@ -1,6 +1,6 @@
 # #35 · Follow-up notes UI
 
-- **Status:** Open
+- **Status:** In review (PR #96)
 - **Phase:** 7 - Hardening
 - **Depends on:** #22
 
@@ -11,16 +11,55 @@ recording form before knocking; overdue widget for admins.
 
 ## Decisions
 
-None yet.
+- **D-35-1 · Any member may resolve or reopen a note; text, due date and delete stay
+  with the author or an admin.** A body with `done` plus `note` or `dueDate` is judged
+  as an edit (403 for a non-author). _Why:_ whether a promise was kept is a fact about
+  the household, and `doneBy` keeps it attributable. Already shipped in 53349a6 (#22).
+  **Proposed: awaiting owner.** It conflicts with D-22-2's "or resolve" clause, which
+  stays in force on paper until the owner agrees to supersede it.
+- **D-35-2 · `FollowUp` carries `blockName` and `unitNumber` as flat required
+  fields.** _Why:_ lists name the door without a lookup per note; flat keeps notes inside
+  `HouseholdHistory` small. Supersedes D-27-7, which handed this to #35.
+- **D-35-3 · One `selectFollowUps(db)` builder serves list, get, create, update and the
+  household history.** _Why:_ the two copies had already drifted and would drift again
+  on the new joins.
+- **D-35-4 · A due date is a day, stored as local midnight; a note is overdue once that
+  day has passed.** Overdue lists pass `dueBefore` = start of today (strict). _Why:_ "due
+  today" is a reminder, not a failure.
+- **D-35-5 · Overdue shows an "Overdue" text badge as well as colour.** _Why:_ colour
+  alone is inaccessible and hard to see in sunlight.
+- **D-35-6 · Outstanding notes are pinned above the timeline, sorted by due day
+  (undated last), and appear only there; the timeline holds visits and resolved notes,
+  oldest first.** _Why:_ repeating outstanding notes pushed the interest picker below
+  the fold at the door.
+- **D-35-7 · At the door (recording form) a resolved note is one line with no controls;
+  reopen and edit live on the unit screen.** _Why:_ resolved notes accumulate without
+  limit.
+- **D-35-8 · Re-resolving keeps the first resolution.** `doneAt` and `doneBy` are
+  coalesced in the UPDATE. _Why:_ a stale screen or a concurrent tap must not take the
+  credit. Refines D-22-4.
+- **D-35-9 · Follow-up changes are online-only and never queued; screens re-read from
+  the server after each change.** A failed re-read keeps the unit already shown. _Why:_
+  as D-74-19; the server stamps the resolver.
+- **D-35-10 · A note can be added from the unit header, a visit row (anchored), or right
+  after an online save on the recording form (anchored to the saved visit).** _Why:_ the
+  server can only anchor to a visit it has stored (D-22-3).
+- **D-35-11 · The admin overdue card sits on `/admin/sessions` and reuses
+  `GET /follow-ups?outstanding=true&dueBefore=…&limit=5`; no new endpoint.** Hidden at
+  zero; a failed load never blocks the outings list. _Why:_ no dashboard exists; that is
+  the admin landing page, and the existing filter answers the question.
+- **D-35-12 · `/follow-ups` defaults to Everyone's outstanding notes; Mine is
+  `?view=mine`.** _Why:_ the door matters more than the author (D-22-2 read rule); URL
+  state as D-74-55.
 
 ## Relies on
 
-D-07-5, D-22-1 to D-22-4, D-25-3.
-
-## Inherited
-
-- Widen the `FollowUp` payload with the unit number (D-27-7) — a contract change.
+D-07-5, D-16-2, D-22-1, D-22-3, D-22-4, D-25-3, D-25-4, D-25-6, D-25-8, D-27-4, D-30-7,
+D-30-8, D-32-3, D-74-19, D-74-43, D-74-44, D-74-47, D-74-49, D-74-62, D-74-63.
 
 ## Open questions
 
-- D-22 open question: who may resolve a note.
+- **Supersede D-22-2's resolve clause with D-35-1?** The code on `main` since 53349a6
+  already lets any member resolve or reopen, and the spec and tests say so; D-22-2 still
+  says author or admin only. Until the owner decides, the docs contradict shipped code.
+  Replaces the #22 open question "who may resolve a note".
