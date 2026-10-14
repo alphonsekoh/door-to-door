@@ -1,10 +1,9 @@
 import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
-import { followUps, households, users, visits } from "@/db/schema";
+import { followUps, households, visits } from "@/db/schema";
 import { firstOrThrow } from "@/server/db-utils";
 import { ForbiddenError, NotFoundError } from "@/server/http/errors";
-import type { FollowUpRow } from "@/server/visits/queries";
+import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 
 /*
  * Follow-up notes.
@@ -13,32 +12,6 @@ import type { FollowUpRow } from "@/server/visits/queries";
  * is still there when someone knocks on that door in August. That is the whole
  * reason the feature exists, and it is why nothing here is scoped to a session.
  */
-
-const author = alias(users, "author");
-const resolver = alias(users, "resolver");
-
-const followUpColumns = {
-  id: followUps.id,
-  householdId: followUps.householdId,
-  visitId: followUps.visitId,
-  note: followUps.note,
-  dueDate: followUps.dueDate,
-  doneAt: followUps.doneAt,
-  createdAt: followUps.createdAt,
-  authorId: author.id,
-  authorName: author.name,
-  authorImage: author.image,
-  doneById: resolver.id,
-  doneByName: resolver.name,
-  doneByImage: resolver.image,
-};
-
-const withAuthors = (db: Database) =>
-  db
-    .select(followUpColumns)
-    .from(followUps)
-    .innerJoin(author, eq(author.id, followUps.authorId))
-    .leftJoin(resolver, eq(resolver.id, followUps.doneBy));
 
 export type ListFollowUpOptions = {
   householdId?: string | undefined;
@@ -72,7 +45,7 @@ export async function listFollowUps(
    * backwards for the actionable list. dueDate keeps the default nulls-last,
    * so an undated note does not push a dated one down.
    */
-  const rows = await withAuthors(db)
+  const rows = await selectFollowUps(db)
     .where(filter)
     .orderBy(
       sql`${followUps.doneAt} asc nulls first`,
@@ -91,7 +64,7 @@ export async function listFollowUps(
 }
 
 export async function getFollowUp(db: Database, id: string): Promise<FollowUpRow> {
-  const rows = await withAuthors(db).where(eq(followUps.id, id)).limit(1);
+  const rows = await selectFollowUps(db).where(eq(followUps.id, id)).limit(1);
   const found = rows[0];
   if (!found) {
     throw new NotFoundError("No such follow-up.");
@@ -196,9 +169,14 @@ export async function updateFollowUp(
     values["dueDate"] = changes.dueDate == null ? null : new Date(changes.dueDate);
   }
   if (changes.done === true) {
-    // Records who closed it, not just that it closed.
-    values["doneAt"] = new Date();
-    values["doneBy"] = actor.id;
+    /*
+     * Records who closed it, not just that it closed - and only the first
+     * time. A second "done" from a stale screen or a quick re-tap must not
+     * take the credit from whoever resolved it. Coalesce in the UPDATE itself,
+     * so two members resolving at once cannot both win.
+     */
+    values["doneAt"] = sql`coalesce(${followUps.doneAt}, ${new Date()})`;
+    values["doneBy"] = sql`coalesce(${followUps.doneBy}, ${actor.id})`;
   }
   if (changes.done === false) {
     values["doneAt"] = null;

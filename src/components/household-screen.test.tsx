@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HouseholdScreen } from "@/components/household-screen";
 import type { HouseholdHistory } from "@/generated/types.gen";
@@ -9,6 +9,12 @@ vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
 });
+
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/use-role", () => ({ useRole }));
+
+const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
+vi.mock("@/lib/use-online", () => ({ useOnline }));
 
 const AT = "2026-03-14T11:00:00.000Z";
 
@@ -41,9 +47,33 @@ const history: HouseholdHistory = {
   followUps: [],
 };
 
+const owed = {
+  id: "f1",
+  householdId: "h1",
+  blockName: "123",
+  unitNumber: "#05-123",
+  visitId: null,
+  author: { id: "u1", name: "Alice", image: null },
+  note: "Bring the flyer.",
+  dueDate: null,
+  doneAt: null,
+  doneBy: null,
+  createdAt: AT,
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+  useOnline.mockReturnValue(true);
 });
+
+/* Answers GETs with the unit and everything else with an empty success. */
+const serve = (unit: (call: number) => HouseholdHistory | Promise<HouseholdHistory>) => {
+  let reads = 0;
+  apiFetch.mockImplementation((_path: string, init?: { method?: string }) =>
+    init?.method === undefined ? Promise.resolve(unit(++reads)) : Promise.resolve({}),
+  );
+};
 
 describe("HouseholdScreen", () => {
   it("names the unit and its block", async () => {
@@ -114,5 +144,102 @@ describe("HouseholdScreen", () => {
     apiFetch.mockRejectedValue("boom");
     render(<HouseholdScreen householdId="h1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this unit.");
+  });
+
+  it("adds a note to the unit from the header, not tied to a visit", async () => {
+    serve(() => history);
+    render(<HouseholdScreen householdId="h1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Follow-up for #05-123" }));
+    fireEvent.change(sheet.getByLabelText("Note"), { target: { value: "Call back" } });
+    fireEvent.click(sheet.getByRole("button", { name: "Save follow-up" }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
+        method: "POST",
+        body: JSON.stringify({
+          householdId: "h1",
+          visitId: null,
+          note: "Call back",
+          dueDate: null,
+        }),
+      });
+    });
+    await waitFor(() => {
+      expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("closes the add sheet on Cancel", async () => {
+    serve(() => history);
+    render(<HouseholdScreen householdId="h1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers a follow-up on each visit row", async () => {
+    serve(() => history);
+    render(<HouseholdScreen householdId="h1" />);
+    expect(
+      await screen.findByRole("button", { name: "Follow up on this visit" }),
+    ).toBeInTheDocument();
+  });
+
+  it("re-reads the unit after a note is marked done", async () => {
+    serve((call) =>
+      call === 1
+        ? { ...history, followUps: [owed] }
+        : {
+            ...history,
+            followUps: [
+              { ...owed, doneAt: AT, doneBy: { id: "u2", name: "Ben Lim", image: null } },
+            ],
+          },
+    );
+    render(<HouseholdScreen householdId="h1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
+    expect(await screen.findByText(/Done by Ben Lim/)).toBeInTheDocument();
+  });
+
+  it("keeps the unit on screen when a re-read fails", async () => {
+    serve((call) =>
+      call === 1 ? { ...history, followUps: [owed] } : Promise.reject(new TypeError("offline")),
+    );
+    render(<HouseholdScreen householdId="h1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(3);
+    });
+    expect(screen.getByText("#05-123")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("lets only the newest of two re-reads land", async () => {
+    let releaseFirst: (value: HouseholdHistory) => void = () => undefined;
+    serve((call) => {
+      if (call === 1) return { ...history, followUps: [owed] };
+      if (call === 2) {
+        return new Promise<HouseholdHistory>((resolve) => {
+          releaseFirst = resolve;
+        });
+      }
+      return { ...history, followUps: [], visits: [] };
+    });
+    render(<HouseholdScreen householdId="h1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(3);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add follow-up" }));
+    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "x" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save follow-up" }));
+    await waitFor(() => {
+      expect(screen.queryByText("Asked us to come back")).not.toBeInTheDocument();
+    });
+    releaseFirst({ ...history, followUps: [owed] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByText("Asked us to come back")).not.toBeInTheDocument();
   });
 });

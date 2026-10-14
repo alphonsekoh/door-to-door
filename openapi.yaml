@@ -412,17 +412,45 @@ components:
     FollowUp:
       type: object
       additionalProperties: false
-      required: [id, householdId, visitId, author, note, dueDate, doneAt, doneBy, createdAt]
+      required:
+        [
+          id,
+          householdId,
+          blockName,
+          unitNumber,
+          visitId,
+          author,
+          note,
+          dueDate,
+          doneAt,
+          doneBy,
+          createdAt,
+        ]
       properties:
         id: { type: string, format: uuid }
         householdId:
           type: string
           format: uuid
           description: Attached to the household, so it survives across sessions.
+        blockName:
+          type: string
+          description: |
+            The household's block, so a list of notes can name the door without
+            a lookup per note.
+          examples: ["123"]
+        unitNumber:
+          type: string
+          description: The household's unit number, for the same reason.
+          examples: ["#05-123"]
         visitId: { type: [string, "null"], format: uuid }
         author: { $ref: "#/components/schemas/UserSummary" }
         note: { type: string, minLength: 1, maxLength: 2000 }
-        dueDate: { type: [string, "null"], format: date-time }
+        dueDate:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            The start of the due day in the author's time zone. A note is
+            overdue once that whole day has passed.
         doneAt: { type: [string, "null"], format: date-time }
         doneBy:
           oneOf:
@@ -1853,7 +1881,10 @@ paths:
           schema: { type: boolean }
         - name: dueBefore
           in: query
-          description: Notes due before this instant, for the overdue list.
+          description: |
+            Notes due strictly before this instant. For the overdue list, pass the
+            start of today in the caller's time zone, so a note due today is not
+            yet overdue. Undated notes never match.
           schema: { type: string, format: date-time }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -1902,7 +1933,13 @@ paths:
         should be able to record that it happened - a note written by one
         member and acted on by another would otherwise sit on the outstanding
         list until its author noticed. `doneBy` records who closed it, so it
-        stays attributable.
+        stays attributable. Marking a note that is already done as done again
+        changes nothing: `doneAt` and `doneBy` keep the first resolution, so a
+        stale screen cannot take the credit. Reopening (`done: false`) is open
+        to any member for the same reason as resolving, and clears `doneBy`.
+
+        A body that sets `done` together with `note` or `dueDate` is judged as
+        an edit, so another member gets `403` for it.
 
         Changing the note text or its due date is restricted to the author or
         an admin: the words belong to whoever wrote them, whereas whether the

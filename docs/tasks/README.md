@@ -90,7 +90,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 19  | [Blocks API](19-blocks-api.md)                          | Done                                      |
 | 20  | [Households and visits API](20-visits-api.md)           | Done                                      |
 | 21  | [Sync endpoint](21-sync-endpoint.md)                    | Done                                      |
-| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done                                      |
+| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done; D-22-2 partly superseded (#96)      |
 | 23  | [History API](23-history-api.md)                        | Done                                      |
 | 24  | [Active session screen](24-active-session-screen.md)    | Done                                      |
 | 25  | [Recording form](25-recording-form.md)                  | Done                                      |
@@ -103,7 +103,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 32  | [PWA and service worker](32-pwa.md)                     | In review (+#93)                          |
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open                                      |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Open                                      |
-| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Open                                      |
+| 35  | [Follow-up notes UI](35-follow-up-ui.md)                | In review (PR #96)                        |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                      |
 | 37  | [E2E smoke](37-e2e.md)                                  | In review; D-37-3 partly superseded (#93) |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Open                                      |

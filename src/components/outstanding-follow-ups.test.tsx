@@ -7,6 +7,8 @@ function note(id: string, text: string, dueDate: string | null = null): FollowUp
   return {
     id,
     householdId: `h-${id}`,
+    blockName: "123",
+    unitNumber: `#05-${id}`,
     visitId: null,
     author: { id: "u1", name: "Alice", image: null },
     note: text,
@@ -41,10 +43,38 @@ describe("OutstandingFollowUps", () => {
     );
   });
 
+  it("names the door each note was left at", () => {
+    render(<OutstandingFollowUps notes={[note("1", "Bring the book back")]} />);
+    expect(screen.getByRole("link", { name: /Blk 123 · #05-1/ })).toBeInTheDocument();
+  });
+
   it("shows a due date when the note has one", () => {
-    const due = new Date(2026, 3, 2, 12).toISOString();
+    const due = new Date(2099, 3, 2).toISOString();
     render(<OutstandingFollowUps notes={[note("1", "Call back", due)]} />);
-    expect(screen.getByText(`Due ${new Date(due).toLocaleDateString()}`)).toBeInTheDocument();
+    expect(screen.getByText("Due 2 Apr 2099")).toBeInTheDocument();
+    expect(screen.queryByText("Overdue")).not.toBeInTheDocument();
+  });
+
+  it("marks a note whose day has passed as overdue", () => {
+    render(<OutstandingFollowUps notes={[note("1", "Call back", "2020-01-01T00:00:00.000Z")]} />);
+    expect(screen.getByRole("link", { name: /Call back/ })).toHaveTextContent("Overdue");
+  });
+
+  it("lists the soonest due first and undated last", () => {
+    render(
+      <OutstandingFollowUps
+        notes={[
+          note("1", "Undated"),
+          note("2", "Later", "2099-06-01T00:00:00.000Z"),
+          note("3", "Sooner", "2099-01-01T00:00:00.000Z"),
+        ]}
+      />,
+    );
+    expect(screen.getAllByRole("link").map((link) => link.textContent)).toEqual([
+      expect.stringContaining("Sooner"),
+      expect.stringContaining("Later"),
+      expect.stringContaining("Undated"),
+    ]);
   });
 
   it("omits the due line for an undated note", () => {

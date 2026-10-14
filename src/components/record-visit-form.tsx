@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
 import { InterestPicker } from "@/components/interest-picker";
 import type {
@@ -8,6 +9,7 @@ import type {
   HouseholdSummary,
   InterestLevel,
   Religion,
+  Visit,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
@@ -36,6 +38,9 @@ export function validateVisit(unitNumber: string, interestLevel: InterestLevel |
   return errors;
 }
 
+/* The visit just stored, so a note can be anchored to it from here. */
+type Saved = { visitId: string; householdId: string; unitNumber: string; noted: boolean };
+
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
@@ -54,6 +59,10 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
+  const [saved, setSaved] = useState<Saved | null>(null);
+  const [noting, setNoting] = useState(false);
+  /* Bumped after a follow-up changes, so the panel re-reads the unit. */
+  const [reloadKey, setReloadKey] = useState(0);
 
   /*
    * Look up what is already known as soon as the unit matches one recorded
@@ -84,13 +93,19 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         if (!cancelled) setHistory(data);
       })
       .catch(() => {
-        // A missing history must never block recording a visit.
-        if (!cancelled) setHistory(null);
+        /*
+         * A missing history must never block recording a visit. A failed
+         * re-read after a follow-up change keeps what is already shown for
+         * this unit rather than blanking it just before the knock.
+         */
+        if (!cancelled) {
+          setHistory((current) => (current?.household.id === matchId ? current : null));
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [matchId]);
+  }, [matchId, reloadKey]);
 
   const reset = useCallback((suggestion: string | null) => {
     setUnitNumber(suggestion ?? "");
@@ -112,15 +127,17 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
     }
 
     setFailure(null);
+    setSaved(null);
     setSaving(true);
     try {
-      await apiFetch("/visits", {
+      const unit = normaliseUnitNumber(unitNumber);
+      const visit = await apiFetch<Visit>("/visits", {
         method: "POST",
         body: JSON.stringify({
           // Generated here: the id is what makes a retry idempotent.
           id: uuidv7(),
           blockId,
-          unitNumber: normaliseUnitNumber(unitNumber),
+          unitNumber: unit,
           interestLevel,
           description,
           clientCreatedAt: new Date().toISOString(),
@@ -131,6 +148,12 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
       });
       // Straight on to the next door, with the unit already filled in.
       reset(nextUnitNumber(unitNumber));
+      setSaved({
+        visitId: visit.id,
+        householdId: visit.householdId,
+        unitNumber: unit,
+        noted: false,
+      });
       onRecorded();
     } catch (error) {
       setFailure(error instanceof Error ? error.message : "Could not save this visit.");
@@ -157,6 +180,28 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         </p>
       )}
 
+      {saved === null ? null : (
+        <div
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+        >
+          <span className="break-words">
+            Saved {saved.unitNumber}.{saved.noted ? " Follow-up added." : ""}
+          </span>
+          {saved.noted ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                setNoting(true);
+              }}
+              className="min-h-11 font-medium text-primary"
+            >
+              Add follow-up
+            </button>
+          )}
+        </div>
+      )}
+
       <div>
         <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
           Unit number
@@ -166,6 +211,7 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
           value={unitNumber}
           onChange={(event) => {
             setUnitNumber(event.target.value);
+            setSaved(null);
           }}
           inputMode="text"
           autoComplete="off"
@@ -181,7 +227,34 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         )}
       </div>
 
-      {history === null ? null : <HouseholdHistoryPanel history={history} />}
+      {history === null ? null : (
+        <HouseholdHistoryPanel
+          history={history}
+          atDoor
+          onChanged={() => {
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+
+      {saved === null || !noting ? null : (
+        <FollowUpSheet
+          mode={{
+            kind: "create",
+            householdId: saved.householdId,
+            visitId: saved.visitId,
+            unitNumber: saved.unitNumber,
+          }}
+          onClose={() => {
+            setNoting(false);
+          }}
+          onSaved={() => {
+            setNoting(false);
+            setSaved({ ...saved, noted: true });
+            setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
 
       <div>
         <p className="mb-1 text-body font-medium">Interest level</p>

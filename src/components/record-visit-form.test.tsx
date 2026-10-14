@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -10,6 +10,12 @@ vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
 });
+
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/use-role", () => ({ useRole }));
+
+const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
+vi.mock("@/lib/use-online", () => ({ useOnline }));
 
 const BLOCK = "b1";
 
@@ -55,7 +61,24 @@ const body = () =>
 beforeEach(() => {
   vi.clearAllMocks();
   apiFetch.mockResolvedValue({});
+  useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+  useOnline.mockReturnValue(true);
 });
+
+/* A note left on an earlier outing, months before this knock. */
+const owed = {
+  id: "f1",
+  householdId: "h1",
+  blockName: "123",
+  unitNumber: "#05-123",
+  visitId: null,
+  author: { id: "u2", name: "Ben", image: null },
+  note: "Bring the community event flyer.",
+  dueDate: null,
+  doneAt: null,
+  doneBy: null,
+  createdAt: "2025-11-02T10:00:00.000Z",
+};
 
 describe("validateVisit", () => {
   it("requires a unit number", () => {
@@ -187,29 +210,119 @@ describe("history before knocking", () => {
   });
 
   it("surfaces outstanding follow-ups prominently", async () => {
-    apiFetch.mockResolvedValue(
-      history({
-        followUps: [
-          {
-            id: "f1",
-            householdId: "h1",
-            visitId: null,
-            author: { id: "u2", name: "Ben", image: null },
-            note: "Bring the community event flyer.",
-            dueDate: null,
-            doneAt: null,
-            doneBy: null,
-            createdAt: "2026-03-14T10:00:00.000Z",
-          },
-        ],
-      }),
-    );
+    apiFetch.mockResolvedValue(history({ followUps: [owed] }));
     const user = userEvent.setup();
     render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
 
     expect(await screen.findByText("Outstanding follow-up")).toBeInTheDocument();
-    expect(screen.getByText(/Bring the community event flyer/)).toBeInTheDocument();
+    const list = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    expect(list.getByText("Bring the community event flyer.")).toBeInTheDocument();
+    expect(list.getByText(/Added by Ben · 2 Nov 2025/)).toBeInTheDocument();
+  });
+
+  it("lets a note be marked done at the door, then re-reads the unit", async () => {
+    let resolved = false;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") {
+        resolved = true;
+        return Promise.resolve({});
+      }
+      return Promise.resolve(
+        history({
+          followUps: [
+            resolved
+              ? {
+                  ...owed,
+                  doneAt: "2026-10-14T00:00:00.000Z",
+                  doneBy: { id: "u1", name: "Me", image: null },
+                }
+              : owed,
+          ],
+        }),
+      );
+    });
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(await screen.findByRole("button", { name: "Mark done" }));
+
+    const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
+    expect(await timeline.findByText("Follow-up done")).toBeInTheDocument();
+    expect(screen.queryByText("Outstanding follow-up")).not.toBeInTheDocument();
+    expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
+  });
+
+  it("keeps a resolved note to one line with no controls, so the picker stays near", async () => {
+    const done = {
+      ...owed,
+      doneAt: "2026-01-02T00:00:00.000Z",
+      doneBy: { id: "u2", name: "Ben", image: null },
+    };
+    apiFetch.mockResolvedValue(history({ followUps: [done] }));
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
+    expect(
+      timeline.getByText("Bring the community event flyer.", { exact: false }),
+    ).toBeInTheDocument();
+    expect(timeline.queryByText(/Added by/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the unit on screen when the re-read after marking done fails", async () => {
+    let reads = 0;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") return Promise.resolve({});
+      reads += 1;
+      return reads === 1
+        ? Promise.resolve(history({ followUps: [owed] }))
+        : Promise.reject(new TypeError("Failed to fetch"));
+    });
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[summary("#05-123")]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(await screen.findByRole("button", { name: "Mark done" }));
+
+    await waitFor(() => {
+      expect(reads).toBe(2);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      screen.getByRole("region", { name: "What we know about this unit" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Mr Tan")).toBeInTheDocument();
+    expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
+  });
+
+  it("drops the last unit's history when a different unit's lookup fails", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path === "/households/h1"
+        ? Promise.resolve(history())
+        : Promise.reject(new TypeError("Failed to fetch")),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        blockId={BLOCK}
+        known={[summary("#05-123"), summary("#05-125", "h2")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#05-123");
+    expect(await screen.findByText("Mr Tan")).toBeInTheDocument();
+
+    // Straight from one known unit to the next, never through an unknown one.
+    fireEvent.change(unit, { target: { value: "#05-125" } });
+    await waitFor(() => {
+      expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
+    });
   });
 
   it("matches a unit typed without the hash", async () => {
@@ -238,6 +351,70 @@ describe("history before knocking", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
     });
+  });
+});
+
+describe("a follow-up after saving", () => {
+  const saveVisit = async () => {
+    apiFetch.mockResolvedValueOnce({ id: "v-new", householdId: "h-new" });
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    return user;
+  };
+
+  it("offers to add one, anchored to the visit just saved", async () => {
+    const user = await saveVisit();
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #06-201.");
+    await user.click(screen.getByRole("button", { name: "Add follow-up" }));
+
+    const sheet = screen.getByRole("dialog", { name: "Follow-up for #06-201" });
+    await user.type(within(sheet).getByLabelText("Note"), "Call on Sunday");
+    await user.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
+        method: "POST",
+        body: JSON.stringify({
+          householdId: "h-new",
+          visitId: "v-new",
+          note: "Call on Sunday",
+          dueDate: null,
+        }),
+      });
+    });
+    expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201. Follow-up added.");
+    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
+  });
+
+  it("can be dismissed without adding anything", async () => {
+    const user = await saveVisit();
+    await user.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
+  });
+
+  it("clears once the next unit is typed", async () => {
+    await saveVisit();
+    await screen.findByRole("status");
+    fireEvent.change(screen.getByLabelText("Unit number"), { target: { value: "#06-205" } });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("is not offered when the save fails", async () => {
+    apiFetch.mockRejectedValueOnce(new Error("Server unavailable"));
+    const user = userEvent.setup();
+    render(<RecordVisitForm blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await act(async () => {
+      await user.click(screen.getByRole("button", { name: "Save and next" }));
+    });
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
   });
 });
 

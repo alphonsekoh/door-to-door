@@ -373,6 +373,24 @@ describe("households over HTTP", () => {
     expect(body.visits.map((v) => v.interestLevel)).toEqual(["low", "high"]);
   });
 
+  it("names the door on each follow-up in a unit's timeline", async () => {
+    asAlice();
+    const created = (await (await record("#05-123")).json()) as { householdId: string };
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Todo')`,
+      [created.householdId, ALICE],
+    );
+    const response = await householdHistory(
+      new Request(`https://test.local/api/households/${created.householdId}`),
+      { params: Promise.resolve({ id: created.householdId }) },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { followUps: unknown[] };
+    expect(body.followUps).toEqual([
+      expect.objectContaining({ blockName: "123", unitNumber: "#05-123", note: "Todo" }),
+    ]);
+  });
+
   it("returns 404 for an unknown household", async () => {
     asAlice();
     const missing = "dededede-0000-4000-8003-00000000ffff";
