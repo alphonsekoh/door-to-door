@@ -77,8 +77,10 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   of who is out tonight, and admins supervise rather than knock.
 - **D-74-14 · Teams are per outing, any size.** `session_teams` and
   `session_team_members`, unique `(session_id, user_id)` so a person is on one team per
-  outing. Members create, rename, add and leave on an ACTIVE outing; admins on a draft
-  or ended one as well and can fix any team. Order of checks: `404` (no such team) then
+  outing. Members create, rename, add and leave on an ACTIVE outing only. Admins create
+  on a draft or active outing; on an ended outing nobody can create a team, but admins
+  may still rename, add, remove and delete, and can fix any team (wording corrected in
+  PR #92 to match the server). Order of checks: `404` (no such team) then
   `403` (a member not on the team) then `409` (`session_not_active`). A member removes
   only themselves (`403` otherwise). _Why:_ the unique key is what makes two concurrent
   "create a team" calls safe; a lost race is a `409 conflict`.
