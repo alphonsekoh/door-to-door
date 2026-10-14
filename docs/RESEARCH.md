@@ -351,3 +351,11 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   cleared. The only signal is the `error` query parameter. Observed in PR #93.
 - **Source:** observed in PR #93 (server log `[auth][error] MissingCSRF`); @auth/core 0.41.3
 - **Used by:** D-74-64
+
+### R-42 · jsdom does not implement `inert`
+
+- **Finding:** jsdom 30 has no `inert` behaviour: an inert subtree still takes focus and
+  clicks in Vitest. Component tests can assert the attribute, not its effect; blocking
+  taps and focus under the account screen has to be checked in a real browser.
+- **Source:** jsdom 30.0.1 source (`lib/jsdom/living` has no `inert` handling); PR #98
+- **Used by:** D-85-5

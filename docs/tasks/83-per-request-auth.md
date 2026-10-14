@@ -56,7 +56,7 @@ injected a session object.
   `403 account_deactivated`.** _Why:_ otherwise a stale session cannot be cleared.
 - **D-83-15 · Known limits, accepted.** (a) A demoted admin sees a stale "Admin" nav item
   until the token refreshes; nothing privileged is reachable, and D-74-6 means the token
-  update accepts only a name. (b) The old cookie still works after sign-out (stateless
+  update accepts only a name; closed by D-85-8. (b) The old cookie still works after sign-out (stateless
   JWT). (c) Auth.js `/api/auth/session` echoes stale claims. (d) Validation runs before
   auth on some routes, so malformed input gets `400` before `403`; cosmetic.
 

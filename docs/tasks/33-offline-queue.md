@@ -65,3 +65,9 @@ handle batch `422 clock_skew` (keep everything queued, tell the member to fix th
 and item `clock_skew` (restamp, then retry, throttled); probe clock-blocked records at
 most every 5 minutes, since the limiter counts 422s (D-76-7); always send the visit's own
 `sessionId`, including on amends (D-76 known limit).
+
+From #85: a `401` or `403 account_deactivated` on flush must also raise the app-wide
+account screen: flush through `apiFetch`, or call `accountStore.reportAuthFailure` from
+the worker (D-85-10). That screen tells the member "Records not yet sent are kept on this
+phone" whenever `hasUnsyncedItems()` is true (D-85-9), so sign-out must never clear the
+queue.
