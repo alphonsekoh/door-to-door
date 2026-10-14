@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/app-shell";
+import { accountStore } from "@/lib/account-state";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 /* The nav reads the role to decide whether to offer the admin tab, so it needs
@@ -14,6 +15,11 @@ vi.mock("@/lib/use-role", () => ({
     isLoading: false,
     isSignedIn: true,
   }),
+}));
+
+/* The shell reads /users/me once on load; that read is the gate's to test. */
+vi.mock("@/lib/users", () => ({
+  loadCurrentUser: () => Promise.resolve({ id: "u1", role: "member" }),
 }));
 
 describe("AppShell", () => {
@@ -35,5 +41,20 @@ describe("AppShell", () => {
   it("renders the primary navigation alongside the content", () => {
     render(<AppShell>content</AppShell>);
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+  });
+
+  it("puts the page, the banners and the nav behind the account message", () => {
+    // Last: a reported failure sticks for the rest of this file.
+    render(
+      <AppShell>
+        <p>Page body</p>
+      </AppShell>,
+    );
+    act(() => {
+      accountStore.reportAuthFailure("deactivated");
+    });
+    expect(screen.getByText("Page body").closest("[inert]")).not.toBeNull();
+    expect(screen.getByText("Session").closest("[inert]")).not.toBeNull();
+    expect(screen.getByRole("alertdialog", { name: "Account deactivated" })).toBeInTheDocument();
   });
 });

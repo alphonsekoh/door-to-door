@@ -17,6 +17,7 @@ import {
   pickerCandidates,
 } from "@/lib/team-ui";
 import { useOnline } from "@/lib/use-online";
+import { loadCurrentUser } from "@/lib/users";
 
 type Loaded = { me: User; participants: Participant[]; teams: Team[] };
 
@@ -56,7 +57,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
     const mine = ++generation.current;
     try {
       const [me, participants, teams] = await Promise.all([
-        apiFetch<User>("/users/me"),
+        loadCurrentUser(),
         apiFetch<ParticipantList>(`/sessions/${sessionId}/participants`),
         apiFetch<TeamList>(`/sessions/${sessionId}/teams`),
       ]);

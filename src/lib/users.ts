@@ -1,5 +1,14 @@
 import type { User, UserList } from "@/generated/types.gen";
+import { accountStore } from "@/lib/account-state";
 import { apiFetch } from "@/lib/api-client";
+
+/* Every read of the member's own record also refreshes the role the UI shows:
+   the token's role is only a hint and cannot be updated from here (D-74-6). */
+export async function loadCurrentUser(): Promise<User> {
+  const user = await apiFetch<User>("/users/me");
+  accountStore.noteCurrentUser(user);
+  return user;
+}
 
 /*
  * Every active user, a page at a time. Pickers built from one page of 100

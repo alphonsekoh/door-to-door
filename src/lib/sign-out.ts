@@ -23,6 +23,7 @@ import { clearServiceWorkerCaches } from "@/lib/sw-client";
 export async function signOutAndForget(
   signOut: (options: { redirect: false }) => Promise<{ url: string }>,
   navigate: (path: string) => void = goTo,
+  destination = "/sign-in",
 ): Promise<void> {
   await clearServiceWorkerCaches().catch(() => undefined);
   const { url } = await signOut({ redirect: false });
@@ -30,5 +31,5 @@ export async function signOutAndForget(
   if (refusal !== null) {
     throw new Error(`Sign-out was refused: ${refusal}`);
   }
-  navigate("/sign-in");
+  navigate(destination);
 }

@@ -1,5 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as AccountStateModule from "@/lib/account-state";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+
+const { reportAuthFailure } = vi.hoisted(() => ({ reportAuthFailure: vi.fn() }));
+vi.mock("@/lib/account-state", async () => ({
+  ...(await vi.importActual<typeof AccountStateModule>("@/lib/account-state")),
+  accountStore: { reportAuthFailure },
+}));
 
 const respond = (status: number, body?: unknown, ok = status < 400) =>
   vi.stubGlobal(
@@ -11,6 +18,10 @@ const respond = (status: number, body?: unknown, ok = status < 400) =>
         body === undefined ? Promise.reject(new Error("no body")) : Promise.resolve(body),
     }),
   );
+
+beforeEach(() => {
+  reportAuthFailure.mockClear();
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -56,5 +67,39 @@ describe("apiFetch", () => {
   it("is an ApiRequestError, so callers can branch on the code", async () => {
     respond(403, { error: { code: "forbidden", message: "No." } });
     await expect(apiFetch("/x")).rejects.toBeInstanceOf(ApiRequestError);
+  });
+
+  describe("reporting a session the server no longer accepts", () => {
+    it("reports a deactivated account and still throws to the caller", async () => {
+      respond(403, { error: { code: "account_deactivated", message: "Deactivated." } });
+      await expect(apiFetch("/x")).rejects.toMatchObject({ status: 403 });
+      expect(reportAuthFailure).toHaveBeenCalledWith("deactivated");
+    });
+
+    it("reports a 401 as signed out and still throws an ApiRequestError", async () => {
+      respond(401, { error: { code: "unauthenticated", message: "Sign in." } });
+      await expect(apiFetch("/x")).rejects.toBeInstanceOf(ApiRequestError);
+      expect(reportAuthFailure).toHaveBeenCalledWith("signed-out");
+    });
+
+    it("reports a 401 whose body is not JSON", async () => {
+      respond(401, undefined);
+      await expect(apiFetch("/x")).rejects.toMatchObject({ status: 401 });
+      expect(reportAuthFailure).toHaveBeenCalledWith("signed-out");
+    });
+
+    it("does not report a plain 403 or a server error", async () => {
+      respond(403, { error: { code: "forbidden", message: "No." } });
+      await expect(apiFetch("/x")).rejects.toMatchObject({ status: 403 });
+      respond(500, undefined);
+      await expect(apiFetch("/x")).rejects.toMatchObject({ status: 500 });
+      expect(reportAuthFailure).not.toHaveBeenCalled();
+    });
+
+    it("does not report a success", async () => {
+      respond(200, {});
+      await apiFetch("/x");
+      expect(reportAuthFailure).not.toHaveBeenCalled();
+    });
   });
 });

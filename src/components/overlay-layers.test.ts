@@ -32,6 +32,7 @@ describe("overlay stacking", () => {
     expect(found.map(({ file }) => file).sort()).toEqual([
       "admin-team-sheet.tsx",
       "amend-visit-sheet.tsx",
+      "auth-failure-screen.tsx",
       "block-attach-sheet.tsx",
       "confirm-dialog.tsx",
       "follow-up-sheet.tsx",
@@ -80,5 +81,17 @@ describe("overlay stacking", () => {
       expect(layer, `${file} has no fixed layer`).toBeLessThan(NAV_LAYER);
       expect(layer).toBeLessThan(lowestSheet);
     }
+  });
+
+  it("puts the account message above every sheet and dialog", () => {
+    // Once the session is refused nothing underneath can succeed, so nothing
+    // underneath may show through or take a tap - not even a confirmation.
+    const layerOf = (text: string) => Number(new RegExp(OVERLAY.source).exec(text)?.[1]);
+    const screenLayer = layerOf(readFileSync(join(DIR, "auth-failure-screen.tsx"), "utf8"));
+    const others = sources()
+      .filter(({ file }) => file !== "auth-failure-screen.tsx")
+      .flatMap(({ text }) => [...text.matchAll(OVERLAY)].map((match) => Number(match[1])));
+    expect(others.length).toBeGreaterThan(0);
+    expect(screenLayer).toBeGreaterThan(Math.max(...others));
   });
 });
