@@ -150,7 +150,7 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4.
   is RETRYABLE, never `conflict`.** The cause is logged server-side with the item id
   only; the client sees a generic message. _Why:_ `conflict` is held for review
   (D-74-23), and a dropped connection must not hold a good record forever. Refines
-  D-21-3.
+  D-21-3. Refined by D-87-7 (sync failure logs are throttled).
 - **D-74-31 · Sync write path.** `INSERT ... ON CONFLICT DO NOTHING RETURNING`: a row
   back means this call created the visit and is the ONLY trigger for the snapshot and
   auto-join. Otherwise `SELECT ... FOR UPDATE`, then RE-JUDGE under the lock (`canAmend`,

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { attachPoolErrorHandler } from "../src/db/pool-errors";
 import {
   blocks,
   followUps,
@@ -35,6 +36,7 @@ const sqlExcluded = (column: string) => sql.raw(`excluded."${column}"`);
  */
 export async function seedDatabase(connectionString: string): Promise<void> {
   const pool = new Pool({ connectionString, max: 1 });
+  attachPoolErrorHandler(pool);
   const db = drizzle(pool);
 
   try {

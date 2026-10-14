@@ -7,6 +7,7 @@ import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-
 import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
 import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
+import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
 
@@ -334,6 +335,8 @@ async function persist(
   return "applied";
 }
 
+const logSyncFailure = createThrottledLog();
+
 /*
  * One bad item must not reject its valid siblings: a member whose queue holds
  * one malformed record should still get the rest of their afternoon saved.
@@ -351,7 +354,7 @@ export async function syncVisits(
     } catch (error) {
       // The client gets only the generic message; the cause stays in the logs.
       if (!(error instanceof ApiError)) {
-        console.error(`sync: could not save visit ${item.id}`, error);
+        logSyncFailure("sync", `sync: could not save visit ${item.id}: ${summarizeError(error)}`);
       }
       outcomes.push({
         id: item.id,

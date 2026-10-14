@@ -26,6 +26,17 @@ describe("createDatabase", () => {
 });
 
 describe("getDatabase", () => {
+  it("listens for pool errors so a dead idle client cannot crash the process", () => {
+    expect(getPool().listenerCount("error")).toBe(1);
+  });
+
+  it("shares one pool across module graphs", async () => {
+    const first = getPool();
+    vi.resetModules();
+    const again = await import("@/db/client");
+    expect(again.getPool()).toBe(first);
+  });
+
   it("reuses one client per process", () => {
     expect(getDatabase()).toBe(getDatabase());
   });

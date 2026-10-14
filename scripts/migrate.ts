@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { attachPoolErrorHandler } from "../src/db/pool-errors";
 import { loadDatabaseUrl } from "../src/server/config";
 
 /*
@@ -10,6 +11,7 @@ import { loadDatabaseUrl } from "../src/server/config";
  */
 async function main(): Promise<void> {
   const pool = new Pool({ connectionString: loadDatabaseUrl(), max: 1 });
+  attachPoolErrorHandler(pool);
 
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
