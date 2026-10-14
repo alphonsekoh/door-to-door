@@ -1,6 +1,6 @@
 # #35 · Follow-up notes UI
 
-- **Status:** In review (PR #96)
+- **Status:** Done (PR #96)
 - **Phase:** 7 - Hardening
 - **Depends on:** #22
 

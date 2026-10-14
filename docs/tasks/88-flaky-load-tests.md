@@ -1,6 +1,6 @@
 # #88 · Flaky unit tests under load: block-attach-sheet and update-prompt
 
-- **Status:** In progress (PR not opened yet)
+- **Status:** Done (PR #94)
 - **Phase:** 7 - Hardening
 - **Depends on:** #28, #32, #37
 

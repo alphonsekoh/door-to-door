@@ -1,6 +1,6 @@
 # #76 · Clock rules on sync and record endpoints
 
-- **Status:** In review (PR #80)
+- **Status:** Done (PR #80)
 - **Phase:** 6 - PWA & Offline
 - **Depends on:** #21, #75
 

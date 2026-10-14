@@ -1,6 +1,6 @@
 # #32 · PWA manifest, icons, install prompt and service worker
 
-- **Status:** In review (PR #73; D-32-19 to D-32-21 in PR #93)
+- **Status:** Done (PR #73; D-32-19 to D-32-21 in PR #93)
 - **Phase:** 6 - PWA & Offline
 
 ## Task
