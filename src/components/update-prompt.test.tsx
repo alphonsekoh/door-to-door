@@ -27,9 +27,11 @@ function stubServiceWorker(waiting: ServiceWorker | null, controller: object | n
 
 describe("UpdatePrompt", () => {
   it("says nothing when no new version is waiting", async () => {
-    stubServiceWorker(null);
+    const { registration } = stubServiceWorker(null);
     render(<UpdatePrompt />);
     await act(() => Promise.resolve());
+    // Watching has started, so the silence is an answer rather than "not yet".
+    expect(registration.addEventListener).toHaveBeenCalledWith("updatefound", expect.any(Function));
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -104,13 +106,16 @@ describe("UpdatePrompt", () => {
     await waitFor(() => {
       expect(postMessage).toHaveBeenCalledOnce();
     });
-    expect(screen.getByText("Update available.")).toBeInTheDocument();
+    /* The message is posted in the same tick as the state change, but React
+       renders that change on a later task, so wait for the text itself. */
+    expect(await screen.findByText("Update available.")).toBeInTheDocument();
   });
 
   it("does not treat the first install as an update", async () => {
-    stubServiceWorker({} as ServiceWorker, null);
+    const { registration } = stubServiceWorker({} as ServiceWorker, null);
     render(<UpdatePrompt />);
     await act(() => Promise.resolve());
+    expect(registration.addEventListener).toHaveBeenCalledWith("updatefound", expect.any(Function));
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -126,6 +131,10 @@ describe("UpdatePrompt", () => {
 });
 
 describe("UpdatePrompt reserved space", () => {
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+  });
+
   it("reserves room at the top while showing, and gives it back after", async () => {
     stubServiceWorker({} as ServiceWorker);
     Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
@@ -133,11 +142,17 @@ describe("UpdatePrompt reserved space", () => {
       get: () => 56,
     });
     const { unmount } = render(<UpdatePrompt />);
+    const topReserve = () => document.documentElement.style.getPropertyValue("--banner-top");
+
+    /* The banner appears from a promise, outside act, so React may commit it
+       and run the measuring effect on separate tasks. Under load the banner
+       can be found before the effect has run. */
     await screen.findByRole("status");
-    expect(document.documentElement.style.getPropertyValue("--banner-top")).toBe("56px");
+    await waitFor(() => {
+      expect(topReserve()).toBe("56px");
+    });
 
     unmount();
-    expect(document.documentElement.style.getPropertyValue("--banner-top")).toBe("");
-    Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+    expect(topReserve()).toBe("");
   });
 });
