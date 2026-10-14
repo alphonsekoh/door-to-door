@@ -30,8 +30,9 @@ export function BlockAttachSheet({
 
   /*
    * A search that lands after a newer one - or after a block was registered
-   * here - must not overwrite what is on screen. Typing "12" then "125" issues
-   * two requests, and nothing guarantees they come back in that order.
+   * here - must not overwrite what is on screen, whether it brings rows or an
+   * error. Typing "12" then "125" issues two requests, and nothing guarantees
+   * they come back in that order.
    */
   const generation = useRef(0);
 
@@ -44,7 +45,9 @@ export function BlockAttachSheet({
         setBlocks(page.data);
       }
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not load the blocks.");
+      if (mine === generation.current) {
+        setFailure(error instanceof Error ? error.message : "Could not load the blocks.");
+      }
     }
   }, []);
 

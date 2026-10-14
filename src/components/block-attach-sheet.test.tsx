@@ -5,7 +5,9 @@ import { BlockAttachSheet } from "@/components/block-attach-sheet";
 import type { Block } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 
-const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const { apiFetch } = vi.hoisted(() => ({
+  apiFetch: vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(),
+}));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
@@ -27,6 +29,12 @@ const page = (rows: Block[]) => ({
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+/* The sheet lists the registry on a 200ms debounce after it opens, so that
+   listing can land at any point in a test that does not wait for it. Tests
+   about creating a block first wait for a listed row, then count creates
+   rather than every request. */
+const creates = () => apiFetch.mock.calls.filter(([, init]) => init?.method === "POST");
 
 describe("BlockAttachSheet", () => {
   it("lists the registry", async () => {
@@ -61,8 +69,9 @@ describe("BlockAttachSheet", () => {
   it("cannot attach until something is selected", async () => {
     apiFetch.mockResolvedValue(page([block("b1", "123")]));
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+    await screen.findByText("Blk 123");
 
-    expect(await screen.findByRole("button", { name: "Select a block" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Select a block" })).toBeDisabled();
   });
 
   it("attaches the blocks that were picked", async () => {
@@ -95,17 +104,21 @@ describe("BlockAttachSheet", () => {
     const onAttach = vi.fn().mockResolvedValue(undefined);
     /* Routed by method, not blanket-mocked: the sheet is listing and creating
        against the same path, and conflating them hid a race once already. */
-    apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
-      init?.method === "POST" ? Promise.resolve(block("b9", "127")) : Promise.resolve(page([])),
+    apiFetch.mockImplementation((_path, init) =>
+      init?.method === "POST"
+        ? Promise.resolve(block("b9", "127"))
+        : Promise.resolve(page([block("b1", "123")])),
     );
     render(<BlockAttachSheet attachedIds={[]} onAttach={onAttach} onClose={vi.fn()} />);
+    await screen.findByText("Blk 123");
 
-    await user.click(await screen.findByRole("button", { name: "Block not listed?" }));
+    await user.click(screen.getByRole("button", { name: "Block not listed?" }));
     await user.type(screen.getByLabelText("Block number"), "127");
     await user.type(screen.getByLabelText("Street"), "Test Ave");
     await user.click(screen.getByRole("button", { name: "Add to the registry" }));
 
     expect(await screen.findByRole("button", { name: "Attach 1 block" })).toBeEnabled();
+    expect(screen.getByText("Blk 127")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Attach 1 block" }));
     expect(onAttach).toHaveBeenCalledWith(["b9"]);
   });
@@ -115,7 +128,7 @@ describe("BlockAttachSheet", () => {
     // the new block off the list.
     const user = userEvent.setup();
     let releaseList: (value: unknown) => void = () => undefined;
-    apiFetch.mockImplementation((_path: string, init?: RequestInit) => {
+    apiFetch.mockImplementation((_path, init) => {
       if (init?.method === "POST") return Promise.resolve(block("b9", "127"));
       return new Promise((resolve) => {
         releaseList = resolve;
@@ -147,31 +160,67 @@ describe("BlockAttachSheet", () => {
 
   it("refuses a half-filled block before a round trip", async () => {
     const user = userEvent.setup();
-    apiFetch.mockResolvedValue(page([]));
+    apiFetch.mockResolvedValue(page([block("b1", "123")]));
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+    await screen.findByText("Blk 123");
 
-    await user.click(await screen.findByRole("button", { name: "Block not listed?" }));
+    await user.click(screen.getByRole("button", { name: "Block not listed?" }));
     await user.type(screen.getByLabelText("Block number"), "127");
-    apiFetch.mockClear();
     await user.click(screen.getByRole("button", { name: "Add to the registry" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("number and a street");
-    expect(apiFetch).not.toHaveBeenCalled();
+    expect(creates()).toEqual([]);
   });
 
   it("reports a duplicate block from the server", async () => {
     const user = userEvent.setup();
-    apiFetch.mockResolvedValue(page([]));
+    /* Only the create fails. A blanket rejection would also fail the listing,
+       whose error reads the same, and the test would pass without a create. */
+    apiFetch.mockImplementation((_path, init) =>
+      init?.method === "POST"
+        ? Promise.reject(new Error("A block with that number and street already exists."))
+        : Promise.resolve(page([block("b1", "125")])),
+    );
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+    await screen.findByText("Blk 125");
 
-    await user.click(await screen.findByRole("button", { name: "Block not listed?" }));
+    await user.click(screen.getByRole("button", { name: "Block not listed?" }));
     await user.type(screen.getByLabelText("Block number"), "123");
     await user.type(screen.getByLabelText("Street"), "Test Ave");
-
-    apiFetch.mockRejectedValue(new Error("A block with that number and street already exists."));
     await user.click(screen.getByRole("button", { name: "Add to the registry" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("already exists");
+    expect(creates()).toHaveLength(1);
+  });
+
+  it("ignores a failure from a listing that a newer search has overtaken", async () => {
+    // The rows from a stale listing were already ignored; its error was not,
+    // and put an alert over a list that had loaded fine.
+    const user = userEvent.setup();
+    let failOpening: (reason: Error) => void = () => undefined;
+    const opening = new Promise<never>((_resolve, reject) => {
+      failOpening = reject;
+    });
+    apiFetch.mockImplementation((path) =>
+      path === "/blocks?limit=50" ? opening : Promise.resolve(page([block("b2", "125")])),
+    );
+    render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/blocks?limit=50");
+    });
+
+    await user.type(screen.getByLabelText("Search the block registry"), "125");
+    await screen.findByText("Blk 125");
+
+    /* The sheet's handler was attached to this promise before ours, so once
+       ours has run, the sheet has had its chance to show the error. */
+    await act(async () => {
+      failOpening(new Error("Could not reach the server."));
+      await opening.catch(() => undefined);
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Blk 125")).toBeInTheDocument();
   });
 
   it("reports a failure to attach without closing", async () => {
