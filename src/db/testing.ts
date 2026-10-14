@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
+import { attachPoolErrorHandler } from "@/db/pool-errors";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 
 /*
@@ -9,7 +10,9 @@ import { requireTestDatabaseUrl } from "@/db/test-env";
  * a scratch database and do not need concurrency.
  */
 export function createTestPool(): Pool {
-  return new Pool({ connectionString: requireTestDatabaseUrl(), max: 2 });
+  const pool = new Pool({ connectionString: requireTestDatabaseUrl(), max: 2 });
+  attachPoolErrorHandler(pool);
+  return pool;
 }
 
 /* Removes all seeded and test data, respecting foreign key order. */

@@ -4,6 +4,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { Pool } from "pg";
+import { attachPoolErrorHandler } from "../src/db/pool-errors";
 import {
   ADMIN_STATE,
   MEMBER_STATE,
@@ -35,6 +36,7 @@ async function ensureDatabase(): Promise<void> {
     connectionString: E2E_DATABASE_URL.replace(`/${name}`, "/postgres"),
     max: 1,
   });
+  attachPoolErrorHandler(server);
   try {
     const existing = await server.query("select 1 from pg_database where datname = $1", [name]);
     if (existing.rowCount === 0) {
@@ -49,6 +51,7 @@ async function ensureDatabase(): Promise<void> {
 
 async function resetAndSeed(): Promise<void> {
   const pool = new Pool({ connectionString: E2E_DATABASE_URL, max: 1 });
+  attachPoolErrorHandler(pool);
   try {
     await migrate(drizzle(pool), { migrationsFolder: "./drizzle" });
     const { truncateAll } = await import("../src/db/testing");
