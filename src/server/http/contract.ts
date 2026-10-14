@@ -1,5 +1,6 @@
 import type { ZodError, ZodType } from "zod";
 import { ApiError, InternalError, ValidationError, type FieldIssue } from "@/server/http/errors";
+import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 
 /*
  * Wraps a route handler so the contract is enforced at runtime, in both
@@ -188,7 +189,7 @@ export function withContract<TPath = undefined, TQuery = undefined, TBody = unde
       const result = await handler(input);
       return validateResponse(spec, result);
     } catch (error) {
-      return toErrorResponse(error);
+      return toErrorResponse(error, spec.operationId);
     }
   };
 }
@@ -240,15 +241,22 @@ function validateResponse<TPath, TQuery, TBody>(
   return jsonResponse(result.status, parsed.data);
 }
 
-export function toErrorResponse(error: unknown): Response {
+/* An outage fails every request at once; one line per operation per burst. */
+const logUnexpected = createThrottledLog();
+
+export function toErrorResponse(error: unknown, operationId: string): Response {
   if (error instanceof ApiError) {
     return jsonResponse(error.status, error.toBody());
   }
   if (error instanceof ResponseContractError) {
     throw error;
   }
-  // Nothing is echoed back from an unexpected error - it may carry internals.
-  console.error(error);
+  /*
+   * Nothing is echoed back from an unexpected error, and only a sanitised
+   * summary is logged: a raw pg error carries the host, port, query
+   * parameters and its cause chain.
+   */
+  logUnexpected(operationId, `${operationId} failed: ${summarizeError(error)}`);
   return jsonResponse(500, new InternalError().toBody());
 }
 

@@ -11,6 +11,7 @@ import {
 import {
   ConflictError,
   ForbiddenError,
+  InternalError,
   NotFoundError,
   UnauthenticatedError,
   ValidationError,
@@ -263,14 +264,58 @@ describe("errors thrown by handlers", () => {
   });
 });
 
+describe("logging an unexpected error", () => {
+  const USER = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+  const outage = () => {
+    const cause = Object.assign(new Error("connect ECONNREFUSED 10.0.0.12:5432"), {
+      code: "ECONNREFUSED",
+      address: "10.0.0.12",
+      port: 5432,
+    });
+    const error = new Error(`Failed query: select * from users where id = $1\nparams: ${USER}`, {
+      cause,
+    });
+    return Object.assign(error, { params: [USER] });
+  };
+  const throwing = (operationId: string) =>
+    withContract({ operationId, responses: { 200: zWidget } }, () => Promise.reject(outage()));
+
+  it("logs one sanitised line: no host, port, parameters or cause", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await throwing("redactWidget")(get("https://test.local/api/widgets/1"));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual(new InternalError().toBody());
+    expect(spy).toHaveBeenCalledTimes(1);
+    const logged = JSON.stringify(spy.mock.calls);
+    expect(logged).toContain("redactWidget");
+    expect(logged).toContain("ECONNREFUSED");
+    expect(logged).not.toMatch(/10\.0\.0\.12|5432/);
+    expect(logged).not.toContain(USER);
+    spy.mockRestore();
+  });
+
+  it("logs a burst of failures once per operation", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const route = throwing("burstWidget");
+    const responses = await Promise.all(
+      Array.from({ length: 20 }, () => route(get("https://test.local/api/widgets/1"))),
+    );
+
+    expect(responses.map((r) => r.status)).toEqual(Array.from({ length: 20 }, () => 500));
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+});
+
 describe("toErrorResponse", () => {
   it("rethrows a contract error so it surfaces rather than becoming a 500", () => {
     const drift = new ResponseContractError("getWidget", 200, "detail");
-    expect(() => toErrorResponse(drift)).toThrow(ResponseContractError);
+    expect(() => toErrorResponse(drift, "getWidget")).toThrow(ResponseContractError);
   });
 
   it("includes details only when there are any", async () => {
-    const response = toErrorResponse(new NotFoundError());
+    const response = toErrorResponse(new NotFoundError(), "getWidget");
     const payload = (await response.json()) as { error: Record<string, unknown> };
     expect(payload.error).not.toHaveProperty("details");
   });

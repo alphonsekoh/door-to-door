@@ -1,6 +1,8 @@
-import type { Pool } from "pg";
+import { EventEmitter } from "node:events";
+import { Pool } from "pg";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDatabase } from "@/db/client";
+import { attachPoolErrorHandler } from "@/db/pool-errors";
 import { createTestPool } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 import { withContract } from "@/server/http/contract";
@@ -45,21 +47,32 @@ async function killBackendsOf(target: Pool): Promise<void> {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 200));
 
 describe("a database that drops connections", () => {
-  it("never raises an uncaught exception and recovers on the next query", async () => {
-    await Promise.all(Array.from({ length: 5 }, () => appPool.query("SELECT 1")));
-    // Idle clients die; pg reports it on the pool.
-    const idle = await Promise.all(Array.from({ length: 3 }, () => appPool.connect()));
-    for (const c of idle) await c.query(`SET application_name = 'pool-errors-idle'`);
-    for (const c of idle) c.release();
-    await controller.query(
-      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'pool-errors-idle'`,
-    );
-    await settle();
+  it("never raises an uncaught exception, counts each dead backend once, and recovers", async () => {
+    let t = 0;
+    const log = vi.fn();
+    const pool = new Pool({ connectionString: requireTestDatabaseUrl(), max: 3 });
+    attachPoolErrorHandler(pool, log, () => t);
+    try {
+      const idle = await Promise.all(Array.from({ length: 3 }, () => pool.connect()));
+      for (const c of idle) await c.query(`SET application_name = 'pool-errors-idle'`);
+      for (const c of idle) c.release();
+      await controller.query(
+        `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE application_name = 'pool-errors-idle'`,
+      );
+      await settle();
 
-    const result = await appPool.query("SELECT 1 AS ok");
-    expect(result.rows).toEqual([{ ok: 1 }]);
-    expect(uncaught).toEqual([]);
-    expect(logged).toHaveBeenCalled();
+      expect(log).toHaveBeenCalledTimes(1);
+      const result = await pool.query("SELECT 1 AS ok");
+      expect(result.rows).toEqual([{ ok: 1 }]);
+      expect(uncaught).toEqual([]);
+
+      // The next line carries the burst's count: three backends, not every echo of them.
+      t = 60_000;
+      pool.emit("error", new Error("probe"), new EventEmitter());
+      expect(log).toHaveBeenLastCalledWith(expect.stringContaining("(2 similar suppressed since"));
+    } finally {
+      await pool.end();
+    }
   });
 
   it("surfaces a dead checked-out connection as a 500, not a crash", async () => {

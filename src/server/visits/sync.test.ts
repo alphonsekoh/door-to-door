@@ -14,9 +14,13 @@ const item: SyncItem = {
 };
 
 const logged = vi.spyOn(console, "error");
+let wallClock = Date.parse("2026-03-14T12:00:00.000Z");
 
 describe("unexpected failures", () => {
   beforeEach(() => {
+    // Each test starts outside the previous one's throttle window.
+    wallClock += 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(wallClock);
     logged.mockReset();
     logged.mockImplementation(() => undefined);
   });
@@ -37,9 +41,33 @@ describe("unexpected failures", () => {
     );
 
     expect(logged).toHaveBeenCalledTimes(1);
-    expect(logged).toHaveBeenCalledWith(expect.stringContaining(item.id), cause);
+    const line = String(logged.mock.calls[0]?.[0]);
+    expect(line).toContain(item.id);
+    expect(line).toContain("deadlock detected");
     expect(JSON.stringify(logged.mock.calls)).not.toContain("private note");
     expect(result?.error?.message).not.toMatch(/deadlock/);
+  });
+
+  it("logs a batch failing on a dropped connection once, not once per item", async () => {
+    const stub = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () =>
+              Promise.reject(
+                Object.assign(new Error("connect ECONNREFUSED 10.0.0.12:5432"), {
+                  code: "ECONNREFUSED",
+                }),
+              ),
+          }),
+        }),
+      }),
+    } as unknown as Database;
+
+    const results = await syncVisits(stub, [item, item, item], "u1", clock);
+    expect(results.map((r) => r.status)).toEqual(["rejected", "rejected", "rejected"]);
+    expect(logged).toHaveBeenCalledTimes(1);
+    expect(String(logged.mock.calls[0]?.[0])).not.toContain("10.0.0.12");
   });
 
   it("rejects the item rather than losing the rest of the batch", async () => {

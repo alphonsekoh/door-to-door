@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from "pg";
+import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 
 /*
  * pg emits `error` on a pool when an idle client dies (restart, failover,
@@ -8,38 +9,36 @@ import type { Pool, PoolClient } from "pg";
  * query; a query awaiting that connection rejects, which handlers already
  * turn into a 500 (never an allow).
  */
-const QUIET_MS = 5_000;
-
-/* Drivers sometimes echo the target; make sure a URL cannot reach the log. */
-function describe(error: unknown): string {
-  const raw = error instanceof Error ? error.message : "unknown error";
-  const code = (error as { code?: unknown } | null)?.code;
-  const message = raw.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, "[url]");
-  return typeof code === "string" ? `${code}: ${message}` : message;
-}
-
 export function attachPoolErrorHandler(
   pool: Pool,
-  log: (message: string) => void = (message) => {
-    console.error(message);
-  },
-  now: () => number = Date.now,
+  log?: (line: string) => void,
+  now?: () => number,
 ): void {
-  let lastLoggedAt = Number.NEGATIVE_INFINITY;
-  let suppressed = 0;
+  const throttled = createThrottledLog({
+    ...(log ? { log } : {}),
+    ...(now ? { now } : {}),
+  });
+  /*
+   * One dead backend arrives up to three times: on the client, re-emitted on
+   * the pool, then a second "terminated unexpectedly" when the socket ends. A
+   * client that has failed once is finished, so later errors from it are the
+   * same event.
+   */
+  const seen = new WeakSet<object>();
 
-  /* A restart kills every idle client at once; one line per burst, not one each. */
-  const report = (error: unknown): void => {
-    if (now() - lastLoggedAt < QUIET_MS) {
-      suppressed += 1;
-      return;
-    }
-    const extra = suppressed > 0 ? ` (${String(suppressed)} similar suppressed)` : "";
-    suppressed = 0;
-    lastLoggedAt = now();
-    log(`database connection error, the pool will reconnect: ${describe(error)}${extra}`);
+  const report = (error: unknown, client: PoolClient): void => {
+    if (seen.has(client)) return;
+    seen.add(client);
+    throttled(
+      "pool",
+      `database connection error, the pool will reconnect: ${summarizeError(error)}`,
+    );
   };
 
   pool.on("error", report);
-  pool.on("connect", (client: PoolClient) => client.on("error", report));
+  pool.on("connect", (client) => {
+    client.on("error", (error) => {
+      report(error, client);
+    });
+  });
 }
