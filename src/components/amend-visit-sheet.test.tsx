@@ -87,6 +87,22 @@ beforeEach(() => {
 });
 
 describe("AmendVisitSheet", () => {
+  it("is a modal: focus moves in, Tab stays in, Escape closes", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<AmendVisitSheet entry={entryFor()} onClose={onClose} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Amend #05-123" });
+    expect(dialog).toHaveFocus();
+
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Save changes" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("pre-fills every field from what was recorded", async () => {
     render(
       <AmendVisitSheet

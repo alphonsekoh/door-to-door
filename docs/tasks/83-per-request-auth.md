@@ -1,6 +1,6 @@
 # #83 · Deactivation and role changes take effect on the next request
 
-- **Status:** In review (PR #84)
+- **Status:** Done (PR #84)
 - **Phase:** 2 - Auth
 - **Depends on:** #13, #16, #31
 

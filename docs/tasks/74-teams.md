@@ -1,6 +1,6 @@
 # #74 · Teams: pairs share and edit each other's records
 
-- **Status:** In review (PR 4 of 4: #92) - closes #74 on merge
+- **Status:** Done (PRs #81, #82, #89, #92)
 - **Phase:** 4 - Member UI (added later)
 - **Depends on:** #31
 
@@ -232,8 +232,7 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   the outing after each test, uses `expect.poll` for layout and exact locators
   (D-37-4, D-37-7, D-74-12).
 
-Known limits: sheets and the confirm dialog have no focus trap, Escape or focus return
-(issue #90, shared with `ConfirmDialog`). An admin may Pair up without tapping Join (the
+Known limits: an admin may Pair up without tapping Join (the
 server auto-joins them, D-74-13). The character counter and refusal-reason handling are
 cosmetic; the server decides. The real two-phone check that A's unsynced record is
 invisible to B until it syncs cannot run until the queue (#33) exists.

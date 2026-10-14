@@ -102,6 +102,35 @@ test("an amendment sticks, and the sheet's save is reachable", async ({ memberPa
   await expect(memberPage.getByRole("button", { name: new RegExp(UNIT) })).toContainText("Low");
 });
 
+test("the amend sheet works from the keyboard alone", async ({ memberPage }) => {
+  await memberPage.goto("/");
+  await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+  await memberPage.getByRole("tab", { name: /^Units/ }).click();
+  await memberPage.getByLabel("Search this block").fill(UNIT);
+
+  const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
+  await row.focus();
+  await memberPage.keyboard.press("Enter");
+
+  const sheet = memberPage.getByRole("dialog", { name: `Amend ${UNIT}` });
+  await expect(sheet).toBeFocused();
+  /* The page behind cannot be reached, by Tab or by a screen reader. */
+  const nav = memberPage.getByRole("navigation", { name: "Primary" });
+  await expect(nav).toHaveAttribute("inert", "");
+
+  await memberPage.keyboard.press("Shift+Tab");
+  await expect(sheet.getByRole("button", { name: "Save changes" })).toBeFocused();
+  await memberPage.keyboard.press("Tab");
+  await expect(sheet.getByRole("button", { name: "Cancel" })).toBeFocused();
+  for (let i = 0; i < 12; i += 1) await memberPage.keyboard.press("Tab");
+  expect(await sheet.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+
+  await memberPage.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+  await expect(row).toBeFocused();
+  await expect(nav).not.toHaveAttribute("inert");
+});
+
 test("a follow-up added after saving is waiting the next time the unit is typed", async ({
   memberPage,
 }) => {

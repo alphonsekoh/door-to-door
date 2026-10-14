@@ -188,4 +188,12 @@ describe("RecordOnBehalfForm", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
+
+  it("is a modal: focus moves in and Escape closes", async () => {
+    const onClose = vi.fn();
+    const user = renderForm({ onClose });
+    expect(screen.getByRole("dialog", { name: "Record on behalf of a member" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
+  });
 });

@@ -39,4 +39,25 @@ describe("ConfirmDialog", () => {
     render(<ConfirmDialog {...props} busy onConfirm={vi.fn()} onCancel={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Working…" })).toBeDisabled();
   });
+
+  it("opens on the way out, not on the button that takes something away", () => {
+    render(<ConfirmDialog {...props} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Keep as it is" })).toHaveFocus();
+  });
+
+  it("backs out on Escape and keeps Tab inside", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    const onCancel = vi.fn();
+    render(<ConfirmDialog {...props} onConfirm={onConfirm} onCancel={onCancel} />);
+
+    await user.tab();
+    expect(screen.getByRole("button", { name: "End outing" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Keep as it is" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(onCancel).toHaveBeenCalledOnce();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
 });

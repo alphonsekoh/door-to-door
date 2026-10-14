@@ -1,6 +1,6 @@
 # #75 · Move configuration from .env to config.yaml
 
-- **Status:** In review (PR #79)
+- **Status:** Done (PR #79)
 - **Phase:** 6 - PWA & Offline
 - **Depends on:** #13
 

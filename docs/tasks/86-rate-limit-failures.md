@@ -1,6 +1,6 @@
 # #86 · Sign-in rate limit counts only failures
 
-- **Status:** In review (PR #95)
+- **Status:** Done (PR #95)
 - **Phase:** 2 - Auth
 - **Depends on:** #15, #75
 

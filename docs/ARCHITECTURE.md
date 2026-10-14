@@ -133,6 +133,9 @@ Google SSO (#14) is not built.
 - `useRole()` is UI affordance only.
 - Overlay layers: bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`. Guarded
   by `overlay-layers.test.ts`.
+- Every sheet and `ConfirmDialog` is a modal through `useModal` (`src/lib/use-modal.ts`):
+  focus in, Tab trapped, Escape closes the top layer only, page behind `inert` and
+  unscrollable, focus back to the trigger (D-90-1 to D-90-9).
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
 - Active-session screen: "Join this outing" (shown until the caller is in the server's

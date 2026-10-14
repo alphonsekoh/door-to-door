@@ -5,6 +5,7 @@ import type { Participant } from "@/generated/types.gen";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
 import { nameLength } from "@/lib/own-name";
 import { OFFLINE_NOTE, defaultTeamName, describeTeamFailure, displayName } from "@/lib/team-ui";
+import { useModal } from "@/lib/use-modal";
 
 export type TeamSheetMode = "create" | "add" | "rename";
 
@@ -79,15 +80,19 @@ export function TeamSheet({
 
   const label = needsPartner ? "Choose a teammate" : ACTION[mode];
 
+  const { overlay, panel } = useModal(onClose);
+
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
+    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
       <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
 
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={TITLE[mode]}
-        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom"
+        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
       >
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-title font-semibold">{TITLE[mode]}</p>

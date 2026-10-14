@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FollowUpSheet, diffFollowUp } from "@/components/follow-up-sheet";
 import type { FollowUp } from "@/generated/types.gen";
@@ -202,6 +203,25 @@ describe("editing a note", () => {
     fireEvent.click(screen.getByRole("button", { name: "Keep as it is" }));
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("lets Escape close only the confirm, then the sheet", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={edit} onClose={onClose} onSaved={vi.fn()} />);
+    const remove = screen.getByRole("button", { name: "Delete this note" });
+    await user.click(remove);
+    const keep = screen.getByRole("button", { name: "Keep as it is" });
+    expect(keep).toHaveFocus();
+    expect(screen.getByRole("dialog", { name: "Edit follow-up" })).toHaveAttribute("inert");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(remove).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("shows why a delete failed", async () => {

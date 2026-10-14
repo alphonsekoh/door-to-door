@@ -1,6 +1,6 @@
 # #87 · Handle pg pool errors so a database restart cannot crash the server
 
-- **Status:** In review (PR #91)
+- **Status:** Done (PR #91)
 - **Phase:** 7 - Hardening
 - **Depends on:** #12, #75, #83
 
