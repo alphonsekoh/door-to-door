@@ -30,8 +30,9 @@ auth:
   #   clientId: 1234567890-abcdef.apps.googleusercontent.com
 
 rateLimit:
-  # Sign-in attempts allowed per email within the window, before further
-  # attempts are refused. Whole number, at least 1. Default: 10.
+  # Failed sign-in attempts allowed per email within the window, before further
+  # attempts (even the correct password) are refused until it passes. A
+  # successful sign-in clears the count. Whole number, at least 1. Default: 10.
   signInAttempts: 10
 
   # Length of that window, in seconds. Whole number, at least 1. Default: 300.

@@ -119,7 +119,8 @@ Auth.js v5, JWT strategy (forced: the Credentials provider cannot use database
 sessions). The token carries identity; its role and deactivation claims are UI hints and
 are never used for authorization, which reads the database per request (also for admin
 pages, with `admin/layout.tsx` as a structural guard). Credentials use argon2id
-(`@node-rs/argon2`) with a decoy hash for unknown emails and a per-email rate limit.
+(`@node-rs/argon2`) with a decoy hash for unknown emails and a per-email rate limit
+on failed attempts (a success clears it; a spent budget refuses even the right password).
 Google SSO (#14) is not built.
 
 ## Client

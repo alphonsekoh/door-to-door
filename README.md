@@ -131,7 +131,7 @@ fall back to a default.
 | `database.url`                   | -       | Connection URL **without** username or password               |
 | `auth.trustHost`                 | `true`  | Trust the `Host` header from a reverse proxy                  |
 | `auth.google.clientId`           | unset   | Google SSO client ID (public). Omit to leave SSO off          |
-| `rateLimit.signInAttempts`       | `10`    | Sign-in attempts per email within the window                  |
+| `rateLimit.signInAttempts`       | `10`    | Failed sign-in attempts per email within the window           |
 | `rateLimit.signInWindowSeconds`  | `300`   | Length of that window                                         |
 | `sync.clockSkewToleranceSeconds` | `300`   | Tolerated difference between a phone's clock and the server's |
 
