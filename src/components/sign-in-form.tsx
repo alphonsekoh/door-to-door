@@ -1,8 +1,9 @@
 "use client";
 
 import { signIn } from "next-auth/react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, type ComponentProps } from "react";
+import { destinationAfterSignIn, goTo } from "@/lib/navigate";
 import { clearServiceWorkerCaches } from "@/lib/sw-client";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
@@ -26,7 +27,6 @@ export function validate(email: string, password: string): FieldErrors {
 }
 
 export function SignInForm() {
-  const router = useRouter();
   const params = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -45,9 +45,9 @@ export function SignInForm() {
     setFailure(null);
     setSubmitting(true);
     const result = await signIn("credentials", { email, password, redirect: false });
-    setSubmitting(false);
 
     if (result.error !== undefined) {
+      setSubmitting(false);
       // Never distinguish unknown email from wrong password.
       setFailure(GENERIC_FAILURE);
       return;
@@ -55,10 +55,13 @@ export function SignInForm() {
     /* A second member signing in on a shared phone must not read the first
        one's cached API answers. */
     await clearServiceWorkerCaches();
-    /* refresh before push: the router may hold responses fetched while this
-       visitor was signed out, and every one of them is a redirect back here. */
-    router.refresh();
-    router.push(params.get("callbackUrl") ?? "/");
+    /* A full load, not refresh() then push(): the router holds responses fetched
+       while signed out, each a redirect back here, and the refresh of /sign-in
+       could outlive the push. When that refetch failed (a dropped request, or
+       the next navigation aborting it) Next fell back to a hard load of
+       /sign-in, leaving a signed-in member looking at the sign-in form.
+       The button stays disabled until the page goes. */
+    goTo(destinationAfterSignIn(params.get("callbackUrl")));
   }
 
   return (

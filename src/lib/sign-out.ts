@@ -1,8 +1,5 @@
+import { goTo } from "@/lib/navigate";
 import { clearServiceWorkerCaches } from "@/lib/sw-client";
-
-function goTo(path: string): void {
-  window.location.assign(path);
-}
 
 /*
  * Leaving the app on a phone somebody else may pick up next.
