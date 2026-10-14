@@ -94,6 +94,12 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
 5. `withContract` parses the response; anything not in the contract fails in dev/test
    and is a logged `500` in production. Only the parsed value is sent.
 
+An unexpected error (not an `ApiError`) becomes a generic `500 internal_error`.
+`withContract` logs it as one line, `<operationId> failed: <summary>`, built by
+`summarizeError` (`src/server/logging/error-log.ts`): name, code and a redacted first
+line, never the cause chain or parameters. The log is throttled to one line per operation
+per 5 s burst. The sync catch uses the same helpers.
+
 ## Configuration
 
 - Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`).
@@ -191,5 +197,11 @@ another member's visit (D-21-5) has a team exception (D-74-22), not a way around
 - **Dev:** `docker compose up` → `db`, one-shot `migrate` (migrate + seed), `web`.
 - **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
   `node .next/standalone/server.js`.
+- **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
+  Next's separate module graphs share it; changing `database.url` needs a restart. Every
+  pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`
+  (`src/db/pool-errors.ts`). A dropped connection is logged once per burst and replaced
+  on the next query. The query in flight rejects, so the request is a `500` and never
+  crashes the process.
 - **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
   tests with coverage against Postgres, production build, E2E.

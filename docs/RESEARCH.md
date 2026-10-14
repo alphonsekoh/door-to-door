@@ -302,3 +302,22 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   is not a real keyboard, and real-device behaviour differs by browser and is unverified.
 - **Source:** observed during #74 PR 3 (`e2e/teams.spec.ts`)
 - **Used by:** D-74-47
+
+### R-38 · pg rejects queries on a dead connection, and pg-pool only listens on idle clients
+
+- **Finding:** (1) When a connected client's socket dies, `pg` schedules every queued and
+  active query to reject (`_errorAllQueries`, via `process.nextTick`) and then emits
+  `error` on the client. The rejection is scheduled first, so it happens even if the emit
+  throws because nothing listens. (2) `pg-pool` attaches its idle listener inside the
+  `connect` callback, removes it when a client is checked out and re-adds it on release.
+  So an error on a checked-out client reaches only listeners on the client itself. The
+  idle listener removes the client from the pool and re-emits on the pool. (3) The pool
+  emits `connect` only for a newly connected client (`isNew`), not on reuse. (4) An error
+  while connecting goes to the connect callback, so it rejects the connect or query
+  rather than emitting `error` on the pool. Read in `node_modules` (pg 8.23.0, pg-pool
+  3.14.0) and exercised by `src/db/pool-errors.integration.test.ts`.
+- **Source:** `node_modules/pg/lib/client.js` lines 133-137 (`_errorAllQueries`),
+  202-222 (socket `end`), 402-423 (`_handleErrorWhileConnecting`, `_handleErrorEvent`);
+  `node_modules/pg-pool/index.js` lines 51-63 (`makeIdleListener`), 266-283 (connect
+  callback), 335-344 (`_acquireClient`), 384-385 (`_release`); #87
+- **Used by:** D-87-1, D-87-2
