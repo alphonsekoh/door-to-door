@@ -9,15 +9,22 @@ function entry(overrides: {
   name?: string | null;
   description?: string;
   member?: string | null;
+  team?: HistoryEntry["visit"]["team"];
 }): HistoryEntry {
-  const { unitNumber = "#05-123", name = null, description = "", member = "Alice" } = overrides;
+  const {
+    unitNumber = "#05-123",
+    name = null,
+    description = "",
+    member = "Alice",
+    team = null,
+  } = overrides;
   return {
     visit: {
       id: "v1",
       householdId: "h1",
       sessionId: "s1",
       member: { id: "u1", name: member, image: null },
-      team: null,
+      team,
       interestLevel: "high",
       description,
       clientCreatedAt: AT,
@@ -70,6 +77,7 @@ describe("escapeCell", () => {
     expect(escapeCell("+44 7700")).toBe('"\'+44 7700"');
     expect(escapeCell("-5")).toBe('"\'-5"');
     expect(escapeCell("@handle")).toBe('"\'@handle"');
+    expect(escapeCell("\tcmd")).toBe('"\'\tcmd"');
   });
 });
 
@@ -116,4 +124,43 @@ describe("historyToCsv", () => {
     const row = historyToCsv([entry({ name: null, member: null })]).split("\r\n")[1] ?? "";
     expect(row).not.toContain("null");
   });
+
+  it("names the team and the teammates who were on it", () => {
+    const team = {
+      id: "t1",
+      name: "North pair",
+      members: [
+        { id: "u2", name: "Ben Lim", image: null },
+        { id: "u3", name: null, image: null },
+      ],
+    };
+    const [header, row] = historyToCsv([entry({ team })]).split("\r\n");
+    expect(header).toContain("Recorded by,Team,Teammates,Outing");
+    expect(row).toContain("Alice,North pair,Ben Lim; Someone,March outing");
+  });
+
+  it("leaves the team cells empty for a record made without a team", () => {
+    const row = historyToCsv([entry({})]).split("\r\n")[1] ?? "";
+    expect(row).toContain("Alice,,,March outing");
+  });
+
+  /* Team and member names are free text anyone on the team can type. */
+  it.each(["=HYPERLINK(1)", "+1", "-1", "@SUM(A1)", "\tx"])(
+    "defuses a team name starting %j",
+    (risky) => {
+      const team = { id: "t1", name: risky, members: [] };
+      const row = historyToCsv([entry({ team })]).split("\r\n")[1] ?? "";
+      expect(row).toContain(`Alice,"'${risky}",,March outing`);
+    },
+  );
+
+  /* A tab cannot lead a teammate cell: display names are trimmed first. */
+  it.each(["=HYPERLINK(1)", "+1", "-1", "@SUM(A1)"])(
+    "defuses a teammate name starting %j",
+    (risky) => {
+      const team = { id: "t1", name: "North", members: [{ id: "u2", name: risky, image: null }] };
+      const row = historyToCsv([entry({ team })]).split("\r\n")[1] ?? "";
+      expect(row).toContain(`Alice,North,"'${risky}",March outing`);
+    },
+  );
 });

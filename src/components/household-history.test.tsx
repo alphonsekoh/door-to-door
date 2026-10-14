@@ -149,7 +149,29 @@ describe("previous visits", () => {
         history={history({ visits: [visit({ member: { id: "u9", name: null, image: null } })] })}
       />,
     );
-    expect(screen.getByText(/a member/)).toBeInTheDocument();
+    expect(screen.getByText("Someone")).toBeInTheDocument();
+  });
+
+  it("names the teammates who were there and the team, on each visit", () => {
+    const teamed = visit({
+      id: "v2",
+      member: { id: "u1", name: "Alice Tan", image: null },
+      team: {
+        id: "t1",
+        name: "Alice & Ben",
+        members: [
+          { id: "u2", name: "Ben Lim", image: null },
+          { id: "u3", name: "Chris Ong", image: null },
+        ],
+      },
+    });
+    render(<HouseholdHistoryPanel history={history({ visits: [visit(), teamed] })} />);
+    const [solo, paired] = within(screen.getByRole("list")).getAllByRole("listitem");
+    if (solo === undefined || paired === undefined) throw new Error("expected two visits");
+    expect(within(solo).getByText("Alice")).toBeInTheDocument();
+    expect(within(solo).queryByText(/Team:/)).not.toBeInTheDocument();
+    expect(within(paired).getByText("Alice Tan with Ben Lim, Chris Ong")).toBeInTheDocument();
+    expect(within(paired).getByText("Team: Alice & Ben")).toBeInTheDocument();
   });
 
   it("omits an empty description rather than leaving a gap", () => {

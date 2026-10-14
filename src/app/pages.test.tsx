@@ -93,7 +93,7 @@ describe("history screens", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(screen.getByRole("heading", { level: 1, name: "Your records" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Outing records" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 

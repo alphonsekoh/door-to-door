@@ -1,4 +1,9 @@
-import type { InterestBreakdown, InterestLevel } from "@/generated/types.gen";
+import type {
+  HistoryEntry,
+  HouseholdSummary,
+  InterestBreakdown,
+  InterestLevel,
+} from "@/generated/types.gen";
 
 /*
  * Shaping a member's own history for reading.
@@ -43,4 +48,18 @@ export function isSameDay(a: string, b: string): boolean {
     left.getMonth() === right.getMonth() &&
     left.getDate() === right.getDate()
   );
+}
+
+/*
+ * The amend sheet patches "the household's latest visit", and from a history
+ * row the record in hand is that visit - so it is handed the same shape the
+ * block list gives it rather than growing a second way in.
+ */
+export function asHouseholdSummary(entry: HistoryEntry): HouseholdSummary {
+  return {
+    household: entry.household,
+    visitCount: 1,
+    latestVisit: entry.visit,
+    outstandingFollowUps: 0,
+  };
 }

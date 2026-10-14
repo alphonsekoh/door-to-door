@@ -55,7 +55,7 @@ test("what the member recorded is on their own history", async ({ memberPage }) 
   await expect(outing).toBeVisible();
   await outing.click();
 
-  await expect(memberPage.getByRole("heading", { level: 1, name: "Your records" })).toBeVisible();
+  await expect(memberPage.getByRole("heading", { level: 1, name: "Outing records" })).toBeVisible();
   await expect(memberPage.getByRole("link", { name: new RegExp(UNIT) })).toBeVisible();
 });
 

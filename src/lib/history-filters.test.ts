@@ -62,13 +62,14 @@ describe("parseHistoryFilters", () => {
   it("reads every filter from the URL", () => {
     const parsed = parseHistoryFilters(
       new URLSearchParams(
-        "blockId=b1&sessionId=s1&memberId=u1&interestLevel=high&religion=buddhist&from=2026-03-01&to=2026-03-31&q=tan",
+        "blockId=b1&sessionId=s1&memberId=u1&teamId=0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b&interestLevel=high&religion=buddhist&from=2026-03-01&to=2026-03-31&q=tan",
       ),
     );
     expect(parsed).toEqual({
       blockId: "b1",
       sessionId: "s1",
       memberId: "u1",
+      teamId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
       interestLevel: "high",
       religion: "buddhist",
       from: "2026-03-01",
@@ -87,6 +88,16 @@ describe("parseHistoryFilters", () => {
     );
     expect(parsed.interestLevel).toBe("");
     expect(parsed.religion).toBe("");
+  });
+
+  it("keeps a team only inside its outing, and only a well-formed id", () => {
+    const team = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+    expect(parseHistoryFilters(new URLSearchParams(`sessionId=s1&teamId=${team}`)).teamId).toBe(
+      team,
+    );
+    // Two outings can each have an "Ann & Ben"; a team without its outing is dropped.
+    expect(parseHistoryFilters(new URLSearchParams(`teamId=${team}`)).teamId).toBe("");
+    expect(parseHistoryFilters(new URLSearchParams("sessionId=s1&teamId=north")).teamId).toBe("");
   });
 
   it("drops a date that is not a date", () => {
@@ -111,6 +122,7 @@ describe("toHistorySearch", () => {
       blockId: "b1",
       sessionId: "s1",
       memberId: "u1",
+      teamId: "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
       interestLevel: "medium",
       religion: "christian",
       from: "2026-03-01",
@@ -130,10 +142,18 @@ describe("toHistoryRequest", () => {
 
   it("passes the filters the API understands", () => {
     const query = toHistoryRequest(
-      filters({ blockId: "b1", sessionId: "s1", memberId: "u1", interestLevel: "high" }),
+      filters({
+        blockId: "b1",
+        sessionId: "s1",
+        memberId: "u1",
+        teamId: "t1",
+        interestLevel: "high",
+      }),
       { limit: 50, offset: 50 },
     );
-    expect(query).toBe("limit=50&offset=50&blockId=b1&sessionId=s1&memberId=u1&interestLevel=high");
+    expect(query).toBe(
+      "limit=50&offset=50&blockId=b1&sessionId=s1&memberId=u1&teamId=t1&interestLevel=high",
+    );
   });
 
   it("turns a day into an instant at each end", () => {

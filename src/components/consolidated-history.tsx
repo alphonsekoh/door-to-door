@@ -2,24 +2,27 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
+import { VisitByline } from "@/components/visit-byline";
 import type {
   Block,
   BlockList,
   HistoryEntry,
   HistoryList,
-  HouseholdSummary,
   InterestLevel,
   OutingSession,
   Religion,
   SessionList,
+  Team,
+  TeamList,
   User,
   UserList,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
+import { asHouseholdSummary } from "@/lib/history";
 import {
   groupByHousehold,
   hasHistoryFilter,
@@ -56,15 +59,6 @@ type State =
   | { status: "ready"; entries: HistoryEntry[]; total: number }
   | { status: "error"; message: string };
 
-function asSummary(entry: HistoryEntry): HouseholdSummary {
-  return {
-    household: entry.household,
-    visitCount: 1,
-    latestVisit: entry.visit,
-    outstandingFollowUps: 0,
-  };
-}
-
 export function ConsolidatedHistory() {
   const router = useRouter();
   const params = useSearchParams();
@@ -75,6 +69,9 @@ export function ConsolidatedHistory() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  /* Switching outings quickly must not leave the previous outing's teams. */
+  const teamsGeneration = useRef(0);
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -127,8 +124,35 @@ export function ConsolidatedHistory() {
     };
   }, [load, loadPickers, search]);
 
+  /* Teams belong to one outing, so they are listed only once one is chosen,
+     and a failure just leaves the picker empty. */
+  const outing = filters.sessionId;
+  useEffect(() => {
+    const mine = ++teamsGeneration.current;
+    const timer = setTimeout(() => {
+      if (outing === "") {
+        setTeams([]);
+        return;
+      }
+      apiFetch<TeamList>(`/sessions/${outing}/teams`).then(
+        (list) => {
+          if (mine === teamsGeneration.current) setTeams(list.data);
+        },
+        () => {
+          if (mine === teamsGeneration.current) setTeams([]);
+        },
+      );
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      teamsGeneration.current += 1;
+    };
+  }, [outing]);
+
   function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
-    const next = toHistorySearch({ ...filters, [key]: value });
+    /* A team from the old outing means nothing in the new one. */
+    const reset = key === "sessionId" ? { teamId: "" } : {};
+    const next = toHistorySearch({ ...filters, ...reset, [key]: value });
     router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
   }
 
@@ -258,6 +282,29 @@ export function ConsolidatedHistory() {
               ))}
             </select>
           </div>
+
+          {filters.sessionId === "" ? null : (
+            <div>
+              <label htmlFor="history-team" className="sr-only">
+                Filter by team
+              </label>
+              <select
+                id="history-team"
+                value={filters.teamId}
+                onChange={(event) => {
+                  setFilter("teamId", event.target.value);
+                }}
+                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              >
+                <option value="">Any team</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label htmlFor="history-member" className="sr-only">
@@ -429,8 +476,9 @@ export function ConsolidatedHistory() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-caption text-foreground-muted">
                             {new Date(entry.visit.createdAt).toLocaleDateString()} ·{" "}
-                            {entry.session.title} · {entry.visit.member.name ?? "a member"}
+                            {entry.session.title}
                           </span>
+                          <VisitByline visit={entry.visit} prefix="By " />
                           {entry.visit.description === "" ? null : (
                             <span className="block truncate text-caption">
                               {entry.visit.description}
@@ -464,7 +512,7 @@ export function ConsolidatedHistory() {
 
       {amending === null ? null : (
         <AmendVisitSheet
-          entry={asSummary(amending)}
+          entry={asHouseholdSummary(amending)}
           onClose={() => {
             setAmending(null);
           }}

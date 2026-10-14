@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionRecords } from "@/components/session-records";
@@ -11,6 +11,26 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+const { replace, searchParams } = vi.hoisted(() => ({
+  replace: vi.fn(),
+  searchParams: { value: new URLSearchParams() },
+}));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace }),
+  useSearchParams: () => searchParams.value,
+}));
+
+vi.mock("@/lib/use-role", () => ({
+  useRole: () => ({
+    userId: "u1",
+    role: "member",
+    isAdmin: false,
+    isMember: true,
+    isLoading: false,
+    isSignedIn: true,
+  }),
+}));
+
 const AT = "2026-03-14T11:00:00.000Z";
 
 function entry(
@@ -21,6 +41,9 @@ function entry(
     interestLevel?: InterestLevel;
     name?: string | null;
     description?: string;
+    author?: { id: string; name: string | null };
+    team?: HistoryEntry["visit"]["team"];
+    status?: "active" | "ended";
   } = {},
 ): HistoryEntry {
   const {
@@ -29,14 +52,17 @@ function entry(
     interestLevel = "low",
     name = null,
     description = "",
+    author = { id: "u1", name: "Alice" },
+    team = null,
+    status = "ended",
   } = options;
   return {
     visit: {
       id: `v-${unitNumber}`,
       householdId: `h-${unitNumber}`,
       sessionId: "s1",
-      member: { id: "u1", name: "Alice", image: null },
-      team: null,
+      member: { ...author, image: null },
+      team,
       interestLevel,
       description,
       clientCreatedAt: AT,
@@ -57,7 +83,7 @@ function entry(
     session: {
       id: "s1",
       title: "March outing",
-      status: "ended",
+      status,
       startedAt: null,
       endedAt: null,
       createdBy: { id: "admin", name: "Admin", image: null },
@@ -73,6 +99,7 @@ const page = (rows: HistoryEntry[], total = rows.length) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  searchParams.value = new URLSearchParams();
 });
 
 describe("SessionRecords", () => {
@@ -90,7 +117,7 @@ describe("SessionRecords", () => {
     render(<SessionRecords sessionId="s1" />);
 
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/history/mine?sessionId=s1&limit=50");
+      expect(apiFetch).toHaveBeenCalledWith("/history/mine?limit=50&offset=0&sessionId=s1");
     });
   });
 
@@ -148,7 +175,9 @@ describe("SessionRecords", () => {
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/history/mine?sessionId=s1&limit=50&blockId=b1");
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history/mine?limit=50&offset=0&sessionId=s1&blockId=b1",
+      );
     });
   });
 
@@ -161,7 +190,7 @@ describe("SessionRecords", () => {
     await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        "/history/mine?sessionId=s1&limit=50&interestLevel=high",
+        "/history/mine?limit=50&offset=0&sessionId=s1&interestLevel=high",
       );
     });
   });
@@ -210,5 +239,165 @@ describe("SessionRecords", () => {
     apiFetch.mockRejectedValue("boom");
     render(<SessionRecords sessionId="s1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load these records.");
+  });
+});
+
+const BEN = { id: "u2", name: "Ben Lim" };
+const PAIR = { id: "t1", name: "Alice & Ben", members: [{ id: "u1", name: "Alice", image: null }] };
+
+describe("Me or My team", () => {
+  it("starts on Me and asks for own records only", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+    expect(await screen.findByRole("button", { name: "Me" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("includeTeam"));
+  });
+
+  it("asks for team records when the URL says so, and says what that adds", async () => {
+    searchParams.value = new URLSearchParams("view=team");
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history/mine?limit=50&offset=0&includeTeam=true&sessionId=s1",
+      );
+    });
+    expect(screen.getByRole("button", { name: "My team" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText(/teams you are on now/)).toBeInTheDocument();
+    expect(screen.getByText(/waiting on a teammate's phone/)).toBeInTheDocument();
+  });
+
+  it("reads anything but the known value as Me", async () => {
+    searchParams.value = new URLSearchParams("view=everyone");
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("Nothing here matches those filters.");
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("includeTeam"));
+  });
+
+  it("writes the choice to the URL so it survives navigation", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+
+    await user.click(await screen.findByRole("button", { name: "My team" }));
+    expect(replace).toHaveBeenCalledWith("/history/s1?view=team");
+    await user.click(screen.getByRole("button", { name: "Me" }));
+    expect(replace).toHaveBeenCalledTimes(1);
+  });
+
+  it("goes back to Me from the team view", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams("view=team");
+    apiFetch.mockResolvedValue(page([]));
+    render(<SessionRecords sessionId="s1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Me" }));
+    expect(replace).toHaveBeenCalledWith("/history/s1");
+  });
+
+  it("names the author and teammates on a teammate's row and lets it be amended", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams("view=team");
+    apiFetch.mockResolvedValue(
+      page([entry("#05-123", { author: BEN, team: PAIR, status: "active" })]),
+    );
+    render(<SessionRecords sessionId="s1" />);
+
+    expect(await screen.findByText("By Ben Lim with Alice")).toBeInTheDocument();
+    expect(screen.getByText("Team: Alice & Ben")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Amend #05-123" }));
+    const sheet = screen.getByRole("dialog", { name: "Amend #05-123" });
+    expect(within(sheet).getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("reloads after an amendment is saved", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([entry("#05-123", { status: "active" })]));
+    render(<SessionRecords sessionId="s1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Amend #05-123" }));
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    const before = apiFetch.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => {
+      expect(apiFetch.mock.calls.length).toBeGreaterThan(before + 1);
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("does not offer Amend on an outing that has ended", async () => {
+    apiFetch.mockResolvedValue(page([entry("#05-123")]));
+    render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("#05-123");
+    expect(screen.queryByRole("button", { name: /Amend/ })).not.toBeInTheDocument();
+  });
+
+  it("closes the amend sheet without reloading when cancelled", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([entry("#05-123", { status: "active" })]));
+    render(<SessionRecords sessionId="s1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Amend #05-123" }));
+    const calls = apiFetch.mock.calls.length;
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(apiFetch.mock.calls.length).toBe(calls);
+  });
+
+  it("drops an answer that arrives after a newer request", async () => {
+    const user = userEvent.setup();
+    const slow: { resolve: (value: unknown) => void } = { resolve: () => undefined };
+    apiFetch.mockResolvedValueOnce(page([entry("#05-123")]));
+    render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("#05-123");
+
+    apiFetch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          slow.resolve = resolve;
+        }),
+    );
+    apiFetch.mockResolvedValueOnce(page([entry("#09-999")]));
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "low");
+    expect(await screen.findByText("#09-999")).toBeInTheDocument();
+
+    await act(async () => {
+      slow.resolve(page([entry("#01-001")]));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText("#01-001")).not.toBeInTheDocument();
+    expect(screen.getByText("#09-999")).toBeInTheDocument();
+  });
+
+  it("drops a failure that arrives after a newer request", async () => {
+    const user = userEvent.setup();
+    const slow: { reject: (error: unknown) => void } = { reject: () => undefined };
+    apiFetch.mockResolvedValueOnce(page([entry("#05-123")]));
+    render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("#05-123");
+
+    apiFetch.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          slow.reject = reject;
+        }),
+    );
+    apiFetch.mockResolvedValueOnce(page([entry("#09-999")]));
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "low");
+    expect(await screen.findByText("#09-999")).toBeInTheDocument();
+
+    await act(async () => {
+      slow.reject(new Error("late"));
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

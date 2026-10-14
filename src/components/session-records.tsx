@@ -1,10 +1,12 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
-import { InterestChip } from "@/components/interest-chip";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { OwnRecords, TEAM_VIEW_NOTE } from "@/components/own-records";
+import { ScopeToggle } from "@/components/scope-toggle";
 import type { Block, HistoryEntry, HistoryList, InterestLevel } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { ownHistoryRequest, parseScope, scopeHref, type RecordScope } from "@/lib/team-view";
 
 const PAGE_SIZE = 50;
 
@@ -31,22 +33,28 @@ function blocksIn(entries: HistoryEntry[]): Block[] {
 }
 
 export function SessionRecords({ sessionId }: { sessionId: string }) {
+  const router = useRouter();
+  const scope = parseScope(new URLSearchParams(useSearchParams().toString()));
   const [state, setState] = useState<State>({ status: "loading" });
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [blockId, setBlockId] = useState("");
   const [interestLevel, setInterestLevel] = useState<InterestLevel | "">("");
+  /* Filters and the toggle each refetch; on a slow line only the newest
+     answer may land. */
+  const generation = useRef(0);
 
   const load = useCallback(
-    async (filters: { blockId: string; interestLevel: string }) => {
-      const query = new URLSearchParams({
-        sessionId,
-        limit: String(PAGE_SIZE),
-      });
-      if (filters.blockId !== "") query.set("blockId", filters.blockId);
-      if (filters.interestLevel !== "") query.set("interestLevel", filters.interestLevel);
+    async (view: RecordScope, filters: { blockId: string; interestLevel: InterestLevel | "" }) => {
+      const mine = ++generation.current;
+      const query = ownHistoryRequest(
+        view,
+        { sessionId, ...filters },
+        { limit: PAGE_SIZE, offset: 0 },
+      );
 
       try {
-        const page = await apiFetch<HistoryList>(`/history/mine?${query.toString()}`);
+        const page = await apiFetch<HistoryList>(`/history/mine?${query}`);
+        if (mine !== generation.current) return;
         setState({ status: "ready", entries: page.data, total: page.pagination.total });
         /* Only an unfiltered load can see every block; a filtered one would
            narrow the picker to whatever is already selected. */
@@ -54,6 +62,7 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
           setBlocks(blocksIn(page.data));
         }
       } catch (error) {
+        if (mine !== generation.current) return;
         setState({
           status: "error",
           message: error instanceof Error ? error.message : "Could not load these records.",
@@ -64,24 +73,43 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => void load({ blockId, interestLevel }), 0);
+    const timer = setTimeout(() => void load(scope, { blockId, interestLevel }), 0);
     return () => {
       clearTimeout(timer);
+      generation.current += 1;
     };
-  }, [load, blockId, interestLevel]);
+  }, [load, scope, blockId, interestLevel]);
+
+  /* In the URL, so the choice survives opening a unit and coming back. */
+  const toggle = (
+    <ScopeToggle
+      scope={scope}
+      onChange={(next) => {
+        router.replace(scopeHref(`/history/${sessionId}`, next));
+      }}
+    />
+  );
 
   if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
+    return (
+      <div className="space-y-4">
+        {toggle}
+        <p className="text-body text-foreground-muted">Loading…</p>
+      </div>
+    );
   }
 
   if (state.status === "error") {
     return (
-      <p
-        role="alert"
-        className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-body"
-      >
-        {state.message}
-      </p>
+      <div className="space-y-4">
+        {toggle}
+        <p
+          role="alert"
+          className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-body"
+        >
+          {state.message}
+        </p>
+      </div>
     );
   }
 
@@ -89,6 +117,11 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-4">
+      {toggle}
+      {scope === "team" ? (
+        <p className="text-caption text-foreground-muted">{TEAM_VIEW_NOTE}</p>
+      ) : null}
+
       <div className="flex gap-2">
         <div className="flex-1">
           <label htmlFor="filter-block" className="sr-only">
@@ -138,32 +171,10 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
           Nothing here matches those filters.
         </p>
       ) : (
-        <ul className="overflow-hidden rounded-xl border border-border bg-surface">
-          {entries.map((entry) => (
-            <li key={entry.visit.id}>
-              <Link
-                href={`/households/${entry.household.id}`}
-                className="flex min-h-14 items-center gap-3 border-b border-border px-4 py-2 last:border-b-0"
-              >
-                <span className="min-w-0 flex-1">
-                  <span className="block text-body font-semibold tabular-nums">
-                    {entry.household.unitNumber}
-                  </span>
-                  <span className="block truncate text-caption text-foreground-muted">
-                    Blk {entry.block.name}
-                    {entry.household.name === null ? "" : ` · ${entry.household.name}`}
-                  </span>
-                  {entry.visit.description === "" ? null : (
-                    <span className="mt-0.5 block truncate text-caption text-foreground-muted">
-                      {entry.visit.description}
-                    </span>
-                  )}
-                </span>
-                <InterestChip level={entry.visit.interestLevel} />
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <OwnRecords
+          entries={entries}
+          onAmended={() => void load(scope, { blockId, interestLevel })}
+        />
       )}
 
       {total > entries.length ? (

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
 import { SessionRecords } from "@/components/session-records";
 
@@ -7,8 +8,14 @@ export default async function SessionHistoryPage({ params }: PageProps<"/history
   const { sessionId } = await params;
   return (
     <>
-      <PageHeader title="Your records" subtitle="Everything you recorded on this outing." />
-      <SessionRecords sessionId={sessionId} />
+      <PageHeader
+        title="Outing records"
+        subtitle="What you, or your team, recorded on this outing."
+      />
+      {/* useSearchParams (the Me / My team choice) needs a boundary. */}
+      <Suspense fallback={<p className="text-body text-foreground-muted">Loading…</p>}>
+        <SessionRecords sessionId={sessionId} />
+      </Suspense>
     </>
   );
 }

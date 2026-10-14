@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { ApiRequestError } from "@/lib/api-client";
 import {
+  adminCandidates,
   canChangeTeam,
+  describeAdminTeamFailure,
   defaultTeamName,
   describeTeamFailure,
   displayName,
@@ -10,6 +12,7 @@ import {
   hasJoined,
   isNetworkFailure,
   pickerCandidates,
+  suggestTeamName,
 } from "@/lib/team-ui";
 import { checkTeamName } from "@/lib/team-name";
 
@@ -127,5 +130,70 @@ describe("describeTeamFailure", () => {
 
   it("falls back for anything else", () => {
     expect(describeTeamFailure("boom").message).toMatch(/Could not change/);
+  });
+});
+
+describe("suggestTeamName", () => {
+  it("names one, two or more people by first name", () => {
+    expect(suggestTeamName(["Ann Tan"])).toBe("Ann");
+    expect(suggestTeamName(["Ann Tan", "Ben Lim"])).toBe("Ann & Ben");
+    expect(suggestTeamName(["Ann Tan", "Ben Lim", null])).toBe("Ann, Ben & Someone");
+  });
+
+  it("falls back to 'Team' when nobody is chosen", () => {
+    expect(suggestTeamName([])).toBe("Team");
+  });
+});
+
+describe("adminCandidates", () => {
+  const account = (id: string) => ({
+    id,
+    email: `${id}@t.local`,
+    name: id,
+    role: "member" as const,
+    deactivatedAt: null,
+    lastRecordedAt: null,
+    createdAt: "",
+  });
+
+  it("offers everyone not already on a team in this outing, the admin included", () => {
+    const teams = [{ id: "t1", sessionId: "s", name: "N", members: [user("ben")], createdAt: "" }];
+    const offered = adminCandidates([account("admin"), account("ben"), account("cy")], teams);
+    expect(offered.map((u) => u.id)).toEqual(["admin", "cy"]);
+  });
+});
+
+describe("describeAdminTeamFailure", () => {
+  it("says a team with records cannot be deleted, and what to do instead", () => {
+    expect(describeAdminTeamFailure(error(409, "conflict"), "delete").message).toBe(
+      "This team has records and cannot be removed; remove its members instead.",
+    );
+  });
+
+  it("never asks an admin's people to join first", () => {
+    const message = describeAdminTeamFailure(error(409, "conflict"), "add").message;
+    expect(message).toMatch(/already on a team/);
+    expect(message).not.toMatch(/joined/);
+  });
+
+  it.each([
+    [403, "forbidden", /Only an admin/],
+    [409, "session_not_active", /has ended/],
+    [404, "not_found", /no longer there/],
+    [400, "validation_failed", /not accepted/],
+    [500, "internal_error", /Could not change the team/],
+  ])("maps %s %s to admin wording", (status, code, text) => {
+    expect(describeAdminTeamFailure(error(status, code), "create").message).toMatch(text);
+  });
+
+  it("keeps the sign-in and connection wording of the member card", () => {
+    expect(describeAdminTeamFailure(error(403, "account_deactivated"), "rename")).toMatchObject({
+      auth: true,
+      message: "Your sign-in has ended. Sign in again.",
+    });
+    expect(describeAdminTeamFailure(new TypeError("x"), "remove")).toMatchObject({
+      network: true,
+      message: "Could not confirm. Refresh to see whether it went through.",
+    });
   });
 });

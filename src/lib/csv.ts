@@ -1,4 +1,5 @@
 import type { HistoryEntry } from "@/generated/types.gen";
+import { teamName, teammateNames } from "@/lib/team-label";
 
 /*
  * CSV for the export of a filtered history view.
@@ -33,6 +34,8 @@ const HEADERS = [
   "Interest",
   "Notes",
   "Recorded by",
+  "Team",
+  "Teammates",
   "Outing",
   "Recorded at",
 ];
@@ -48,6 +51,10 @@ export function historyToCsv(entries: HistoryEntry[]): string {
     entry.visit.interestLevel,
     entry.visit.description,
     entry.visit.member.name ?? "",
+    /* Team and member names are typed by people, so they go through the same
+       formula guard as everything else (D-30-4). */
+    teamName(entry.visit) ?? "",
+    teammateNames(entry.visit).join("; "),
     entry.session.title,
     entry.visit.createdAt,
   ]);

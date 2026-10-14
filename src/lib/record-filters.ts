@@ -12,6 +12,7 @@ import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 export type RecordFilters = {
   blockId: string;
   memberId: string;
+  teamId: string;
   interestLevel: InterestLevel | "";
   q: string;
 };
@@ -19,6 +20,7 @@ export type RecordFilters = {
 export const EMPTY_FILTERS: RecordFilters = {
   blockId: "",
   memberId: "",
+  teamId: "",
   interestLevel: "",
   q: "",
 };
@@ -29,10 +31,19 @@ function asInterestLevel(value: string | null): InterestLevel | "" {
   return LEVELS.find((level) => level === value) ?? "";
 }
 
+/* The API takes a uuid; anything else in an edited URL would come back a 400
+   and take the whole list with it. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function asUuid(value: string | null): string {
+  return value !== null && UUID.test(value) ? value : "";
+}
+
 export function parseFilters(params: URLSearchParams): RecordFilters {
   return {
     blockId: params.get("blockId") ?? "",
     memberId: params.get("memberId") ?? "",
+    teamId: asUuid(params.get("teamId")),
     interestLevel: asInterestLevel(params.get("interestLevel")),
     q: params.get("q") ?? "",
   };
@@ -43,6 +54,7 @@ export function toSearchParams(filters: RecordFilters): string {
   const params = new URLSearchParams();
   if (filters.blockId !== "") params.set("blockId", filters.blockId);
   if (filters.memberId !== "") params.set("memberId", filters.memberId);
+  if (filters.teamId !== "") params.set("teamId", filters.teamId);
   if (filters.interestLevel !== "") params.set("interestLevel", filters.interestLevel);
   if (filters.q.trim() !== "") params.set("q", filters.q.trim());
   return params.toString();
@@ -57,6 +69,7 @@ export function toHistoryQuery(filters: RecordFilters, sessionId: string, limit:
   const params = new URLSearchParams({ sessionId, limit: String(limit) });
   if (filters.blockId !== "") params.set("blockId", filters.blockId);
   if (filters.memberId !== "") params.set("memberId", filters.memberId);
+  if (filters.teamId !== "") params.set("teamId", filters.teamId);
   if (filters.interestLevel !== "") params.set("interestLevel", filters.interestLevel);
   return params.toString();
 }

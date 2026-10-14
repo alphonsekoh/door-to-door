@@ -5,16 +5,19 @@ import { useCallback, useEffect, useState } from "react";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
 import { RecordOnBehalfForm } from "@/components/record-on-behalf-form";
+import { VisitByline } from "@/components/visit-byline";
 import type {
   ActiveSession,
   HistoryEntry,
   HistoryList,
-  HouseholdSummary,
   InterestLevel,
+  Team,
+  TeamList,
   User,
   UserList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { asHouseholdSummary } from "@/lib/history";
 import {
   hasAnyFilter,
   matchesSearch,
@@ -37,21 +40,23 @@ const LEVELS: { value: InterestLevel; label: string }[] = [
 type State =
   | { status: "loading" }
   | { status: "none" }
-  | { status: "ready"; session: ActiveSession; entries: HistoryEntry[]; total: number }
+  | {
+      status: "ready";
+      session: ActiveSession;
+      teams: Team[];
+      entries: HistoryEntry[];
+      total: number;
+    }
   | { status: "error"; message: string };
 
-/*
- * An amendment patches the household's latest visit, and here the record in
- * hand is that visit - so the sheet is handed the same shape the block list
- * gives it rather than growing a second way in.
- */
-function asSummary(entry: HistoryEntry): HouseholdSummary {
-  return {
-    household: entry.household,
-    visitCount: 1,
-    latestVisit: entry.visit,
-    outstandingFollowUps: 0,
-  };
+/* The team picker is a convenience; failing to list teams must not take the
+   records with it. */
+async function teamsOf(sessionId: string): Promise<Team[]> {
+  try {
+    return (await apiFetch<TeamList>(`/sessions/${sessionId}/teams`)).data;
+  } catch {
+    return [];
+  }
 }
 
 export function AdminRecords() {
@@ -67,10 +72,17 @@ export function AdminRecords() {
   const load = useCallback(async (current: RecordFilters) => {
     try {
       const session = await apiFetch<ActiveSession>("/sessions/active");
-      const page = await apiFetch<HistoryList>(
-        `/history?${toHistoryQuery(current, session.session.id, PAGE_SIZE)}`,
-      );
-      setState({ status: "ready", session, entries: page.data, total: page.pagination.total });
+      const [page, teams] = await Promise.all([
+        apiFetch<HistoryList>(`/history?${toHistoryQuery(current, session.session.id, PAGE_SIZE)}`),
+        teamsOf(session.session.id),
+      ]);
+      setState({
+        status: "ready",
+        session,
+        teams,
+        entries: page.data,
+        total: page.pagination.total,
+      });
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) {
         // No outing is running: an ordinary state, not a failure.
@@ -147,7 +159,7 @@ export function AdminRecords() {
     );
   }
 
-  const { session, entries, total } = state;
+  const { session, teams, entries, total } = state;
   const visible = entries.filter((entry) => matchesSearch(entry, filters.q));
   const blocks = session.blocks.map((entry) => entry.block);
 
@@ -183,7 +195,7 @@ export function AdminRecords() {
           />
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <div className="flex-1">
             <label htmlFor="records-block" className="sr-only">
               Filter by block
@@ -221,6 +233,27 @@ export function AdminRecords() {
               {members.map((member) => (
                 <option key={member.id} value={member.id}>
                   {member.name ?? member.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label htmlFor="records-team" className="sr-only">
+              Filter by team
+            </label>
+            <select
+              id="records-team"
+              value={filters.teamId}
+              onChange={(event) => {
+                setFilter("teamId", event.target.value);
+              }}
+              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            >
+              <option value="">Any team</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
                 </option>
               ))}
             </select>
@@ -283,9 +316,10 @@ export function AdminRecords() {
                     {entry.household.unitNumber}
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
-                    Blk {entry.block.name} · {entry.visit.member.name ?? "a member"}
+                    Blk {entry.block.name}
                     {entry.household.name === null ? "" : ` · ${entry.household.name}`}
                   </span>
+                  <VisitByline visit={entry.visit} prefix="By " />
                   {entry.visit.description === "" ? null : (
                     <span className="mt-0.5 block truncate text-caption text-foreground-muted">
                       {entry.visit.description}
@@ -307,7 +341,7 @@ export function AdminRecords() {
 
       {amending === null ? null : (
         <AmendVisitSheet
-          entry={asSummary(amending)}
+          entry={asHouseholdSummary(amending)}
           onClose={() => {
             setAmending(null);
           }}

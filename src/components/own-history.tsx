@@ -1,14 +1,18 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { OutstandingFollowUps } from "@/components/outstanding-follow-ups";
+import { ScopeToggle } from "@/components/scope-toggle";
 import { SessionHistoryCard } from "@/components/session-history-card";
+import { TeamRecords } from "@/components/team-records";
 import type {
   FollowUpList,
   SessionHistoryList,
   SessionHistorySummary,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { parseScope, scopeHref } from "@/lib/team-view";
 import { useRole } from "@/lib/use-role";
 
 /* Small enough to stay quick on a phone, large enough that most members never
@@ -20,7 +24,33 @@ type State =
   | { status: "ready"; sessions: SessionHistorySummary[]; total: number }
   | { status: "error"; message: string };
 
+/*
+ * "Me" is the outing list, counted from the member's own records only
+ * (D-27-1). "My team" is a flat list of records including those made by teams
+ * the member is on now: the outing counts never change with it, so the two
+ * are not mixed on one screen.
+ */
 export function OwnHistoryScreen() {
+  const router = useRouter();
+  const scope = parseScope(new URLSearchParams(useSearchParams().toString()));
+  const toggle = (
+    <ScopeToggle
+      scope={scope}
+      onChange={(next) => {
+        router.replace(scopeHref("/history", next));
+      }}
+    />
+  );
+
+  return (
+    <div className="space-y-4">
+      {toggle}
+      {scope === "team" ? <TeamRecords /> : <OwnOutings />}
+    </div>
+  );
+}
+
+function OwnOutings() {
   const { userId } = useRole();
   const [state, setState] = useState<State>({ status: "loading" });
   const [notes, setNotes] = useState<FollowUpList["data"]>([]);

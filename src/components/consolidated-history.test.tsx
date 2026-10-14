@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsolidatedHistory } from "@/components/consolidated-history";
@@ -41,6 +41,7 @@ function entry(
     interestLevel?: InterestLevel;
     sessionTitle?: string;
     description?: string;
+    team?: HistoryEntry["visit"]["team"];
   } = {},
 ): HistoryEntry {
   const {
@@ -49,6 +50,7 @@ function entry(
     interestLevel = "low",
     sessionTitle = "March outing",
     description = "",
+    team = null,
   } = options;
   return {
     visit: {
@@ -56,7 +58,7 @@ function entry(
       householdId,
       sessionId: "s1",
       member: { id: "u1", name: "Alice", image: null },
-      team: null,
+      team,
       interestLevel,
       description,
       clientCreatedAt: createdAt,
@@ -130,8 +132,14 @@ const pickers = {
   },
 };
 
+const TEAM_ID = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+const teamsOf = (sessionId: string, name: string) => ({
+  data: [{ id: TEAM_ID, sessionId, name, members: [], createdAt: AT }],
+});
+
 function serve(entries: HistoryEntry[], total = entries.length) {
   apiFetch.mockImplementation((path: string) => {
+    if (path === "/sessions/s1/teams") return Promise.resolve(teamsOf("s1", "Alice & Ben"));
     if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
     if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
     if (path.startsWith("/users")) return Promise.resolve(pickers.users);
@@ -448,5 +456,154 @@ describe("ConsolidatedHistory", () => {
     apiFetch.mockRejectedValue("boom");
     render(<ConsolidatedHistory />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the records.");
+  });
+});
+
+describe("teams", () => {
+  const PAIR = {
+    id: TEAM_ID,
+    name: "Alice & Ben",
+    members: [{ id: "u2", name: "Ben Lim", image: null }],
+  };
+
+  it("names the author, teammates and team on every visit", async () => {
+    serve([entry("h1", { team: PAIR })]);
+    render(<ConsolidatedHistory />);
+
+    const row = await card("Blk 123, #05-123");
+    expect(within(row).getByText("By Alice with Ben Lim")).toBeInTheDocument();
+    expect(within(row).getByText("Team: Alice & Ben")).toBeInTheDocument();
+  });
+
+  it("offers no team filter until an outing is chosen", async () => {
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await card("Blk 123, #05-123");
+
+    expect(screen.queryByLabelText("Filter by team")).not.toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("/teams"));
+  });
+
+  it("lists the chosen outing's teams and writes the choice to the URL", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams("sessionId=s1");
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+
+    const picker = await screen.findByLabelText("Filter by team");
+    await waitFor(() => {
+      expect(within(picker).getByRole("option", { name: "Alice & Ben" })).toBeInTheDocument();
+    });
+    await user.selectOptions(picker, TEAM_ID);
+    expect(replace).toHaveBeenCalledWith(`/admin/history?sessionId=s1&teamId=${TEAM_ID}`);
+  });
+
+  it("asks the server for that team's records", async () => {
+    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    serve([]);
+    render(<ConsolidatedHistory />);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        `/history?limit=100&offset=0&sessionId=s1&teamId=${TEAM_ID}`,
+      );
+    });
+  });
+
+  it("forgets the team when the outing changes", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await card("Blk 123, #05-123");
+
+    await user.selectOptions(screen.getByLabelText("Filter by outing"), "");
+    expect(replace).toHaveBeenCalledWith("/admin/history");
+  });
+
+  it("leaves the team picker empty when the teams cannot be listed", async () => {
+    searchParams.value = new URLSearchParams("sessionId=s1");
+    apiFetch.mockImplementation((path: string) => {
+      if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
+      if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+      if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+      if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+      return Promise.resolve({
+        data: [entry("h1")],
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+      });
+    });
+    render(<ConsolidatedHistory />);
+    await card("Blk 123, #05-123");
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    expect(screen.getByLabelText("Filter by team").querySelectorAll("option")).toHaveLength(1);
+  });
+
+  it("never shows a previous outing's teams after a quick switch", async () => {
+    const late: { s1: (value: unknown) => void; fail: (error: unknown) => void } = {
+      s1: () => undefined,
+      fail: () => undefined,
+    };
+    searchParams.value = new URLSearchParams("sessionId=s1");
+    apiFetch.mockImplementation((path: string) => {
+      if (path === "/sessions/s1/teams") {
+        return new Promise((resolve) => {
+          late.s1 = resolve;
+        });
+      }
+      if (path === "/sessions/s2/teams") return Promise.resolve(teamsOf("s2", "Second pair"));
+      if (path === "/sessions/s3/teams") {
+        return new Promise((_resolve, reject) => {
+          late.fail = reject;
+        });
+      }
+      if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+      if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+      if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+      return Promise.resolve({
+        data: [entry("h1")],
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+      });
+    });
+    const { rerender } = render(<ConsolidatedHistory />);
+    await card("Blk 123, #05-123");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+
+    searchParams.value = new URLSearchParams("sessionId=s3");
+    rerender(<ConsolidatedHistory />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s3/teams");
+    });
+    searchParams.value = new URLSearchParams("sessionId=s2");
+    rerender(<ConsolidatedHistory />);
+    const picker = await screen.findByLabelText("Filter by team");
+    await waitFor(() => {
+      expect(within(picker).getByRole("option", { name: "Second pair" })).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      late.s1(teamsOf("s1", "Old pair"));
+      late.fail(new Error("late"));
+      await Promise.resolve();
+    });
+    expect(within(picker).queryByRole("option", { name: "Old pair" })).not.toBeInTheDocument();
+    expect(within(picker).getByRole("option", { name: "Second pair" })).toBeInTheDocument();
+  });
+
+  it("exports the team and teammates", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1", { team: PAIR })]);
+    render(<ConsolidatedHistory />);
+    await card("Blk 123, #05-123");
+
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
+    await waitFor(() => {
+      expect(csv).toContain("Alice,Alice & Ben,Ben Lim,March outing");
+    });
   });
 });

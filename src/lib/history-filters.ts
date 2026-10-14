@@ -1,4 +1,5 @@
 import type { HistoryEntry, InterestLevel, Religion } from "@/generated/types.gen";
+import { asUuid } from "@/lib/record-filters";
 
 /*
  * Filters for the admin's long-term history view, held in the URL.
@@ -12,6 +13,7 @@ export type HistoryFilters = {
   blockId: string;
   sessionId: string;
   memberId: string;
+  teamId: string;
   interestLevel: InterestLevel | "";
   religion: Religion | "";
   from: string;
@@ -23,6 +25,7 @@ export const EMPTY_HISTORY_FILTERS: HistoryFilters = {
   blockId: "",
   sessionId: "",
   memberId: "",
+  teamId: "",
   interestLevel: "",
   religion: "",
   from: "",
@@ -40,11 +43,18 @@ function asDate(value: string | null): string {
   return value !== null && DATE.test(value) ? value : "";
 }
 
+/*
+ * A team only means something inside its outing - two outings can each have
+ * an "Ann & Ben" - so the team filter is offered, and kept, only once an
+ * outing is chosen.
+ */
 export function parseHistoryFilters(params: URLSearchParams): HistoryFilters {
+  const sessionId = params.get("sessionId") ?? "";
   return {
     blockId: params.get("blockId") ?? "",
-    sessionId: params.get("sessionId") ?? "",
+    sessionId,
     memberId: params.get("memberId") ?? "",
+    teamId: sessionId === "" ? "" : asUuid(params.get("teamId")),
     interestLevel: LEVELS.find((level) => level === params.get("interestLevel")) ?? "",
     religion: RELIGIONS.find((religion) => religion === params.get("religion")) ?? "",
     from: asDate(params.get("from")),
@@ -59,6 +69,7 @@ export function toHistorySearch(filters: HistoryFilters): string {
     "blockId",
     "sessionId",
     "memberId",
+    "teamId",
     "interestLevel",
     "religion",
     "from",
@@ -82,7 +93,14 @@ export function toHistoryRequest(
     limit: String(page.limit),
     offset: String(page.offset),
   });
-  for (const key of ["blockId", "sessionId", "memberId", "interestLevel", "religion"] as const) {
+  for (const key of [
+    "blockId",
+    "sessionId",
+    "memberId",
+    "teamId",
+    "interestLevel",
+    "religion",
+  ] as const) {
     if (filters[key] !== "") params.set(key, filters[key]);
   }
   if (filters.from !== "") params.set("from", `${filters.from}T00:00:00.000Z`);

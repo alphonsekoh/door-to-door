@@ -16,6 +16,7 @@ const filters = (overrides: Partial<RecordFilters> = {}): RecordFilters => ({
 });
 
 const AT = "2026-03-14T11:00:00.000Z";
+const TEAM = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
 
 function entry(unitNumber: string, name: string | null = null, contact: string | null = null) {
   return {
@@ -58,7 +59,20 @@ describe("parseFilters", () => {
     const parsed = parseFilters(
       new URLSearchParams("blockId=b1&memberId=u1&interestLevel=high&q=tan"),
     );
-    expect(parsed).toEqual({ blockId: "b1", memberId: "u1", interestLevel: "high", q: "tan" });
+    expect(parsed).toEqual({
+      blockId: "b1",
+      memberId: "u1",
+      teamId: "",
+      interestLevel: "high",
+      q: "tan",
+    });
+  });
+
+  it("keeps a team id only when it is shaped like one", () => {
+    expect(parseFilters(new URLSearchParams(`teamId=${TEAM}`)).teamId).toBe(TEAM);
+    // An edited URL must not turn the whole list into a 400.
+    expect(parseFilters(new URLSearchParams("teamId=north-pair")).teamId).toBe("");
+    expect(parseFilters(new URLSearchParams(`teamId=${TEAM}x`)).teamId).toBe("");
   });
 
   it("returns empty filters for a bare URL", () => {
@@ -87,7 +101,13 @@ describe("toSearchParams", () => {
   });
 
   it("round-trips through parseFilters", () => {
-    const original = filters({ blockId: "b1", memberId: "u1", interestLevel: "high", q: "tan" });
+    const original = filters({
+      blockId: "b1",
+      memberId: "u1",
+      teamId: TEAM,
+      interestLevel: "high",
+      q: "tan",
+    });
     expect(parseFilters(new URLSearchParams(toSearchParams(original)))).toEqual(original);
   });
 
@@ -107,11 +127,13 @@ describe("toHistoryQuery", () => {
 
   it("passes the filters the API understands", () => {
     const query = toHistoryQuery(
-      filters({ blockId: "b1", memberId: "u1", interestLevel: "high" }),
+      filters({ blockId: "b1", memberId: "u1", teamId: TEAM, interestLevel: "high" }),
       "s1",
       100,
     );
-    expect(query).toBe("sessionId=s1&limit=100&blockId=b1&memberId=u1&interestLevel=high");
+    expect(query).toBe(
+      `sessionId=s1&limit=100&blockId=b1&memberId=u1&teamId=${TEAM}&interestLevel=high`,
+    );
   });
 
   it("keeps the search term out of the request", () => {

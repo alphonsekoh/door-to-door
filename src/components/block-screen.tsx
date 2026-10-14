@@ -3,14 +3,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { RecordVisitForm } from "@/components/record-visit-form";
 import { UnitList } from "@/components/unit-list";
-import type { ActiveSession, HouseholdList, HouseholdSummary } from "@/generated/types.gen";
+import type {
+  ActiveSession,
+  HouseholdList,
+  HouseholdSummary,
+  TeamList,
+} from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { findMyTeam } from "@/lib/team-ui";
+import { useRole } from "@/lib/use-role";
 
 type Tab = "record" | "units";
 
 export function BlockScreen({ blockId }: { blockId: string }) {
+  const { userId } = useRole();
   const [known, setKnown] = useState<HouseholdSummary[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("record");
 
@@ -33,13 +42,24 @@ export function BlockScreen({ blockId }: { blockId: string }) {
      is running only marks tonight's rows, so failing to learn it must not
      take the list down with it. */
   const loadSession = useCallback(async () => {
+    let active: ActiveSession;
     try {
-      const active = await apiFetch<ActiveSession>("/sessions/active");
+      active = await apiFetch<ActiveSession>("/sessions/active");
       setSessionId(active.session.id);
     } catch {
       setSessionId(null);
+      return;
     }
-  }, []);
+    /* Which team the viewer is on NOW decides whether a teammate's unit opens
+       for amending (D-74-17). Only an affordance: the server re-checks. */
+    try {
+      const teams = await apiFetch<TeamList>(`/sessions/${active.session.id}/teams`);
+      const mine = userId === undefined ? undefined : findMyTeam(teams.data, userId);
+      setTeamIds(mine === undefined ? [] : [mine.id]);
+    } catch {
+      setTeamIds([]);
+    }
+  }, [userId]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -106,7 +126,12 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
-          <UnitList units={known} sessionId={sessionId} onAmended={() => void load()} />
+          <UnitList
+            units={known}
+            sessionId={sessionId}
+            teamIds={teamIds}
+            onAmended={() => void load()}
+          />
         </div>
       )}
     </div>

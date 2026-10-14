@@ -30,6 +30,7 @@ describe("overlay stacking", () => {
     // A pattern that matches nothing would pass every assertion below.
     const found = sources().filter(({ text }) => new RegExp(OVERLAY.source).test(text));
     expect(found.map(({ file }) => file).sort()).toEqual([
+      "admin-team-sheet.tsx",
       "amend-visit-sheet.tsx",
       "block-attach-sheet.tsx",
       "confirm-dialog.tsx",
