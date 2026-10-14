@@ -60,8 +60,10 @@ function handleKey(layer: Layer, event: KeyboardEvent): void {
   if (layers.at(-1) !== layer) return;
 
   if (event.key === "Escape") {
-    // Escape that ends an IME composition belongs to the text field.
-    if (event.isComposing) return;
+    // Escape that ends an IME composition belongs to the text field. WebKit
+    // sends that keydown with isComposing false, flagged only by keyCode 229;
+    // keyCode is deprecated but has no replacement for this signal.
+    if (event.isComposing || Reflect.get(event, "keyCode") === 229) return;
     event.preventDefault();
     layer.close();
     return;

@@ -181,6 +181,18 @@ describe("useModal", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("leaves WebKit's composition-ending Escape to the text field", () => {
+    // Safari ends a composition with isComposing false and keyCode 229.
+    const onClose = vi.fn();
+    render(<Sheet label="Sheet" onClose={onClose} />);
+    fireEvent.keyDown(screen.getByRole("textbox"), {
+      key: "Escape",
+      keyCode: 229,
+      isComposing: false,
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("leaves other keys alone", () => {
     render(<Sheet label="Sheet" onClose={vi.fn()} />);
     const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
