@@ -9,9 +9,18 @@ import { useEffect, useRef, type RefObject } from "react";
  *
  * Open modals form a stack, so a confirm raised from a sheet owns the keyboard
  * until it closes and Escape only ever closes the top one.
+ *
+ * A blocking modal (no onClose) cannot be dismissed and stays on top of the
+ * stack: a sheet that opens while it is up goes in beneath it, so nothing the
+ * page does afterwards can take the keyboard away from it.
  */
 
-type Layer = { overlay: HTMLElement; panel: HTMLElement; close: () => void };
+type Layer = {
+  overlay: HTMLElement;
+  panel: HTMLElement;
+  close: () => void;
+  blocking: boolean;
+};
 
 const FOCUSABLE = [
   "a[href]",
@@ -85,9 +94,11 @@ function handleKey(layer: Layer, event: KeyboardEvent): void {
  * it takes focus on open unless `initialFocus` names a control, so a screen
  * reader announces the dialog's label first and a phone does not raise the
  * keyboard into a field nobody tapped.
+ *
+ * Pass `null` for `onClose` to make it blocking; that is decided when it opens.
  */
 export function useModal<Panel extends HTMLElement = HTMLDivElement>(
-  onClose: () => void,
+  onClose: (() => void) | null,
   initialFocus?: RefObject<HTMLElement | null>,
 ): { overlay: RefObject<HTMLDivElement | null>; panel: RefObject<Panel | null> } {
   const overlay = useRef<HTMLDivElement>(null);
@@ -108,8 +119,9 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
       overlay: overlayElement,
       panel: panelElement,
       close: () => {
-        close.current();
+        close.current?.();
       },
+      blocking: close.current === null,
     };
     const onKey = (event: KeyboardEvent) => {
       handleKey(layer, event);
@@ -119,10 +131,12 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
       lockedOverflow = document.body.style.overflow;
       document.body.style.overflow = "hidden";
     }
-    layers.push(layer);
+    const blocker = layers.findIndex((open) => open.blocking);
+    if (layer.blocking || blocker === -1) layers.push(layer);
+    else layers.splice(blocker, 0, layer);
     syncInert();
     document.addEventListener("keydown", onKey);
-    (initialFocus?.current ?? panelElement).focus();
+    if (layers.at(-1) === layer) (initialFocus?.current ?? panelElement).focus();
 
     return () => {
       document.removeEventListener("keydown", onKey);
@@ -130,7 +144,9 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
       layers.splice(layers.indexOf(layer), 1);
       syncInert();
       if (layers.length === 0) document.body.style.overflow = lockedOverflow;
-      if (trigger instanceof HTMLElement && trigger.isConnected) {
+      // Focus stays in a blocking modal when something beneath it closes.
+      const stillBlocked = layers.at(-1)?.blocking === true;
+      if (!stillBlocked && trigger instanceof HTMLElement && trigger.isConnected) {
         trigger.focus({ preventScroll: true });
       }
     };

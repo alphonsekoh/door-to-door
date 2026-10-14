@@ -283,6 +283,89 @@ describe("useModal", () => {
     expect(screen.getByText("Plain")).not.toHaveFocus();
   });
 
+  describe("a blocking modal", () => {
+    function Blocker() {
+      const action = useRef<HTMLButtonElement>(null);
+      const { overlay, panel } = useModal(null, action);
+      return (
+        <div ref={overlay}>
+          <div ref={panel} tabIndex={-1} role="alertdialog" aria-label="Blocked">
+            <button ref={action} type="button">
+              Leave
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    /* A sheet open beneath, the blocker raised over it, and a second sheet
+       the page can open afterwards, as an effect or a late response might. */
+    function Blocked({ blocked, late }: { blocked: boolean; late: boolean }) {
+      const onClose = vi.fn();
+      return (
+        <>
+          <main>
+            <button type="button">Behind</button>
+          </main>
+          <Sheet label="Under" onClose={onClose} />
+          {late ? <Sheet label="Late" onClose={onClose} /> : null}
+          {blocked ? <Blocker /> : null}
+        </>
+      );
+    }
+
+    it("ignores Escape, and has nothing else to close it with", async () => {
+      const user = userEvent.setup();
+      render(<Blocker />);
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("alertdialog", { name: "Blocked" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+    });
+
+    it("takes the keyboard from a sheet already open beneath it", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<Blocked blocked={false} late={false} />);
+      rerender(<Blocked blocked late={false} />);
+
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+      expect(screen.getByRole("button", { name: "Under first" }).closest("[inert]")).not.toBeNull();
+      await user.keyboard("{Escape}");
+      await user.tab();
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+    });
+
+    it("keeps a sheet opened after it beneath it, unfocused and inert", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<Blocked blocked late={false} />);
+      rerender(<Blocked blocked late />);
+
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+      expect(screen.getByRole("button", { name: "Late first" }).closest("[inert]")).not.toBeNull();
+      expect(screen.getByRole("button", { name: "Leave" }).closest("[inert]")).toBeNull();
+      await user.tab();
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+    });
+
+    it("keeps focus when a sheet beneath it closes", () => {
+      // Late opens from Under, so closing it would hand focus back there.
+      const { rerender } = render(<Blocked blocked={false} late={false} />);
+      rerender(<Blocked blocked={false} late />);
+      rerender(<Blocked blocked late />);
+      rerender(<Blocked blocked late={false} />);
+
+      expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
+      expect(screen.getByRole("button", { name: "Under first" }).closest("[inert]")).not.toBeNull();
+    });
+
+    it("hands the page back to the sheet beneath when it goes", () => {
+      const { rerender } = render(<Blocked blocked late={false} />);
+      rerender(<Blocked blocked={false} late={false} />);
+      // The sheet left open is the top now, so the page stays behind it.
+      expect(screen.getByRole("main")).toHaveAttribute("inert");
+      expect(screen.getByRole("button", { name: "Under first" }).closest("[inert]")).toBeNull();
+    });
+  });
+
   describe("with a confirm raised from a sheet", () => {
     async function openBoth() {
       const user = userEvent.setup();

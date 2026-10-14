@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { AuthFailure } from "@/lib/account-state";
 import { goTo } from "@/lib/navigate";
 import { signOutAndForget } from "@/lib/sign-out";
+import { useModal } from "@/lib/use-modal";
 import { hasUnsyncedItems } from "@/lib/sw-update";
 
 const COPY = {
@@ -29,31 +30,23 @@ const COPY = {
  * cookie a deleted account leaves behind.
  *
  * Opaque and above every sheet and dialog, so no stale form shows through.
+ * A blocking modal: Escape does nothing, and a sheet open underneath or opened
+ * later cannot take focus from it.
  */
 export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
   const copy = COPY[kind];
   const headingId = useId();
-  const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const { overlay, panel } = useModal(null, button);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [unsynced, setUnsynced] = useState(false);
 
+  /* The button was disabled while signing out, and a browser drops focus
+     from a disabled control; put it back for the retry. */
   useEffect(() => {
-    button.current?.focus();
-  }, []);
-
-  /* The shell makes the app inert, but a sheet portalled to the body sits
-     outside it and would still take focus behind this screen. */
-  useEffect(() => {
-    const others = [...document.body.children].filter(
-      (element) => !element.contains(root.current) && !element.hasAttribute("inert"),
-    );
-    for (const element of others) element.setAttribute("inert", "");
-    return () => {
-      for (const element of others) element.removeAttribute("inert");
-    };
-  }, []);
+    if (failed) button.current?.focus();
+  }, [failed]);
 
   /* #33: the queue will answer this for real. Its records stay on the phone
      through a sign-out, so the member is told rather than asked. */
@@ -74,13 +67,17 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
 
   return (
     <div
-      ref={root}
+      ref={overlay}
       className="fixed inset-0 z-70 overflow-y-auto bg-background pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby={headingId}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-screen-sm flex-col justify-center gap-4 px-6">
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        className="mx-auto flex min-h-full w-full max-w-screen-sm flex-col justify-center gap-4 px-6 focus:outline-none"
+      >
         <h1 id={headingId} className="text-title font-semibold">
           {copy.heading}
         </h1>

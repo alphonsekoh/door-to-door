@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthFailureScreen } from "@/components/auth-failure-screen";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
   signOut: vi.fn(),
@@ -101,21 +102,83 @@ describe("AuthFailureScreen", () => {
     expect(screen.queryByText(/kept on this phone/)).not.toBeInTheDocument();
   });
 
-  it("makes a sheet portalled to the body inert while it is up, and releases it after", () => {
-    const sheet = document.createElement("div");
-    const alreadyInert = document.createElement("div");
-    alreadyInert.setAttribute("inert", "");
-    document.body.append(sheet, alreadyInert);
+  it("cannot be dismissed with Escape", async () => {
+    const user = userEvent.setup();
+    render(<AuthFailureScreen kind="deactivated" />);
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog", { name: "Account deactivated" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+  });
 
-    const { unmount, container } = render(<AuthFailureScreen kind="deactivated" />);
-    expect(sheet).toHaveAttribute("inert");
-    expect(container).not.toHaveAttribute("inert");
+  it("puts focus back on the button after a refused sign-out", async () => {
+    const user = userEvent.setup();
+    let refuse: (reason: Error) => void = () => undefined;
+    signOutAndForget.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    render(<AuthFailureScreen kind="deactivated" />);
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    // jsdom keeps focus on a disabled control; a browser does not. Stand in
+    // for wherever the browser left it.
+    const elsewhere = document.createElement("input");
+    document.body.append(elsewhere);
+    act(() => {
+      elsewhere.focus();
+    });
 
-    unmount();
-    expect(sheet).not.toHaveAttribute("inert");
-    // Not ours to release.
-    expect(alreadyInert).toHaveAttribute("inert");
-    sheet.remove();
-    alreadyInert.remove();
+    await act(async () => {
+      refuse(new Error("Sign-out was refused: MissingCSRF"));
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+    elsewhere.remove();
+  });
+
+  describe("over a confirm dialog", () => {
+    function Page({ confirm, failed }: { confirm: boolean; failed: boolean }) {
+      return (
+        <>
+          {confirm ? (
+            <ConfirmDialog
+              title="Remove block?"
+              detail="It comes off this outing."
+              confirmLabel="Remove"
+              busy={false}
+              onConfirm={vi.fn()}
+              onCancel={onCancel}
+            />
+          ) : null}
+          {failed ? <AuthFailureScreen kind="deactivated" /> : null}
+        </>
+      );
+    }
+    const onCancel = vi.fn();
+
+    it("takes the keyboard from one already open, which Escape no longer closes", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<Page confirm failed={false} />);
+      rerender(<Page confirm failed />);
+
+      expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+      await user.keyboard("{Escape}");
+      expect(onCancel).not.toHaveBeenCalled();
+      await user.tab();
+      expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+    });
+
+    it("keeps one opened afterwards beneath it, unfocused and inert", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<Page confirm={false} failed />);
+      rerender(<Page confirm failed />);
+
+      expect(screen.getByRole("button", { name: "Sign out" })).toHaveFocus();
+      // Inert hides it from the accessibility tree, so query the DOM directly.
+      expect(screen.getByText("Keep as it is").closest("[inert]")).not.toBeNull();
+      await user.keyboard("{Escape}");
+      expect(onCancel).not.toHaveBeenCalled();
+    });
   });
 });

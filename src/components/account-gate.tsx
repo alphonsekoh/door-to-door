@@ -10,8 +10,9 @@ import { isPublicPath } from "@/server/auth/routes";
 
 /*
  * Holds the app behind the account message once the server refuses the
- * session. The app underneath is made inert, not unmounted, so a half-typed
- * form is not thrown away by a message the member did not cause.
+ * session. The app underneath is made inert by the message's modal, not
+ * unmounted, so a half-typed form is not thrown away by a message the member
+ * did not cause.
  */
 export function AccountGate({ children }: { children: ReactNode }) {
   const { failure } = useSyncExternalStore(
@@ -36,7 +37,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
 
   return (
     <>
-      <div inert={failure !== null}>{children}</div>
+      {children}
       {failure === null ? null : <AuthFailureScreen kind={failure} />}
     </>
   );
