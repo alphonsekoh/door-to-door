@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { HouseholdHistoryPanel } from "@/components/household-history";
+import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 
@@ -56,7 +57,9 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
     );
   }
 
-  const { household, block } = state.history;
+  const { household, block, visits } = state.history;
+  /* Oldest first, so the last one is the latest knock. */
+  const latest = visits.at(-1);
 
   return (
     <div className="space-y-4">
@@ -65,6 +68,11 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
         <p className="text-body text-foreground-muted">
           Blk {block.name}, {block.street}
         </p>
+        {latest === undefined ? null : (
+          <div className="mt-1">
+            <VisitByline visit={latest} prefix="Last visit by " />
+          </div>
+        )}
       </div>
 
       <HouseholdHistoryPanel history={state.history} />

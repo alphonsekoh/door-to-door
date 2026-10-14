@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionDetail } from "@/components/session-detail";
@@ -10,6 +10,15 @@ vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
 });
+
+/* The team panel has its own tests; here it only has to be placed and fed. */
+vi.mock("@/components/admin-teams", () => ({
+  AdminTeams: ({ status, tick }: { status: string; tick: number }) => (
+    <p>
+      Teams panel: {status}, read {String(tick)}
+    </p>
+  ),
+}));
 
 const AT = "2026-03-01T00:00:00.000Z";
 
@@ -291,5 +300,29 @@ describe("SessionDetail", () => {
     await user.click(screen.getByRole("button", { name: "Add blocks" }));
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("shows the team panel for the outing's state", async () => {
+    serve("draft", []);
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText("Teams panel: draft, read 0")).toBeInTheDocument();
+  });
+
+  it("re-reads the team panel on the same poll as the outing", async () => {
+    vi.useFakeTimers();
+    try {
+      serve("active", []);
+      render(<SessionDetail sessionId="s1" />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("Teams panel: active, read 0")).toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(30_000);
+      });
+      expect(screen.getByText("Teams panel: active, read 1")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -61,7 +61,7 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   await expect(confirm).toContainText("reopened");
   await confirm.getByRole("button", { name: "End outing" }).click();
 
-  await expect(adminPage.getByText("Ended")).toBeVisible();
+  await expect(adminPage.getByText("Ended", { exact: true })).toBeVisible();
   await expect(adminPage.getByText(/visits recorded across 2 blocks/)).toBeVisible();
 
   // And the way back.

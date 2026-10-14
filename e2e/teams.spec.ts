@@ -145,3 +145,68 @@ test("the team name stays visible with the keyboard up", async ({
     memberPage.getByRole("dialog", { name: "Rename team" }).getByLabel(/Team name/),
   );
 });
+
+/* A unit no seed row or other spec uses. Each run adds a newer visit here, so
+   the newest row is always this run's (D-37-7). */
+const TEAM_UNIT = "#23-05";
+const BYLINE = "Alice Tan with Ben Lim";
+
+test("a teammate sees who recorded a unit, and the team's records", async ({
+  memberPage,
+  partnerPage,
+}) => {
+  const active = await memberPage.request.get("/api/sessions/active");
+  const { session } = (await active.json()) as { session: { id: string } };
+  await partnerPage.request.post(`/api/sessions/${session.id}/join`);
+  const formed = await memberPage.request.post(`/api/sessions/${session.id}/teams`, {
+    data: { name: "Alice & Ben", memberIds: [BEN] },
+  });
+  expect(formed.status()).toBe(201);
+
+  // Alice records the unit through the form, as at a door.
+  await memberPage.goto("/");
+  await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+  await memberPage.getByLabel("Unit number").fill(TEAM_UNIT);
+  await memberPage.getByRole("radio", { name: "High" }).click();
+  await memberPage.getByRole("button", { name: "Save and next" }).click();
+  await expect(memberPage.getByLabel("Unit number")).toHaveValue("#23-06");
+
+  // Ben, at the narrowest phone the app supports, sees both names on the row.
+  const width = 360;
+  await partnerPage.setViewportSize({ width, height: 780 });
+  await partnerPage.goto("/");
+  await partnerPage.getByRole("link", { name: /Blk 123/ }).click();
+  await partnerPage.getByRole("tab", { name: /^Units/ }).click();
+  await partnerPage.getByLabel("Search this block").fill(TEAM_UNIT);
+  const row = partnerPage.getByRole("button", { name: new RegExp(TEAM_UNIT) });
+  await expect(row).toContainText(`By ${BYLINE}`);
+  await noSideScroll(partnerPage);
+
+  // As a current teammate he may amend it; the server decides, the sheet agrees.
+  await row.click();
+  const sheet = partnerPage.getByRole("dialog", { name: `Amend ${TEAM_UNIT}` });
+  await expect(sheet.getByText(`Recorded by ${BYLINE}`, { exact: true })).toBeVisible();
+  /* The form appears once the screen has learned Ben's current team; polled on
+     that settled state rather than on a fixed wait. */
+  const save = sheet.getByRole("button", { name: "Save changes" });
+  await expect.poll(() => save.count(), { message: "the teammate is offered Save" }).toBe(1);
+  await expectTappable(save);
+  await sheet.getByRole("button", { name: "Cancel" }).click();
+
+  // His own history, team view: Alice's record is there with her name on it.
+  await partnerPage.goto("/history");
+  await partnerPage.getByRole("button", { name: "My team" }).click();
+  await expect(partnerPage).toHaveURL(/\/history\?view=team$/);
+  const record = partnerPage.getByRole("link", { name: new RegExp(TEAM_UNIT) }).first();
+  await expect(record).toContainText(`By ${BYLINE}`);
+  await noSideScroll(partnerPage);
+
+  // The choice survives opening the unit and coming back.
+  await record.click();
+  await expect(partnerPage.getByText(`Last visit by ${BYLINE}`, { exact: true })).toBeVisible();
+  await partnerPage.goBack();
+  await expect(partnerPage.getByRole("button", { name: "My team" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});

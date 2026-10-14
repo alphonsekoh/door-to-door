@@ -1,16 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RecordVisitForm } from "@/components/record-visit-form";
 import { UnitList } from "@/components/unit-list";
-import type { ActiveSession, HouseholdList, HouseholdSummary } from "@/generated/types.gen";
+import type {
+  ActiveSession,
+  HouseholdList,
+  HouseholdSummary,
+  TeamList,
+} from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { findMyTeam } from "@/lib/team-ui";
+import { useRole } from "@/lib/use-role";
 
 type Tab = "record" | "units";
 
 export function BlockScreen({ blockId }: { blockId: string }) {
+  const { userId } = useRole();
   const [known, setKnown] = useState<HouseholdSummary[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("record");
 
@@ -50,6 +59,31 @@ export function BlockScreen({ blockId }: { blockId: string }) {
       clearTimeout(timer);
     };
   }, [load, loadSession]);
+
+  /*
+   * Which team the viewer is on NOW decides whether a teammate's unit opens
+   * for amending (D-74-17). Only an affordance: the server re-checks. Asked
+   * once both the outing and the viewer are known, and only the newest answer
+   * may land (D-74-45): a late empty reply must not take Amend away.
+   */
+  const teamsGeneration = useRef(0);
+  useEffect(() => {
+    if (sessionId === null || userId === undefined) return;
+    const mine = ++teamsGeneration.current;
+    apiFetch<TeamList>(`/sessions/${sessionId}/teams`).then(
+      (teams) => {
+        if (mine !== teamsGeneration.current) return;
+        const team = findMyTeam(teams.data, userId);
+        setTeamIds(team === undefined ? [] : [team.id]);
+      },
+      () => {
+        if (mine === teamsGeneration.current) setTeamIds([]);
+      },
+    );
+    return () => {
+      teamsGeneration.current += 1;
+    };
+  }, [sessionId, userId]);
 
   return (
     <div className="space-y-5">
@@ -106,7 +140,12 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
-          <UnitList units={known} sessionId={sessionId} onAmended={() => void load()} />
+          <UnitList
+            units={known}
+            sessionId={sessionId}
+            teamIds={teamIds}
+            onAmended={() => void load()}
+          />
         </div>
       )}
     </div>

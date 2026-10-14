@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
+import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdSummary } from "@/generated/types.gen";
 import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
 
@@ -11,6 +12,8 @@ type Props = {
   /* Units recorded during the running outing, so tonight's work is legible
      against the block's whole history. Null while the session is unknown. */
   sessionId: string | null;
+  /* The viewer's current team on the running outing, per the server. */
+  teamIds?: readonly string[];
   onAmended: () => void;
 };
 
@@ -42,6 +45,9 @@ function UnitRow({
               {household.name}
             </span>
           )}
+          {latestVisit === null ? null : (
+            <VisitByline visit={latestVisit} prefix="By " withTeam={false} />
+          )}
           {outstandingFollowUps !== undefined && outstandingFollowUps > 0 ? (
             <span className="block text-caption font-medium text-interest-medium">
               {outstandingFollowUps === 1
@@ -57,7 +63,7 @@ function UnitRow({
   );
 }
 
-export function UnitList({ units, sessionId, onAmended }: Props) {
+export function UnitList({ units, sessionId, teamIds = [], onAmended }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<HouseholdSummary | null>(null);
 
@@ -122,6 +128,7 @@ export function UnitList({ units, sessionId, onAmended }: Props) {
       {selected === null ? null : (
         <AmendVisitSheet
           entry={selected}
+          teamIds={teamIds}
           onClose={() => {
             setSelected(null);
           }}

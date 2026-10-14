@@ -134,6 +134,16 @@ Google SSO (#14) is not built.
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
   stored. The card refreshes with the screen's 30s poll and Refresh.
+- Records show who made them through `VisitByline` (`src/lib/team-label.ts`): the author
+  then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
+  Display-only; Amend affordance uses team ids the server vouched for
+  (`GET /sessions/{id}/teams` or `includeTeam` results), see `src/lib/amend.ts`.
+- `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
+  (`src/lib/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
+- The admin outing detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
+  online-only and re-read on the detail screen's 30s poll.
+- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/users.ts`).
+- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.

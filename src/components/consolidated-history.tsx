@@ -2,24 +2,27 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
+import { VisitByline } from "@/components/visit-byline";
 import type {
   Block,
   BlockList,
   HistoryEntry,
   HistoryList,
-  HouseholdSummary,
   InterestLevel,
   OutingSession,
   Religion,
   SessionList,
+  Team,
+  TeamList,
   User,
-  UserList,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
+import { asHouseholdSummary } from "@/lib/history";
+import { loadAllUsers } from "@/lib/users";
 import {
   groupByHousehold,
   hasHistoryFilter,
@@ -56,15 +59,6 @@ type State =
   | { status: "ready"; entries: HistoryEntry[]; total: number }
   | { status: "error"; message: string };
 
-function asSummary(entry: HistoryEntry): HouseholdSummary {
-  return {
-    household: entry.household,
-    visitCount: 1,
-    latestVisit: entry.visit,
-    outstandingFollowUps: 0,
-  };
-}
-
 export function ConsolidatedHistory() {
   const router = useRouter();
   const params = useSearchParams();
@@ -75,6 +69,11 @@ export function ConsolidatedHistory() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
+  /* Tagged with the outing they belong to; null while unknown (no outing,
+     still loading, or the list could not be read). */
+  const [teamState, setTeamState] = useState<{ outing: string; teams: Team[] } | null>(null);
+  /* Switching outings quickly must not leave the previous outing's teams. */
+  const teamsGeneration = useRef(0);
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,11 +105,11 @@ export function ConsolidatedHistory() {
     const [block, session, user] = await Promise.allSettled([
       apiFetch<BlockList>("/blocks?limit=100"),
       apiFetch<SessionList>("/sessions?limit=100"),
-      apiFetch<UserList>("/users?limit=100"),
+      loadAllUsers(),
     ]);
     if (block.status === "fulfilled") setBlocks(block.value.data);
     if (session.status === "fulfilled") setSessions(session.value.data);
-    if (user.status === "fulfilled") setMembers(user.value.data);
+    if (user.status === "fulfilled") setMembers(user.value);
   }, []);
 
   useEffect(() => {
@@ -127,8 +126,52 @@ export function ConsolidatedHistory() {
     };
   }, [load, loadPickers, search]);
 
+  /* Teams belong to one outing, so they are listed only once one is chosen,
+     and a failure just leaves the picker empty. */
+  const outing = filters.sessionId;
+  useEffect(() => {
+    const mine = ++teamsGeneration.current;
+    const timer = setTimeout(() => {
+      if (outing === "") {
+        setTeamState(null);
+        return;
+      }
+      apiFetch<TeamList>(`/sessions/${outing}/teams`).then(
+        (list) => {
+          if (mine === teamsGeneration.current) setTeamState({ outing, teams: list.data });
+        },
+        () => {
+          if (mine === teamsGeneration.current) setTeamState(null);
+        },
+      );
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      teamsGeneration.current += 1;
+    };
+  }, [outing]);
+
+  const teams = teamState?.outing === outing ? teamState.teams : [];
+
+  /* A team that is not one of the chosen outing's - deleted, or an edited or
+     old URL - is unknown, and dropped rather than forwarded (D-29-4). */
+  const unknownTeam =
+    teamState?.outing === outing &&
+    filters.teamId !== "" &&
+    !teams.some((team) => team.id === filters.teamId);
+  useEffect(() => {
+    if (!unknownTeam) return;
+    const next = toHistorySearch({
+      ...parseHistoryFilters(new URLSearchParams(search)),
+      teamId: "",
+    });
+    router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
+  }, [unknownTeam, search, router]);
+
   function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
-    const next = toHistorySearch({ ...filters, [key]: value });
+    /* A team from the old outing means nothing in the new one. */
+    const reset = key === "sessionId" ? { teamId: "" } : {};
+    const next = toHistorySearch({ ...filters, ...reset, [key]: value });
     router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
   }
 
@@ -227,7 +270,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -248,7 +291,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("sessionId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">All outings</option>
               {sessions.map((session) => (
@@ -258,6 +301,29 @@ export function ConsolidatedHistory() {
               ))}
             </select>
           </div>
+
+          {filters.sessionId === "" ? null : (
+            <div>
+              <label htmlFor="history-team" className="sr-only">
+                Filter by team
+              </label>
+              <select
+                id="history-team"
+                value={filters.teamId}
+                onChange={(event) => {
+                  setFilter("teamId", event.target.value);
+                }}
+                className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              >
+                <option value="">Any team</option>
+                {teams.map((team) => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label htmlFor="history-member" className="sr-only">
@@ -269,7 +335,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -290,7 +356,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -311,7 +377,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("religion", event.target.value as Religion | "");
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Any religion</option>
               {RELIGIONS.map((religion) => (
@@ -387,7 +453,9 @@ export function ConsolidatedHistory() {
 
       {groups.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          Nothing matches those filters.
+          {entries.length === 0 && toHistorySearch({ ...filters, q: "" }) === ""
+            ? "Nothing has been recorded yet."
+            : "Nothing here matches those filters."}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -429,8 +497,9 @@ export function ConsolidatedHistory() {
                         <span className="min-w-0 flex-1">
                           <span className="block text-caption text-foreground-muted">
                             {new Date(entry.visit.createdAt).toLocaleDateString()} ·{" "}
-                            {entry.session.title} · {entry.visit.member.name ?? "a member"}
+                            {entry.session.title}
                           </span>
+                          <VisitByline visit={entry.visit} prefix="By " />
                           {entry.visit.description === "" ? null : (
                             <span className="block truncate text-caption">
                               {entry.visit.description}
@@ -464,7 +533,7 @@ export function ConsolidatedHistory() {
 
       {amending === null ? null : (
         <AmendVisitSheet
-          entry={asSummary(amending)}
+          entry={asHouseholdSummary(amending)}
           onClose={() => {
             setAmending(null);
           }}

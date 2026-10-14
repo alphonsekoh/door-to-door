@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { InterestPicker } from "@/components/interest-picker";
+import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generated/types.gen";
+import { amendRoute, describeAmendFailure } from "@/lib/amend";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
 
@@ -66,24 +68,31 @@ function draftFrom(entry: HouseholdSummary): Draft {
 
 type Props = {
   entry: HouseholdSummary;
+  /* Teams the server has said the viewer is on now (D-74-17); never read off
+     the visit's own snapshot, which is display-only. */
+  teamIds?: readonly string[];
   onClose: () => void;
   onSaved: () => void;
 };
 
-export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
+export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props) {
   const { userId, isAdmin } = useRole();
   const original = draftFrom(entry);
   const [draft, setDraft] = useState<Draft>(original);
   const [details, setDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* Synchronous, so two taps in one frame send one request (D-74-44). */
+  const sending = useRef(false);
 
   const visit = entry.latestVisit;
   /*
    * Affordance only - the handler re-checks. Showing the refusal here saves a
    * member filling in a form that was always going to be rejected.
    */
-  const mayAmend = visit !== null && (isAdmin || visit.member.id === userId);
+  const route = visit === null ? null : amendRoute(visit, { userId, isAdmin, teamIds });
+  const mayAmend = route !== null;
+  const othersRecord = visit !== null && visit.member.id !== userId;
 
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -93,12 +102,14 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
      non-null where the form renders, and taking it as an argument keeps that
      fact in the type system instead of behind a guard no caller can trip. */
   async function save(target: Visit): Promise<void> {
+    if (sending.current) return;
     const changes = diffVisit(original, draft);
     if (Object.keys(changes).length === 0) {
       onClose();
       return;
     }
 
+    sending.current = true;
     setFailure(null);
     setSaving(true);
     try {
@@ -108,8 +119,9 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
       });
       onSaved();
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not save this change.");
+      setFailure(describeAmendFailure(error, route));
     } finally {
+      sending.current = false;
       setSaving(false);
     }
   }
@@ -138,10 +150,10 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
             Nothing has been recorded here yet. Record a visit first.
           </p>
         ) : !mayAmend ? (
-          <div className="py-4">
+          <div className="space-y-2 py-4">
+            <VisitByline visit={visit} prefix="Recorded by " />
             <p className="text-body">
-              Recorded by {visit.member.name ?? "another member"}. Only they or an admin can amend
-              it.
+              Only they, their current teammates or an admin can amend it.
             </p>
           </div>
         ) : (
@@ -153,6 +165,8 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
             noValidate
             className="space-y-4 py-4"
           >
+            {othersRecord ? <VisitByline visit={visit} prefix="Recorded by " /> : null}
+
             {failure === null ? null : (
               <p
                 role="alert"
@@ -226,7 +240,7 @@ export function AmendVisitSheet({ entry, onClose, onSaved }: Props) {
                     onChange={(event) => {
                       set("religion", event.target.value as Religion | "");
                     }}
-                    className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                    className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
                   >
                     <option value="">Not known</option>
                     {RELIGIONS.map((option) => (

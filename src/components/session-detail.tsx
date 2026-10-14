@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { AdminTeams } from "@/components/admin-teams";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SessionActionButton } from "@/components/session-action-button";
@@ -24,6 +25,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [detaching, setDetaching] = useState<SessionBlock | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /* Bumped by the poll so the team panel re-reads on the same beat. */
+  const [tick, setTick] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -42,7 +45,10 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   useEffect(() => {
     const initial = setTimeout(() => void load(), 0);
-    const timer = setInterval(() => void load(), POLL_INTERVAL_MS);
+    const timer = setInterval(() => {
+      void load();
+      setTick((current) => current + 1);
+    }, POLL_INTERVAL_MS);
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
@@ -210,6 +216,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           </ul>
         )}
       </div>
+
+      <AdminTeams sessionId={session.id} status={session.status} tick={tick} />
 
       {attaching ? (
         <BlockAttachSheet

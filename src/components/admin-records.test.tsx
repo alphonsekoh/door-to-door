@@ -42,16 +42,21 @@ const AT = "2026-03-14T11:00:00.000Z";
 
 function entry(
   unitNumber: string,
-  options: { member?: string; interestLevel?: InterestLevel; name?: string | null } = {},
+  options: {
+    member?: string;
+    interestLevel?: InterestLevel;
+    name?: string | null;
+    team?: HistoryEntry["visit"]["team"];
+  } = {},
 ): HistoryEntry {
-  const { member = "Alice", interestLevel = "low", name = null } = options;
+  const { member = "Alice", interestLevel = "low", name = null, team = null } = options;
   return {
     visit: {
       id: `v-${unitNumber}`,
       householdId: `h-${unitNumber}`,
       sessionId: "s1",
       member: { id: "u1", name: member, image: null },
-      team: null,
+      team,
       interestLevel,
       description: "",
       clientCreatedAt: AT,
@@ -116,9 +121,26 @@ const userPage = {
   pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
 };
 
+const TEAM_ID = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
+const teamList = {
+  data: [
+    {
+      id: TEAM_ID,
+      sessionId: "s1",
+      name: "Alice & Ben",
+      members: [
+        { id: "u1", name: "Alice", image: null },
+        { id: "u2", name: "Ben", image: null },
+      ],
+      createdAt: AT,
+    },
+  ],
+};
+
 function serve(entries: HistoryEntry[], total = entries.length) {
   apiFetch.mockImplementation((path: string) => {
     if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+    if (path === "/sessions/s1/teams") return Promise.resolve(teamList);
     if (path.startsWith("/users")) return Promise.resolve(userPage);
     return Promise.resolve({
       data: entries,
@@ -138,7 +160,7 @@ describe("AdminRecords", () => {
     render(<AdminRecords />);
 
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
-    expect(screen.getByText(/Ben/)).toBeInTheDocument();
+    expect(screen.getByText("By Ben")).toBeInTheDocument();
   });
 
   it("asks the consolidated endpoint, scoped to the running outing", async () => {
@@ -372,4 +394,119 @@ describe("AdminRecords", () => {
       screen.queryByRole("form", { name: "Record on behalf of a member" }),
     ).not.toBeInTheDocument();
   });
+
+  it("names the author, the teammates and the team on each row", async () => {
+    serve([
+      entry("#05-123", {
+        member: "Alice Tan",
+        team: {
+          id: TEAM_ID,
+          name: "Alice & Ben",
+          members: [{ id: "u2", name: "Ben Lim", image: null }],
+        },
+      }),
+    ]);
+    render(<AdminRecords />);
+
+    const row = await screen.findByRole("button", { name: /#05-123/ });
+    expect(row).toHaveTextContent("By Alice Tan with Ben Lim");
+    expect(row).toHaveTextContent("Team: Alice & Ben");
+  });
+
+  it("offers the running outing's teams as a filter and writes it to the URL", async () => {
+    const user = userEvent.setup();
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+
+    expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    await user.selectOptions(screen.getByLabelText("Filter by team"), TEAM_ID);
+    expect(replace).toHaveBeenCalledWith(`/admin/records?teamId=${TEAM_ID}`);
+  });
+
+  it("asks the server for one team's records when the URL names it", async () => {
+    searchParams.value = new URLSearchParams(`teamId=${TEAM_ID}`);
+    serve([]);
+    render(<AdminRecords />);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(`/history?sessionId=s1&limit=100&teamId=${TEAM_ID}`);
+    });
+  });
+
+  it("drops a team id an edited URL made up", async () => {
+    searchParams.value = new URLSearchParams("teamId=not-a-team");
+    serve([]);
+    render(<AdminRecords />);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/history?sessionId=s1&limit=100");
+    });
+  });
+
+  it("still lists records when the teams cannot be loaded", async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+      if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
+      if (path.startsWith("/users")) return Promise.resolve(userPage);
+      return Promise.resolve({
+        data: [entry("#05-123")],
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+      });
+    });
+    render(<AdminRecords />);
+
+    expect(await screen.findByText("#05-123")).toBeInTheDocument();
+    expect(screen.getByLabelText("Filter by team").querySelectorAll("option")).toHaveLength(1);
+  });
+
+  it("drops a team that is not one of this outing's teams from the URL", async () => {
+    // A real-looking id from an earlier outing would filter to nothing while
+    // the picker said "Any team".
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`interestLevel=high&teamId=${other}`);
+    serve([]);
+    render(<AdminRecords />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith("/admin/records?interestLevel=high");
+    });
+  });
+
+  it("keeps a team that is one of this outing's", async () => {
+    searchParams.value = new URLSearchParams(`teamId=${TEAM_ID}`);
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    expect(screen.getByLabelText("Filter by team")).toHaveValue(TEAM_ID);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the team while the teams cannot be listed, since nothing is known", async () => {
+    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+    searchParams.value = new URLSearchParams(`teamId=${other}`);
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+      if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
+      if (path.startsWith("/users")) return Promise.resolve(userPage);
+      return Promise.resolve({
+        data: [],
+        pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+      });
+    });
+    render(<AdminRecords />);
+    await screen.findByText("Nothing here matches those filters.");
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it.each([`teamId=${TEAM_ID}`, "memberId=u1", "blockId=b1", "interestLevel=low"])(
+    "says the filters match nothing, not that nothing was recorded, with %s",
+    async (query) => {
+      searchParams.value = new URLSearchParams(query);
+      serve([]);
+      render(<AdminRecords />);
+      expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
+      expect(screen.queryByText(/Nothing has been recorded/)).not.toBeInTheDocument();
+    },
+  );
 });

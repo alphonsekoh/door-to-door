@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -13,7 +13,10 @@ vi.mock("@/lib/api-client", async () => {
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
 
-const list = (units: string[]) => ({
+type Author = { id: string; name: string };
+const BEN: Author = { id: "u1", name: "Ben Lim" };
+
+const list = (units: string[], author: Author = BEN, teamId: string | null = null) => ({
   data: units.map((unitNumber, i) => ({
     household: {
       id: `h${String(i)}`,
@@ -30,7 +33,8 @@ const list = (units: string[]) => ({
       id: `v${String(i)}`,
       householdId: `h${String(i)}`,
       sessionId: "s1",
-      member: { id: "u1", name: "Ben Lim", image: null },
+      member: { ...author, image: null },
+      team: teamId === null ? null : { id: teamId, name: "Ann & Ben", members: [] },
       interestLevel: "low" as const,
       description: "",
       clientCreatedAt: "",
@@ -46,10 +50,30 @@ const active = { session: { id: "s1", title: "Tonight" }, blocks: [] };
 
 /* Routes by path so the two loads can differ, and so a test that breaks one
    does not silently satisfy the other. */
-function serve(households: unknown, session: unknown = active) {
-  apiFetch.mockImplementation((path: string) =>
-    path.startsWith("/sessions/active") ? Promise.resolve(session) : Promise.resolve(households),
-  );
+function serve(households: unknown, session: unknown = active, teams: unknown = { data: [] }) {
+  apiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/sessions/active")) return Promise.resolve(session);
+    if (path === "/sessions/s1/teams") return Promise.resolve(teams);
+    return Promise.resolve(households);
+  });
+}
+
+const teamOf = (id: string, memberIds: string[]) => ({
+  data: [
+    {
+      id,
+      sessionId: "s1",
+      name: "Ann & Ben",
+      members: memberIds.map((member) => ({ id: member, name: member, image: null })),
+      createdAt: "",
+    },
+  ],
+});
+
+async function openUnit(unitNumber: string): Promise<void> {
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("tab", { name: "Units (1)" }));
+  await user.click(screen.getByRole("button", { name: new RegExp(unitNumber) }));
 }
 
 beforeEach(() => {
@@ -167,5 +191,129 @@ describe("BlockScreen", () => {
     await waitFor(() => {
       expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
     });
+  });
+
+  it("shows who recorded each unit, in words", async () => {
+    const user = userEvent.setup();
+    serve(list(["#05-123"]));
+    render(<BlockScreen blockId="b1" />);
+    await user.click(await screen.findByRole("tab", { name: "Units (1)" }));
+    expect(screen.getByText("By Ben Lim")).toBeInTheDocument();
+  });
+
+  it("opens a current teammate's unit for amending", async () => {
+    serve(
+      list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"),
+      active,
+      teamOf("t1", ["ann", "u1"]),
+    );
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    await openUnit("#05-123");
+    expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("keeps another team's unit closed", async () => {
+    serve(list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"), active, teamOf("t2", ["u1"]));
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    await openUnit("#05-123");
+    expect(screen.getByText(/Only they, their current teammates or an admin/)).toBeInTheDocument();
+  });
+
+  it("treats a failed team lookup as no team", async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+      if (path.endsWith("/teams")) return Promise.reject(new TypeError("Failed to fetch"));
+      return Promise.resolve(list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"));
+    });
+    render(<BlockScreen blockId="b1" />);
+    await openUnit("#05-123");
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+
+  it("does not look for a team before it knows who is signed in, then looks once", async () => {
+    const loading = {
+      userId: undefined,
+      role: undefined,
+      isAdmin: false,
+      isMember: false,
+      isLoading: true,
+      isSignedIn: false,
+    };
+    useRole.mockReturnValue(loading);
+    serve(
+      list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"),
+      active,
+      teamOf("t1", ["ann", "u1"]),
+    );
+    const { rerender } = render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
+    });
+    await screen.findByRole("tab", { name: "Units (1)" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/teams");
+
+    useRole.mockReturnValue({ ...loading, userId: "u1", isLoading: false, isSignedIn: true });
+    rerender(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    const calls = apiFetch.mock.calls.map(([path]) => path as string);
+    expect(calls.filter((path) => path === "/sessions/s1/teams")).toHaveLength(1);
+    // Learning who is signed in does not fetch the units a second time.
+    expect(calls.filter((path) => path.startsWith("/households"))).toHaveLength(1);
+    await openUnit("#05-123");
+    expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("does not let a late answer for an earlier viewer take Amend away", async () => {
+    const signedIn = (userId: string) => ({
+      userId,
+      role: "member",
+      isAdmin: false,
+      isMember: true,
+      isLoading: false,
+      isSignedIn: true,
+    });
+    const late: { resolve: (value: unknown) => void; reject: (error: unknown) => void } = {
+      resolve: () => undefined,
+      reject: () => undefined,
+    };
+    let first = true;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+      if (path === "/sessions/s1/teams") {
+        if (first) {
+          first = false;
+          return new Promise((resolve, reject) => {
+            late.resolve = resolve;
+            late.reject = reject;
+          });
+        }
+        return Promise.resolve(teamOf("t1", ["ann", "u1"]));
+      }
+      return Promise.resolve(list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"));
+    });
+    useRole.mockReturnValue(signedIn("someone-else"));
+    const { rerender } = render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+    useRole.mockReturnValue(signedIn("u1"));
+    rerender(<BlockScreen blockId="b1" />);
+    await openUnit("#05-123");
+    expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
+
+    await act(async () => {
+      late.resolve({ data: [] });
+      late.reject(new Error("late"));
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 });

@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import type { HouseholdSummary, InterestLevel } from "@/generated/types.gen";
 
@@ -57,6 +58,19 @@ function entryFor(options: Options = {}): HouseholdSummary {
         }
       : null,
     outstandingFollowUps: 0,
+  };
+}
+
+/* Ben's record, stamped with a team whose snapshot names the viewer u1. */
+function teamEntry(): HouseholdSummary {
+  const entry = entryFor({ memberId: "u9" });
+  if (entry.latestVisit === null) throw new Error("fixture has a visit");
+  return {
+    ...entry,
+    latestVisit: {
+      ...entry.latestVisit,
+      team: { id: "t1", name: "Ben & Ann", members: [{ id: "u1", name: "Ann Tan", image: null }] },
+    },
   };
 }
 
@@ -167,12 +181,93 @@ describe("AmendVisitSheet", () => {
     expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
   });
 
-  it("names an unnamed member as another member", () => {
+  it("names an unnamed member as Someone", () => {
     const entry = entryFor({ memberId: "u9" });
     if (entry.latestVisit) entry.latestVisit.member.name = null;
 
     render(<AmendVisitSheet entry={entry} onClose={vi.fn()} onSaved={vi.fn()} />);
-    expect(screen.getByText(/Recorded by another member/)).toBeInTheDocument();
+    expect(screen.getByText("Recorded by Someone")).toBeInTheDocument();
+  });
+
+  it("lets a current teammate amend, showing whose record it is", () => {
+    render(
+      <AmendVisitSheet entry={teamEntry()} teamIds={["t1"]} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    expect(screen.getByText("Recorded by Ben Lim with Ann Tan")).toBeInTheDocument();
+    expect(screen.getByText("Team: Ben & Ann")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  it("does not take being named on the record as the right to edit it", () => {
+    // The snapshot names u1, but the server has not said u1 is on the team now.
+    render(<AmendVisitSheet entry={teamEntry()} onClose={vi.fn()} onSaved={vi.fn()} />);
+    // Read-only, it still names everyone the row names.
+    expect(screen.getByText("Recorded by Ben Lim with Ann Tan")).toBeInTheDocument();
+    expect(screen.getByText("Team: Ben & Ann")).toBeInTheDocument();
+    expect(screen.getByText(/Only they, their current teammates or an admin/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save changes" })).not.toBeInTheDocument();
+  });
+
+  it("explains a refusal after the teammate was taken off the team", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(403, { error: { code: "forbidden", message: "server words" } }),
+    );
+    render(
+      <AmendVisitSheet entry={teamEntry()} teamIds={["t1"]} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/not on this record's team any more/);
+    expect(alert).not.toHaveTextContent("server words");
+  });
+
+  it("does not blame the team when an admin's right was the one refused", async () => {
+    const user = userEvent.setup();
+    useRole.mockReturnValue({
+      userId: "admin1",
+      role: "admin",
+      isAdmin: true,
+      isMember: false,
+      isLoading: false,
+      isSignedIn: true,
+    });
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(403, { error: { code: "forbidden", message: "server words" } }),
+    );
+    render(<AmendVisitSheet entry={teamEntry()} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You can no longer amend this record.",
+    );
+  });
+
+  it("sends one request for a double tap on Save", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    apiFetch.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const onSaved = vi.fn();
+    render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={onSaved} />);
+    fireEvent.click(screen.getByRole("radio", { name: "High" }));
+    const save = screen.getByRole("button", { name: "Save changes" });
+    /* Both taps land before React re-renders, so the disabled button cannot
+       stop the second one: only the synchronous guard can. */
+    act(() => {
+      save.click();
+      save.click();
+    });
+    finish(undefined);
+
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledTimes(1);
+    });
+    expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
   it("lets an admin amend anyone's record", () => {

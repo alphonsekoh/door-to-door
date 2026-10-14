@@ -1,3 +1,4 @@
+import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 
 const INTEREST_LABEL: Record<string, string> = {
@@ -53,9 +54,8 @@ export function HouseholdHistoryPanel({ history }: { history: HouseholdHistory }
               <span className="text-foreground-muted">
                 {" · "}
                 {new Date(visit.createdAt).toLocaleDateString()}
-                {" · "}
-                {visit.member.name ?? "a member"}
               </span>
+              <VisitByline visit={visit} />
               {visit.description === "" ? null : (
                 <p className="text-body text-foreground-muted">{visit.description}</p>
               )}

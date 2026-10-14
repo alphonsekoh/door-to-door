@@ -165,7 +165,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           onChange={(event) => {
             setRole(event.target.value as Role);
           }}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
         >
           <option value="member">Member</option>
           <option value="admin">Admin</option>

@@ -5,18 +5,22 @@ import { useCallback, useEffect, useState } from "react";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
 import { RecordOnBehalfForm } from "@/components/record-on-behalf-form";
+import { VisitByline } from "@/components/visit-byline";
 import type {
   ActiveSession,
   HistoryEntry,
   HistoryList,
-  HouseholdSummary,
   InterestLevel,
+  Team,
+  TeamList,
   User,
-  UserList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { asHouseholdSummary } from "@/lib/history";
+import { loadAllUsers } from "@/lib/users";
 import {
   hasAnyFilter,
+  hasServerFilter,
   matchesSearch,
   parseFilters,
   toHistoryQuery,
@@ -37,21 +41,25 @@ const LEVELS: { value: InterestLevel; label: string }[] = [
 type State =
   | { status: "loading" }
   | { status: "none" }
-  | { status: "ready"; session: ActiveSession; entries: HistoryEntry[]; total: number }
+  | {
+      status: "ready";
+      session: ActiveSession;
+      /* Null when the list could not be read: then nothing is known about
+         which team ids are real. */
+      teams: Team[] | null;
+      entries: HistoryEntry[];
+      total: number;
+    }
   | { status: "error"; message: string };
 
-/*
- * An amendment patches the household's latest visit, and here the record in
- * hand is that visit - so the sheet is handed the same shape the block list
- * gives it rather than growing a second way in.
- */
-function asSummary(entry: HistoryEntry): HouseholdSummary {
-  return {
-    household: entry.household,
-    visitCount: 1,
-    latestVisit: entry.visit,
-    outstandingFollowUps: 0,
-  };
+/* The team picker is a convenience; failing to list teams must not take the
+   records with it. */
+async function teamsOf(sessionId: string): Promise<Team[] | null> {
+  try {
+    return (await apiFetch<TeamList>(`/sessions/${sessionId}/teams`)).data;
+  } catch {
+    return null;
+  }
 }
 
 export function AdminRecords() {
@@ -67,10 +75,17 @@ export function AdminRecords() {
   const load = useCallback(async (current: RecordFilters) => {
     try {
       const session = await apiFetch<ActiveSession>("/sessions/active");
-      const page = await apiFetch<HistoryList>(
-        `/history?${toHistoryQuery(current, session.session.id, PAGE_SIZE)}`,
-      );
-      setState({ status: "ready", session, entries: page.data, total: page.pagination.total });
+      const [page, teams] = await Promise.all([
+        apiFetch<HistoryList>(`/history?${toHistoryQuery(current, session.session.id, PAGE_SIZE)}`),
+        teamsOf(session.session.id),
+      ]);
+      setState({
+        status: "ready",
+        session,
+        teams,
+        entries: page.data,
+        total: page.pagination.total,
+      });
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) {
         // No outing is running: an ordinary state, not a failure.
@@ -88,8 +103,7 @@ export function AdminRecords() {
      not take the records with it. */
   const loadMembers = useCallback(async () => {
     try {
-      const page = await apiFetch<UserList>("/users?limit=100");
-      setMembers(page.data);
+      setMembers(await loadAllUsers());
     } catch {
       setMembers([]);
     }
@@ -109,6 +123,23 @@ export function AdminRecords() {
       clearInterval(timer);
     };
   }, [load, loadMembers, search]);
+
+  /*
+   * A team id that is not one of this outing's teams - the outing changed, the
+   * team was deleted, or the URL was edited - is unknown, and unknown values
+   * are dropped rather than forwarded (D-29-4). Kept, it would filter to
+   * nothing while the picker claimed "Any team".
+   */
+  const knownTeams = state.status === "ready" ? state.teams : null;
+  const unknownTeam =
+    knownTeams !== null &&
+    filters.teamId !== "" &&
+    !knownTeams.some((team) => team.id === filters.teamId);
+  useEffect(() => {
+    if (!unknownTeam) return;
+    const next = toSearchParams({ ...parseFilters(new URLSearchParams(search)), teamId: "" });
+    router.replace(next === "" ? "/admin/records" : `/admin/records?${next}`);
+  }, [unknownTeam, search, router]);
 
   /* Written to the URL rather than to state, so the view can be sent to
      someone else and survives a reload. */
@@ -148,6 +179,7 @@ export function AdminRecords() {
   }
 
   const { session, entries, total } = state;
+  const teams = state.teams ?? [];
   const visible = entries.filter((entry) => matchesSearch(entry, filters.q));
   const blocks = session.blocks.map((entry) => entry.block);
 
@@ -183,7 +215,7 @@ export function AdminRecords() {
           />
         </div>
 
-        <div className="flex gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <div className="flex-1">
             <label htmlFor="records-block" className="sr-only">
               Filter by block
@@ -194,7 +226,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -215,12 +247,33 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
                 <option key={member.id} value={member.id}>
                   {member.name ?? member.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex-1">
+            <label htmlFor="records-team" className="sr-only">
+              Filter by team
+            </label>
+            <select
+              id="records-team"
+              value={filters.teamId}
+              onChange={(event) => {
+                setFilter("teamId", event.target.value);
+              }}
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            >
+              <option value="">Any team</option>
+              {teams.map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
                 </option>
               ))}
             </select>
@@ -236,7 +289,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -263,7 +316,7 @@ export function AdminRecords() {
 
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          {entries.length === 0
+          {entries.length === 0 && !hasServerFilter(filters)
             ? "Nothing has been recorded on this outing yet."
             : "Nothing here matches those filters."}
         </p>
@@ -283,9 +336,10 @@ export function AdminRecords() {
                     {entry.household.unitNumber}
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
-                    Blk {entry.block.name} · {entry.visit.member.name ?? "a member"}
+                    Blk {entry.block.name}
                     {entry.household.name === null ? "" : ` · ${entry.household.name}`}
                   </span>
+                  <VisitByline visit={entry.visit} prefix="By " />
                   {entry.visit.description === "" ? null : (
                     <span className="mt-0.5 block truncate text-caption text-foreground-muted">
                       {entry.visit.description}
@@ -307,7 +361,7 @@ export function AdminRecords() {
 
       {amending === null ? null : (
         <AmendVisitSheet
-          entry={asSummary(amending)}
+          entry={asHouseholdSummary(amending)}
           onClose={() => {
             setAmending(null);
           }}

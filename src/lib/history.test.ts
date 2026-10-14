@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { interestSegments, isSameDay, totalRecorded } from "@/lib/history";
+import type { HistoryEntry } from "@/generated/types.gen";
+import { asHouseholdSummary, interestSegments, isSameDay, totalRecorded } from "@/lib/history";
 
 const breakdown = (low = 0, medium = 0, high = 0, noResponse = 0) => ({
   low,
@@ -69,5 +70,17 @@ describe("isSameDay", () => {
     const nextYear = new Date(2027, 2, 14, 12).toISOString();
     expect(isSameDay(march, april)).toBe(false);
     expect(isSameDay(march, nextYear)).toBe(false);
+  });
+});
+
+describe("asHouseholdSummary", () => {
+  it("hands the amend sheet this row's visit as the one to change", () => {
+    const entry = { household: { id: "h1" }, visit: { id: "v1" } } as HistoryEntry;
+    expect(asHouseholdSummary(entry)).toEqual({
+      household: entry.household,
+      visitCount: 1,
+      latestVisit: entry.visit,
+      outstandingFollowUps: 0,
+    });
   });
 });

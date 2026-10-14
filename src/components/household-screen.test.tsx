@@ -59,8 +59,40 @@ describe("HouseholdScreen", () => {
     apiFetch.mockResolvedValue(history);
     render(<HouseholdScreen householdId="h1" />);
 
-    expect(await screen.findByText(/Ben Lim/)).toBeInTheDocument();
-    expect(screen.getByText("Asked us to come back")).toBeInTheDocument();
+    expect(await screen.findByText("Asked us to come back")).toBeInTheDocument();
+    expect(screen.getAllByText(/Ben Lim/).length).toBeGreaterThan(0);
+  });
+
+  it("says in the header who made the latest visit, and with whom", async () => {
+    const earlier = history.visits[0];
+    if (earlier === undefined) throw new Error("fixture has a visit");
+    apiFetch.mockResolvedValue({
+      ...history,
+      visits: [
+        earlier,
+        {
+          ...earlier,
+          id: "v2",
+          member: { id: "u1", name: "Alice Tan", image: null },
+          team: {
+            id: "t1",
+            name: "Alice & Ben",
+            members: [{ id: "u2", name: "Ben Lim", image: null }],
+          },
+        },
+      ],
+    });
+    render(<HouseholdScreen householdId="h1" />);
+
+    expect(await screen.findByText("Last visit by Alice Tan with Ben Lim")).toBeInTheDocument();
+  });
+
+  it("has no last-visit line for a unit nobody has visited", async () => {
+    apiFetch.mockResolvedValue({ ...history, visits: [] });
+    render(<HouseholdScreen householdId="h1" />);
+
+    expect(await screen.findByText("#05-123")).toBeInTheDocument();
+    expect(screen.queryByText(/Last visit by/)).not.toBeInTheDocument();
   });
 
   it("asks for the unit it was given", async () => {

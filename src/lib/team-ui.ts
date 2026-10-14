@@ -1,4 +1,4 @@
-import type { Participant, Team } from "@/generated/types.gen";
+import type { Participant, Team, User } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
 
@@ -7,6 +7,12 @@ export const UNSYNCED_LIMIT_NOTE =
   "A teammate sees and edits your records once they have synced. A record still waiting on your phone is only on your phone.";
 
 export const OFFLINE_NOTE = "Connect to change your team";
+
+export const ADMIN_OFFLINE_NOTE = "Connect to change teams";
+
+/* D-74-1 again, for the person arranging other people's teams. */
+export const ADMIN_UNSYNCED_NOTE =
+  "Teammates see and edit each other's records once they have synced. A record still waiting on a phone is only on that phone.";
 
 export const NAME_FALLBACK = "Someone";
 
@@ -19,19 +25,36 @@ export function firstName(name: string | null): string {
   return displayName(name).replace(/\s.*$/, "");
 }
 
-/* "Ann & Ben" from the caller's and partner's first names. Two long first
-   names can exceed the limit, so it is cut by code point, and a cut that
-   leaves something unshowable falls back to a plain word. */
-export function defaultTeamName(me: string | null, partner: string | null): string {
-  const full = `${firstName(me)} & ${firstName(partner)}`;
+/* "Ann", "Ann & Ben", "Ann, Ben & Cy" from first names. Long first names can
+   exceed the limit, so it is cut by code point, and a cut that leaves
+   something unshowable (or nobody chosen) falls back to a plain word. */
+export function suggestTeamName(names: (string | null)[]): string {
+  const firsts = names.map(firstName);
+  const last = firsts.pop() ?? "";
+  const full = firsts.length === 0 ? last : `${firsts.join(", ")} & ${last}`;
   const cut = Array.from(full).slice(0, MAX_TEAM_NAME_LENGTH).join("");
   return checkTeamName(cut).ok ? cut : "Team";
+}
+
+/* "Ann & Ben" from the caller's and partner's first names. */
+export function defaultTeamName(me: string | null, partner: string | null): string {
+  return suggestTeamName([me, partner]);
 }
 
 /* Joined people who are free to be added: not me, not already on a team. The
    server excludes deactivated people and refuses the rest again. */
 export function pickerCandidates(participants: Participant[], meId: string): Participant[] {
   return participants.filter(({ user, teamId }) => user.id !== meId && teamId === null);
+}
+
+/*
+ * Who an admin may place: anyone active not already on a team in this outing
+ * (D-74-15). `GET /users` already leaves deactivated people out; the server
+ * refuses the rest again.
+ */
+export function adminCandidates(users: User[], teams: Team[]): User[] {
+  const placed = new Set(teams.flatMap((team) => team.members.map((member) => member.id)));
+  return users.filter((user) => !placed.has(user.id));
 }
 
 export function findMyTeam(teams: Team[], meId: string): Team | undefined {
@@ -107,4 +130,34 @@ export function describeTeamFailure(
     }
   })();
   return { message, network: false, auth: false };
+}
+
+export type AdminTeamAction = "create" | "rename" | "add" | "remove" | "delete";
+
+/*
+ * The admin panel's wording. An admin is never asked to join, so the member
+ * card's 409 line would mislead, and a team that did work cannot be deleted
+ * (D-74-18) - the way out is removing its members.
+ */
+export function describeAdminTeamFailure(error: unknown, action: AdminTeamAction): TeamFailure {
+  const base = describeTeamFailure(error, "change");
+  if (!(error instanceof ApiRequestError) || base.auth) return base;
+  if (error.status === 403) {
+    return { ...base, message: "Only an admin can change these teams." };
+  }
+  if (error.status === 409 && error.code === "conflict") {
+    return {
+      ...base,
+      message:
+        action === "delete"
+          ? "This team has records and cannot be removed; remove its members instead."
+          : "Someone is already on a team in this outing, or is no longer active. Refresh to see the latest.",
+    };
+  }
+  if (error.code === "session_not_active") {
+    return { ...base, message: "This outing has ended, so no new team can be formed." };
+  }
+  return error.status === 400 || error.status === 404
+    ? base
+    : { ...base, message: "Could not change the team. Try again." };
 }

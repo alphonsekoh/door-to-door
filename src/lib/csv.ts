@@ -1,4 +1,6 @@
 import type { HistoryEntry } from "@/generated/types.gen";
+import { teamName, teammateNames } from "@/lib/team-label";
+import { displayName } from "@/lib/team-ui";
 
 /*
  * CSV for the export of a filtered history view.
@@ -33,6 +35,8 @@ const HEADERS = [
   "Interest",
   "Notes",
   "Recorded by",
+  "Team",
+  "Teammates",
   "Outing",
   "Recorded at",
 ];
@@ -47,7 +51,13 @@ export function historyToCsv(entries: HistoryEntry[]): string {
     entry.household.religion ?? "",
     entry.visit.interestLevel,
     entry.visit.description,
-    entry.visit.member.name ?? "",
+    /* The person is known, only their name is not - the same word as a
+       nameless teammate gets, so the two columns agree. */
+    displayName(entry.visit.member.name),
+    /* Team and member names are typed by people, so they go through the same
+       formula guard as everything else (D-30-4). */
+    teamName(entry.visit) ?? "",
+    teammateNames(entry.visit).join("; "),
     entry.session.title,
     entry.visit.createdAt,
   ]);
