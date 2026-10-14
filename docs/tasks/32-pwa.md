@@ -1,6 +1,6 @@
 # #32 · PWA manifest, icons, install prompt and service worker
 
-- **Status:** In review (PR #73)
+- **Status:** In review (PR #73; D-32-19 to D-32-21 in PR #93)
 - **Phase:** 6 - PWA & Offline
 
 ## Task
@@ -65,6 +65,22 @@ Make the app installable and the shell load with no network.
 - **D-32-18 · WebKit (iPhone 13) joins the Playwright projects and CI. Supersedes
   D-37-2.** Safari is covered by E2E except the offline-fallback navigation, which
   Playwright WebKit cannot exercise (owner-approved). _Research:_ R-22.
+
+### Decisions from PR #93 (CI flake fix, no issue)
+
+- **D-32-19 · The cookieless PWA paths (`/serwist/*`, `/manifest.webmanifest`,
+  `/offline`) skip `auth()` in the proxy; `/sign-in` and `/api/auth/*` still run it.**
+  Extends D-32-8. _Why:_ `auth()` mints a CSRF cookie on any request without one, and
+  WebKit stores it from the worker's cookieless update check, swapping the member's token
+  mid sign-out; `/sign-in` must keep handing out its CSRF cookie with the page so the
+  form's first auth requests do not each mint one. _Research:_ R-40.
+- **D-32-20 · `useReservedSpace` publishes `--banner-*` from a layout effect.** Extends
+  D-32-13. _Why:_ a passive effect runs after paint, so each banner's first frame
+  covered content. Same cause as the update-prompt half of #88 (that half is fixed; the
+  block-attach-sheet half is not).
+- **D-32-21 · A failed cache clear on sign-in never blocks it.** Extends D-32-7, mirrors
+  D-74-9. _Why:_ the session is already set, and a rejection left the button disabled
+  with no message.
 
 ## Relies on
 

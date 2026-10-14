@@ -330,3 +330,24 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filter selects are at
   least 44px tall")
 - **Used by:** D-74-62
+
+### R-40 · Linux WebKit's worker update check is cookieless, but it stores cookies set on the reply
+
+- **Finding:** Playwright's Linux WebKit (1.62.1 image) fetches `/serwist/sw.js` for its
+  update check without cookies and stores any `Set-Cookie` on the response. next-auth's
+  `auth()` wrapper mints a new CSRF cookie for a request that has none, so the member's
+  token was replaced shortly after each navigation: CI trace showed `GET /api/auth/csrf`
+  return one token and the `POST /api/auth/signout` 50ms later carry another. macOS WebKit
+  sends cookies on that fetch and never reproduced it. Observed through a logging reverse
+  proxy; `src/proxy-cookies.test.ts` covers the server half through the real wrapper.
+- **Source:** observed in PR #93 (CI run 38529456993, `e2e/pwa.spec.ts:185`, mobile-webkit);
+  next-auth 5.0.0-beta.32, @auth/core 0.41.3
+- **Used by:** D-32-19
+
+### R-41 · Auth.js reports a refused sign-out as 200 with an error URL
+
+- **Finding:** `signOut({ redirect: false })` on a CSRF mismatch resolves with
+  `{ url: ".../sign-in?error=MissingCSRF" }` and HTTP 200; the session cookie is not
+  cleared. The only signal is the `error` query parameter. Observed in PR #93.
+- **Source:** observed in PR #93 (server log `[auth][error] MissingCSRF`); @auth/core 0.41.3
+- **Used by:** D-74-64

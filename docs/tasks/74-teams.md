@@ -341,6 +341,15 @@ likely the old double teams fetch fixed by D-74-52.
 - **D-07-2:** a teammate's amend edits the same visit, as an admin's already may
   (D-20-2); it is not an overwrite across visits.
 
+## Decisions from PR #93 (CI flake fix, no issue)
+
+- **D-74-64 · Sign-out fails when the URL Auth.js returns carries an `error` parameter.**
+  Extends D-74-10. The Account screen shows its existing "Could not sign out" alert.
+  _Why:_ Auth.js answers a refused sign-out (MissingCSRF) with `200` and the session
+  survives, so navigating to `/sign-in` told the member they were out when they were not.
+  _Known limit:_ the alert says "Check your connection", which is wrong for a refusal;
+  wording left as is. _Research:_ R-41.
+
 ## Follow-ups
 
 Issues #85 (a global auth-failure message), #86, #87, #88 and #90 (focus trap, Escape and
