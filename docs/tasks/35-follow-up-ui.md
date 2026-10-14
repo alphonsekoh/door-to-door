@@ -15,11 +15,11 @@ recording form before knocking; overdue widget for admins.
   with the author or an admin.** A body with `done` plus `note` or `dueDate` is judged
   as an edit (403 for a non-author). _Why:_ whether a promise was kept is a fact about
   the household, and `doneBy` keeps it attributable. Already shipped in 53349a6 (#22).
-  **Proposed: awaiting owner.** It conflicts with D-22-2's "or resolve" clause, which
-  stays in force on paper until the owner agrees to supersede it.
+  Supersedes D-22-2's resolve clause (owner agreed).
 - **D-35-2 · `FollowUp` carries `blockName` and `unitNumber` as flat required
   fields.** _Why:_ lists name the door without a lookup per note; flat keeps notes inside
-  `HouseholdHistory` small. Supersedes D-27-7, which handed this to #35.
+  `HouseholdHistory` small. Supersedes D-27-7, which handed this to #35 (owner
+  confirmed).
 - **D-35-3 · One `selectFollowUps(db)` builder serves list, get, create, update and the
   household history.** _Why:_ the two copies had already drifted and would drift again
   on the new joins.
@@ -59,7 +59,4 @@ D-30-8, D-32-3, D-74-19, D-74-43, D-74-44, D-74-47, D-74-49, D-74-62, D-74-63.
 
 ## Open questions
 
-- **Supersede D-22-2's resolve clause with D-35-1?** The code on `main` since 53349a6
-  already lets any member resolve or reopen, and the spec and tests say so; D-22-2 still
-  says author or admin only. Until the owner decides, the docs contradict shipped code.
-  Replaces the #22 open question "who may resolve a note".
+None.

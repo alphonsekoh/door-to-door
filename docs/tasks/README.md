@@ -90,7 +90,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 19  | [Blocks API](19-blocks-api.md)                          | Done                                      |
 | 20  | [Households and visits API](20-visits-api.md)           | Done                                      |
 | 21  | [Sync endpoint](21-sync-endpoint.md)                    | Done                                      |
-| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done                                      |
+| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done; D-22-2 partly superseded (#96)      |
 | 23  | [History API](23-history-api.md)                        | Done                                      |
 | 24  | [Active session screen](24-active-session-screen.md)    | Done                                      |
 | 25  | [Recording form](25-recording-form.md)                  | Done                                      |
