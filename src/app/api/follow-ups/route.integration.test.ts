@@ -183,6 +183,26 @@ describe("resolving a note", () => {
     expect(body.doneBy?.name).toBe("Ben");
   });
 
+  it("keeps the first resolver when a note already done is marked done again", async () => {
+    /*
+     * Ben, on a list he opened yesterday, taps Mark done on a note Alice
+     * already resolved. The credit, and the day it happened, stay hers.
+     */
+    asAlice();
+    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
+    const first = (await (await patch(id, { done: true })).json()) as {
+      doneAt: string;
+      doneBy: { name: string } | null;
+    };
+
+    asBen();
+    const response = await patch(id, { done: true });
+    expect(response.status).toBe(200);
+    const second = (await response.json()) as { doneAt: string; doneBy: { name: string } | null };
+    expect(second.doneBy?.name).toBe("Alice");
+    expect(second.doneAt).toBe(first.doneAt);
+  });
+
   it("lets another member reopen a note ticked off by mistake", async () => {
     asAlice();
     const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));

@@ -19,8 +19,10 @@ const INTEREST_LABEL: Record<string, string> = {
  *
  * This is the reason the household/visit split exists: arriving at a door
  * already knowing what was said last time, and what was promised. What is
- * still owed sits on top; below it, visits and notes read in one line,
- * oldest first.
+ * still owed sits on top; below it, visits and resolved notes read in one
+ * line, oldest first. An outstanding note appears only on top: repeating it
+ * in the timeline pushed the interest picker screens below the fold at the
+ * door.
  *
  * After any change the parent re-reads the unit from the server rather than
  * patching it here: the server stamps who resolved a note and when.
@@ -39,7 +41,10 @@ export function HouseholdHistoryPanel({
   const [now] = useState(() => new Date());
   const [sheet, setSheet] = useState<FollowUpSheetMode | null>(null);
   const outstanding = sortOutstanding(followUps);
-  const timeline = buildTimeline(visits, followUps);
+  const timeline = buildTimeline(
+    visits,
+    followUps.filter((note) => note.doneAt !== null),
+  );
 
   const edit = (note: FollowUp) => {
     setSheet({ kind: "edit", note });
@@ -109,12 +114,10 @@ export function HouseholdHistoryPanel({
             ) : (
               <li key={entry.item.id}>
                 <p className="mb-1 text-caption font-medium text-foreground-muted">Follow-up</p>
-                {/* An outstanding note's controls live in the section above,
-                    so one note never shows two Mark done buttons. */}
                 <FollowUpItem
                   note={entry.item}
                   now={now}
-                  controls={entry.item.doneAt !== null}
+                  controls
                   onChanged={onChanged}
                   onEdit={edit}
                 />

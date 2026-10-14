@@ -244,7 +244,7 @@ describe("previous visits", () => {
 });
 
 describe("the timeline", () => {
-  it("puts what is owed first, soonest due, then visits and notes oldest first", () => {
+  it("puts what is owed first, soonest due, then visits and resolved notes oldest first", () => {
     const notes = [
       note({ id: "undated", note: "Undated note", createdAt: "2026-02-01T00:00:00.000Z" }),
       note({
@@ -269,12 +269,29 @@ describe("the timeline", () => {
       expect.stringContaining("Undated note"),
     ]);
 
+    /* What is owed is not repeated below: at the door it pushed the
+       interest picker screens down (#35 review). */
     const timeline = within(screen.getByRole("list", { name: "Timeline" }));
     expect(timeline.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
-      expect.stringContaining("Undated note"),
       expect.stringContaining("Listened for a while."),
       expect.stringContaining("Resolved note"),
-      expect.stringContaining("Dated note"),
+    ]);
+    expect(screen.getAllByText("Dated note")).toHaveLength(1);
+    expect(screen.getAllByText("Undated note")).toHaveLength(1);
+  });
+
+  it("moves a note into the timeline, in date order, once it is resolved", () => {
+    const resolved = note({
+      note: "Old promise",
+      doneAt: "2026-06-01T00:00:00.000Z",
+      createdAt: "2026-01-01T00:00:00.000Z",
+    });
+    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [resolved] })} />);
+    expect(screen.queryByRole("list", { name: "Outstanding follow-ups" })).not.toBeInTheDocument();
+    const timeline = within(screen.getByRole("list", { name: "Timeline" }));
+    expect(timeline.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      expect.stringContaining("Old promise"),
+      expect.stringContaining("Listened for a while."),
     ]);
   });
 

@@ -1933,8 +1933,10 @@ paths:
         should be able to record that it happened - a note written by one
         member and acted on by another would otherwise sit on the outstanding
         list until its author noticed. `doneBy` records who closed it, so it
-        stays attributable. Reopening (`done: false`) is open to any member for
-        the same reason, and clears `doneBy`.
+        stays attributable. Marking a note that is already done as done again
+        changes nothing: `doneAt` and `doneBy` keep the first resolution, so a
+        stale screen cannot take the credit. Reopening (`done: false`) is open
+        to any member for the same reason as resolving, and clears `doneBy`.
 
         A body that sets `done` together with `note` or `dueDate` is judged as
         an edit, so another member gets `403` for it.

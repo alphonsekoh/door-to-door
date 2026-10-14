@@ -169,9 +169,14 @@ export async function updateFollowUp(
     values["dueDate"] = changes.dueDate == null ? null : new Date(changes.dueDate);
   }
   if (changes.done === true) {
-    // Records who closed it, not just that it closed.
-    values["doneAt"] = new Date();
-    values["doneBy"] = actor.id;
+    /*
+     * Records who closed it, not just that it closed - and only the first
+     * time. A second "done" from a stale screen or a quick re-tap must not
+     * take the credit from whoever resolved it. Coalesce in the UPDATE itself,
+     * so two members resolving at once cannot both win.
+     */
+    values["doneAt"] = sql`coalesce(${followUps.doneAt}, ${new Date()})`;
+    values["doneBy"] = sql`coalesce(${followUps.doneBy}, ${actor.id})`;
   }
   if (changes.done === false) {
     values["doneAt"] = null;
