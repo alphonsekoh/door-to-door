@@ -100,8 +100,8 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 29  | [Admin records](29-admin-records.md)                    | Done                                 |
 | 30  | [Consolidated history](30-consolidated-history.md)      | Done                                 |
 | 31  | [Member management](31-member-management.md)            | Done                                 |
-| 32  | [PWA and service worker](32-pwa.md)                     | Done                                 |
-| 33  | [Offline queue and sync engine](33-offline-queue.md)    | Open                                 |
+| 32  | [PWA and service worker](32-pwa.md)                     | Done; D-32-6 refined (#99)           |
+| 33  | [Offline queue and sync engine](33-offline-queue.md)    | In review (PR #99)                   |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Open                                 |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                 |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                 |
@@ -111,7 +111,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                 |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                 |
 | 83  | [Per-request auth](83-per-request-auth.md)              | Done                                 |
-| 85  | [Account gone message](85-account-gone-message.md)      | In review (PR #98)                   |
+| 85  | [Account gone message](85-account-gone-message.md)      | Done                                 |
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                 |
 | 86  | [Rate limit counts failures](86-rate-limit-failures.md) | Done                                 |
 | 88  | [Flaky load tests](88-flaky-load-tests.md)              | Done                                 |

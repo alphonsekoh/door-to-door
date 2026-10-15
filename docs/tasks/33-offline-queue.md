@@ -1,73 +1,149 @@
 # #33 · IndexedDB write queue and sync engine
 
-- **Status:** Open
+- **Status:** In review (PR #99)
 - **Phase:** 6 - PWA & Offline
 - **Depends on:** #21, #32
 
 ## Task
 
-Write to IndexedDB first, then sync; never lose a record to a dead spot.
+Write to IndexedDB first, then sync; never lose a record to a dead spot. The engine is
+pure functions over a `SyncQueue` interface (`src/lib/sync/`), so #34 can test it
+without a browser.
 
 ## Decisions
 
-None yet. The issue specifies: `idb`; flush on `online`, focus and Background Sync;
-exponential backoff; poison items quarantined; engine as pure functions over a queue
-interface.
+Owner decisions are marked **(owner)**.
+
+- **D-33-1 · Shared phone: records belong to the member who saved them (owner).** Only
+  the owner's records are listed or sent; another member's stay on the phone, hidden, and
+  send when that member signs in again. Sign-out never clears the queue, and no future
+  clear of a previous member's local copy (#77) may include it. Every batch first asks
+  `/api/auth/session` (no-store) who is signed in; anyone else or nobody pauses the queue
+  as signed out, and an unanswered check waits like no signal. The provider keeps the
+  last confirmed member across a failed session refetch; a public page clears it.
+  _Why:_ the sync request carries no owner, so the cookie decides whose name a record is
+  stored under; a stale tab must never send A's records as B. _Research:_ R-44.
+- **D-33-2 · No discard (owner).** Held and quarantined records cannot be discarded;
+  Retry is the only action. The only delete is the purge of sent records (D-33-9).
+  _Why:_ nothing unsent is ever dropped.
+- **D-33-3 · Item `clock_skew` restamps (owner).** `clientCreatedAt` and `updatedAt`
+  are set to now and the record goes again at once; from the second skew, at most every
+  5 minutes. Skew does not count toward the cap. _Why:_ a record that can never pass is
+  worse than one stamped late; consistent with D-76-4, and D-76-7 counts the refusals.
+- **D-33-4 · Retry cap: 8 attempts (owner).** Backoff from 5 s, doubling, capped at
+  5 min, full jitter; the 8th failure quarantines. Counts `internal_error`, a missing
+  result, and server failures while isolated (D-33-6). Network errors never count. A
+  single item refused `400` is quarantined at once. _Why:_ a deterministic failure must
+  not retry forever (D-74-30). Worst case to quarantine is 615 s, not "about 15
+  minutes": see open questions.
+- **D-33-5 · Sends go through `apiFetch` with a fresh `sentAt` and a 20 s timeout.** A
+  `401` or `403 account_deactivated` raises the account screen like any request; a
+  timeout counts as no signal. _Why:_ closes D-85-10 with no second path into the
+  account store; a stale `sentAt` reads as skew (D-76-3); a lost reply must not stall
+  the queue, and the id makes a resend harmless (D-21-1). _Research:_ R-36.
+- **D-33-6 · Isolation mode.** After 3 whole-batch server failures in a row, or a
+  `400`, the engine sends one item per request until the due list is empty or a Retry.
+  A batch where every item is `internal_error` counts as a whole-batch failure, so only
+  a record that fails alone is charged. _Why:_ finds a poison record without holding the
+  good ones, and a database outage (D-87-2) must not quarantine the whole queue.
+- **D-33-7 · One sender per origin.** Runs hold a `navigator.locks` lock; without Web
+  Locks the run goes ahead in-tab. Tabs tell each other to re-read over
+  `BroadcastChannel`. _Why:_ the server's idempotency keeps a double send harmless, so
+  the lock is an economy, not a guarantee. _Research:_ R-45.
+- **D-33-8 · Every stored record is validated on read.** A record failing the generated
+  schema comes back quarantined as `corrupt`: never thrown, never deleted, never sent,
+  not retryable. _Why:_ storage outlives the code that wrote it; deleting may drop a
+  real knock.
+- **D-33-9 · Sent records are kept 24 h, purged on app start.** _Why:_ the unit list
+  and Add follow-up need the server's row after the send.
+- **D-33-10 · The form saves to the queue first.** It falls back to a direct
+  `POST /visits` only when the queue cannot be written (no IndexedDB, full disk), where
+  D-25-8 keeps what was typed. _Why:_ a save never waits on the network.
+- **D-33-11 · Add follow-up appears only once the saved visit's server row is known.**
+  Refines D-35-10 for queued saves. _Why:_ the server can only anchor to a stored visit
+  (D-22-3).
+- **D-33-12 · Sync status bar.** Sticky at the top of `main` (`z-20`, under
+  `--banner-top`), its one-line row held on every signed-in page from first paint; it
+  opens a sheet (`z-50`) with each record's state, a fixed reason, Retry and Retry all.
+  A record saved on this page does not count until its first send ends; the form's
+  `role="status"` line says "Saved". _Why:_ the bar appearing mid-form would move the
+  form under a thumb; saving with signal must not flash it.
+- **D-33-13 · Amends and on-behalf recording stay online-only.** Units known only to
+  the queue are not tappable. _Why:_ amending needs the server's row; D-74-19.
+- **D-33-14 · Update prompt waits only for the member's records still being sent
+  (owner).** `hasRecordsToSend(ownerId)`: queued or failed records of the signed-in
+  member. Held, quarantined and other members' records don't block an update;
+  IndexedDB keeps them across the reload. Refines D-32-6. _Why:_ records that only a tap
+  or an admin can move would hold every update back indefinitely.
+- **D-33-15 · The sign-out warning counts all the member's own unsent records
+  (owner).** `hasUnsyncedItems(ownerId)` includes held and quarantined records; the
+  sign-out confirmation (D-74-9) and the account screen (D-85-9) use it. Both checks
+  say false when IndexedDB cannot be read. _Why:_ they are still that member's unsent
+  work; a broken store must not trap anyone.
+- **D-33-16 · Per-item results.** `applied`, `unchanged`, `stale` are sent.
+  `internal_error` retries with backoff (D-33-4). `session_not_active` is held and
+  probed every 5 min (D-21-4). `conflict`, `not_found` and any unknown code are held
+  for a tap (D-74-23). _Why:_ only an admin's action can change those answers.
+- **D-33-17 · Whole-batch responses.** No signal: queue-level backoff, nothing charged.
+  `429`: wait 60 s, kept even on Retry. `401` or another member signed in: paused until
+  the next page load. `403 account_deactivated` and `422 clock_skew`: retried at most
+  every 5 min (D-83-4, D-76-7). `5xx` or an unparseable `200`: backoff. _Why:_ the
+  server's own answer decides the wait; a tap past a `429` would only earn another.
+- **D-33-18 · Retry resets attempts and skew count and lifts the engine's own waits**
+  (backoff, isolation, 5-minute probes), but not a `429` wait or a sign-out pause.
+  _Why:_ a tap means "try now", but the server chose those two.
+- **D-33-19 · Triggers: app start, each save, `online`, focus and visibility, the
+  backoff timer, Retry.** No Background Sync. `navigator.storage.persist()` is asked
+  once on the first save and its answer ignored. _Why:_ D-32-5 and R-19: the worker
+  never opens IndexedDB, and iOS has no Background Sync. _Research:_ R-46.
+- **D-33-20 · Fixed wording only.** The server's message is never shown. The sheet
+  says unsent records are on this phone only. _Why:_ the server's text was written for
+  a request, not a record read days later; D-74-1.
+- **D-33-21 · The unit list overlays unsent records.** A worded chip ("Not sent",
+  "Sending…"), and unsent records count toward tonight's progress. The block screen
+  re-reads the server only when one of the member's records is sent. _Why:_ #26's
+  criteria; a save in a dead spot must not trigger a fetch that fails.
+- **D-33-22 · `/offline` reloads itself on `online`** (to `/` when the address is
+  `/offline`), so the member's queue starts with no tap. Not Serwist's
+  `reloadOnOnline`, which stays off (D-32-14): this page holds no input. _Why:_ no
+  queue runs on the offline page.
+- **D-33-23 · `beforeunload` warns while the member's records are being sent.** _Why:_
+  issue criterion; closing loses nothing, but the member should know it has not gone.
+- **D-33-24 · Storage layout.** Database `door-to-door` v1, store `visits` keyed by id,
+  one index `by-owner`. "Sending" is never stored. A tab blocking a newer build's
+  upgrade closes its connection. _Why:_ in-flight is a fact about a page, not a record.
+  Scope cut: the planned `by-state` index was not needed.
 
 ## Relies on
 
-D-07-3, D-21-1 to D-21-7, D-25-7, D-26-5 (only changed fields, which keeps
-`updatedAt` honest for last-write-wins), D-32-5 (the service worker never touches
-IndexedDB; the queue owns it), D-32-6 (updates defer while items are unsynced),
-D-76-3 to D-76-7 (clock rules).
+D-07-3, D-21-1 to D-21-7, D-25-6 to D-25-8, D-26-5, D-32-5, D-32-6 (refined by
+D-33-14), D-35-10, D-74-1, D-74-9, D-74-19, D-74-23, D-74-30, D-74-32, D-76-3 to
+D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
 
-Findings from #32 that shape the design (R-19, R-20):
+## Inherited by other tasks
 
-- iOS may evict IndexedDB after about 7 days of non-use (unverified), and there is no
-  Background Sync on iOS. Flush on `online`, focus and app start; do not rely on
-  Background Sync. Show unsynced state so a member knows to open the app.
+- **#77 (offline recording screen):** clearing a previous member's local copy must
+  never touch the queue (D-33-1), and only the confirmed member's records may be shown
+  or sent. It reuses the bar (D-33-12) and the unit overlay (D-33-21), and replaces
+  the `/offline` reload (D-33-22).
+- **#34 (offline tests):** fuzzing over online/offline sequences, real-database
+  convergence, quota simulation and a corruption-recovery suite were left out. Pin
+  these: nothing unsent deleted (D-33-2), owner scoping (D-33-1), the cap (D-33-4),
+  an outage not charged (D-33-6).
 
-## Deactivation (D-83-4)
+## Known limits
 
-A deactivated user's queued records get `403 account_deactivated` on flush. The queue must
-hold, not drop, items on that response and show a message; an admin may reactivate the
-account and the records then sync. A `401` (account deleted) is likewise not a reason to
-discard.
+- A corrupt record (D-33-8) can be neither retried nor discarded, so it counts toward
+  the sign-out warning and the bar's "not sent" until #34's corruption work recovers it.
 
-## Teams (D-74)
+## Open questions
 
-Per-item results the queue must handle, from PR #82:
-
-- `conflict` is HELD for review, never retried (D-74-23): a removed teammate's amend, a
-  stranger's record, or an attempt to move a stored visit.
-- `internal_error` is RETRYABLE (D-74-30): retry with backoff and a CAP, then quarantine
-  as a poison item. A deterministic failure (for example `InternalError` from
-  `presentOrThrow`) must not retry forever.
-- Never queue join, create, add or leave (D-74-19); they are online-only.
-- Send the visit's own `sessionId` on amends, since a stored visit now keeps its own
-  outing and an item naming another is `conflict` (D-74-32).
-
-## Inherited
-
-Two acceptance criteria from #26: queued units appear in the unit list and look
-distinct.
-
-From #32: replace the `hasUnsyncedItems()` stub in `src/lib/sw-update.ts` (returns
-false) with a real queue check. The update prompt already calls it and defers while it
-is true (D-32-6). Sign-out already clears the caches (D-74-9) and warns when `hasUnsyncedItems()` is
-true, so the warning only becomes real once this task replaces the stub.
-
-From #35: the recording form offers "Add follow-up" after a save, anchored to the saved
-visit (D-35-10). Hide it while that visit is still queued, or create fails `404`.
-
-From #76 (clock rules): send `sentAt` (the phone's clock, regenerated) on every attempt;
-handle batch `422 clock_skew` (keep everything queued, tell the member to fix the clock)
-and item `clock_skew` (restamp, then retry, throttled); probe clock-blocked records at
-most every 5 minutes, since the limiter counts 422s (D-76-7); always send the visit's own
-`sessionId`, including on amends (D-76 known limit).
-
-From #85: a `401` or `403 account_deactivated` on flush must also raise the app-wide
-account screen: flush through `apiFetch`, or call `accountStore.reportAuthFailure` from
-the worker (D-85-10). That screen tells the member "Records not yet sent are kept on this
-phone" whenever `hasUnsyncedItems()` is true (D-85-9), so sign-out must never clear the
-queue.
+- **Retry window (D-33-4).** The owner gave both the parameters and "about 15
+  minutes"; the parameters give at most 615 s (about 5 min on average). Kept as the
+  parameters. If 15 minutes was meant, 10 attempts gives at most 1215 s.
+- **Conflict, not recorded as a decision: a new record with no `sessionId`.** When the
+  block screen could not load `/sessions/active`, the queued item omits `sessionId`
+  (`src/lib/sync/enqueue.ts`). The D-76 known limit requires #33 to "always send the
+  visit's own `sessionId`"; D-74-32 closed that only for stored visits. If both stand,
+  a record from outing A sent during outing B joins B, fails B's lower bound and is
+  restamped (D-33-3), filed in the wrong outing with a new time.

@@ -31,6 +31,7 @@ Make the app installable and the shell load with no network.
   never reloads on its own, and the prompt defers while `hasUnsyncedItems()` is true
   (a stub returning false until #33). _Why:_ acceptance criterion "a new deploy does
   not discard unsynced data". Consequence: a page is controlled from its second load.
+  _Refined by D-33-14:_ only the signed-in member's queued or failed records defer it.
 - **D-32-7 · The block cache is cleared on sign-in** via `clearServiceWorkerCaches`.
   _Why:_ a different member signing in must not see the previous list. Sign-out wiring
   is done in #74: see D-74-9 and D-74-10. ~~**Known limit:** until then sign-out

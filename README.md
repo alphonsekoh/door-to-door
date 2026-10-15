@@ -29,7 +29,7 @@ nothing.
 
 **In the field**
 
-- Installable on a phone, works offline, and syncs when signal returns _(installable: done; offline queue — #33)_
+- Installable on a phone, works offline, and syncs when signal returns _(installable and offline queue: done; offline recording screen — #77)_
 
 ## Known limits
 

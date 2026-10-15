@@ -6,14 +6,14 @@ How the codebase is put together and why. Rules for working in it live in
 ## Shape
 
 One Next.js app serves both the UI and the API. PostgreSQL is the only store on the
-server; IndexedDB will be the store on the device once the offline queue lands (#33).
+server; IndexedDB holds the visit write queue on the device (#33).
 
 ```mermaid
 flowchart LR
   subgraph Phone
     UI[React screens<br/>src/app, src/components]
     Lib[src/lib<br/>pure logic]
-    Q[(IndexedDB queue<br/>#33, not built)]
+    Q[(IndexedDB queue<br/>src/lib/sync)]
   end
   subgraph Server[Next.js server]
     Proxy[src/proxy.ts<br/>optimistic redirect]
@@ -23,6 +23,7 @@ flowchart LR
   DB[(PostgreSQL)]
   Spec[openapi.yaml] -->|generate:api| Gen[src/generated<br/>types + Zod]
   UI --> Lib
+  UI -->|save| Q
   UI -->|fetch via api-client| Proxy --> Routes --> Svc --> DB
   Gen -.validates.-> Routes
   Gen -.types.-> UI
@@ -41,6 +42,7 @@ flowchart LR
 | `src/server/<domain>` | Services, queries, serialisers per domain    | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users. |
 | `src/db/`             | Drizzle schema, client, test env, seed data  | 100%     | Constraints carry the invariants the API cannot race.              |
 | `src/lib/`            | Framework-free helpers                       | 100%     | Where UI logic goes so it can be tested without rendering.         |
+| `src/lib/sync/`       | Offline queue and sync engine                | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.      |
 | `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
 | `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
 | `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
@@ -136,8 +138,8 @@ Google SSO (#14) is not built.
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
-- Overlay layers: bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account
-  screen `z-70`. Guarded by `overlay-layers.test.ts`.
+- Overlay layers: sync status bar `z-20` (sticky), banners `z-30`, bottom nav `z-40`,
+  sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`. Guarded by `overlay-layers.test.ts`.
 - Every sheet and `ConfirmDialog` is a modal through `useModal` (`src/lib/use-modal.ts`):
   focus in, Tab trapped, Escape closes the top layer only, page behind `inert` and
   unscrollable, focus back to the trigger (D-90-1 to D-90-9). A blocking modal stays on
@@ -165,7 +167,8 @@ Google SSO (#14) is not built.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
-- Sign-out (`src/lib/sign-out.ts`): clears the block cache, warns on unsynced items,
+- Sign-out (`src/lib/sign-out.ts`): clears the block cache (never the queue), warns
+  on the member's unsent records (`hasUnsyncedItems(ownerId)`, D-33-15),
   `signOut({ redirect: false })`, then a full navigation to `/sign-in` (or a given
   destination, e.g. `/sign-in?reason=signed-out`). A refusal
   (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
@@ -183,22 +186,51 @@ Google SSO (#14) is not built.
 - Precache: static assets, icons and `/offline`; never authenticated HTML.
   Navigations are network-only with an `/offline` fallback. API is network-only except
   `GET /api/blocks` (stale-while-revalidate, own cache, 24h / 20 entries).
-- The worker never touches IndexedDB. Updates are prompted and defer while unsynced
-  items exist; a page is controlled from its second load.
+- The worker never touches IndexedDB. Updates are prompted and defer while the
+  signed-in member's records are queued or failed (`hasRecordsToSend`, D-33-14); a
+  page is controlled from its second load.
 - `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
   banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
 - Sign-in and sign-out clear the cached block list (sign-out: D-74-9).
 
 ## Offline
 
-Server side is done: `POST /visits/sync` is idempotent on the client id, resolves
-conflicts last-write-wins on `updatedAt`, reports per item (`applied`, `unchanged`,
-`stale`, rejected), and is rate limited. Clock rules (#76) apply to it and to
-`POST /visits`: a batch whose `sentAt` is off from the server by more than
-`sync.clockSkewToleranceSeconds` is refused `422 clock_skew`; items stamped in the
-future or before their outing are rejected `clock_skew` while siblings apply. The service worker and offline shell are done
-(#32); a cold offline launch shows `/offline`. The IndexedDB queue and sync engine are
-#33–#34.
+`POST /visits/sync` is idempotent on the client id, resolves conflicts last-write-wins
+on `updatedAt`, reports per item (`applied`, `unchanged`, `stale`, rejected), and is rate
+limited. Clock rules (#76) apply to it and to `POST /visits`: a batch whose `sentAt` is
+off from the server by more than `sync.clockSkewToleranceSeconds` is refused `422
+clock_skew`; items stamped in the future or before their outing are rejected
+`clock_skew` while siblings apply. A cold offline launch shows `/offline` (#32), which
+reloads itself when signal returns.
+
+**Queue (#33).** The recording form writes the visit to IndexedDB (`door-to-door`,
+store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
+cannot be written. Each record carries its owner and a state: `queued`, `failed`,
+`held`, `quarantined` or `synced`. Sending is in memory only. Nothing unsent is ever
+deleted; sent records are purged after 24 h.
+
+```
+save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /api/auth/session
+                                                    │   (owner still signed in?)
+                                                    ▼
+                    flushOnce: owner's due records, oldest first, ≤100 (1 if isolated)
+                                                    ▼
+                    POST /visits/sync via apiFetch (fresh sentAt, 20 s timeout)
+                                                    ▼
+                    classify per item / whole batch ─► write back ─► BroadcastChannel
+```
+
+- `src/lib/sync/`: `enqueue` builds the item, `engine` sends a run, `classify` decides
+  each outcome, `backoff` times retries, `controller` owns triggers, the lock and the
+  timer. `idb-queue` and `memory-queue` implement `SyncQueue`; `record` validates every
+  read. `signed-in` checks the cookie's member before each batch.
+- Triggers: app start, each save, `online`, focus and visibility, the backoff timer,
+  Retry. No Background Sync.
+- `SyncProvider` (in `AppShell`) runs one controller for the signed-in member;
+  `SyncStatusBar` and `SyncQueueSheet` show and retry it, and the unit list overlays
+  unsent records (`unit-overlay.ts`).
+- Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
+  D-33-4 and D-33-6.
 
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
@@ -209,7 +241,8 @@ interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` wi
 (`/sessions/{id}/join`, `/participants`, `/teams`, `/teams/{id}/members`) are ordinary
 `withContract` handlers.
 
-**Limit: pairs and the queue.** The queue lives in one phone's IndexedDB. Teammates (#74)
+**Limit: pairs and the queue.** The queue lives in one phone's IndexedDB, scoped to the
+member who saved each record (D-33-1). Teammates (#74)
 see and edit each other's records only once they have synced; unsynced records are
 visible on the phone that made them and nowhere else, because two phones with no
 reception cannot exchange data. The sync endpoint's rule that a member cannot overwrite

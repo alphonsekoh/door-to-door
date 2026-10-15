@@ -155,7 +155,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   which the offline queue (#33) owns. Also: iOS may evict IndexedDB after about 7 days
   of non-use (unverified), and iOS has no Background Sync API. Relevant to #33.
 - **Source:** Workbox source; WebKit storage policy (unverified)
-- **Used by:** D-32-5, D-32-6, #33 notes
+- **Used by:** D-32-5, D-32-6, D-33-19
 
 ### R-20 · iOS third-party browsers and Home Screen
 
@@ -293,7 +293,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   when the request reached the server and only the response was lost. The client cannot
   tell whether a change was applied. Not tested here; from the Fetch specification.
 - **Source:** [Fetch Standard, network error](https://fetch.spec.whatwg.org/#concept-network-error); #74
-- **Used by:** D-74-43
+- **Used by:** D-74-43, D-33-5
 
 ### R-37 · The on-screen keyboard shrinks the viewport (observed, unverified)
 
@@ -367,3 +367,29 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   that only calls `blur()` passes without a refocus fix; it must move focus elsewhere.
 - **Source:** observed in PR #98 (`auth-failure-screen.test.tsx`); jsdom 30.0.1
 - **Used by:** D-85-15
+
+### R-44 · Auth.js refetches the session on focus, and a failed fetch reads as signed out
+
+- **Finding:** `SessionProvider` refetches `/api/auth/session` on every
+  `visibilitychange` to visible (`refetchOnWindowFocus` defaults to true). Offline the
+  fetch fails and the client resolves the session to `null`, so the page reads as
+  signed out until the next successful fetch.
+- **Source:** `next-auth` 5.0.0-beta.32, `react.js` and `lib/client.js`; observed in PR #99
+- **Used by:** D-33-1
+
+### R-45 · Web Locks are origin-wide; not every browser has them
+
+- **Finding:** `navigator.locks.request(name, fn)` holds a named lock across every tab
+  and worker of the origin until `fn` settles. Browsers without the API need a
+  fallback. `BroadcastChannel` reaches the origin's other tabs.
+- **Source:** [MDN, Web Locks API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Locks_API);
+  [MDN, BroadcastChannel](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel)
+- **Used by:** D-33-7
+
+### R-46 · `navigator.storage.persist()` is a request, often refused
+
+- **Finding:** `persist()` asks the browser to exempt the origin's storage from
+  eviction; the browser may say no, and Safari on iOS mostly does (unverified). The
+  answer changes nothing the app does, so it is asked once and ignored.
+- **Source:** [MDN, StorageManager.persist()](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist); iOS behaviour unverified
+- **Used by:** D-33-19
