@@ -2,11 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReservedSpace } from "@/components/use-reserved-space";
-import { activateWaitingWorker, hasUnsyncedItems, watchForWaitingWorker } from "@/lib/sw-update";
+import { activateWaitingWorker, watchForWaitingWorker } from "@/lib/sw-update";
 
 type Props = {
-  /* Injected so #33 can supply the real queue and tests can supply either. */
-  hasUnsynced?: () => Promise<boolean>;
+  /* Whether the signed-in member still has records being sent (#33). */
+  hasUnsynced: () => Promise<boolean>;
   reload?: () => void;
 };
 
@@ -18,7 +18,7 @@ const reloadPage = () => {
  * "A new version is ready". It never reloads on its own: the member chooses,
  * and is asked to wait while saved visits are still waiting to sync.
  */
-export function UpdatePrompt({ hasUnsynced = hasUnsyncedItems, reload = reloadPage }: Props) {
+export function UpdatePrompt({ hasUnsynced, reload = reloadPage }: Props) {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   const [blockedBySync, setBlockedBySync] = useState(false);
   const bannerRef = useRef<HTMLDivElement | null>(null);

@@ -1,0 +1,21 @@
+/*
+ * Retry timing (D-33-4). Full jitter: a whole team's phones regaining signal
+ * on the same landing must not all retry on the same second.
+ */
+
+export const MAX_ATTEMPTS = 8;
+const BASE_MS = 5_000;
+const CAP_MS = 300_000;
+
+/* The 5-minute gap for anything the server refuses on a schedule of its own:
+   the rate limiter counts clock-skew refusals (D-76-7), and a deactivated
+   account or an ended outing changes only when an admin acts. */
+export const PROBE_MS = 300_000;
+
+/* After a 429. Kept even on a manual retry, or the tap would only earn another. */
+export const RATE_LIMIT_MS = 60_000;
+
+/* `attempts` is the count including the one that just failed, from 1. */
+export function retryDelay(attempts: number, random: () => number): number {
+  return Math.floor(random() * Math.min(CAP_MS, BASE_MS * 2 ** (attempts - 1)));
+}

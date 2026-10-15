@@ -14,6 +14,9 @@ const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
 vi.mock("next-auth/react", () => ({ signOut }));
 vi.mock("@/lib/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
+/* The member whose records are asked about: their own, never the phone's
+   other users' (D-33-1). */
+vi.mock("@/lib/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
 vi.mock("@/lib/navigate", () => ({ goTo }));
 
 beforeEach(() => {
@@ -92,6 +95,7 @@ describe("AuthFailureScreen", () => {
     expect(
       await screen.findByText("Records not yet sent are kept on this phone."),
     ).toBeInTheDocument();
+    expect(hasUnsynced).toHaveBeenCalledWith("u1");
   });
 
   it("says nothing about records when none are waiting", async () => {

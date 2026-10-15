@@ -3,6 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { UnitList } from "@/components/unit-list";
 import type { HouseholdSummary, InterestLevel } from "@/generated/types.gen";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import type { QueuedVisit } from "@/lib/sync/types";
+import { overlayQueued } from "@/lib/sync/unit-overlay";
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
@@ -52,6 +55,47 @@ function unit(unitNumber: string, options: Options = {}): HouseholdSummary {
   };
 }
 
+/* The list as the block screen feeds it: the server's units with this
+   phone's unsent records laid over them. */
+function List({
+  units,
+  records = [],
+  inFlight = new Set(),
+  sessionId,
+  onAmended,
+}: {
+  units: HouseholdSummary[];
+  records?: QueuedVisit[];
+  inFlight?: ReadonlySet<string>;
+  sessionId: string | null;
+  onAmended: () => void;
+}) {
+  return (
+    <UnitList
+      rows={overlayQueued(units, records, "b1", sessionId)}
+      inFlight={inFlight}
+      sessionId={sessionId}
+      onAmended={onAmended}
+    />
+  );
+}
+
+const queued = (unitNumber: string, name = "") =>
+  buildQueuedVisit(
+    {
+      blockId: "b1",
+      unitNumber,
+      interestLevel: "high",
+      description: "",
+      name,
+      contact: "",
+      religion: "",
+      sessionId: "s1",
+    },
+    "u1",
+    Date.parse("2026-10-15T10:00:00.000Z"),
+  );
+
 beforeEach(() => {
   vi.clearAllMocks();
   useRole.mockReturnValue({
@@ -67,7 +111,7 @@ beforeEach(() => {
 describe("UnitList", () => {
   it("groups units under their floor, in order", () => {
     render(
-      <UnitList
+      <List
         units={[unit("#12-01"), unit("#05-10"), unit("#05-9")]}
         sessionId="s1"
         onAmended={vi.fn()}
@@ -87,7 +131,7 @@ describe("UnitList", () => {
 
   it("reports tonight's progress, not the block's whole history", () => {
     render(
-      <UnitList
+      <List
         units={[
           unit("#05-01", { interestLevel: "high" }),
           unit("#05-02", { interestLevel: "no_response" }),
@@ -103,15 +147,13 @@ describe("UnitList", () => {
 
   it("counts everything when the running session is unknown", () => {
     // The session lookup is allowed to fail; the list must still be useful.
-    render(
-      <UnitList units={[unit("#05-01"), unit("#06-01")]} sessionId={null} onAmended={vi.fn()} />,
-    );
+    render(<List units={[unit("#05-01"), unit("#06-01")]} sessionId={null} onAmended={vi.fn()} />);
     expect(screen.getByText("On this block: 2 units on 2 floors, 2 answered")).toBeInTheDocument();
   });
 
   it("marks the units recorded during the running outing", () => {
     render(
-      <UnitList
+      <List
         units={[unit("#05-01"), unit("#05-02", { sessionId: "older" })]}
         sessionId="s1"
         onAmended={vi.fn()}
@@ -122,7 +164,7 @@ describe("UnitList", () => {
 
   it("shows the interest level in words", () => {
     render(
-      <UnitList
+      <List
         units={[unit("#05-01", { interestLevel: "high" })]}
         sessionId="s1"
         onAmended={vi.fn()}
@@ -133,18 +175,14 @@ describe("UnitList", () => {
 
   it("shows a household with no visit without a chip", () => {
     render(
-      <UnitList
-        units={[unit("#05-01", { interestLevel: null })]}
-        sessionId="s1"
-        onAmended={vi.fn()}
-      />,
+      <List units={[unit("#05-01", { interestLevel: null })]} sessionId="s1" onAmended={vi.fn()} />,
     );
     expect(screen.queryByText("Low")).not.toBeInTheDocument();
   });
 
   it("surfaces outstanding follow-ups on the row", () => {
     render(
-      <UnitList
+      <List
         units={[
           unit("#05-01", { outstandingFollowUps: 1 }),
           unit("#05-02", { outstandingFollowUps: 3 }),
@@ -160,7 +198,7 @@ describe("UnitList", () => {
   it("filters by unit number, name or contact", async () => {
     const user = userEvent.setup();
     render(
-      <UnitList
+      <List
         units={[unit("#05-01", { name: "Mr Tan" }), unit("#06-02", { name: "Ms Lim" })]}
         sessionId="s1"
         onAmended={vi.fn()}
@@ -174,22 +212,20 @@ describe("UnitList", () => {
 
   it("says when a search matches nothing", async () => {
     const user = userEvent.setup();
-    render(<UnitList units={[unit("#05-01")]} sessionId="s1" onAmended={vi.fn()} />);
+    render(<List units={[unit("#05-01")]} sessionId="s1" onAmended={vi.fn()} />);
 
     await user.type(screen.getByLabelText("Search this block"), "zzz");
     expect(screen.getByText('Nothing here matches "zzz".')).toBeInTheDocument();
   });
 
   it("says when the block has nothing on it yet", () => {
-    render(<UnitList units={[]} sessionId="s1" onAmended={vi.fn()} />);
+    render(<List units={[]} sessionId="s1" onAmended={vi.fn()} />);
     expect(screen.getByText("No units recorded here yet.")).toBeInTheDocument();
   });
 
   it("opens the amend sheet for the unit that was tapped", async () => {
     const user = userEvent.setup();
-    render(
-      <UnitList units={[unit("#05-01"), unit("#05-02")]} sessionId="s1" onAmended={vi.fn()} />,
-    );
+    render(<List units={[unit("#05-01"), unit("#05-02")]} sessionId="s1" onAmended={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: /#05-02/ }));
     expect(screen.getByRole("dialog", { name: "Amend #05-02" })).toBeInTheDocument();
@@ -198,12 +234,79 @@ describe("UnitList", () => {
   it("closes the sheet without reloading when the amendment is abandoned", async () => {
     const user = userEvent.setup();
     const onAmended = vi.fn();
-    render(<UnitList units={[unit("#05-01")]} sessionId="s1" onAmended={onAmended} />);
+    render(<List units={[unit("#05-01")]} sessionId="s1" onAmended={onAmended} />);
 
     await user.click(screen.getByRole("button", { name: /#05-01/ }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(onAmended).not.toHaveBeenCalled();
+  });
+
+  describe("with records not yet sent", () => {
+    it("shows a unit only this phone knows about, marked and not tappable", () => {
+      render(
+        <List
+          units={[unit("#05-01")]}
+          records={[queued("#05-02", "Mr Tan")]}
+          sessionId="s1"
+          onAmended={vi.fn()}
+        />,
+      );
+      const row = screen.getByText("#05-02").closest("li");
+      expect(row).not.toBeNull();
+      expect(row).toHaveTextContent("Not sent");
+      expect(row).toHaveTextContent("High");
+      expect(row).toHaveTextContent("Mr Tan");
+      expect(row).toHaveTextContent("tonight");
+      expect(screen.queryByRole("button", { name: /#05-02/ })).toBeNull();
+      // Counted as tonight's work: the door was knocked.
+      expect(screen.getByText("Tonight: 2 units on 1 floor, 2 answered")).toBeInTheDocument();
+    });
+
+    it("marks a known unit with a newer unsent record, showing that record's interest", () => {
+      render(
+        <List
+          units={[unit("#05-01")]}
+          records={[queued("#05-01")]}
+          sessionId="s1"
+          onAmended={vi.fn()}
+        />,
+      );
+      const row = screen.getByRole("button", { name: /#05-01/ });
+      expect(row).toHaveTextContent("Not sent");
+      expect(row).toHaveTextContent("High");
+      // The byline belongs to the server's older visit, so it is not shown.
+      expect(row).not.toHaveTextContent("Ben Lim");
+    });
+
+    it("says sending while the record is on its way", () => {
+      const record = queued("#05-02");
+      render(
+        <List
+          units={[]}
+          records={[record]}
+          inFlight={new Set([record.id])}
+          sessionId={null}
+          onAmended={vi.fn()}
+        />,
+      );
+      expect(screen.getByText("Sending…")).toBeInTheDocument();
+    });
+
+    it("finds a unsent unit by search like any other", async () => {
+      const user = userEvent.setup();
+      render(
+        <List
+          units={[unit("#05-01")]}
+          records={[queued("#07-03")]}
+          sessionId="s1"
+          onAmended={vi.fn()}
+        />,
+      );
+      await user.type(screen.getByLabelText("Search this block"), "0703");
+      expect(screen.getByText("#07-03")).toBeInTheDocument();
+      expect(screen.queryByText("#05-01")).toBeNull();
+    });
   });
 });

@@ -7,6 +7,7 @@ import { goTo } from "@/lib/navigate";
 import { signOutAndForget } from "@/lib/sign-out";
 import { useModal } from "@/lib/use-modal";
 import { hasUnsyncedItems } from "@/lib/sw-update";
+import { useRole } from "@/lib/use-role";
 
 const COPY = {
   deactivated: {
@@ -41,6 +42,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
   const [unsynced, setUnsynced] = useState(false);
+  const { userId } = useRole();
 
   /* The button was disabled while signing out, and a browser drops focus
      from a disabled control; put it back for the retry. */
@@ -48,11 +50,11 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
     if (failed) button.current?.focus();
   }, [failed]);
 
-  /* #33: the queue will answer this for real. Its records stay on the phone
-     through a sign-out, so the member is told rather than asked. */
+  /* The queue's records stay on the phone through a sign-out, so the member
+     is told rather than asked (D-85-9). */
   useEffect(() => {
-    void hasUnsyncedItems().then(setUnsynced);
-  }, []);
+    void hasUnsyncedItems(userId).then(setUnsynced);
+  }, [userId]);
 
   async function leave(): Promise<void> {
     setFailed(false);

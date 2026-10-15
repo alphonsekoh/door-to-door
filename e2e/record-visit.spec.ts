@@ -160,3 +160,63 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   await expect(owed).toContainText("Bring the festival flyer on Sunday.");
   await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
 });
+
+test.describe("without signal", () => {
+  /* A request the service worker makes is out of page.route's reach in
+     WebKit, and after the reload the worker is in charge. The queue is what
+     is under test here, not the worker. */
+  test.use({ serviceWorkers: "block" });
+
+  test("a visit saved without signal waits on the phone, survives a reload and sends later", async ({
+    memberPage,
+  }) => {
+    const OFFLINE_UNIT = "#21-15";
+    /* Cut the sync request rather than the whole network: the page still
+     reloads, and it behaves the same on both engines. */
+    await memberPage.route("**/api/visits/sync", (route) => route.abort("internetdisconnected"));
+    /* Leaving with records unsent asks first; the test means to. */
+    memberPage.on("dialog", (dialog) => void dialog.accept());
+
+    await memberPage.goto("/");
+    await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+    await memberPage.getByLabel("Unit number").fill(OFFLINE_UNIT);
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+
+    /* Saved the moment it is on the phone: the form moves on regardless. */
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-16");
+    await expect(memberPage.getByRole("status")).toContainText(
+      `Saved ${OFFLINE_UNIT} on this phone`,
+    );
+
+    const bar = memberPage.getByRole("button", { name: /1 waiting to send/ });
+    await expectTappable(bar);
+
+    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
+    const pending = memberPage.getByRole("listitem").filter({ hasText: OFFLINE_UNIT });
+    await expect(pending).toContainText("Not sent");
+
+    await memberPage.reload();
+    await expect(bar).toBeVisible();
+    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
+    await expect(pending).toContainText("Not sent");
+
+    /* Signal back: the sheet's Retry all must sit above the bottom nav. */
+    await memberPage.unroute("**/api/visits/sync");
+    await bar.click();
+    const sheet = memberPage.getByRole("dialog", { name: "Records not sent" });
+    const retryAll = sheet.getByRole("button", { name: "Retry all" });
+    await expectTappable(retryAll);
+    await retryAll.click();
+
+    await expect(sheet).toContainText("Everything has been sent.");
+    await sheet.getByRole("button", { name: "Close" }).last().click();
+    await expect(bar).toBeHidden();
+    /* Now a server row: tappable, with no "Not sent" chip. */
+    const row = memberPage.getByRole("button", { name: new RegExp(OFFLINE_UNIT) });
+    await expect(row).toBeVisible();
+    await expect(row).not.toContainText("Not sent");
+  });
+});

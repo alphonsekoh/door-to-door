@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { BlockScreen } from "@/components/block-screen";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import type { QueuedVisit } from "@/lib/sync/types";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -12,6 +14,22 @@ vi.mock("@/lib/api-client", async () => {
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
+
+/* Unavailable unless a test says otherwise, so a save goes straight to the
+   server as it does where IndexedDB cannot be opened. */
+const { useSyncQueue } = vi.hoisted(() => ({ useSyncQueue: vi.fn() }));
+vi.mock("@/components/sync-provider", () => ({ useSyncQueue }));
+const NO_QUEUE = {
+  records: [] as QueuedVisit[],
+  inFlight: new Set<string>(),
+  justSaved: new Set<string>(),
+  block: null,
+  syncedVersion: 0,
+  ownerId: undefined,
+  enqueue: null,
+  retry: vi.fn(),
+  retryAll: vi.fn(),
+};
 
 type Author = { id: string; name: string };
 const BEN: Author = { id: "u1", name: "Ben Lim" };
@@ -78,6 +96,7 @@ async function openUnit(unitNumber: string): Promise<void> {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useSyncQueue.mockReturnValue(NO_QUEUE);
   useRole.mockReturnValue({
     userId: "u1",
     role: "member",
@@ -315,5 +334,57 @@ describe("BlockScreen", () => {
       await Promise.resolve();
     });
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+  });
+
+  describe("with the offline queue", () => {
+    const record = (unitNumber: string) =>
+      buildQueuedVisit(
+        {
+          blockId: "b1",
+          unitNumber,
+          interestLevel: "high",
+          description: "",
+          name: "",
+          contact: "",
+          religion: "",
+          sessionId: "s1",
+        },
+        "u1",
+        Date.parse("2026-10-15T10:00:00.000Z"),
+      );
+
+    it("lists a unit saved on this phone before the server has it", async () => {
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, records: [record("#05-124")] });
+      serve(list(["#05-123"]));
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+
+      await user.click(await screen.findByRole("tab", { name: "Units (2)" }));
+      expect(screen.getByText("#05-124").closest("li")).toHaveTextContent("Not sent");
+    });
+
+    it("re-reads the units once a queued record reaches the server, and not before", async () => {
+      const queue = { ...NO_QUEUE, records: [record("#05-124")] };
+      useSyncQueue.mockImplementation(() => queue);
+      serve(list(["#05-123"]));
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "Units (2)" });
+      const households = () =>
+        apiFetch.mock.calls.filter(([path]) => String(path).startsWith("/households")).length;
+      expect(households()).toBe(1);
+
+      view.rerender(<BlockScreen blockId="b1" />);
+      expect(households()).toBe(1);
+
+      serve(list(["#05-123", "#05-124"]));
+      queue.records = [{ ...record("#05-124"), state: "synced" }];
+      queue.syncedVersion = 1;
+      view.rerender(<BlockScreen blockId="b1" />);
+
+      await waitFor(() => {
+        expect(households()).toBe(2);
+      });
+      expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
+    });
   });
 });

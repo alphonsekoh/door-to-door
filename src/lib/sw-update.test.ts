@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activateWaitingWorker, hasUnsyncedItems, watchForWaitingWorker } from "@/lib/sw-update";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import { createMemoryQueue } from "@/lib/sync/memory-queue";
+import type { QueuedVisit } from "@/lib/sync/types";
+import {
+  activateWaitingWorker,
+  hasRecordsToSend,
+  hasUnsyncedItems,
+  watchForWaitingWorker,
+} from "@/lib/sw-update";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -105,8 +113,82 @@ describe("activateWaitingWorker", () => {
   });
 });
 
+const record = (ownerId: string, state: QueuedVisit["state"]): QueuedVisit => ({
+  ...buildQueuedVisit(
+    {
+      blockId: "0190a000-0000-7000-8000-0000000000bb",
+      unitNumber: "#05-01",
+      interestLevel: "high",
+      description: "",
+      name: "",
+      contact: "",
+      religion: "",
+      sessionId: null,
+    },
+    ownerId,
+    Date.now(),
+  ),
+  state,
+});
+
+const over =
+  (...records: QueuedVisit[]) =>
+  () =>
+    Promise.resolve(createMemoryQueue(records));
+
 describe("hasUnsyncedItems", () => {
-  it("reports nothing queued until the offline queue exists", async () => {
-    await expect(hasUnsyncedItems()).resolves.toBe(false);
+  it("is true for any of the member's records not yet sent, held and stopped included", async () => {
+    for (const state of ["queued", "failed", "held", "quarantined"] as const) {
+      await expect(hasUnsyncedItems("ann", over(record("ann", state)))).resolves.toBe(true);
+    }
+  });
+
+  it("is false once everything of theirs is sent", async () => {
+    await expect(hasUnsyncedItems("ann", over(record("ann", "synced")))).resolves.toBe(false);
+  });
+
+  it("does not count another member's records", async () => {
+    await expect(hasUnsyncedItems("ann", over(record("ben", "queued")))).resolves.toBe(false);
+  });
+
+  it("counts anyone's when no member is known", async () => {
+    await expect(hasUnsyncedItems(undefined, over(record("ben", "held")))).resolves.toBe(true);
+  });
+
+  it("is false without IndexedDB, or when reading it fails", async () => {
+    await expect(hasUnsyncedItems("ann", () => Promise.resolve(null))).resolves.toBe(false);
+    await expect(hasUnsyncedItems("ann", () => Promise.reject(new Error("x")))).resolves.toBe(
+      false,
+    );
+  });
+
+  it("asks the page's own queue by default", async () => {
+    // Node has no IndexedDB, so the shared queue is unavailable.
+    await expect(hasUnsyncedItems("ann")).resolves.toBe(false);
+  });
+});
+
+describe("hasRecordsToSend", () => {
+  it("waits only for the member's records still being sent", async () => {
+    await expect(hasRecordsToSend("ann", over(record("ann", "queued")))).resolves.toBe(true);
+    await expect(hasRecordsToSend("ann", over(record("ann", "failed")))).resolves.toBe(true);
+  });
+
+  it("lets an update through past held, stopped and other members' records (D-33)", async () => {
+    const queue = over(
+      record("ann", "held"),
+      record("ann", "quarantined"),
+      record("ann", "synced"),
+      record("ben", "queued"),
+    );
+    await expect(hasRecordsToSend("ann", queue)).resolves.toBe(false);
+  });
+
+  it("is false with nobody signed in", async () => {
+    await expect(hasRecordsToSend(undefined, over(record("ann", "queued")))).resolves.toBe(false);
+  });
+
+  it("asks the page's own queue by default", async () => {
+    await expect(hasRecordsToSend("ann")).resolves.toBe(false);
   });
 });

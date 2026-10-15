@@ -25,10 +25,12 @@ function stubServiceWorker(waiting: ServiceWorker | null, controller: object | n
   return { postMessage, serviceWorker, registration };
 }
 
+const nothingQueued = () => Promise.resolve(false);
+
 describe("UpdatePrompt", () => {
   it("says nothing when no new version is waiting", async () => {
     const { registration } = stubServiceWorker(null);
-    render(<UpdatePrompt />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     await act(() => Promise.resolve());
     // Watching has started, so the silence is an answer rather than "not yet".
     expect(registration.addEventListener).toHaveBeenCalledWith("updatefound", expect.any(Function));
@@ -43,7 +45,7 @@ describe("UpdatePrompt", () => {
         register = resolve;
       }),
     });
-    render(<UpdatePrompt />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     await act(() => Promise.resolve());
     expect(registration.addEventListener).not.toHaveBeenCalled();
 
@@ -58,7 +60,7 @@ describe("UpdatePrompt", () => {
 
   it("says nothing in a browser without service workers", async () => {
     Reflect.deleteProperty(navigator, "serviceWorker");
-    render(<UpdatePrompt />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     await act(() => Promise.resolve());
     expect(screen.queryByRole("status")).toBeNull();
   });
@@ -66,7 +68,7 @@ describe("UpdatePrompt", () => {
   it("offers a reload, and does not reload by itself", async () => {
     const { postMessage } = stubServiceWorker({} as ServiceWorker);
     const reload = vi.fn();
-    render(<UpdatePrompt reload={reload} />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} reload={reload} />);
 
     expect(await screen.findByText("Update available.")).toBeInTheDocument();
     expect(postMessage).not.toHaveBeenCalled();
@@ -77,7 +79,7 @@ describe("UpdatePrompt", () => {
     const user = userEvent.setup();
     const { postMessage, serviceWorker } = stubServiceWorker({} as ServiceWorker);
     const reload = vi.fn();
-    render(<UpdatePrompt reload={reload} />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} reload={reload} />);
 
     await user.click(await screen.findByRole("button", { name: "Reload" }));
 
@@ -113,7 +115,7 @@ describe("UpdatePrompt", () => {
 
   it("does not treat the first install as an update", async () => {
     const { registration } = stubServiceWorker({} as ServiceWorker, null);
-    render(<UpdatePrompt />);
+    render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     await act(() => Promise.resolve());
     expect(registration.addEventListener).toHaveBeenCalledWith("updatefound", expect.any(Function));
     expect(screen.queryByRole("status")).toBeNull();
@@ -121,7 +123,7 @@ describe("UpdatePrompt", () => {
 
   it("stops watching when it unmounts", async () => {
     const { registration } = stubServiceWorker(null);
-    const { unmount } = render(<UpdatePrompt />);
+    const { unmount } = render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     await waitFor(() => {
       expect(registration.addEventListener).toHaveBeenCalled();
     });
@@ -141,7 +143,7 @@ describe("UpdatePrompt reserved space", () => {
       configurable: true,
       get: () => 56,
     });
-    const { unmount } = render(<UpdatePrompt />);
+    const { unmount } = render(<UpdatePrompt hasUnsynced={nothingQueued} />);
     const topReserve = () => document.documentElement.style.getPropertyValue("--banner-top");
 
     /* The banner appears from a promise, outside act, so React may commit it

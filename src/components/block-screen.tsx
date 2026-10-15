@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RecordVisitForm } from "@/components/record-visit-form";
+import { useSyncQueue } from "@/components/sync-provider";
 import { UnitList } from "@/components/unit-list";
 import type {
   ActiveSession,
@@ -10,6 +11,7 @@ import type {
   TeamList,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/team-ui";
 import { useRole } from "@/lib/use-role";
 
@@ -17,6 +19,7 @@ type Tab = "record" | "units";
 
 export function BlockScreen({ blockId }: { blockId: string }) {
   const { userId } = useRole();
+  const { records, inFlight, syncedVersion } = useSyncQueue();
   const [known, setKnown] = useState<HouseholdSummary[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -59,6 +62,20 @@ export function BlockScreen({ blockId }: { blockId: string }) {
       clearTimeout(timer);
     };
   }, [load, loadSession]);
+
+  /*
+   * Re-read once a queued record reaches the server, not after every save:
+   * a save in a dead spot must not try the network and fail just to refresh
+   * a list the queue already shows it in.
+   */
+  const seenSynced = useRef(syncedVersion);
+  useEffect(() => {
+    if (syncedVersion === seenSynced.current) return;
+    seenSynced.current = syncedVersion;
+    void load();
+  }, [syncedVersion, load]);
+
+  const rows = overlayQueued(known, records, blockId, sessionId);
 
   /*
    * Which team the viewer is on NOW decides whether a teammate's unit opens
@@ -130,18 +147,24 @@ export function BlockScreen({ blockId }: { blockId: string }) {
             tab === "units" ? "border-primary bg-primary text-primary-foreground" : "border-border"
           }`}
         >
-          Units ({known.length})
+          Units ({rows.length})
         </button>
       </div>
 
       {tab === "record" ? (
         <div role="tabpanel" id="panel-record" aria-labelledby="tab-record">
-          <RecordVisitForm blockId={blockId} known={known} onRecorded={() => void load()} />
+          <RecordVisitForm
+            blockId={blockId}
+            known={known}
+            sessionId={sessionId}
+            onRecorded={() => void load()}
+          />
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
           <UnitList
-            units={known}
+            rows={rows}
+            inFlight={inFlight}
             sessionId={sessionId}
             teamIds={teamIds}
             onAmended={() => void load()}
