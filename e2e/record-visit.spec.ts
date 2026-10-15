@@ -197,6 +197,12 @@ test.describe("without signal", () => {
     await memberPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await checked;
 
+    /* The bar's row is there before anything needs it, so the form does not
+       move when it fills in mid-entry. */
+    const quiet = memberPage.locator("p", { hasText: "All visits sent" });
+    await expect(quiet).toBeVisible();
+    const slot = await quiet.boundingBox();
+    expect(slot).not.toBeNull();
     await memberPage.getByLabel("Unit number").fill(OFFLINE_UNIT);
     await memberPage.getByRole("radio", { name: "Medium" }).click();
     await memberPage.getByRole("button", { name: "Save and next" }).click();
@@ -209,6 +215,8 @@ test.describe("without signal", () => {
 
     const bar = memberPage.getByRole("button", { name: /1 waiting to send/ });
     await expectTappable(bar);
+    const filled = await bar.boundingBox();
+    expect(filled?.height).toBe(slot?.height);
 
     await memberPage.getByRole("tab", { name: /^Units/ }).click();
     await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
@@ -237,6 +245,7 @@ test.describe("without signal", () => {
     await expect(sheet).toContainText("Everything has been sent.");
     await sheet.getByRole("button", { name: "Close" }).last().click();
     await expect(bar).toBeHidden();
+    await expect(quiet).toBeVisible();
     /* Now a server row: tappable, with no "Not sent" chip. */
     const row = memberPage.getByRole("button", { name: new RegExp(OFFLINE_UNIT) });
     await expect(row).toBeVisible();

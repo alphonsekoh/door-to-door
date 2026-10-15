@@ -238,6 +238,74 @@ describe("flushOnce", () => {
   });
 });
 
+describe("flushOnce during a database outage (D-87-2)", () => {
+  const internalError = (id: string): VisitSyncResult => ({
+    id,
+    status: "rejected",
+    error: { error: { code: "internal_error", message: "Internal error" } },
+  });
+  const outage = (items: VisitSyncItem[]): SendOutcome => ({
+    kind: "ok",
+    results: items.map((item) => internalError(item.id)),
+  });
+
+  it("charges no record while every one in the batch fails together", async () => {
+    const queue = createMemoryQueue();
+    const records = [saved("ann", NOW - 3, "#05-01"), saved("ann", NOW - 2, "#05-02")];
+    await queue.putMany(records);
+    let now = NOW;
+    const d = {
+      send: vi.fn((items: VisitSyncItem[]) => Promise.resolve(outage(items))),
+      now: () => now,
+      random: () => 0.5,
+    };
+
+    // Far more runs than the cap: an outage alone must never stop a record.
+    let state = INITIAL_STATE;
+    for (let run = 0; run < 2; run += 1) {
+      state = (await flushOnce(queue, "ann", state, d)).state;
+      now += 10 * 60_000;
+    }
+    expect(state).toMatchObject({ serverStreak: 2, isolation: false, block: { reason: "server" } });
+    for (const record of records) {
+      expect(await queue.get(record.id)).toMatchObject({ state: "queued", attempts: 0 });
+    }
+
+    // The third switches to one at a time; from then on only the record sent
+    // alone is charged, once per run, and the queue backs off between runs.
+    state = (await flushOnce(queue, "ann", state, d)).state;
+    expect(state.isolation).toBe(true);
+    now += 10 * 60_000;
+    state = (await flushOnce(queue, "ann", state, d)).state;
+    expect(d.send.mock.calls.at(-1)?.[0]).toHaveLength(1);
+    const charged = await Promise.all(records.map((r) => queue.get(r.id)));
+    expect(charged.map((r) => r?.attempts)).toEqual([1, 0]);
+    expect(state.block?.reason).toBe("server");
+  });
+
+  it("still charges a record that fails while the rest of its batch goes in", async () => {
+    const queue = createMemoryQueue();
+    const good = saved("ann", NOW - 3, "#05-01");
+    const poison = saved("ann", NOW - 2, "#05-02");
+    await queue.putMany([good, poison]);
+    const d = deps((items) =>
+      Promise.resolve({
+        kind: "ok" as const,
+        results: items.map((item) =>
+          item.id === poison.id
+            ? internalError(item.id)
+            : { id: item.id, status: "applied" as const, visit: null },
+        ),
+      }),
+    );
+
+    const result = await flushOnce(queue, "ann", INITIAL_STATE, d);
+
+    expect(result.synced).toEqual([good.id]);
+    expect(await queue.get(poison.id)).toMatchObject({ state: "failed", attempts: 1 });
+  });
+});
+
 describe("dueRecords", () => {
   it("breaks a tie in save time by id, so the order is stable", () => {
     const a = { ...saved("ann", NOW), id: "a" };

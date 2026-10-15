@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
-import { barSummary, blockReason, isSending, recordReason, stateLabel } from "@/lib/sync/sync-ui";
+import {
+  barSummary,
+  blockReason,
+  isSending,
+  quietText,
+  recordReason,
+  stateLabel,
+} from "@/lib/sync/sync-ui";
 import type { QueuedVisit } from "@/lib/sync/types";
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
@@ -120,6 +127,19 @@ describe("barSummary", () => {
       "2 not sent",
     );
     expect(barSummary([record({ state: "quarantined" })], none)?.text).toBe("1 not sent");
+  });
+});
+
+describe("quietText", () => {
+  it("says everything is sent when it is, or when nothing was ever saved", () => {
+    expect(quietText([], none)).toBe("All visits sent");
+    const sent = record({ state: "synced" });
+    expect(quietText([sent], new Set([sent.id]))).toBe("All visits sent");
+  });
+
+  it("does not claim a record just saved has gone while its first send is out", () => {
+    const fresh = record();
+    expect(quietText([fresh], new Set([fresh.id]))).toBe("Sending…");
   });
 });
 

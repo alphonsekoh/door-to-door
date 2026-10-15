@@ -130,6 +130,23 @@ export function applyResult(
 }
 
 /*
+ * Every record in the batch refused with `internal_error`: that is the server
+ * failing, not the records. A database outage answers each item this way
+ * inside a 200 (D-87-2), and charging each record for it would park the whole
+ * queue within minutes. The caller treats it as a whole-batch server failure,
+ * so a record is charged only once it is sent alone.
+ */
+export function failedTogether(
+  batch: readonly QueuedVisit[],
+  results: ReadonlyMap<string, VisitSyncResult>,
+): boolean {
+  return batch.every((record) => {
+    const result = results.get(record.id);
+    return result?.status === "rejected" && result.error?.error.code === "internal_error";
+  });
+}
+
+/*
  * The server answered for the batch as a whole, so nothing in it was
  * applied. Network trouble never counts against a record: an offline phone
  * must never stop a good one. Server failures count only once the batch is

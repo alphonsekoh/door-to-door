@@ -2,13 +2,21 @@ import {
   type EngineState,
   applyBatchFailure,
   applyResult,
+  failedTogether,
   isBlocked,
   isDue,
 } from "@/lib/sync/classify";
-import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
+import type { QueuedVisit, Send, SendOutcome, SyncQueue } from "@/lib/sync/types";
 
 /* The contract's ceiling for one request. */
 export const BATCH_SIZE = 100;
+
+/* What an all-`internal_error` answer is treated as (see failedTogether). */
+const SERVER_FAILED: Extract<SendOutcome, { kind: "http" }> = {
+  kind: "http",
+  status: 500,
+  code: "internal_error",
+};
 
 export type FlushDeps = {
   send: Send;
@@ -59,8 +67,9 @@ export async function flushOnce(
     const outcome = await deps.send(batch.map((record) => record.item));
     const now = deps.now();
 
-    if (outcome.kind === "ok") {
-      const byId = new Map(outcome.results.map((result) => [result.id, result]));
+    const byId =
+      outcome.kind === "ok" ? new Map(outcome.results.map((result) => [result.id, result])) : null;
+    if (byId !== null && !failedTogether(batch, byId)) {
       const updated = batch.map((record) =>
         applyResult(record, byId.get(record.id), now, deps.random),
       );
@@ -70,7 +79,13 @@ export async function flushOnce(
       continue;
     }
 
-    const failed = applyBatchFailure(state, outcome, batch, now, deps.random);
+    const failed = applyBatchFailure(
+      state,
+      outcome.kind === "ok" ? SERVER_FAILED : outcome,
+      batch,
+      now,
+      deps.random,
+    );
     /* Just switched to one at a time: this batch goes again, item by item. */
     if (failed.state.isolation && !state.isolation && !isBlocked(failed.state, now)) {
       for (const record of batch) sent.delete(record.id);

@@ -86,6 +86,14 @@ export function barSummary(
   return { count, text: stuck ? `${String(count)} not sent` : `${String(count)} waiting to send` };
 }
 
+/* What the bar reads when it has nothing to count. A record saved on this
+   page and still on its first send is not done yet. */
+export function quietText(records: readonly QueuedVisit[], justSaved: ReadonlySet<string>): string {
+  return records.some((r) => r.state !== "synced" && justSaved.has(r.id))
+    ? "Sending…"
+    : "All visits sent";
+}
+
 /* Records that keep a reload of the app waiting (D-32-6 as refined by
    D-33): only what this member's queue is actively trying to send. */
 export function isSending(record: QueuedVisit): boolean {

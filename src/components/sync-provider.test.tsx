@@ -5,14 +5,23 @@ import { SyncProvider, useSyncQueue } from "@/components/sync-provider";
 import type { VisitSyncItem } from "@/generated/types.gen";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { createMemoryQueue } from "@/lib/sync/memory-queue";
+import type * as SignedInModule from "@/lib/sync/signed-in";
+import type { SignedIn } from "@/lib/sync/signed-in";
 import type { QueuedVisit, SendOutcome } from "@/lib/sync/types";
 
-const { usePathname, useRole } = vi.hoisted(() => ({
+const { usePathname, useRole, fetchSignedIn } = vi.hoisted(() => ({
   usePathname: vi.fn<() => string>(),
   useRole: vi.fn(),
+  fetchSignedIn: vi.fn<() => Promise<SignedIn>>(),
 }));
 vi.mock("next/navigation", () => ({ usePathname }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
+/* Who the server says is signed in, asked before every send. */
+vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({
+  ...(await importOriginal<typeof SignedInModule>()),
+  fetchSignedIn,
+}));
+const cookieFor = (id: string | null) => fetchSignedIn.mockResolvedValue({ kind: "member", id });
 
 const as = (userId: string | undefined) => useRole.mockReturnValue({ userId });
 
@@ -85,6 +94,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   usePathname.mockReturnValue("/blocks/b1");
   as("ann");
+  cookieFor("ann");
 });
 
 afterEach(() => {
@@ -171,6 +181,52 @@ describe("SyncProvider", () => {
     await waitFor(() => {
       expect(text("units")).toBe("#05-01:held,#09-01:synced");
     });
+  });
+
+  it("never sends a member's records under the next member's sign-in from another tab (D-33-1)", async () => {
+    let online = false;
+    const send = vi.fn((items: VisitSyncItem[]) =>
+      Promise.resolve<SendOutcome>(online ? applied(items) : { kind: "network" }),
+    );
+    const queue = createMemoryQueue([stored("ann", "#05-01")]);
+    const { view, open } = mount(queue, send);
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    // Ann signs out in another tab and Ben signs in there. This tab heard
+    // only the sign-out, which reads like a failed refetch, and is focused
+    // before Auth.js has fetched Ben.
+    as(undefined);
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    cookieFor("ben");
+    online = true;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => {
+      expect(text("active")).toBe("off");
+    });
+    expect(send).toHaveBeenCalledTimes(1);
+    expect((await queue.listByOwner("ann"))[0]?.state).toBe("queued");
+  });
+
+  it("sends nothing while the server cannot say who is signed in", async () => {
+    fetchSignedIn.mockResolvedValue({ kind: "unknown" });
+    const queue = createMemoryQueue([stored("ann", "#05-01")]);
+    const { send } = mount(queue);
+    await waitFor(() => {
+      expect(fetchSignedIn).toHaveBeenCalled();
+    });
+    await act(() => Promise.resolve());
+    expect(send).not.toHaveBeenCalled();
+    expect(text("active")).toBe("on");
+    expect(text("units")).toBe("#05-01:queued");
   });
 
   it("lets go of the member on a public page, such as after signing out", async () => {

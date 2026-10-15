@@ -10,6 +10,7 @@ import {
 import type { VisitDraft } from "@/lib/sync/enqueue";
 import { sharedQueue } from "@/lib/sync/idb-queue";
 import { isSending } from "@/lib/sync/sync-ui";
+import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
 import { sendBatch } from "@/lib/sync/transport";
 import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
 import { useRole } from "@/lib/use-role";
@@ -73,10 +74,12 @@ export function SyncProvider({
   children,
   openQueue = sharedQueue,
   send = sendBatch,
+  signedIn = fetchSignedIn,
 }: {
   children: ReactNode;
   openQueue?: () => Promise<SyncQueue | null>;
   send?: Send;
+  signedIn?: () => Promise<SignedIn>;
 }) {
   const { userId } = useRole();
   const pathname = usePathname();
@@ -85,7 +88,9 @@ export function SyncProvider({
      want of signal reads as signed out until the next page load; the queue
      must not switch off in a stairwell for that. A real sign-out navigates
      to a public page, or to a fresh page load; someone else signing in
-     brings their own id, which replaces this one (D-33-1). */
+     brings their own id, which replaces this one (D-33-1). A sign-out in
+     another tab does neither, so every send first asks the server who is
+     signed in, and an answer naming anyone else lets go of this member. */
   const [confirmed, setConfirmed] = useState<string | undefined>(undefined);
   const ownerId = isPublicPath(pathname) ? undefined : (userId ?? confirmed);
   if (ownerId !== confirmed) setConfirmed(ownerId);
@@ -103,7 +108,9 @@ export function SyncProvider({
       const controller = createSyncController({
         queue,
         ownerId,
-        send,
+        send: sendAs(ownerId, send, signedIn, () => {
+          setConfirmed(undefined);
+        }),
         now: Date.now,
         random: Math.random,
         setTimer: (callback, ms) => window.setTimeout(callback, ms),
@@ -140,7 +147,7 @@ export function SyncProvider({
       cancelled = true;
       stop();
     };
-  }, [ownerId, openQueue, send]);
+  }, [ownerId, openQueue, send, signedIn]);
 
   const current = live !== null && live.ownerId === ownerId ? live : null;
   const value: SyncQueueValue =

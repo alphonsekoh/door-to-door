@@ -634,9 +634,7 @@ describe("saving into the offline queue", () => {
     });
     expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-202");
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Saved #06-201 on this phone. It will send when you have signal.",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent(/^Saved #06-201 on this phone\.$/);
     // No note can be anchored to a visit the server has not got yet (D-33-11).
     expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
     expect(onRecorded).not.toHaveBeenCalled();
@@ -657,9 +655,7 @@ describe("saving into the offline queue", () => {
     await screen.findByRole("status");
     queue.records = [{ ...stored(draftFor("#06-201")), state: "held", nextAttemptAt: null }];
     rerenderForm(view);
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Saved #06-201 on this phone, but it was not sent.",
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201 on this phone. Not sent.");
   });
 
   it("offers a follow-up once sent, anchored to the server's row", async () => {

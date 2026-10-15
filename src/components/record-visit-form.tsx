@@ -65,10 +65,12 @@ type Props = {
 /* The status line for a save that went into the queue. */
 function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sending: boolean) {
   if (sending) return `Sending ${unitNumber}…`;
+  /* One line at phone width, so the form below does not move when this
+     changes; the bar above says what happens next. */
   if (record?.state === "held" || record?.state === "quarantined") {
-    return `Saved ${unitNumber} on this phone, but it was not sent.`;
+    return `Saved ${unitNumber} on this phone. Not sent.`;
   }
-  return `Saved ${unitNumber} on this phone. It will send when you have signal.`;
+  return `Saved ${unitNumber} on this phone.`;
 }
 
 export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props) {
@@ -243,7 +245,7 @@ export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props
       {status === null ? null : (
         <div
           role="status"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
         >
           <span className="break-words">{status}</span>
           {householdId === null || saved?.noted !== false ? null : (

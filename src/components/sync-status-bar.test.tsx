@@ -6,8 +6,12 @@ import type { SyncQueueValue } from "@/components/sync-provider";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
-const { useSyncQueue } = vi.hoisted(() => ({ useSyncQueue: vi.fn() }));
+const { useSyncQueue, usePathname } = vi.hoisted(() => ({
+  useSyncQueue: vi.fn(),
+  usePathname: vi.fn<() => string>(),
+}));
 vi.mock("@/components/sync-provider", () => ({ useSyncQueue }));
+vi.mock("next/navigation", () => ({ usePathname }));
 
 const record = (unitNumber: string, overrides: Partial<QueuedVisit> = {}): QueuedVisit => ({
   ...buildQueuedVisit(
@@ -42,36 +46,60 @@ function queue(overrides: Partial<SyncQueueValue> = {}): SyncQueueValue {
   };
 }
 
+const running = (overrides: Partial<SyncQueueValue> = {}) =>
+  queue({ enqueue: vi.fn(), ...overrides });
+
 beforeEach(() => {
   vi.clearAllMocks();
+  usePathname.mockReturnValue("/blocks/b1");
 });
 
 describe("SyncStatusBar", () => {
-  it("is not there when everything is sent", () => {
-    useSyncQueue.mockReturnValue(queue({ records: [record("#05-01", { state: "synced" })] }));
+  it("holds an empty row before the queue has opened, so its arrival moves nothing", () => {
+    useSyncQueue.mockReturnValue(queue({ records: [record("#05-01")], enqueue: null }));
     render(<SyncStatusBar />);
     expect(screen.queryByRole("button")).toBeNull();
+    const row = screen.getByRole("paragraph");
+    expect(row).toBeEmptyDOMElement();
+    expect(row).toHaveClass("sticky", "h-11");
+  });
+
+  it("is not on a public page, where nobody is signed in", () => {
+    usePathname.mockReturnValue("/sign-in");
+    useSyncQueue.mockReturnValue(running({ records: [record("#05-01")] }));
+    const { container } = render(<SyncStatusBar />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it("holds its row, one line high, when everything is sent", () => {
+    useSyncQueue.mockReturnValue(running({ records: [record("#05-01", { state: "synced" })] }));
+    render(<SyncStatusBar />);
+    expect(screen.queryByRole("button")).toBeNull();
+    // Same row as the button it turns into, so nothing below it moves.
+    const row = screen.getByText("All visits sent").parentElement;
+    expect(row).toHaveClass("sticky", "h-11");
   });
 
   it("does not flash while a record just saved is on its first send", () => {
     const fresh = record("#05-01");
-    useSyncQueue.mockReturnValue(queue({ records: [fresh], justSaved: new Set([fresh.id]) }));
+    useSyncQueue.mockReturnValue(running({ records: [fresh], justSaved: new Set([fresh.id]) }));
     render(<SyncStatusBar />);
     expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByText("Sending…")).toBeInTheDocument();
   });
 
   it("counts what is waiting and stays above the page, below every sheet", () => {
-    useSyncQueue.mockReturnValue(queue({ records: [record("#05-01"), record("#05-02")] }));
+    useSyncQueue.mockReturnValue(running({ records: [record("#05-01"), record("#05-02")] }));
     render(<SyncStatusBar />);
     const bar = screen.getByRole("button", { name: /2 waiting to send/ });
-    expect(bar).toHaveClass("sticky", "z-20");
+    expect(bar).toHaveClass("sticky", "z-20", "h-11");
     // Not a live status: the form's "Saved" line owns that role.
     expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("opens the list of unsent records, and closes it again", async () => {
     const user = userEvent.setup();
-    useSyncQueue.mockReturnValue(queue({ records: [record("#05-01")] }));
+    useSyncQueue.mockReturnValue(running({ records: [record("#05-01")] }));
     render(<SyncStatusBar />);
 
     await user.click(screen.getByRole("button", { name: /1 waiting to send/ }));

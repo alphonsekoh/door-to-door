@@ -13,4 +13,13 @@ describe("the offline page", () => {
     expect(form).toHaveAttribute("action", "/");
     expect(form).toHaveAttribute("method", "get");
   });
+
+  it("says saved visits are kept, without naming anyone's", () => {
+    render(<OfflinePage />);
+    expect(
+      screen.getByText(
+        "Visits already saved on this phone are kept. They send once your signal is back.",
+      ),
+    ).toBeInTheDocument();
+  });
 });
