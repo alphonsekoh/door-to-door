@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { loadAllUsers } from "@/lib/users";
+import { accountStore } from "@/lib/account-state";
+import { loadAllUsers, loadCurrentUser } from "@/lib/users";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -38,5 +39,23 @@ describe("loadAllUsers", () => {
     apiFetch.mockResolvedValueOnce(page([], false));
     await loadAllUsers();
     expect(apiFetch).toHaveBeenCalledWith("/users?limit=100&offset=0");
+  });
+});
+
+describe("loadCurrentUser", () => {
+  it("reads /users/me and hands the role it found to the UI", async () => {
+    const me = { id: "u1", role: "member", name: "Ann" };
+    apiFetch.mockResolvedValueOnce(me);
+    expect(await loadCurrentUser()).toBe(me);
+    expect(apiFetch).toHaveBeenCalledWith("/users/me");
+    expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "member" });
+  });
+
+  it("leaves the known user alone when the read fails", async () => {
+    apiFetch.mockResolvedValueOnce({ id: "u1", role: "admin" });
+    await loadCurrentUser();
+    apiFetch.mockRejectedValueOnce(new Error("offline"));
+    await expect(loadCurrentUser()).rejects.toThrow("offline");
+    expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "admin" });
   });
 });

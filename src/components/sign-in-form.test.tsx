@@ -213,4 +213,37 @@ describe("SignInForm", () => {
     expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
     release(ok);
   });
+
+  describe("after the app signed the member out", () => {
+    it("says why they are here", () => {
+      get.mockImplementation((key) => (key === "reason" ? "signed-out" : null));
+      render(<SignInForm />);
+      // A status, not an alert: nothing went wrong on this page.
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "You were signed out. Sign in again to continue.",
+      );
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("says nothing for an ordinary visit or another reason", () => {
+      render(<SignInForm />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+      get.mockImplementation((key) => (key === "reason" ? "something-else" : null));
+      render(<SignInForm />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("gives way to a failed attempt, so only one message shows", async () => {
+      const user = userEvent.setup();
+      get.mockImplementation((key) => (key === "reason" ? "signed-out" : null));
+      signIn.mockResolvedValue(failed);
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Email or password is incorrect.");
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
 });

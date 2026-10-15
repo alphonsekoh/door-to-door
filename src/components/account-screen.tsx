@@ -5,9 +5,11 @@ import { useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { accountStore } from "@/lib/account-state";
 import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/own-name";
 import { signOutAndForget } from "@/lib/sign-out";
 import { hasUnsyncedItems } from "@/lib/sw-update";
+import { loadCurrentUser } from "@/lib/users";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
 
@@ -31,7 +33,7 @@ export function AccountScreen() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<User>("/users/me").then(
+    loadCurrentUser().then(
       (found) => {
         if (cancelled) return;
         setUser(found);
@@ -66,6 +68,7 @@ export function AccountScreen() {
         method: "PATCH",
         body: JSON.stringify({ name: checked.name }),
       });
+      accountStore.noteCurrentUser(updated);
       setUser(updated);
       setName(updated.name ?? "");
       setSaved(true);

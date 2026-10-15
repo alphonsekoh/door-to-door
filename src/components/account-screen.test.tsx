@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountScreen } from "@/components/account-screen";
 import type { User } from "@/generated/types.gen";
+import { accountStore } from "@/lib/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget } = vi.hoisted(() => ({
@@ -135,6 +136,17 @@ describe("AccountScreen: renaming", () => {
     });
     expect(update).toHaveBeenCalledWith({ name: "Alice Tan" });
     expect(input).toHaveValue("Alice Tan");
+  });
+
+  it("passes the role it read, and the one a save returns, to the nav", async () => {
+    const user = userEvent.setup();
+    await loaded();
+    expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "member" });
+
+    apiFetch.mockResolvedValueOnce({ ...alice, role: "admin" });
+    await user.click(screen.getByRole("button", { name: "Save name" }));
+    await screen.findByRole("status");
+    expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "admin" });
   });
 
   it("drops the saved note once the name is edited again", async () => {

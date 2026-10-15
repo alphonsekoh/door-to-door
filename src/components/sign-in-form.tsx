@@ -74,6 +74,11 @@ export function SignInForm() {
       noValidate
       className="space-y-4"
     >
+      {params.get("reason") === "signed-out" && failure === null ? (
+        <p role="status" className="rounded-lg border border-border bg-surface px-3 py-2 text-body">
+          You were signed out. Sign in again to continue.
+        </p>
+      ) : null}
       {failure ? (
         <p
           role="alert"

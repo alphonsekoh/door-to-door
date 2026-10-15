@@ -351,3 +351,19 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   cleared. The only signal is the `error` query parameter. Observed in PR #93.
 - **Source:** observed in PR #93 (server log `[auth][error] MissingCSRF`); @auth/core 0.41.3
 - **Used by:** D-74-64
+
+### R-42 · jsdom does not implement `inert`
+
+- **Finding:** jsdom 30 has no `inert` behaviour: an inert subtree still takes focus and
+  clicks in Vitest. Component tests can assert the attribute, not its effect; blocking
+  taps and focus under the account screen has to be checked in a real browser.
+- **Source:** jsdom 30.0.1 source (`lib/jsdom/living` has no `inert` handling); PR #98
+- **Used by:** D-85-5, D-85-11
+
+### R-43 · jsdom keeps focus on a disabled button
+
+- **Finding:** in jsdom, disabling the focused button leaves it as `activeElement`, and
+  `blur()` on a disabled button does nothing, unlike a browser, which drops focus. A test
+  that only calls `blur()` passes without a refocus fix; it must move focus elsewhere.
+- **Source:** observed in PR #98 (`auth-failure-screen.test.tsx`); jsdom 30.0.1
+- **Used by:** D-85-15

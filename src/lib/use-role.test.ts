@@ -65,4 +65,41 @@ describe("deriveRoleState", () => {
       isSignedIn: true,
     });
   });
+
+  describe("with the role /users/me last returned", () => {
+    it("shows a demoted admin as a member", () => {
+      expect(
+        deriveRoleState("authenticated", { id: "u1", role: "admin" }, { id: "u1", role: "member" }),
+      ).toMatchObject({ role: "member", isAdmin: false, isMember: true });
+    });
+
+    it("shows a promoted member as an admin", () => {
+      expect(
+        deriveRoleState("authenticated", { id: "u1", role: "member" }, { id: "u1", role: "admin" }),
+      ).toMatchObject({ role: "admin", isAdmin: true });
+    });
+
+    it("ignores a record for a different account", () => {
+      // A second member signing in on the same phone must not inherit it.
+      expect(
+        deriveRoleState("authenticated", { id: "u2", role: "admin" }, { id: "u1", role: "member" }),
+      ).toMatchObject({ userId: "u2", role: "admin", isAdmin: true });
+    });
+
+    it("keeps the token's role when nothing has been read yet", () => {
+      expect(deriveRoleState("authenticated", { id: "u1", role: "admin" }, null)).toMatchObject({
+        isAdmin: true,
+      });
+    });
+
+    it("gives no role at all once signed out", () => {
+      expect(
+        deriveRoleState(
+          "unauthenticated",
+          { id: "u1", role: "admin" },
+          { id: "u1", role: "admin" },
+        ),
+      ).toMatchObject({ role: undefined, isAdmin: false, isSignedIn: false });
+    });
+  });
 });

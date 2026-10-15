@@ -130,12 +130,18 @@ Google SSO (#14) is not built.
 ## Client
 
 - Screens fetch through `src/lib/api-client.ts`, typed by `types.gen.ts`.
-- `useRole()` is UI affordance only.
-- Overlay layers: bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`. Guarded
-  by `overlay-layers.test.ts`.
+- `useRole()` is UI affordance only. Its role comes from the latest `GET /users/me`
+  (`loadCurrentUser()`) when that matches the token's user, else from the token.
+- `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/account-state.ts`
+  and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
+  blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
+  per document load.
+- Overlay layers: bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account
+  screen `z-70`. Guarded by `overlay-layers.test.ts`.
 - Every sheet and `ConfirmDialog` is a modal through `useModal` (`src/lib/use-modal.ts`):
   focus in, Tab trapped, Escape closes the top layer only, page behind `inert` and
-  unscrollable, focus back to the trigger (D-90-1 to D-90-9).
+  unscrollable, focus back to the trigger (D-90-1 to D-90-9). A blocking modal stays on
+  top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
 - Active-session screen: "Join this outing" (shown until the caller is in the server's
@@ -160,7 +166,8 @@ Google SSO (#14) is not built.
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
 - Sign-out (`src/lib/sign-out.ts`): clears the block cache, warns on unsynced items,
-  `signOut({ redirect: false })`, then a full navigation to `/sign-in`. A refusal
+  `signOut({ redirect: false })`, then a full navigation to `/sign-in` (or a given
+  destination, e.g. `/sign-in?reason=signed-out`). A refusal
   (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
   sign out".
 - The proxy sets `Cache-Control: no-store` on signed-in page responses (not API), so Back

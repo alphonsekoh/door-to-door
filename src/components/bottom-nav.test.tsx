@@ -1,11 +1,15 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomNav } from "@/components/bottom-nav";
+import { accountStore } from "@/lib/account-state";
+import type * as UseRoleModule from "@/lib/use-role";
 
 const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn<() => string>() }));
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+const { useSession } = vi.hoisted(() => ({ useSession: vi.fn() }));
 
 vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next-auth/react", () => ({ useSession }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
 
 const asRole = (isAdmin: boolean) =>
@@ -103,5 +107,23 @@ describe("BottomNav", () => {
     usePathname.mockReturnValue("/history");
     render(<BottomNav />);
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
+  });
+
+  it("drops the Admin tab for a demoted admin once /users/me says so", async () => {
+    // The real hook here: the token still says admin and cannot be updated.
+    const actual = await vi.importActual<typeof UseRoleModule>("@/lib/use-role");
+    useRole.mockImplementation(actual.useRole);
+    useSession.mockReturnValue({
+      status: "authenticated",
+      data: { user: { id: "u1", role: "admin", deactivated: false } },
+    });
+    usePathname.mockReturnValue("/");
+    render(<BottomNav />);
+    expect(screen.getByRole("link", { name: "Admin" })).toBeInTheDocument();
+
+    act(() => {
+      accountStore.noteCurrentUser({ id: "u1", role: "member" });
+    });
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 });

@@ -67,4 +67,26 @@ describe("signOutAndForget", () => {
     expect(assign).toHaveBeenCalledWith("/sign-in");
     vi.unstubAllGlobals();
   });
+
+  it("goes wherever the caller asks once signed out", async () => {
+    const navigate = vi.fn();
+    await signOutAndForget(
+      () => Promise.resolve(signedOut),
+      navigate,
+      "/sign-in?reason=signed-out",
+    );
+    expect(navigate).toHaveBeenCalledWith("/sign-in?reason=signed-out");
+  });
+
+  it("still refuses to navigate to a custom destination after a refusal", async () => {
+    const navigate = vi.fn();
+    await expect(
+      signOutAndForget(
+        () => Promise.resolve({ url: "http://localhost:3210/sign-in?error=MissingCSRF" }),
+        navigate,
+        "/sign-in?reason=signed-out",
+      ),
+    ).rejects.toThrow("MissingCSRF");
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });

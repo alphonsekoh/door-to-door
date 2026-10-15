@@ -1,7 +1,9 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import { useSyncExternalStore } from "react";
 import type { Role } from "@/db/schema";
+import { type ServerUser, accountStore } from "@/lib/account-state";
 
 /*
  * Role helpers for the UI.
@@ -30,9 +32,14 @@ export type SessionUser = {
 export function deriveRoleState(
   status: "loading" | "authenticated" | "unauthenticated",
   user?: SessionUser,
+  serverUser?: ServerUser | null,
 ): RoleState {
   const isSignedIn = status === "authenticated" && user?.deactivated !== true;
-  const role = isSignedIn ? user?.role : undefined;
+  /* The token's role is a hint set at sign-in (D-83-3); the latest /users/me
+     for the same account wins, so a demotion or promotion shows without
+     signing in again. */
+  const sameAccount = isSignedIn && serverUser != null && serverUser.id === user?.id;
+  const role = sameAccount ? serverUser.role : isSignedIn ? user?.role : undefined;
   return {
     userId: isSignedIn ? user?.id : undefined,
     role,
@@ -45,5 +52,10 @@ export function deriveRoleState(
 
 export function useRole(): RoleState {
   const { data, status } = useSession();
-  return deriveRoleState(status, data?.user);
+  const { serverUser } = useSyncExternalStore(
+    accountStore.subscribe,
+    accountStore.getSnapshot,
+    accountStore.getServerSnapshot,
+  );
+  return deriveRoleState(status, data?.user, serverUser);
 }

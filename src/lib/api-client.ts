@@ -1,5 +1,6 @@
 "use client";
 
+import { accountStore, classifyAuthFailure } from "@/lib/account-state";
 import type { ErrorBody } from "@/server/http/errors";
 
 /*
@@ -32,7 +33,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!response.ok) {
     /* A proxy or crash can return HTML; failing to parse must not mask the status. */
     const body: unknown = await response.json().catch(() => undefined);
-    throw new ApiRequestError(response.status, body as ErrorBody | undefined);
+    const error = new ApiRequestError(response.status, body as ErrorBody | undefined);
+    /* Still thrown, so each caller's promise settles as before; the shell
+       covers whatever that caller shows with the one account message. */
+    const failure = classifyAuthFailure(error.status, error.code);
+    if (failure !== null) accountStore.reportAuthFailure(failure);
+    throw error;
   }
 
   if (response.status === 204) {
