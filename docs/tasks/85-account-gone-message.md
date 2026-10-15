@@ -27,11 +27,11 @@ without signing in again. No contract, schema or server change.
   nav, banners, sheets and confirm dialogs; `overlay-layers.test.ts` asserts it is above
   every other layer. Extends D-30-7. _Why:_ nothing underneath can succeed, so nothing may
   show through or take a tap.
-- **D-85-5 · The app underneath is made `inert`, not unmounted.** `AccountGate` wraps
+- ~~**D-85-5 · The app underneath is made `inert`, not unmounted.** `AccountGate` wraps
   main, banners and nav; while the screen is up it also marks every other top-level body
   child inert, which covers sheets portalled to `<body>`. _Why:_ a half-typed form is not
   thrown away by a message the member did not cause, and no sheet had to be restructured
-  (#90 is changing them).
+  (#90 is changing them).~~ Superseded by D-85-11.
 - **D-85-6 · Deactivated: "Sign out" to `/sign-in`. Signed out: "Sign in again", which
   still signs out first, to `/sign-in?reason=signed-out`,** where the form shows a
   `role="status"` notice. `signOutAndForget` takes an optional destination; the D-74-64
@@ -56,11 +56,36 @@ without signing in again. No contract, schema or server change.
   place: the queue's flush must go through `apiFetch` or call
   `accountStore.reportAuthFailure` itself (for example from the worker). _Why:_ the queue
   does not exist yet.
+- **D-85-11 · The app underneath is made `inert` by the shared modal hook, not unmounted.**
+  `AuthFailureScreen` calls `useModal(null, button)`; the `AccountGate` wrapper div and the
+  one-off body-children effect are gone. Supersedes D-85-5. _Why:_ the owner chose one
+  inert mechanism for the app (D-90-1, D-90-7); the old effect missed body children that
+  mounted after the message appeared. A half-typed form is still kept. _Research:_ R-42.
+- **D-85-12 · `onClose: null` makes a blocking modal: no Escape or backdrop close, and it
+  always stays top of the stack.** A modal opened later is inserted beneath it, takes no
+  focus on open and stays inert; one closing beneath it does not refocus its trigger.
+  Blocking is fixed when the modal opens. Amends D-90-5 and D-90-9. _Why:_ a modal nobody
+  can close must keep the keyboard, and skipping the late focus stops a sheet stealing it
+  where `inert` is unsupported. "Undismissable" and "always on top" are one mode because
+  the account message is the only user.
+- **D-85-13 · `role="alertdialog"` sits on the inner panel; the outer element is the hook's
+  overlay and carries `z-70`.** Initial focus is the action button, as before, not the
+  panel (D-90-2's `initialFocus` escape, as D-90-3). _Why:_ the full-screen element must be both
+  the hook's overlay and the `z-70` layer `overlay-layers.test.ts` matches.
+- **D-85-14 · `useModal` re-applies inert when a sibling mounts later.** While a modal is
+  open, each ancestor of the top overlay is watched (`MutationObserver`, `childList` only);
+  the observer is created on first open. Amends D-90-7. _Why:_ an update or install banner
+  mounting under the account message stayed reachable by a screen reader; the observer
+  cannot exist during server rendering.
+- **D-85-15 · After a refused sign-out, focus returns to the button.** _Why:_ a browser
+  drops focus from a control while it is disabled, leaving a keyboard user nowhere. The
+  test moves focus outside the screen first. _Research:_ R-43.
 
 ## Relies on
 
 D-83-3, D-83-4, D-83-14, D-74-6, D-74-9, D-74-10, D-74-11 (Back after sign-out does not
-restore the shell), D-74-51, D-74-64, D-30-7, D-16-2.
+restore the shell), D-74-51, D-74-64, D-30-7, D-16-2, D-90-1, D-90-2, D-90-3, D-90-5, D-90-7,
+D-90-9.
 
 ## Open questions
 

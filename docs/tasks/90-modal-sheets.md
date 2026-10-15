@@ -1,6 +1,6 @@
 # #90 · Make sheets and confirm dialogs real modals
 
-- **Status:** In review (PR #97)
+- **Status:** Done (PR #97); D-90-5, D-90-7, D-90-9 amended by #85
 - **Phase:** 7 - Hardening
 - **Depends on:** #30, #35, #74
 
@@ -25,7 +25,8 @@ shared primitive fixes every one of them.
   and a keyboard user closes with Escape or Cancel.
 - **D-90-5 · Open modals form a module-level stack; only the top handles keys.** A confirm
   raised from a sheet traps focus, and Escape closes only it. _Why:_ issue scope; a
-  sheet and its confirm each register independently.
+  sheet and its confirm each register independently. _Amended by D-85-12:_ a blocking
+  modal (`onClose: null`) stays on top; later modals go beneath it.
 - **D-90-6 · Escape that ends an IME composition is ignored, detected by `isComposing` or
   `keyCode` 229.** WebKit sends the composition-ending keydown with `isComposing` false
   and only `keyCode` 229. `keyCode` is read through `Reflect.get` on purpose, because
@@ -37,12 +38,14 @@ shared primitive fixes every one of them.
   The overlay stays live so the backdrop tap still closes (unchanged behaviour). _Why:_
   `inert` removes the page from both Tab and the accessibility tree, and leaving prior
   `inert` alone avoids waking something another part of the app hid. Banners (D-32-13)
-  and the nav go inert too while a modal is open.
+  and the nav go inert too while a modal is open. _Amended by D-85-14:_ siblings that
+  mount while a modal is open go inert too.
 - **D-90-8 · Body scroll is locked while any modal is open and the previous `overflow`
   value is restored when the last closes.** _Why:_ nested modals must not unlock early.
 - **D-90-9 · On close, focus returns to the element focused at open, only if it is still
   in the page, with `preventScroll`.** _Why:_ a row the save removed or re-rendered must
-  not throw or jump the list.
+  not throw or jump the list. _Amended by D-85-12:_ not while a blocking modal is still on
+  top.
 - **D-90-10 · `RecordOnBehalfForm` gains `role="dialog" aria-modal="true"`.** _Why:_ it was
   the one sheet without them, so it was not announced as a dialog.
 - **D-90-11 · One keyboard E2E, on the amend sheet, in `record-visit.spec.ts`.** Every other

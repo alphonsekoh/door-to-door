@@ -115,4 +115,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                 |
 | 86  | [Rate limit counts failures](86-rate-limit-failures.md) | Done                                 |
 | 88  | [Flaky load tests](88-flaky-load-tests.md)              | Done                                 |
-| 90  | [Modal sheets](90-modal-sheets.md)                      | In review (PR #97)                   |
+| 90  | [Modal sheets](90-modal-sheets.md)                      | Done; D-90-5/7/9 amended (#98)       |

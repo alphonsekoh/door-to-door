@@ -133,14 +133,15 @@ Google SSO (#14) is not built.
 - `useRole()` is UI affordance only. Its role comes from the latest `GET /users/me`
   (`loadCurrentUser()`) when that matches the token's user, else from the token.
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/account-state.ts`
-  and still throws. `AccountGate` (in `AppShell`) then makes the app `inert` and shows
-  `AuthFailureScreen`, whose only action signs out. The gate also reads `/users/me` once
+  and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
+  blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
 - Overlay layers: bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account
   screen `z-70`. Guarded by `overlay-layers.test.ts`.
 - Every sheet and `ConfirmDialog` is a modal through `useModal` (`src/lib/use-modal.ts`):
   focus in, Tab trapped, Escape closes the top layer only, page behind `inert` and
-  unscrollable, focus back to the trigger (D-90-1 to D-90-9).
+  unscrollable, focus back to the trigger (D-90-1 to D-90-9). A blocking modal stays on
+  top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in).
 - Active-session screen: "Join this outing" (shown until the caller is in the server's
