@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useRef, useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -355,6 +355,33 @@ describe("useModal", () => {
 
       expect(screen.getByRole("button", { name: "Leave" })).toHaveFocus();
       expect(screen.getByRole("button", { name: "Under first" }).closest("[inert]")).not.toBeNull();
+    });
+
+    it("makes a plain element that mounts after it inert, and wakes it when it goes", async () => {
+      function Shell({ blocked, banner }: { blocked: boolean; banner: boolean }) {
+        return (
+          <div>
+            <main>
+              <button type="button">Behind</button>
+            </main>
+            {banner ? (
+              <aside aria-label="Banner">
+                <button type="button">Reload</button>
+              </aside>
+            ) : null}
+            {blocked ? <Blocker /> : null}
+          </div>
+        );
+      }
+      const { rerender } = render(<Shell blocked banner={false} />);
+      rerender(<Shell blocked banner />);
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Reload" }).closest("[inert]")).not.toBeNull();
+      });
+      expect(screen.getByRole("button", { name: "Leave" }).closest("[inert]")).toBeNull();
+
+      rerender(<Shell blocked={false} banner />);
+      expect(screen.getByRole("button", { name: "Reload" }).closest("[inert]")).toBeNull();
     });
 
     it("hands the page back to the sheet beneath when it goes", () => {

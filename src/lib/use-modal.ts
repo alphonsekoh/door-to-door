@@ -34,14 +34,23 @@ const FOCUSABLE = [
 const layers: Layer[] = [];
 const madeInert = new Set<Element>();
 let lockedOverflow = "";
+/* Created on first open: this module is also evaluated during server
+   rendering, where MutationObserver does not exist. */
+let ancestors: MutationObserver | undefined;
 
 /*
  * Everything outside the top overlay goes inert: the siblings of each of its
  * ancestors, up to the body. The overlay itself stays live, because its
  * backdrop is a button that closes it. Elements that were already inert are
  * left alone so closing does not wake something another part of the app hid.
+ *
+ * Each ancestor is watched while a layer is open, so a sibling that mounts
+ * later (an update or install banner under the account message) goes inert
+ * too. Only childList is observed: setting inert here does not re-trigger it.
  */
 function syncInert(): void {
+  ancestors ??= new MutationObserver(syncInert);
+  ancestors.disconnect();
   for (const element of madeInert) element.removeAttribute("inert");
   madeInert.clear();
 
@@ -50,6 +59,7 @@ function syncInert(): void {
   let node: Element = top.overlay;
   let parent = node.parentElement;
   while (parent !== null && node !== document.body) {
+    ancestors.observe(parent, { childList: true });
     for (const sibling of parent.children) {
       if (sibling === node || sibling.hasAttribute("inert")) continue;
       sibling.setAttribute("inert", "");
