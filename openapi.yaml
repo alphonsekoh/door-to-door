@@ -1844,6 +1844,15 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: |
+            `account_deactivated`: the account was deactivated after its session
+            was issued. Nothing in the batch was applied. A queue should hold its
+            records rather than discard them: if an admin reactivates the
+            account, the same batch goes through.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "422":
           description: |
             `clock_skew`: the phone's clock (`sentAt`) is off from the server's

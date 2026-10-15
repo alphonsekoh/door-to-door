@@ -1958,6 +1958,14 @@ export type SyncVisitsErrors = {
      */
     401: Error;
     /**
+     * `account_deactivated`: the account was deactivated after its session
+     * was issued. Nothing in the batch was applied. A queue should hold its
+     * records rather than discard them: if an admin reactivates the
+     * account, the same batch goes through.
+     *
+     */
+    403: Error;
+    /**
      * `clock_skew`: the phone's clock (`sentAt`) is off from the server's
      * by more than the tolerance. Nothing in the batch was applied. The
      * message states the approximate difference.
