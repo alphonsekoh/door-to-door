@@ -149,6 +149,54 @@ describe("SyncProvider", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("keeps the queue when a session check fails for want of signal", async () => {
+    const queue = createMemoryQueue([
+      stored("ann", "#05-01", { state: "held", nextAttemptAt: null }),
+    ]);
+    const { view, open, send } = mount(queue);
+    await waitFor(() => {
+      expect(text("active")).toBe("on");
+    });
+
+    // Auth.js reads a failed refetch as signed out.
+    as(undefined);
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(text("owner")).toBe("ann");
+    expect(text("active")).toBe("on");
+    await userEvent.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => {
+      expect(text("units")).toBe("#05-01:held,#09-01:synced");
+    });
+  });
+
+  it("lets go of the member on a public page, such as after signing out", async () => {
+    const { view, open, send } = mount();
+    await waitFor(() => {
+      expect(text("active")).toBe("on");
+    });
+    as(undefined);
+    usePathname.mockReturnValue("/sign-in");
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(text("active")).toBe("off");
+
+    // Back on an app page with nobody signed in: still nobody.
+    usePathname.mockReturnValue("/blocks/b1");
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(text("owner")).toBe("none");
+  });
+
   it("switches to the new member's records when someone else signs in", async () => {
     const queue = createMemoryQueue([
       stored("ann", "#05-01", { state: "held", nextAttemptAt: null }),

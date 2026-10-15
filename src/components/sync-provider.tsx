@@ -80,7 +80,15 @@ export function SyncProvider({
 }) {
   const { userId } = useRole();
   const pathname = usePathname();
-  const ownerId = userId !== undefined && !isPublicPath(pathname) ? userId : undefined;
+  /* The last member confirmed signed in on this page. Auth.js refetches the
+     session when the app comes back into view, and a refetch that fails for
+     want of signal reads as signed out until the next page load; the queue
+     must not switch off in a stairwell for that. A real sign-out navigates
+     to a public page, or to a fresh page load; someone else signing in
+     brings their own id, which replaces this one (D-33-1). */
+  const [confirmed, setConfirmed] = useState<string | undefined>(undefined);
+  const ownerId = isPublicPath(pathname) ? undefined : (userId ?? confirmed);
+  if (ownerId !== confirmed) setConfirmed(ownerId);
   const [live, setLive] = useState<Live | null>(null);
 
   useEffect(() => {

@@ -126,6 +126,40 @@ describe("createSyncController", () => {
     expect(h.last()?.block?.reason).toBe("offline");
   });
 
+  it("shows a record saved behind a stalled send as waiting, not sending", async () => {
+    let release: (outcome: SendOutcome) => void = () => undefined;
+    const h = harness({ send: () => new Promise((resolve) => (release = resolve)) });
+
+    const first = await h.controller.enqueue(draft("#05-01"));
+    const second = await h.controller.enqueue(draft("#05-02"));
+    // Only the first is in the request that is out; the bar counts the second.
+    expect(h.last()?.inFlight).toEqual(new Set([first.id]));
+    expect(h.last()?.justSaved).toEqual(new Set([first.id]));
+    expect(h.last()?.justSaved.has(second.id)).toBe(false);
+
+    release({ kind: "network" });
+    await h.controller.flush();
+  });
+
+  it("stops counting a just-saved record as sending when the batch leaves it out", async () => {
+    let release: (outcome: SendOutcome) => void = () => undefined;
+    const older = Array.from({ length: 100 }, (_, i) => stored("ann", START - 1_000 + i));
+    const h = harness({
+      queue: createMemoryQueue(older),
+      send: () => new Promise((resolve) => (release = resolve)),
+    });
+
+    const record = await h.controller.enqueue(draft());
+    await vi.waitFor(() => {
+      expect(h.send).toHaveBeenCalledTimes(1);
+    });
+    expect(h.last()?.inFlight.has(record.id)).toBe(false);
+    expect(h.last()?.justSaved.has(record.id)).toBe(false);
+
+    release({ kind: "network" });
+    await h.controller.flush();
+  });
+
   it("asks once for persistent storage and ignores the answer", async () => {
     const persist = vi.fn().mockRejectedValue(new Error("no"));
     const h = harness({ overrides: { persist } });

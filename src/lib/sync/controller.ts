@@ -133,7 +133,11 @@ export function createSyncController(deps: ControllerDeps): SyncController {
        owner's may go out under it (D-33-1). Reported as no signal, which
        changes no record. */
     if (!alive()) return { kind: "network" };
+    inFlight.clear();
     for (const item of items) inFlight.add(item.id);
+    /* A record saved for this run that did not make the batch is waiting,
+       not sending, and counts as unsent from here. */
+    for (const id of justSaved) if (!inFlight.has(id)) justSaved.delete(id);
     emit();
     try {
       return await deps.send(items);
@@ -192,12 +196,16 @@ export function createSyncController(deps: ControllerDeps): SyncController {
       void deps.persist?.().catch(() => undefined);
     }
     /* Shown as sending from the start, so an online save does not flash
-       "waiting" in the moment before the request goes out. */
-    inFlight.add(record.id);
-    justSaved.add(record.id);
+       "waiting" in the moment before the request goes out. Only when this
+       save starts the run, though: behind a send already out (and maybe
+       stalled on a lost signal) it is waiting, and the bar should say so. */
+    if (running === null) {
+      inFlight.add(record.id);
+      justSaved.add(record.id);
+    }
+    void wake();
     await refresh();
     announce();
-    void wake();
     return record;
   }
 

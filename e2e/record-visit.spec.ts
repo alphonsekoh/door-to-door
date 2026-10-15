@@ -13,7 +13,9 @@ const UNIT = "#21-07";
 const NOTED_UNIT = "#21-11";
 
 /* In the viewport and actually what a tap would land on: elementFromPoint is
-   the stacking check jsdom cannot make. */
+   the stacking check jsdom cannot make. An open sheet makes the page behind
+   it inert, and hit testing skips inert elements, so a nav painted over the
+   sheet would go unseen; the check lifts inert for the instant it looks. */
 async function expectTappable(target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   await expect(target).toBeInViewport();
@@ -21,9 +23,15 @@ async function expectTappable(target: Locator): Promise<void> {
     .poll(
       () =>
         target.evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-          return top !== null && element.contains(top);
+          const inert = [...document.querySelectorAll("[inert]")];
+          for (const node of inert) node.removeAttribute("inert");
+          try {
+            const box = element.getBoundingClientRect();
+            const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            return top !== null && element.contains(top);
+          } finally {
+            for (const node of inert) node.setAttribute("inert", "");
+          }
         }),
       { message: "something covers the button" },
     )
@@ -95,7 +103,7 @@ test("an amendment sticks, and the sheet's save is reachable", async ({ memberPa
   const save = sheet.getByRole("button", { name: "Save changes" });
   /* The bug this catches: the bottom nav painted over the sheet, leaving this
      button on screen but untappable. */
-  await expect(save).toBeInViewport();
+  await expectTappable(save);
   await save.click();
 
   await expect(sheet).toBeHidden();
@@ -179,6 +187,16 @@ test.describe("without signal", () => {
 
     await memberPage.goto("/");
     await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+
+    /* Coming back to the app re-checks the session; without signal that
+       check fails and reads as signed out. The queue must outlast it. */
+    await memberPage.route("**/api/auth/session", (route) => route.abort("internetdisconnected"));
+    const checked = memberPage.waitForEvent("requestfailed", (request) =>
+      request.url().includes("/api/auth/session"),
+    );
+    await memberPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await checked;
+
     await memberPage.getByLabel("Unit number").fill(OFFLINE_UNIT);
     await memberPage.getByRole("radio", { name: "Medium" }).click();
     await memberPage.getByRole("button", { name: "Save and next" }).click();
@@ -197,19 +215,24 @@ test.describe("without signal", () => {
     const pending = memberPage.getByRole("listitem").filter({ hasText: OFFLINE_UNIT });
     await expect(pending).toContainText("Not sent");
 
+    await memberPage.unroute("**/api/auth/session");
     await memberPage.reload();
     await expect(bar).toBeVisible();
     await memberPage.getByRole("tab", { name: /^Units/ }).click();
     await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
     await expect(pending).toContainText("Not sent");
 
-    /* Signal back: the sheet's Retry all must sit above the bottom nav. */
-    await memberPage.unroute("**/api/visits/sync");
+    /* The sheet's Retry all must sit above the bottom nav. */
     await bar.click();
     const sheet = memberPage.getByRole("dialog", { name: "Records not sent" });
     const retryAll = sheet.getByRole("button", { name: "Retry all" });
     await expectTappable(retryAll);
-    await retryAll.click();
+
+    /* Signal back. The queue's own backoff timer may send it before the tap
+       lands; either way it goes, so the tap is dispatched rather than waited
+       on, and is a no-op if the button has already been disabled. */
+    await memberPage.unroute("**/api/visits/sync");
+    await retryAll.dispatchEvent("click");
 
     await expect(sheet).toContainText("Everything has been sent.");
     await sheet.getByRole("button", { name: "Close" }).last().click();

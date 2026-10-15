@@ -88,6 +88,20 @@ describe("sendBatch", () => {
     expect(await sendBatch([item])).toEqual({ kind: "network" });
   });
 
+  it("gives up on a request that never answers, as a network problem", async () => {
+    const { sendBatch } = await load();
+    const fetch = vi.fn(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener("abort", () => {
+            reject(new DOMException("The operation timed out.", "TimeoutError"));
+          });
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    expect(await sendBatch([item], () => new Date(), 10)).toEqual({ kind: "network" });
+  });
+
   it("reports an HTTP refusal with its status and code", async () => {
     const { sendBatch } = await load();
     respond(422, () => Promise.resolve({ error: { code: "clock_skew", message: "x" } }));
