@@ -205,7 +205,7 @@ reloads itself when signal returns.
 
 **Queue (#33).** The recording form writes the visit to IndexedDB (`door-to-door`,
 store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
-cannot be written. Each record carries its owner and a state: `queued`, `failed`,
+cannot be written. A visit is queued only with its outing's id (D-33-25). Each record carries its owner and a state: `queued`, `failed`,
 `held`, `quarantined` or `synced`. Sending is in memory only. Nothing unsent is ever
 deleted; sent records are purged after 24 h.
 
@@ -230,7 +230,7 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   `SyncStatusBar` and `SyncQueueSheet` show and retry it, and the unit list overlays
   unsent records (`unit-overlay.ts`).
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
-  D-33-4 and D-33-6.
+  D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record).
 
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate

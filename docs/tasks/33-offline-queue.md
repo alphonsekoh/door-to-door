@@ -30,12 +30,12 @@ Owner decisions are marked **(owner)**.
   are set to now and the record goes again at once; from the second skew, at most every
   5 minutes. Skew does not count toward the cap. _Why:_ a record that can never pass is
   worse than one stamped late; consistent with D-76-4, and D-76-7 counts the refusals.
-- **D-33-4 · Retry cap: 8 attempts (owner).** Backoff from 5 s, doubling, capped at
-  5 min, full jitter; the 8th failure quarantines. Counts `internal_error`, a missing
-  result, and server failures while isolated (D-33-6). Network errors never count. A
-  single item refused `400` is quarantined at once. _Why:_ a deterministic failure must
-  not retry forever (D-74-30). Worst case to quarantine is 615 s, not "about 15
-  minutes": see open questions.
+- **D-33-4 · Retry cap (owner).** ~~8 attempts; the 8th failure quarantines.~~
+  Superseded by D-33-26. Backoff from 5 s, doubling, capped at 5 min, full jitter.
+  Counts `internal_error` and a missing result~~, and server failures while isolated
+  (D-33-6)~~ (superseded by D-33-27). Network errors never count. A single item
+  refused `400` is quarantined at once. _Why:_ a deterministic failure must not retry
+  forever (D-74-30). ~~Worst case to quarantine is 615 s.~~ Superseded by D-33-26.
 - **D-33-5 · Sends go through `apiFetch` with a fresh `sentAt` and a 20 s timeout.** A
   `401` or `403 account_deactivated` raises the account screen like any request; a
   timeout counts as no signal. _Why:_ closes D-85-10 with no second path into the
@@ -43,8 +43,8 @@ Owner decisions are marked **(owner)**.
   the queue, and the id makes a resend harmless (D-21-1). _Research:_ R-36.
 - **D-33-6 · Isolation mode.** After 3 whole-batch server failures in a row, or a
   `400`, the engine sends one item per request until the due list is empty or a Retry.
-  A batch where every item is `internal_error` counts as a whole-batch failure, so only
-  a record that fails alone is charged. _Why:_ finds a poison record without holding the
+  A batch where every item is `internal_error` counts as a whole-batch failure~~, so
+  only a record that fails alone is charged~~ (superseded by D-33-27). _Why:_ finds a poison record without holding the
   good ones, and a database outage (D-87-2) must not quarantine the whole queue.
 - **D-33-7 · One sender per origin.** Runs hold a `navigator.locks` lock; without Web
   Locks the run goes ahead in-tab. Tabs tell each other to re-read over
@@ -109,10 +109,37 @@ Owner decisions are marked **(owner)**.
   queue runs on the offline page.
 - **D-33-23 · `beforeunload` warns while the member's records are being sent.** _Why:_
   issue criterion; closing loses nothing, but the member should know it has not gone.
+  Refined by D-33-28.
 - **D-33-24 · Storage layout.** Database `door-to-door` v1, store `visits` keyed by id,
   one index `by-owner`. "Sending" is never stored. A tab blocking a newer build's
   upgrade closes its connection. _Why:_ in-flight is a fact about a page, not a record.
   Scope cut: the planned `by-state` index was not needed.
+- **D-33-25 · A new visit is queued only with its outing (owner).** With no known
+  `sessionId` the form asks `/sessions/active` again, giving up after 4 s; if that fails
+  nothing is queued, the form keeps what was typed (D-25-8) and says the outing could not
+  be loaded. `VisitDraft` and the stored item require `sessionId`; a stored record
+  without one reads as corrupt (D-33-8). The direct `POST /visits` fallback (D-33-10) is
+  unchanged. _Why:_ sent later it would join a later outing with a restamped time;
+  closes the D-76 known limit for new records, as D-74-32 did for stored ones. Weak
+  signal stalls rather than fails, so the ask needs its own limit.
+- **D-33-26 · Retry cap: 10 attempts (owner).** Supersedes the count in D-33-4. Same
+  backoff; the 10th failure quarantines after 9 waits, at most 1215 s (about 20 min).
+  _Why:_ the owner's choice: 8 gave at most 615 s against the "about 15 minutes" first
+  asked for.
+- **D-33-27 · A whole-request failure is never charged to a record, isolation
+  included.** No signal, timeout, `5xx`, an unreadable `200`, or a request where every
+  item is `internal_error` only backs the queue off. Only a per-item failure while the
+  server answered others in the same request, a missing result, or a single-item `400`
+  counts. In isolation the record that has waited longest goes first. Supersedes the
+  isolation clauses of D-33-4 and D-33-6. _Why:_ during an outage every single-record
+  request fails the same way, so charging it quarantined good records in about 20 min
+  (D-87-2). Trade-off: a record that breaks every request it is in retries every
+  5 min instead of quarantining (see known limits).
+- **D-33-28 · The app's own navigations skip the `beforeunload` warning.** `goTo`
+  (used by sign-out) and the update prompt's `reloadPage` set a "leaving on purpose"
+  flag; `pageshow` clears it. Refines D-33-23. _Why:_ tapping Stay on a chosen
+  sign-out left the member signed out on a page that still looked signed in; a page
+  restored from the back/forward cache must warn again.
 
 ## Relies on
 
@@ -128,22 +155,17 @@ D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
   the `/offline` reload (D-33-22).
 - **#34 (offline tests):** fuzzing over online/offline sequences, real-database
   convergence, quota simulation and a corruption-recovery suite were left out. Pin
-  these: nothing unsent deleted (D-33-2), owner scoping (D-33-1), the cap (D-33-4),
-  an outage not charged (D-33-6).
+  these: nothing unsent deleted (D-33-2), owner scoping (D-33-1), the cap (D-33-26),
+  an outage not charged (D-33-27), no outing means not queued (D-33-25).
 
 ## Known limits
 
 - A corrupt record (D-33-8) can be neither retried nor discarded, so it counts toward
   the sign-out warning and the bar's "not sent" until #34's corruption work recovers it.
+- A record whose request fails as a whole every time, even sent alone (a `5xx` or an
+  all-`internal_error` reply), is never quarantined; it retries at most every 5 min
+  behind the others (D-33-27). Only the server log shows it.
 
 ## Open questions
 
-- **Retry window (D-33-4).** The owner gave both the parameters and "about 15
-  minutes"; the parameters give at most 615 s (about 5 min on average). Kept as the
-  parameters. If 15 minutes was meant, 10 attempts gives at most 1215 s.
-- **Conflict, not recorded as a decision: a new record with no `sessionId`.** When the
-  block screen could not load `/sessions/active`, the queued item omits `sessionId`
-  (`src/lib/sync/enqueue.ts`). The D-76 known limit requires #33 to "always send the
-  visit's own `sessionId`"; D-74-32 closed that only for stored visits. If both stand,
-  a record from outing A sent during outing B joins B, fails B's lower bound and is
-  restamped (D-33-3), filed in the wrong outing with a new time.
+None. The retry window was answered by D-33-26, the missing `sessionId` by D-33-25.
