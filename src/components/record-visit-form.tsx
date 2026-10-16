@@ -14,6 +14,7 @@ import type {
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
+import { askOutingWithin } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
 
@@ -181,9 +182,10 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
      *
      * Never queued without its outing: sent later, it would join whichever
      * outing is running then, with a new time. Everything typed is kept.
+     * The ask is time-limited: in weak signal it stalls rather than fails.
      */
     if (sync.enqueue !== null) {
-      const outing = sessionId ?? (await loadSession());
+      const outing = sessionId ?? (await askOutingWithin(loadSession));
       if (outing === null) {
         setFailure(NO_OUTING);
         setSaving(false);

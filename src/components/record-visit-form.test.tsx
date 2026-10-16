@@ -5,6 +5,7 @@ import type * as ApiClientModule from "@/lib/api-client";
 import { RecordVisitForm, validateVisit } from "@/components/record-visit-form";
 import type { HouseholdSummary } from "@/generated/types.gen";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
+import { OUTING_ASK_TIMEOUT_MS } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -888,6 +889,42 @@ describe("saving into the offline queue", () => {
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
     expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
+  });
+
+  it("stops waiting for an outing that stalls, so the member can try again", async () => {
+    // Weak signal stalls a request rather than failing it (D-33-10).
+    const queue = withQueue();
+    const user = userEvent.setup();
+    const stalled = vi.fn(() => new Promise<string | null>(() => undefined));
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={stalled}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Save and next" }));
+      await act(() => vi.advanceTimersByTimeAsync(OUTING_ASK_TIMEOUT_MS - 1));
+      expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+      await act(() => vi.advanceTimersByTimeAsync(1));
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not load the outing, so this visit is not saved yet.",
+    );
+    expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
   it("goes straight to the server when the phone cannot store it", async () => {
