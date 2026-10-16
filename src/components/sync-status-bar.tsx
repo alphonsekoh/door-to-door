@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { SyncQueueSheet } from "@/components/sync-queue-sheet";
 import { useSyncQueue } from "@/components/sync-provider";
+import { useShellState } from "@/lib/offline/shell-state";
 import { barSummary, quietText } from "@/lib/sync/sync-ui";
 import { isPublicPath } from "@/server/auth/routes";
 
@@ -26,8 +27,11 @@ const ROW =
 export function SyncStatusBar() {
   const { records, justSaved, enqueue } = useSyncQueue();
   const pathname = usePathname();
+  const shell = useShellState();
   const [open, setOpen] = useState(false);
-  if (isPublicPath(pathname)) return null;
+  /* The offline shell shows it once someone is recording, wherever its
+     address happens to be. */
+  if (shell.active ? shell.ownerId === null : isPublicPath(pathname)) return null;
   /* Empty while there is no queue to speak for: still loading, or none on
      this browser, where the form saves straight to the server. */
   const summary = enqueue === null ? null : barSummary(records, justSaved);

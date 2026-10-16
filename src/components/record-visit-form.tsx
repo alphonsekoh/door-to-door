@@ -64,6 +64,8 @@ type Props = {
   /* Called after a save that went straight to the server; a queued save is
      announced by the queue once it is sent. */
   onRecorded: () => void;
+  /* Whether anything typed would be lost by leaving now. */
+  onDirtyChange?: (dirty: boolean) => void;
 };
 
 /* The status line for a save that went into the queue. */
@@ -81,9 +83,18 @@ const OUTING_UNKNOWN =
   "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
 const NO_OUTING = "No outing is running, so this visit is not saved yet.";
 
-export function RecordVisitForm({ blockId, known, sessionId, loadSession, onRecorded }: Props) {
+export function RecordVisitForm({
+  blockId,
+  known,
+  sessionId,
+  loadSession,
+  onRecorded,
+  onDirtyChange,
+}: Props) {
   const sync = useSyncQueue();
   const [unitNumber, setUnitNumber] = useState("");
+  /* The next unit filled in after a save is the app's guess, not input. */
+  const [suggested, setSuggested] = useState("");
   const [interestLevel, setInterestLevel] = useState<InterestLevel | null>(null);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -144,6 +155,7 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
 
   const reset = useCallback((suggestion: string | null) => {
     setUnitNumber(suggestion ?? "");
+    setSuggested(suggestion ?? "");
     setInterestLevel(null);
     setName("");
     setContact("");
@@ -153,6 +165,22 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
     setErrors({});
     setHistory(null);
   }, []);
+
+  const dirty =
+    unitNumber.trim() !== suggested ||
+    interestLevel !== null ||
+    [name, contact, description].some((value) => value.trim() !== "") ||
+    religion !== "";
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  /* Switching to the unit list unmounts the form, and what was typed goes. */
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+    },
+    [onDirtyChange],
+  );
 
   async function save(): Promise<void> {
     const found = validateVisit(unitNumber, interestLevel);

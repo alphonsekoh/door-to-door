@@ -99,3 +99,13 @@ export function quietText(records: readonly QueuedVisit[], justSaved: ReadonlySe
 export function isSending(record: QueuedVisit): boolean {
   return record.state === "queued" || record.state === "failed";
 }
+
+/* The offline shell's count: every one of this member's records not yet on
+   the server, stuck ones included, because all of them are only here. */
+export function savedOnPhoneText(records: readonly QueuedVisit[]): string {
+  const count = records.filter((r) => r.state !== "synced").length;
+  if (count === 0) return "Nothing is waiting to send on this phone.";
+  return count === 1
+    ? "1 record is saved on this phone."
+    : `${String(count)} records are saved on this phone.`;
+}

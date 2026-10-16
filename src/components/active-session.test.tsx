@@ -11,6 +11,12 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+/* What reaches the offline shell's copy (#77). */
+const { noteOuting, noteBlock } = vi.hoisted(() => ({ noteOuting: vi.fn(), noteBlock: vi.fn() }));
+vi.mock("@/components/local-copy-writer", () => ({
+  useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
+}));
+
 vi.mock("@/components/outing-team", () => ({
   OutingTeam: ({ sessionId, tick }: { sessionId: string; tick: number }) => (
     <p>{`team card ${sessionId} tick ${String(tick)}`}</p>
@@ -207,5 +213,33 @@ describe("when loading fails", () => {
     apiFetch.mockRejectedValue("boom");
     render(<ActiveSessionScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the session.");
+  });
+});
+
+describe("the offline copy", () => {
+  it("is given each outing the screen loads", async () => {
+    const data = session([block("123")]);
+    apiFetch.mockResolvedValue(data);
+    render(<ActiveSessionScreen />);
+    await waitFor(() => {
+      expect(noteOuting).toHaveBeenCalledWith(data);
+    });
+  });
+
+  it("is told no outing is running on a 404", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("No outing is running.");
+    expect(noteOuting).toHaveBeenCalledWith(null);
+  });
+
+  it.each([
+    ["a server failure", new ApiRequestError(500, undefined)],
+    ["no signal", new TypeError("Failed to fetch")],
+  ])("is left alone after %s, which says nothing about the outing", async (_, failure) => {
+    apiFetch.mockRejectedValue(failure);
+    render(<ActiveSessionScreen />);
+    await screen.findByRole("alert");
+    expect(noteOuting).not.toHaveBeenCalled();
   });
 });

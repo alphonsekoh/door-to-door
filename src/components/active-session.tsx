@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { BlockCard } from "@/components/block-card";
+import { useLocalCopyWriter } from "@/components/local-copy-writer";
 import { OutingTeam } from "@/components/outing-team";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -21,6 +22,8 @@ export function ActiveSessionScreen() {
   const [refreshing, setRefreshing] = useState(false);
   /* Tells the team card to re-read along with every load. */
   const [tick, setTick] = useState(0);
+
+  const { noteOuting } = useLocalCopyWriter();
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -55,6 +58,13 @@ export function ActiveSessionScreen() {
       clearInterval(timer);
     };
   }, [load]);
+
+  /* Each answer goes into the offline copy; a failure says nothing about
+     the outing, so it changes nothing there. */
+  useEffect(() => {
+    if (state.status === "ready") noteOuting(state.data);
+    else if (state.status === "none") noteOuting(null);
+  }, [state, noteOuting]);
 
   if (state.status === "loading") {
     return <p className="text-body text-foreground-muted">Loading…</p>;

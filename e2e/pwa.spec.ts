@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { SEED_MEMBER, SEED_PASSWORD } from "./accounts";
+import { SEED_BLOCK, SEED_MEMBER, SEED_PARTNER, SEED_PASSWORD } from "./accounts";
 import { endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
 
 /*
@@ -95,7 +95,10 @@ test.describe("the worker in charge", () => {
       }
       return undefined;
     });
-    expect(html).toContain("offline");
+    expect(html).toContain("Offline");
+    // The same file is served to whoever holds the phone (D-32-4, D-77-7).
+    expect(html).not.toContain("Alice");
+    expect(html).not.toContain("Blk 123");
   });
 
   test("a failed navigation shows the offline page, and recovers on retry", async ({
@@ -112,13 +115,165 @@ test.describe("the worker in charge", () => {
 
     await memberPage.context().setOffline(true);
     await memberPage.goto("/history").catch(() => undefined);
-    await expect(memberPage.getByRole("heading", { name: "You're offline" })).toBeVisible();
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Offline" })).toBeVisible();
+    // Nothing opened yet to record with, so the shell says so.
+    await expect(memberPage.getByText(/Nothing is saved on this phone/)).toBeVisible();
 
     await memberPage.context().setOffline(false);
     await memberPage.getByRole("button", { name: "Try again" }).click();
     await expect(
       memberPage.getByRole("heading", { level: 1, name: "Active session" }),
     ).toBeVisible();
+  });
+
+  /* #77. Chromium only, for the same reason as the fallback test above. */
+  test("a cold offline reload records, and sends when signal returns, with no reload", async ({
+    memberPage: page,
+    adminApi,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "Playwright WebKit offline emulation bypasses the worker");
+    const sessionId = await ensureActiveSession(adminApi);
+    const unit = `#3${String(Date.now() % 10)}-${String(Date.now() % 97).padStart(2, "0")}`;
+
+    await page.goto("/");
+    await page.getByRole("link", { name: /Blk 123/ }).click();
+    await expect(page.getByRole("button", { name: "Save and next" })).toBeVisible();
+    await controlled(page);
+    // The block page wrote it into the local copy once its units loaded.
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            new Promise<string[]>((resolve) => {
+              const open = indexedDB.open("door-to-door-local");
+              open.onsuccess = () => {
+                const db = open.result;
+                const get = db.transaction("copy").objectStore("copy").get("current");
+                get.onsuccess = () => {
+                  const copy = get.result as { blocks?: { block: { id: string } }[] } | undefined;
+                  db.close();
+                  resolve((copy?.blocks ?? []).map((b) => b.block.id));
+                };
+              };
+            }),
+        ),
+      )
+      .toContain(SEED_BLOCK);
+
+    await page.context().setOffline(true);
+    await page.reload().catch(() => undefined);
+    await expect(page.getByRole("heading", { level: 1, name: "Offline" })).toBeVisible();
+    // Nobody records, and no queue runs, until the phone is told who is holding it.
+    await expect(page.getByRole("button", { name: "Save and next" })).toBeHidden();
+    await page.getByRole("button", { name: /^Continue as Alice/ }).click();
+
+    await page.getByRole("button", { name: /Blk 123/ }).click();
+    await page.getByLabel("Unit number").fill(unit);
+    await page.getByRole("radio", { name: "High" }).click();
+    await page.getByRole("button", { name: "Save and next" }).click();
+    await expect(page.getByText(`Saved ${unit} on this phone.`)).toBeVisible();
+    await expect(page.getByRole("button", { name: /1 waiting to send/ })).toBeVisible();
+    await expect(page.getByText("1 record is saved on this phone.")).toBeVisible();
+
+    const saved = await page.evaluate(
+      (target) =>
+        new Promise<{ ownerId: string; sessionId: string } | undefined>((resolve) => {
+          const open = indexedDB.open("door-to-door");
+          open.onsuccess = () => {
+            const db = open.result;
+            const all = db.transaction("visits").objectStore("visits").getAll();
+            all.onsuccess = () => {
+              const rows = all.result as {
+                ownerId: string;
+                item: { unitNumber: string; sessionId: string };
+              }[];
+              const row = rows.find((r) => r.item.unitNumber === target);
+              db.close();
+              resolve(row && { ownerId: row.ownerId, sessionId: row.item.sessionId });
+            };
+          };
+        }),
+      unit,
+    );
+    expect(saved).toEqual({ ownerId: "00000000-0000-4000-8000-000000000002", sessionId });
+
+    // A pull while offline would be a cold reload; neither scroller lets it start.
+    const overscroll = await page.evaluate(() => [
+      getComputedStyle(document.documentElement).overscrollBehaviorY,
+      getComputedStyle(document.body).overscrollBehaviorY,
+    ]);
+    expect(overscroll).toEqual(["none", "none"]);
+    // The Save bar sits on the bottom edge, with no nav to clear.
+    await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
+
+    await page.evaluate(() => {
+      Reflect.set(window, "__stillHere", true);
+    });
+    await page.context().setOffline(false);
+    await expect(page.getByText("All visits sent")).toBeVisible();
+    // No reload happened: the page's own state survived.
+    expect(await page.evaluate(() => Reflect.get(window, "__stillHere") === true)).toBe(true);
+    // Sent, and still listed: the shell cannot re-read the server's units.
+    await page.getByRole("tab", { name: /Units/ }).click();
+    await expect(page.getByText(unit)).toBeVisible();
+    await expect(page.getByText("Sent", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Record a visit" })).toBeVisible();
+    await page.getByRole("tab", { name: /Units/ }).click();
+    await expect(page.getByText(unit)).toBeVisible();
+  });
+
+  test("the next member to sign in on the phone sees nothing of the last one's", async ({
+    memberPage: page,
+    adminApi,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "Playwright WebKit offline emulation bypasses the worker");
+    await ensureActiveSession(adminApi);
+    await page.goto("/");
+    await page.getByRole("link", { name: /Blk 123/ }).click();
+    await expect(page.getByRole("button", { name: "Save and next" })).toBeVisible();
+    // Something of Alice's in the queue, which must outlive the clear.
+    await page.getByLabel("Unit number").fill("#38-01");
+    await page.getByRole("radio", { name: "Low" }).click();
+    await page.getByRole("button", { name: "Save and next" }).click();
+    await expect(page.getByText(/^Saved #38-01/)).toBeVisible();
+
+    await page.goto("/account");
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/sign-in/);
+    await page.getByLabel("Email").fill(SEED_PARTNER);
+    await page.getByLabel("Password").fill(SEED_PASSWORD);
+    await page.getByRole("button", { name: /sign in/i }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
+    await controlled(page);
+
+    const queued = await page.evaluate(
+      () =>
+        new Promise<string[]>((resolve) => {
+          const open = indexedDB.open("door-to-door");
+          open.onsuccess = () => {
+            const db = open.result;
+            const all = db.transaction("visits").objectStore("visits").getAll();
+            all.onsuccess = () => {
+              const rows = all.result as { item: { unitNumber: string } }[];
+              db.close();
+              resolve(rows.map((r) => r.item.unitNumber));
+            };
+          };
+        }),
+    );
+    expect(queued).toContain("#38-01");
+
+    await page.context().setOffline(true);
+    await page.reload().catch(() => undefined);
+    await expect(page.getByText(/Nothing is saved on this phone/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("Alice");
+    await expect(page.locator("body")).not.toContainText("Blk 123");
+    await page.context().setOffline(false);
   });
 
   test("an ended outing is not shown stale after a reload", async ({ memberPage, adminApi }) => {

@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { signOutAndForget } from "@/lib/sign-out";
 import { isLeavingOnPurpose } from "@/lib/navigate";
 
-const { clear } = vi.hoisted(() => ({ clear: vi.fn() }));
+const { clear, clearLocalCopy } = vi.hoisted(() => ({ clear: vi.fn(), clearLocalCopy: vi.fn() }));
 vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clear }));
+vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
 
 // What Auth.js hands back when the session really ended.
 const signedOut = { url: "http://localhost:3210/account" };
@@ -11,12 +12,14 @@ const signedOut = { url: "http://localhost:3210/account" };
 beforeEach(() => {
   vi.clearAllMocks();
   clear.mockResolvedValue(undefined);
+  clearLocalCopy.mockResolvedValue(undefined);
 });
 
 describe("signOutAndForget", () => {
   it("clears the cached lists, signs out, then goes to sign-in by relative path", async () => {
     const order: string[] = [];
     clear.mockImplementation(() => Promise.resolve(void order.push("clear")));
+    clearLocalCopy.mockImplementation(() => Promise.resolve(void order.push("forget copy")));
     const signOut = vi.fn(() => {
       order.push("signOut");
       return Promise.resolve(signedOut);
@@ -25,12 +28,23 @@ describe("signOutAndForget", () => {
 
     await signOutAndForget(signOut, navigate);
 
-    expect(order).toEqual(["clear", "signOut", "go /sign-in"]);
+    expect(order).toEqual(["clear", "forget copy", "signOut", "go /sign-in"]);
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
   });
 
   it("still signs out when the caches cannot be cleared", async () => {
     clear.mockRejectedValue(new Error("storage unavailable"));
+    const signOut = vi.fn(() => Promise.resolve(signedOut));
+    const navigate = vi.fn();
+
+    await signOutAndForget(signOut, navigate);
+
+    expect(signOut).toHaveBeenCalledOnce();
+    expect(navigate).toHaveBeenCalledWith("/sign-in");
+  });
+
+  it("still signs out when the offline copy cannot be cleared", async () => {
+    clearLocalCopy.mockRejectedValue(new Error("IndexedDB is unavailable"));
     const signOut = vi.fn(() => Promise.resolve(signedOut));
     const navigate = vi.fn();
 

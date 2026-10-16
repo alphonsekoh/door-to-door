@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { RecordVisitForm } from "@/components/record-visit-form";
+import { BlockViews } from "@/components/block-views";
+import { useLocalCopyWriter } from "@/components/local-copy-writer";
 import { useSyncQueue } from "@/components/sync-provider";
-import { UnitList } from "@/components/unit-list";
 import type {
   ActiveSession,
   HouseholdList,
@@ -16,16 +16,18 @@ import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/team-ui";
 import { useRole } from "@/lib/use-role";
 
-type Tab = "record" | "units";
-
 export function BlockScreen({ blockId }: { blockId: string }) {
   const { userId } = useRole();
-  const { records, inFlight, syncedVersion } = useSyncQueue();
-  const [known, setKnown] = useState<HouseholdSummary[]>([]);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const { records, syncedVersion } = useSyncQueue();
+  const { noteBlock } = useLocalCopyWriter();
+  /* Null until the first answer, so the copy is never written with a list
+     that was merely not loaded yet. */
+  const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
+  const [active, setActive] = useState<ActiveSession | null>(null);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<Tab>("record");
+  const sessionId = active?.session.id ?? null;
+  const units = known ?? [];
 
   /*
    * The units already recorded on this block. Held here so the form can show a
@@ -47,11 +49,11 @@ export function BlockScreen({ blockId }: { blockId: string }) {
      list down with it. A save asks again if it is still unknown. */
   const loadSession = useCallback(async (): Promise<OutingAnswer> => {
     try {
-      const active = await apiFetch<ActiveSession>("/sessions/active");
-      setSessionId(active.session.id);
-      return { kind: "running", id: active.session.id };
+      const answer = await apiFetch<ActiveSession>("/sessions/active");
+      setActive(answer);
+      return { kind: "running", id: answer.session.id };
     } catch (caught) {
-      setSessionId(null);
+      setActive(null);
       // The contract's 404 is the one answer that means no outing is running.
       return caught instanceof ApiRequestError && caught.status === 404
         ? { kind: "none" }
@@ -81,7 +83,13 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     void load();
   }, [syncedVersion, load]);
 
-  const rows = overlayQueued(known, records, blockId, sessionId);
+  /* Whichever of the units and the outing arrives second writes the block
+     into the offline copy, and every re-read of the units writes it again. */
+  useEffect(() => {
+    if (active !== null && known !== null) noteBlock(active, blockId, known);
+  }, [active, known, blockId, noteBlock]);
+
+  const rows = overlayQueued(units, records, blockId, sessionId);
 
   /*
    * Which team the viewer is on NOW decides whether a teammate's unit opens
@@ -119,65 +127,15 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         </p>
       )}
 
-      {/*
-        Two views, one tap apart. The list must not push the recording form
-        down the page: at a door the form is the whole job, and the list is
-        what you check between floors.
-      */}
-      <div role="tablist" aria-label="Block views" className="flex gap-2">
-        <button
-          type="button"
-          role="tab"
-          id="tab-record"
-          aria-selected={tab === "record"}
-          aria-controls="panel-record"
-          onClick={() => {
-            setTab("record");
-          }}
-          className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-            tab === "record" ? "border-primary bg-primary text-primary-foreground" : "border-border"
-          }`}
-        >
-          Record
-        </button>
-        <button
-          type="button"
-          role="tab"
-          id="tab-units"
-          aria-selected={tab === "units"}
-          aria-controls="panel-units"
-          onClick={() => {
-            setTab("units");
-          }}
-          className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-            tab === "units" ? "border-primary bg-primary text-primary-foreground" : "border-border"
-          }`}
-        >
-          Units ({rows.length})
-        </button>
-      </div>
-
-      {tab === "record" ? (
-        <div role="tabpanel" id="panel-record" aria-labelledby="tab-record">
-          <RecordVisitForm
-            blockId={blockId}
-            known={known}
-            sessionId={sessionId}
-            loadSession={loadSession}
-            onRecorded={() => void load()}
-          />
-        </div>
-      ) : (
-        <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
-          <UnitList
-            rows={rows}
-            inFlight={inFlight}
-            sessionId={sessionId}
-            teamIds={teamIds}
-            onAmended={() => void load()}
-          />
-        </div>
-      )}
+      <BlockViews
+        blockId={blockId}
+        known={units}
+        rows={rows}
+        sessionId={sessionId}
+        loadSession={loadSession}
+        onRecorded={() => void load()}
+        teamIds={teamIds}
+      />
     </div>
   );
 }

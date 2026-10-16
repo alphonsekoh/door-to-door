@@ -223,6 +223,21 @@ describe("UnitList", () => {
     expect(screen.getByText("No units recorded here yet.")).toBeInTheDocument();
   });
 
+  it("offers no unit to open where amending is off, as on the offline shell", () => {
+    render(
+      <UnitList
+        rows={overlayQueued([unit("#05-01", { name: "Mrs Lim" })], [], "b1", "s1")}
+        inFlight={new Set()}
+        sessionId="s1"
+        amendable={false}
+        onAmended={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("Mrs Lim")).toBeInTheDocument();
+    expect(screen.getByText("#05-01").closest("li")).not.toBeNull();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  });
+
   it("opens the amend sheet for the unit that was tapped", async () => {
     const user = userEvent.setup();
     render(<List units={[unit("#05-01"), unit("#05-02")]} sessionId="s1" onAmended={vi.fn()} />);

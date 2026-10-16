@@ -1,0 +1,268 @@
+import { describe, expect, it } from "vitest";
+import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
+import {
+  LOCAL_COPY_TTL_MS,
+  type LocalCopy,
+  noteBlock,
+  noteOuting,
+  offlineRows,
+  readCopy,
+  usableCopy,
+} from "@/lib/offline/local-copy";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import type { QueuedVisit } from "@/lib/sync/types";
+
+const NOW = Date.parse("2026-10-15T10:00:00.000Z");
+const ALICE = { id: "0190a000-0000-7000-8000-00000000000a", name: "Alice" };
+const BEN = { id: "0190a000-0000-7000-8000-00000000000b", name: "Ben" };
+const BLK_123 = "0190a000-0000-7000-8000-000000000123";
+const BLK_456 = "0190a000-0000-7000-8000-000000000456";
+const TONIGHT = "0190a000-0000-7000-8000-0000000000cc";
+const LAST_WEEK = "0190a000-0000-7000-8000-0000000000dd";
+const STAMP = "2026-10-15T09:00:00.000Z";
+
+const block = (id: string, name: string) => ({
+  id,
+  name,
+  street: "Ang Mo Kio Ave 3",
+  postalCode: null,
+  createdAt: STAMP,
+});
+
+function active(sessionId = TONIGHT, blockIds = [BLK_123, BLK_456]): ActiveSession {
+  return {
+    session: {
+      id: sessionId,
+      title: "Thursday evening",
+      status: "active",
+      startedAt: STAMP,
+      endedAt: null,
+      createdBy: { id: ALICE.id, name: "Admin" },
+      createdAt: STAMP,
+    },
+    blocks: blockIds.map((id) => ({
+      block: block(id, id === BLK_123 ? "123" : "456"),
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    })),
+  };
+}
+
+function household(unitNumber: string, blockId = BLK_123): HouseholdSummary {
+  return {
+    household: {
+      id: `0190a000-0000-7000-8000-${unitNumber.replace(/\D/g, "").padStart(12, "0")}`,
+      blockId,
+      unitNumber,
+      name: "Mrs Tan",
+      contact: "9123 4567",
+      religion: "buddhist",
+      createdAt: STAMP,
+      updatedAt: STAMP,
+    },
+    visitCount: 1,
+    latestVisit: {
+      id: "0190a000-0000-7000-8000-0000000000ee",
+      householdId: "0190a000-0000-7000-8000-0000000000ff",
+      sessionId: LAST_WEEK,
+      member: { id: BEN.id, name: "Ben" },
+      team: null,
+      interestLevel: "medium",
+      description: "Come back on Sunday",
+      clientCreatedAt: STAMP,
+      createdAt: STAMP,
+      updatedAt: STAMP,
+    },
+    outstandingFollowUps: 1,
+  };
+}
+
+/* Alice, tonight's outing, Blk 123 opened at NOW. */
+function copyWithBlock(at = NOW): LocalCopy {
+  const copy = noteBlock(null, ALICE, active(), BLK_123, [household("#05-01")], at);
+  if (copy === null) throw new Error("expected a copy");
+  return copy;
+}
+
+function queued(unitNumber: string, at: number, overrides: Partial<QueuedVisit> = {}) {
+  return {
+    ...buildQueuedVisit(
+      {
+        blockId: BLK_123,
+        unitNumber,
+        interestLevel: "high",
+        description: "",
+        name: "",
+        contact: "",
+        religion: "",
+        sessionId: TONIGHT,
+      },
+      ALICE.id,
+      at,
+    ),
+    ...overrides,
+  };
+}
+
+describe("noteOuting", () => {
+  it("starts a copy for the member with the outing and no blocks", () => {
+    expect(noteOuting(null, ALICE, active(), NOW)).toEqual({
+      v: 1,
+      member: ALICE,
+      savedAt: NOW,
+      outing: active().session,
+      blocks: [],
+    });
+  });
+
+  it("keeps the blocks opened on the same outing, and moves the age on", () => {
+    const later = noteOuting(copyWithBlock(), ALICE, active(), NOW + 1_000);
+    expect(later.blocks.map((b) => b.block.id)).toEqual([BLK_123]);
+    expect(later.savedAt).toBe(NOW + 1_000);
+  });
+
+  it("forgets the blocks when another outing is running", () => {
+    expect(noteOuting(copyWithBlock(), ALICE, active(LAST_WEEK), NOW).blocks).toEqual([]);
+  });
+
+  it("forgets the outing and its blocks when none is running", () => {
+    const none = noteOuting(copyWithBlock(), ALICE, null, NOW);
+    expect(none.outing).toBeNull();
+    expect(none.blocks).toEqual([]);
+  });
+
+  it("never builds on another member's copy", () => {
+    const ben = noteOuting(copyWithBlock(), BEN, active(), NOW);
+    expect(ben.member).toEqual(BEN);
+    expect(ben.blocks).toEqual([]);
+  });
+
+  it("takes the member's latest name", () => {
+    const renamed = noteOuting(copyWithBlock(), { ...ALICE, name: "Alice Ng" }, active(), NOW);
+    expect(renamed.member.name).toBe("Alice Ng");
+    expect(renamed.blocks).toHaveLength(1);
+  });
+});
+
+describe("noteBlock", () => {
+  it("keeps the block and its units as the block screen got them", () => {
+    const copy = copyWithBlock();
+    expect(copy.outing?.id).toBe(TONIGHT);
+    expect(copy.blocks).toEqual([
+      { block: block(BLK_123, "123"), households: [household("#05-01")], savedAt: NOW },
+    ]);
+  });
+
+  it("replaces a block opened again, in place, and adds a new one after it", () => {
+    const again = noteBlock(copyWithBlock(), ALICE, active(), BLK_123, [], NOW + 1);
+    const both = noteBlock(again, ALICE, active(), BLK_456, [], NOW + 2);
+    expect(both?.blocks.map((b) => [b.block.name, b.households.length, b.savedAt])).toEqual([
+      ["123", 0, NOW + 1],
+      ["456", 0, NOW + 2],
+    ]);
+    const later = noteBlock(
+      both,
+      ALICE,
+      active(),
+      BLK_456,
+      [household("#01-01", BLK_456)],
+      NOW + 3,
+    );
+    expect(later?.blocks.map((b) => [b.block.name, b.households.length, b.savedAt])).toEqual([
+      ["123", 0, NOW + 1],
+      ["456", 1, NOW + 3],
+    ]);
+  });
+
+  it("ignores a block that is not on the outing", () => {
+    const copy = copyWithBlock();
+    expect(noteBlock(copy, ALICE, active(TONIGHT, [BLK_456]), BLK_123, [], NOW + 1)).toBe(copy);
+    expect(noteBlock(null, ALICE, active(TONIGHT, []), BLK_123, [], NOW)).toBeNull();
+  });
+
+  it("starts over when the block belongs to another outing", () => {
+    const next = noteBlock(copyWithBlock(), ALICE, active(LAST_WEEK), BLK_456, [], NOW);
+    expect(next?.outing?.id).toBe(LAST_WEEK);
+    expect(next?.blocks.map((b) => b.block.id)).toEqual([BLK_456]);
+  });
+});
+
+describe("readCopy", () => {
+  it("reads back what was written", () => {
+    const copy = copyWithBlock();
+    expect(readCopy(structuredClone(copy))).toEqual(copy);
+  });
+
+  it.each([
+    ["nothing", undefined],
+    ["a string", "Alice"],
+    ["another version", { ...copyWithBlock(), v: 2 }],
+    ["no member", { ...copyWithBlock(), member: null }],
+    ["a blank name", { ...copyWithBlock(), member: { id: ALICE.id, name: "" } }],
+    ["a bad outing", { ...copyWithBlock(), outing: { id: TONIGHT } }],
+    [
+      "a bad household",
+      {
+        ...copyWithBlock(),
+        blocks: [{ block: block(BLK_123, "123"), households: [{ x: 1 }], savedAt: NOW }],
+      },
+    ],
+  ])("rejects %s", (_, raw) => {
+    expect(readCopy(raw)).toBeNull();
+  });
+});
+
+describe("usableCopy", () => {
+  it("is the copy while it has an outing and a block", () => {
+    const copy = copyWithBlock();
+    expect(usableCopy(copy, NOW)).toEqual(copy);
+  });
+
+  it.each([
+    ["no copy", null],
+    ["no outing", noteOuting(copyWithBlock(), ALICE, null, NOW)],
+    ["no block opened", noteOuting(null, ALICE, active(), NOW)],
+  ])("is null with %s", (_, copy) => {
+    expect(usableCopy(copy, NOW)).toBeNull();
+  });
+
+  it("lasts exactly twelve hours from the last write", () => {
+    const copy = copyWithBlock();
+    expect(usableCopy(copy, NOW + LOCAL_COPY_TTL_MS)).not.toBeNull();
+    expect(usableCopy(copy, NOW + LOCAL_COPY_TTL_MS + 1)).toBeNull();
+    expect(LOCAL_COPY_TTL_MS).toBe(12 * 60 * 60 * 1000);
+  });
+});
+
+describe("offlineRows", () => {
+  const [saved] = copyWithBlock().blocks;
+  if (saved === undefined) throw new Error("expected a block");
+
+  it("lays this phone's unsent records over the copied units", () => {
+    const rows = offlineRows(
+      saved,
+      [queued("#05-01", NOW + 1), queued("#05-02", NOW + 2)],
+      TONIGHT,
+    );
+    expect(rows.map((r) => [r.household.unitNumber, r.pending?.state, r.tonight])).toEqual([
+      ["#05-01", "queued", true],
+      ["#05-02", "queued", true],
+    ]);
+  });
+
+  it("keeps a unit saved after the copy once it is sent, so it does not vanish", () => {
+    const sent = queued("#05-02", NOW + 1, { state: "synced", syncedAt: NOW + 2 });
+    const rows = offlineRows(saved, [sent], TONIGHT);
+    expect(rows.map((r) => [r.household.unitNumber, r.pending?.state])).toEqual([
+      ["#05-01", undefined],
+      ["#05-02", "synced"],
+    ]);
+  });
+
+  it("does not lay a record sent before the copy over it: the copy has it already", () => {
+    const before = queued("#05-01", NOW - 1, { state: "synced", syncedAt: NOW - 1 });
+    const rows = offlineRows(saved, [before], TONIGHT);
+    expect(rows.map((r) => r.pending)).toEqual([null]);
+  });
+});

@@ -4,6 +4,7 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState, type ComponentProps } from "react";
 import { destinationAfterSignIn, goTo } from "@/lib/navigate";
+import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/sw-client";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
@@ -57,6 +58,9 @@ export function SignInForm() {
        sign-out (D-74-9): the session is already set, and a rejection here
        would leave the button disabled with nothing to say why. */
     await clearServiceWorkerCaches().catch(() => undefined);
+    /* Nor record offline with the first one's blocks. Their queued records
+       are another store and stay, to send when they are back (D-33-1). */
+    await clearLocalCopy().catch(() => undefined);
     /* A full load, not refresh() then push(): the router holds responses fetched
        while signed out, each a redirect back here, and the refresh of /sign-in
        could outlive the push. When that refetch failed (a dropped request, or

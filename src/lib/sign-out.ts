@@ -1,10 +1,12 @@
 import { goTo } from "@/lib/navigate";
+import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/sw-client";
 
 /*
  * Leaving the app on a phone somebody else may pick up next.
  *
- * Cached lists are cleared first, but a failure there must not trap the member
+ * Cached lists and the offline shell's copy are cleared first (never the
+ * queue, D-33-1), but a failure there must not trap the member
  * in the app: the cookie is what actually protects the account, so the
  * sign-out goes ahead regardless. Clearing first still beats the other order,
  * because a request that fails halfway then costs a cache, not a leftover list.
@@ -26,6 +28,7 @@ export async function signOutAndForget(
   destination = "/sign-in",
 ): Promise<void> {
   await clearServiceWorkerCaches().catch(() => undefined);
+  await clearLocalCopy().catch(() => undefined);
   const { url } = await signOut({ redirect: false });
   const refusal = new URL(url, "http://relative.invalid").searchParams.get("error");
   if (refusal !== null) {

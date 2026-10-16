@@ -13,7 +13,8 @@ export type UnitRow = UnitLike & {
   key: string;
   /* The server's household, or null for a unit only this phone knows. */
   entry: HouseholdSummary | null;
-  /* The newest record for this unit not yet on the server. */
+  /* The newest record for this unit not yet on the server (or, on the
+     offline shell, sent since its copy was taken). */
   pending: QueuedVisit | null;
   latestVisit: { interestLevel: InterestLevel } | null;
   /* Recorded during the running outing (D-26-2). */
@@ -25,11 +26,14 @@ export function overlayQueued(
   records: readonly QueuedVisit[],
   blockId: string,
   sessionId: string | null,
+  /* Which records to lay over. Online, only unsent ones: a sent record is
+     in the server's rows once the screen re-reads them. */
+  overlays: (record: QueuedVisit) => boolean = (record) => record.state !== "synced",
 ): UnitRow[] {
   /* Newest last, so the map keeps the latest record for each unit. */
   const pending = new Map<string, QueuedVisit>();
   for (const record of [...records].sort((a, b) => a.enqueuedAt - b.enqueuedAt)) {
-    if (record.state === "synced" || record.item.blockId !== blockId) continue;
+    if (!overlays(record) || record.item.blockId !== blockId) continue;
     pending.set(normaliseUnitNumber(record.item.unitNumber), record);
   }
 
