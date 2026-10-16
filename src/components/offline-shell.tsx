@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ReloadWhenOnline } from "@/components/reload-when-online";
@@ -43,24 +43,48 @@ function returnTarget(): string {
 }
 
 /*
- * Whether the server can be reached, asked until it answers. Any answer will
- * do, even "nobody signed in": the real screens can deal with that. Not
- * `navigator.onLine`, which says online in a dead zone with one bar.
+ * Whether the server can be reached now. Any answer will do, even "nobody
+ * signed in": the real screens can deal with that. Not `navigator.onLine`,
+ * which says online in a dead zone with one bar. A record reaching the server
+ * proves it as well as a probe does, and often sooner. It keeps asking once
+ * answered, and `offline` drops it at once, so Continue never offers a full
+ * load into a dead zone, which would reload cold into the gate.
  */
-function useReachable(probe: () => Promise<SignedIn>): boolean {
-  const [reachable, setReachable] = useState(false);
+function useReachable(probe: () => Promise<SignedIn>, syncedVersion: number): boolean {
+  const [answered, setAnswered] = useState(false);
+  /* Sends up to this version were before the signal was last lost. */
+  const [lostAtVersion, setLostAtVersion] = useState(0);
+  const version = useRef(syncedVersion);
+  useEffect(() => {
+    version.current = syncedVersion;
+  }, [syncedVersion]);
 
   useEffect(() => {
-    if (reachable) return;
     let cancelled = false;
     let asking = false;
+    /* Bumped on each loss, so an answer to a question asked before it is
+       ignored rather than undoing it. */
+    let generation = 0;
+    const lose = () => {
+      setAnswered(false);
+      setLostAtVersion(version.current);
+    };
     const ask = () => {
       if (asking) return;
       asking = true;
+      const askedIn = generation;
       void probe().then((answer) => {
+        if (askedIn !== generation) return;
         asking = false;
-        if (!cancelled && answer.kind === "member") setReachable(true);
+        if (cancelled) return;
+        if (answer.kind === "member") setAnswered(true);
+        else lose();
       });
+    };
+    const onOffline = () => {
+      generation += 1;
+      asking = false;
+      lose();
     };
     const onVisible = () => {
       if (document.visibilityState === "visible") ask();
@@ -68,18 +92,20 @@ function useReachable(probe: () => Promise<SignedIn>): boolean {
     ask();
     const timer = window.setInterval(ask, PROBE_INTERVAL_MS);
     window.addEventListener("online", ask);
+    window.addEventListener("offline", onOffline);
     window.addEventListener("focus", ask);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("online", ask);
+      window.removeEventListener("offline", onOffline);
       window.removeEventListener("focus", ask);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [reachable, probe]);
+  }, [probe]);
 
-  return reachable;
+  return answered || syncedVersion > lostAtVersion;
 }
 
 export function OfflineShell({
@@ -99,9 +125,7 @@ export function OfflineShell({
   const [dirty, setDirty] = useState(false);
   /* What to do once the member agrees to drop what they typed. */
   const [confirming, setConfirming] = useState<{ run: () => void } | null>(null);
-  /* A record reaching the server proves it as well as a probe does, and
-     often sooner: the `online` event can fire before requests get through. */
-  const reachable = useReachable(probe) || sync.syncedVersion > 0;
+  const reachable = useReachable(probe, sync.syncedVersion);
 
   /* Before paint, so the nav never shows and the Save bar sits on the
      bottom edge from the first frame. */

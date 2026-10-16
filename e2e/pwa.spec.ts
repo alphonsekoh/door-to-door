@@ -10,6 +10,28 @@ import { endActiveSession, ensureActiveSession, expect, test } from "./fixtures"
 
 test.use({ serviceWorkers: "allow" });
 
+/* Whose local copy is on the phone, or null when there is none. */
+function savedCopyMember(page: Page): Promise<string | null> {
+  return page.evaluate(
+    () =>
+      new Promise<string | null>((resolve) => {
+        const open = indexedDB.open("door-to-door-local");
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore("copy");
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          const get = db.transaction("copy").objectStore("copy").get("current");
+          get.onsuccess = () => {
+            const copy = get.result as { member?: { name?: string } } | undefined;
+            db.close();
+            resolve(copy?.member?.name ?? null);
+          };
+        };
+      }),
+  );
+}
+
 /* Waits for the worker to be in charge of this page. clientsClaim is off by
    design, so a page is controlled from its second load, not its first. */
 async function controlled(page: Page): Promise<void> {
@@ -241,14 +263,20 @@ test.describe("the worker in charge", () => {
     await page.getByRole("button", { name: "Save and next" }).click();
     await expect(page.getByText(/^Saved #38-01/)).toBeVisible();
 
+    await expect.poll(() => savedCopyMember(page)).not.toBeNull();
+
     await page.goto("/account");
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(/sign-in/);
+    /* Not to the outing screen: that writes Ben's own copy over Alice's,
+       which would pass this test even if nothing ever cleared hers. */
+    await page.goto("/sign-in?callbackUrl=%2Faccount");
     await page.getByLabel("Email").fill(SEED_PARTNER);
     await page.getByLabel("Password").fill(SEED_PASSWORD);
     await page.getByRole("button", { name: /sign in/i }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
     await controlled(page);
+    await expect.poll(() => savedCopyMember(page)).toBeNull();
 
     const queued = await page.evaluate(
       () =>

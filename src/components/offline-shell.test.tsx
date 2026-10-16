@@ -435,15 +435,90 @@ describe("the reconnect row", () => {
     document.dispatchEvent(new Event("visibilitychange"));
     expect(probe).toHaveBeenCalledTimes(3);
 
-    // Once answered, it stops asking.
+    // Once answered it keeps asking, so a lost signal shows.
     await act(async () => {
       settle({ kind: "member", id: null });
       await Promise.resolve();
     });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
     act(() => {
-      vi.advanceTimersByTime(PROBE_INTERVAL_MS * 3);
+      vi.advanceTimersByTime(PROBE_INTERVAL_MS);
     });
-    expect(probe).toHaveBeenCalledTimes(3);
+    expect(probe).toHaveBeenCalledTimes(4);
+    await act(async () => {
+      settle({ kind: "unknown" });
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    expect(reconnectRow()).toHaveTextContent("Offline. Records save on this phone.");
     vi.useRealTimers();
+  });
+
+  it("stops offering Continue the moment the signal drops, and ignores an answer from before", async () => {
+    let settle: (answer: SignedIn) => void = () => undefined;
+    const { probe } = mount({
+      probe: () =>
+        new Promise((resolve) => {
+          settle = resolve;
+        }),
+    });
+    await continueAsAlice();
+    await act(async () => {
+      settle({ kind: "member", id: ALICE.id });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+
+    window.dispatchEvent(new Event("focus"));
+    expect(probe).toHaveBeenCalledTimes(2);
+    const beforeTheDrop = settle;
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+    expect(reconnectRow()).toHaveTextContent("Offline. Records save on this phone.");
+
+    // Asked before the drop, answered after it: not proof of anything now.
+    await act(async () => {
+      beforeTheDrop({ kind: "member", id: ALICE.id });
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+
+    // A fresh question is asked, not blocked by the abandoned one.
+    window.dispatchEvent(new Event("online"));
+    expect(probe).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      settle({ kind: "member", id: ALICE.id });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+
+  it("does not count a send from before the signal dropped, only one after", async () => {
+    mount({
+      send: (items) =>
+        Promise.resolve({
+          kind: "ok",
+          results: items.map((item) => ({ id: item.id, status: "applied" as const })),
+        }),
+    });
+    await openBlock("123");
+    const u = user();
+    const save = async (unit: string) => {
+      await u.type(screen.getByLabelText("Unit number"), unit);
+      await u.click(screen.getByRole("radio", { name: "High" }));
+      await u.click(screen.getByRole("button", { name: "Save and next" }));
+    };
+    await save("#05-02");
+    expect(await screen.findByRole("button", { name: "Continue" })).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new Event("offline"));
+    });
+    expect(screen.queryByRole("button", { name: "Continue" })).not.toBeInTheDocument();
+
+    await save("#05-03");
+    expect(await screen.findByRole("button", { name: "Continue" })).toBeInTheDocument();
   });
 });

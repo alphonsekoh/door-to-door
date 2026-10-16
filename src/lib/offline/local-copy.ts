@@ -105,8 +105,9 @@ export function usableCopy(copy: LocalCopy | null, now: number): UsableCopy | nu
 /*
  * The shell's unit list. The copy cannot be refetched offline, so a unit
  * saved from the shell would vanish from the list once sent, the overlay
- * only laying unsent records over the server's rows. Records saved after
- * the copy was taken stay listed once sent, and say so (D-77-13).
+ * only laying unsent records over the server's rows. Records sent after
+ * the copy was taken stay listed, and say so (D-77-13). Sent, not queued:
+ * a record queued before a re-read but sent after it is not in that copy.
  */
 export function offlineRows(
   block: LocalBlock,
@@ -118,6 +119,6 @@ export function offlineRows(
     records,
     block.block.id,
     sessionId,
-    (record) => record.state !== "synced" || record.enqueuedAt > block.savedAt,
+    (record) => record.state !== "synced" || (record.syncedAt ?? 0) > block.savedAt,
   );
 }

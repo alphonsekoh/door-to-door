@@ -251,6 +251,15 @@ describe("offlineRows", () => {
     ]);
   });
 
+  it("keeps a unit queued before the copy but sent after it, so it does not vanish", () => {
+    const late = queued("#05-02", NOW - 1, { state: "synced", syncedAt: NOW + 1 });
+    const rows = offlineRows(saved, [late], TONIGHT);
+    expect(rows.map((r) => [r.household.unitNumber, r.pending?.state])).toEqual([
+      ["#05-01", undefined],
+      ["#05-02", "synced"],
+    ]);
+  });
+
   it("keeps a unit saved after the copy once it is sent, so it does not vanish", () => {
     const sent = queued("#05-02", NOW + 1, { state: "synced", syncedAt: NOW + 2 });
     const rows = offlineRows(saved, [sent], TONIGHT);
@@ -264,5 +273,11 @@ describe("offlineRows", () => {
     const before = queued("#05-01", NOW - 1, { state: "synced", syncedAt: NOW - 1 });
     const rows = offlineRows(saved, [before], TONIGHT);
     expect(rows.map((r) => r.pending)).toEqual([null]);
+  });
+
+  it("does not lay a sent record with no send time over the copy", () => {
+    const unknown = queued("#05-02", NOW + 1, { state: "synced", syncedAt: null });
+    const rows = offlineRows(saved, [unknown], TONIGHT);
+    expect(rows.map((r) => r.household.unitNumber)).toEqual(["#05-01"]);
   });
 });
