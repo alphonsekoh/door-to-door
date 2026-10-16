@@ -9,6 +9,10 @@ import type { Visit, VisitSyncItem, VisitSyncResult } from "@/generated/types.ge
  * outlive the tab that wrote it.
  */
 
+/* Always names its outing (see VisitDraft); the contract allows leaving it
+   out, the queue does not. */
+export type QueuedItem = VisitSyncItem & { sessionId: string };
+
 export type RecordState = "queued" | "failed" | "held" | "quarantined" | "synced";
 
 export type QueuedVisit = {
@@ -16,7 +20,7 @@ export type QueuedVisit = {
   id: string;
   /* The member who saved it. Only they ever see or send it (D-33-1). */
   ownerId: string;
-  item: VisitSyncItem;
+  item: QueuedItem;
   state: RecordState;
   /* Counts towards quarantine. Clock skew does not count. */
   attempts: number;

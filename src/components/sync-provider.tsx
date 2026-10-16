@@ -8,6 +8,7 @@ import {
   createSyncController,
 } from "@/lib/sync/controller";
 import type { VisitDraft } from "@/lib/sync/enqueue";
+import { isLeavingOnPurpose } from "@/lib/navigate";
 import { sharedQueue } from "@/lib/sync/idb-queue";
 import { isSending } from "@/lib/sync/sync-ui";
 import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
@@ -167,6 +168,8 @@ export function SyncProvider({
   useEffect(() => {
     if (!sending) return;
     const warn = (event: BeforeUnloadEvent) => {
+      /* A sign-out the member chose leaves the records on disk for them. */
+      if (isLeavingOnPurpose()) return;
       event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);

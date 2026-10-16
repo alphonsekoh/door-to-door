@@ -33,9 +33,8 @@ export function overlayQueued(
     pending.set(normaliseUnitNumber(record.item.unitNumber), record);
   }
 
-  /* A record with no outing named joins the running one when it is sent. */
   const pendingTonight = (record: QueuedVisit | null) =>
-    record !== null && sessionId !== null && (record.item.sessionId ?? sessionId) === sessionId;
+    record !== null && record.item.sessionId === sessionId;
 
   const rows: UnitRow[] = units.map((entry) => {
     const unit = normaliseUnitNumber(entry.household.unitNumber);

@@ -30,6 +30,7 @@ function record(overrides: Partial<QueuedVisit> = {}): QueuedVisit {
       description: "",
       clientCreatedAt: "2026-10-15T09:00:00.000Z",
       updatedAt: "2026-10-15T09:00:00.000Z",
+      sessionId: "0190a000-0000-7000-8000-0000000000cc",
     },
     state: "queued",
     attempts: 0,
@@ -95,14 +96,14 @@ describe("applyResult", () => {
     expect(next.nextAttemptAt).toBe(NOW + 2_500);
   });
 
-  it("stops a record on its eighth internal error, leaving retry to a tap", () => {
+  it("stops a record on its tenth internal error, leaving retry to a tap", () => {
     let current = record();
     for (let i = 0; i < MAX_ATTEMPTS - 1; i += 1) {
       current = applyResult(current, rejected("internal_error"), NOW, half);
       expect(current.state).toBe("failed");
     }
     current = applyResult(current, rejected("internal_error"), NOW, half);
-    expect(current).toMatchObject({ state: "quarantined", attempts: 8, nextAttemptAt: null });
+    expect(current).toMatchObject({ state: "quarantined", attempts: 10, nextAttemptAt: null });
   });
 
   it("restamps both times on clock skew, without counting an attempt", () => {
@@ -280,22 +281,24 @@ describe("applyBatchFailure", () => {
     expect(state.isolation).toBe(true);
   });
 
-  it("charges a server failure to the one record sent alone", () => {
-    const result = applyBatchFailure(
-      { ...INITIAL_STATE, isolation: true },
-      { kind: "http", status: 502, code: "internal_error" },
-      [record()],
-      NOW,
-      half,
-    );
-    expect(result.records).toEqual([
-      expect.objectContaining({
-        state: "failed",
-        attempts: 1,
-        lastError: { code: "server_error" },
-      }),
-    ]);
-  });
+  it.each([
+    ["a 502", { kind: "http", status: 502, code: "internal_error" }],
+    ["an unreadable 200", { kind: "invalid" }],
+  ] as const)(
+    "never charges %s to the one record sent alone, but sends it after the rest",
+    (_, outcome) => {
+      const alone = record({ attempts: 2, lastError: { code: "internal_error" } });
+      const result = applyBatchFailure(
+        { ...INITIAL_STATE, isolation: true },
+        outcome,
+        [alone],
+        NOW,
+        half,
+      );
+      expect(result.state.block).toEqual({ reason: "server", until: NOW + 2_500 });
+      expect(result.records).toEqual([{ ...alone, nextAttemptAt: NOW + 2_500 }]);
+    },
+  );
 });
 
 describe("isBlocked and isDue", () => {

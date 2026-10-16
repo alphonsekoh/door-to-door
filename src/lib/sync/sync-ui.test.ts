@@ -23,7 +23,7 @@ function record(overrides: Partial<QueuedVisit> = {}): QueuedVisit {
         name: "",
         contact: "",
         religion: "",
-        sessionId: null,
+        sessionId: "0190a000-0000-7000-8000-0000000000cc",
       },
       "ann",
       NOW,

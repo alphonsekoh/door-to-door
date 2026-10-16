@@ -21,6 +21,10 @@ vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({
   ...(await importOriginal<typeof SignedInModule>()),
   fetchSignedIn,
 }));
+const { isLeavingOnPurpose } = vi.hoisted(() => ({
+  isLeavingOnPurpose: vi.fn(() => false),
+}));
+vi.mock("@/lib/navigate", () => ({ isLeavingOnPurpose }));
 const cookieFor = (id: string | null) => fetchSignedIn.mockResolvedValue({ kind: "member", id });
 
 const as = (userId: string | undefined) => useRole.mockReturnValue({ userId });
@@ -33,7 +37,7 @@ const draft = (unitNumber: string) => ({
   name: "",
   contact: "",
   religion: "" as const,
-  sessionId: null,
+  sessionId: "0190a000-0000-7000-8000-0000000000cc",
 });
 
 const stored = (ownerId: string, unitNumber: string, overrides: Partial<QueuedVisit> = {}) => ({
@@ -401,6 +405,18 @@ describe("SyncProvider", () => {
       await waitFor(() => {
         expect(leave()).toBe(true);
       });
+    });
+
+    it("does not stand in the way of a sign-out the member chose", async () => {
+      mount(
+        createMemoryQueue([stored("ann", "#05-01")]),
+        vi.fn(() => Promise.resolve<SendOutcome>({ kind: "network" })),
+      );
+      await waitFor(() => {
+        expect(leave()).toBe(true);
+      });
+      isLeavingOnPurpose.mockReturnValueOnce(true);
+      expect(leave()).toBe(false);
     });
 
     it("does not warn for records only an admin or a tap can move, which stay on disk", async () => {

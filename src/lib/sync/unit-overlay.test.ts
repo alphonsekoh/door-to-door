@@ -39,7 +39,7 @@ function server(unitNumber: string, sessionId = LAST_WEEK): HouseholdSummary {
 
 function queued(
   unitNumber: string,
-  options: Partial<{ at: number; block: string; session: string | null; name: string }> = {},
+  options: Partial<{ at: number; block: string; session: string; name: string }> = {},
 ): QueuedVisit {
   return buildQueuedVisit(
     {
@@ -50,7 +50,7 @@ function queued(
       name: options.name ?? "",
       contact: "",
       religion: "",
-      sessionId: options.session === undefined ? TONIGHT : options.session,
+      sessionId: options.session ?? TONIGHT,
     },
     "ann",
     options.at ?? NOW,
@@ -98,11 +98,6 @@ describe("overlayQueued", () => {
       latestVisit: { interestLevel: "high" },
       tonight: true,
     });
-  });
-
-  it("counts a record with no outing named as tonight's, since that is where it will land", () => {
-    const rows = overlayQueued([], [queued("#07-01", { session: null })], BLOCK, TONIGHT);
-    expect(rows[0]?.tonight).toBe(true);
   });
 
   it("does not count a record from another outing as tonight's", () => {

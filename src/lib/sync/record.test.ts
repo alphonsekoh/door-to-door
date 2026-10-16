@@ -38,6 +38,11 @@ describe("readRecord", () => {
     expect(isCorrupt(read)).toBe(true);
   });
 
+  it("never sends a stored record that does not name its outing", () => {
+    const { sessionId: _outing, ...withoutOuting } = good.item;
+    expect(isCorrupt(readRecord({ ...good, item: withoutOuting }))).toBe(true);
+  });
+
   it("stops a record whose bookkeeping is damaged", () => {
     expect(readRecord({ ...good, state: "sending" }).state).toBe("quarantined");
     expect(readRecord({ ...good, attempts: -1 }).lastError).toEqual({ code: CORRUPT });

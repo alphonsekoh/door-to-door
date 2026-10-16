@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { zVisitSyncItem } from "@/generated/zod.gen";
-import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
+import { zCreateVisitRequest, zVisitSyncItem } from "@/generated/zod.gen";
+import { type VisitDraft, buildQueuedVisit, buildVisitRequest } from "@/lib/sync/enqueue";
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 
@@ -55,9 +55,25 @@ describe("buildQueuedVisit", () => {
     );
   });
 
-  it("names the outing it was saved in, and leaves it out when unknown", () => {
+  it("names the outing it was saved in", () => {
     expect(buildQueuedVisit(draft, "ann", NOW).item.sessionId).toBe(draft.sessionId);
-    const unknown = buildQueuedVisit({ ...draft, sessionId: null }, "ann", NOW).item;
-    expect("sessionId" in unknown).toBe(false);
+  });
+});
+
+describe("buildVisitRequest", () => {
+  it("builds a direct save with the same values and no outing, which the server stamps", () => {
+    const request = buildVisitRequest(draft, NOW, () => "fixed");
+    expect(request).toEqual({
+      id: "fixed",
+      blockId: draft.blockId,
+      unitNumber: "#05-123",
+      interestLevel: "high",
+      description: "Asked about Sunday.",
+      clientCreatedAt: new Date(NOW).toISOString(),
+      name: "Tan",
+      contact: null,
+      religion: null,
+    });
+    expect(zCreateVisitRequest.safeParse(buildVisitRequest(draft, NOW)).success).toBe(true);
   });
 });

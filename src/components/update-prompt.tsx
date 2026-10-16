@@ -2,16 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReservedSpace } from "@/components/use-reserved-space";
+import { reloadPage } from "@/lib/navigate";
 import { activateWaitingWorker, watchForWaitingWorker } from "@/lib/sw-update";
 
 type Props = {
   /* Whether the signed-in member still has records being sent (#33). */
   hasUnsynced: () => Promise<boolean>;
   reload?: () => void;
-};
-
-const reloadPage = () => {
-  window.location.reload();
 };
 
 /*

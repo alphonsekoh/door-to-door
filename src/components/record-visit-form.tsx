@@ -13,7 +13,7 @@ import type {
   Visit,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { type VisitDraft, buildSyncItem } from "@/lib/sync/enqueue";
+import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
 
@@ -57,6 +57,9 @@ type Props = {
   known: HouseholdSummary[];
   /* The running outing, so a queued record names the one it was saved in. */
   sessionId: string | null;
+  /* Asks the server again which outing is running, for a save made before
+     the page learnt it. */
+  loadSession: () => Promise<string | null>;
   /* Called after a save that went straight to the server; a queued save is
      announced by the queue once it is sent. */
   onRecorded: () => void;
@@ -73,7 +76,10 @@ function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sendi
   return `Saved ${unitNumber} on this phone.`;
 }
 
-export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props) {
+const NO_OUTING =
+  "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
+
+export function RecordVisitForm({ blockId, known, sessionId, loadSession, onRecorded }: Props) {
   const sync = useSyncQueue();
   const [unitNumber, setUnitNumber] = useState("");
   const [interestLevel, setInterestLevel] = useState<InterestLevel | null>(null);
@@ -157,7 +163,7 @@ export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props
     setSaved(null);
     setSaving(true);
     const unit = normaliseUnitNumber(unitNumber);
-    const draft: VisitDraft = {
+    const fields: VisitFields = {
       blockId,
       unitNumber: unit,
       interestLevel,
@@ -165,7 +171,6 @@ export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props
       name,
       contact,
       religion,
-      sessionId,
     };
 
     /*
@@ -173,10 +178,19 @@ export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props
      * the phone, and sending never holds up the next door. Only if the queue
      * cannot take it (no IndexedDB, a full disk) does it go straight to the
      * server, where a failure keeps everything typed (D-25-8).
+     *
+     * Never queued without its outing: sent later, it would join whichever
+     * outing is running then, with a new time. Everything typed is kept.
      */
     if (sync.enqueue !== null) {
+      const outing = sessionId ?? (await loadSession());
+      if (outing === null) {
+        setFailure(NO_OUTING);
+        setSaving(false);
+        return;
+      }
       try {
-        const record = await sync.enqueue(draft);
+        const record = await sync.enqueue({ ...fields, sessionId: outing });
         reset(nextUnitNumber(unitNumber));
         setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
         setSaving(false);
@@ -189,11 +203,7 @@ export function RecordVisitForm({ blockId, known, sessionId, onRecorded }: Props
     try {
       // Built as a queued one is, so both paths send the same values. The
       // id is generated here: it is what makes a retry idempotent.
-      const {
-        sessionId: _outing,
-        updatedAt: _stamp,
-        ...visitRequest
-      } = buildSyncItem(draft, Date.now());
+      const visitRequest = buildVisitRequest(fields, Date.now());
       const visit = await apiFetch<Visit>("/visits", {
         method: "POST",
         body: JSON.stringify(visitRequest),

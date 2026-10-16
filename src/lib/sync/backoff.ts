@@ -3,9 +3,9 @@
  * on the same landing must not all retry on the same second.
  */
 
-/* The eighth failure quarantines, after seven waits: at most 615 s (about
-   ten minutes) from the first try, and about half that on average. */
-export const MAX_ATTEMPTS = 8;
+/* The tenth failure quarantines, after nine waits: at most 1215 s (about
+   twenty minutes) from the first try, and about half that on average. */
+export const MAX_ATTEMPTS = 10;
 const BASE_MS = 5_000;
 const CAP_MS = 300_000;
 

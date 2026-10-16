@@ -21,7 +21,7 @@ const draft = (unitNumber = "#05-01"): VisitDraft => ({
   name: "",
   contact: "",
   religion: "",
-  sessionId: null,
+  sessionId: "0190a000-0000-7000-8000-0000000000cc",
 });
 
 const applied = (items: VisitSyncItem[]): SendOutcome => ({

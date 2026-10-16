@@ -26,11 +26,23 @@ export type FlushDeps = {
 
 export type FlushResult = { state: EngineState; synced: string[] };
 
-/* Oldest first, so a long offline stretch arrives in the order it was walked. */
-export function dueRecords(records: readonly QueuedVisit[], now: number): QueuedVisit[] {
+/*
+ * Oldest first, so a long offline stretch arrives in the order it was walked.
+ * One at a time, the record that has waited longest goes first instead: one
+ * that just failed alone is put back to its next attempt, so it lines up
+ * behind the rest rather than in front of them every time.
+ */
+export function dueRecords(
+  records: readonly QueuedVisit[],
+  now: number,
+  isolation = false,
+): QueuedVisit[] {
+  const waited = (record: { nextAttemptAt: number }) => (isolation ? record.nextAttemptAt : 0);
   return records
     .filter((record) => isDue(record, now))
-    .sort((a, b) => a.enqueuedAt - b.enqueuedAt || a.id.localeCompare(b.id));
+    .sort(
+      (a, b) => waited(a) - waited(b) || a.enqueuedAt - b.enqueuedAt || a.id.localeCompare(b.id),
+    );
 }
 
 /*
@@ -53,7 +65,7 @@ export async function flushOnce(
 
   for (;;) {
     if (isBlocked(state, deps.now())) break;
-    const due = dueRecords(await queue.listByOwner(ownerId), deps.now());
+    const due = dueRecords(await queue.listByOwner(ownerId), deps.now(), state.isolation);
     if (due.length === 0) {
       state = { ...state, isolation: false };
       break;

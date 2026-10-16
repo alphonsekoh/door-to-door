@@ -36,6 +36,7 @@ const NO_QUEUE = {
 };
 
 const BLOCK = "b1";
+const noSession = vi.fn(() => Promise.resolve(null));
 
 const summary = (unitNumber: string, id = "h1"): HouseholdSummary => ({
   household: {
@@ -121,7 +122,15 @@ describe("the two-tap path", () => {
      * every one of them is how recording stops happening.
      */
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
 
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "No response" }));
@@ -134,14 +143,30 @@ describe("the two-tap path", () => {
   });
 
   it("does not make the member open the optional fields", () => {
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     // Hidden until asked for, so the save button is not six fields away.
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add details" })).toBeInTheDocument();
   });
 
   it("offers interest levels as buttons, not a dropdown", () => {
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     for (const label of ["No response", "Low", "Medium", "High"]) {
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
@@ -149,7 +174,15 @@ describe("the two-tap path", () => {
 
   it("sends null for the optional fields left untouched", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "No response" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -165,7 +198,15 @@ describe("the two-tap path", () => {
 describe("moving along a corridor", () => {
   it("suggests the next unit after saving", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -177,7 +218,15 @@ describe("moving along a corridor", () => {
 
   it("clears the interest level so the next door starts fresh", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -189,7 +238,15 @@ describe("moving along a corridor", () => {
 
   it("leaves the field empty when the unit has no obvious successor", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "Penthouse");
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -202,7 +259,15 @@ describe("moving along a corridor", () => {
   it("tells the block screen to refresh its unit list", async () => {
     const onRecorded = vi.fn();
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={onRecorded} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -224,6 +289,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -241,6 +307,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -279,6 +346,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -304,6 +372,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -333,6 +402,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -364,6 +434,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123"), summary("#05-125", "h2")]}
         onRecorded={vi.fn()}
@@ -386,6 +457,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -400,6 +472,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -418,6 +491,7 @@ describe("history before knocking", () => {
     render(
       <RecordVisitForm
         sessionId={null}
+        loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
         onRecorded={vi.fn()}
@@ -434,7 +508,15 @@ describe("a follow-up after saving", () => {
   const saveVisit = async () => {
     apiFetch.mockResolvedValueOnce({ id: "v-new", householdId: "h-new" });
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -483,7 +565,15 @@ describe("a follow-up after saving", () => {
   it("is not offered when the save fails", async () => {
     apiFetch.mockRejectedValueOnce(new Error("Server unavailable"));
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "High" }));
     await act(async () => {
@@ -497,7 +587,15 @@ describe("a follow-up after saving", () => {
 describe("validation and failure", () => {
   it("shows inline errors and does not call the API", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     expect(await screen.findByText("Enter the unit number.")).toBeInTheDocument();
@@ -507,7 +605,15 @@ describe("validation and failure", () => {
 
   it("marks the invalid field for assistive tech", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.click(screen.getByRole("button", { name: "Save and next" }));
     expect(screen.getByLabelText("Unit number")).toHaveAttribute("aria-invalid", "true");
   });
@@ -516,7 +622,15 @@ describe("validation and failure", () => {
     // Retyping a description at the door is exactly what loses records.
     apiFetch.mockRejectedValue(new Error("No session is active."));
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
 
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "High" }));
@@ -530,7 +644,15 @@ describe("validation and failure", () => {
 describe("optional details", () => {
   it("sends them when filled in", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
 
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "High" }));
@@ -554,7 +676,15 @@ describe("optional details", () => {
 
   it("collapses again", async () => {
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.click(screen.getByRole("button", { name: "Add details" }));
     await user.click(screen.getByRole("button", { name: "Hide details" }));
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
@@ -565,7 +695,15 @@ describe("the visit id", () => {
   it("is generated by the client as a UUIDv7", async () => {
     // What makes a retry idempotent, and why the schema has no default.
     const user = userEvent.setup();
-    render(<RecordVisitForm sessionId={null} blockId={BLOCK} known={[]} onRecorded={vi.fn()} />);
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "Low" }));
     await user.click(screen.getByRole("button", { name: "Save and next" }));
@@ -601,7 +739,13 @@ describe("saving into the offline queue", () => {
   const fill = async () => {
     const user = userEvent.setup();
     const view = render(
-      <RecordVisitForm sessionId={SESSION} blockId={BLOCK} known={[]} onRecorded={onRecorded} />,
+      <RecordVisitForm
+        sessionId={SESSION}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
     );
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "High" }));
@@ -612,7 +756,13 @@ describe("saving into the offline queue", () => {
   const onRecorded = vi.fn();
   const rerenderForm = (view: ReturnType<typeof render>) => {
     view.rerender(
-      <RecordVisitForm sessionId={SESSION} blockId={BLOCK} known={[]} onRecorded={onRecorded} />,
+      <RecordVisitForm
+        sessionId={SESSION}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
     );
   };
 
@@ -690,6 +840,56 @@ describe("saving into the offline queue", () => {
     });
   });
 
+  it("asks again which outing is running when the page never learnt it", async () => {
+    const queue = withQueue();
+    const user = userEvent.setup();
+    const loadSession = vi.fn(() => Promise.resolve(SESSION));
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={loadSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    await waitFor(() => {
+      expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sessionId: SESSION }));
+    });
+    expect(loadSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("never queues a visit without its outing, and keeps everything typed", async () => {
+    // Sent later it would join whichever outing is running then, restamped.
+    const queue = withQueue();
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load the outing, so this visit is not saved yet.",
+    );
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
+    expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
+  });
+
   it("goes straight to the server when the phone cannot store it", async () => {
     withQueue(vi.fn(() => Promise.reject(new DOMException("full", "QuotaExceededError"))));
     apiFetch.mockResolvedValueOnce({ id: "v-direct", householdId: "h-direct" });
@@ -723,7 +923,7 @@ const draftFor = (unitNumber: string): VisitDraft => ({
   name: "",
   contact: "",
   religion: "",
-  sessionId: null,
+  sessionId: "0190a000-0000-7000-8000-0000000000cc",
 });
 
 const visitRow = {

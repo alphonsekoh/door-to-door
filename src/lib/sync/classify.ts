@@ -41,7 +41,10 @@ export function isBlocked(state: EngineState, now: number): boolean {
 
 /* Queued, failed and held records each carry their own next attempt; held
    ones have none unless the refusal can lift without anyone tapping. */
-export function isDue(record: QueuedVisit, now: number): boolean {
+export function isDue(
+  record: QueuedVisit,
+  now: number,
+): record is QueuedVisit & { nextAttemptAt: number } {
   return (
     (record.state === "queued" || record.state === "failed" || record.state === "held") &&
     record.nextAttemptAt !== null &&
@@ -134,7 +137,8 @@ export function applyResult(
  * failing, not the records. A database outage answers each item this way
  * inside a 200 (D-87-2), and charging each record for it would park the whole
  * queue within minutes. The caller treats it as a whole-batch server failure,
- * so a record is charged only once it is sent alone.
+ * which is never charged, so `internal_error` counts against a record only
+ * when the server answered others in the same request.
  */
 export function failedTogether(
   batch: readonly QueuedVisit[],
@@ -148,9 +152,10 @@ export function failedTogether(
 
 /*
  * The server answered for the batch as a whole, so nothing in it was
- * applied. Network trouble never counts against a record: an offline phone
- * must never stop a good one. Server failures count only once the batch is
- * down to one record, where the failure can be pinned on it.
+ * applied, and nothing is charged to a record: not for lost signal, and not
+ * for a server failure even with one record sent alone, because a database
+ * outage fails every record that way and must not park the good ones
+ * (D-87-2). Only a 400 for a record sent alone is pinned on it.
  */
 export function applyBatchFailure(
   state: EngineState,
@@ -195,12 +200,15 @@ export function applyBatchFailure(
 
   const streak = state.streak + 1;
   const serverStreak = state.serverStreak + 1;
+  const resume = until(retryDelay(streak, random));
+  /* Sent alone, the record goes to the back of the line (see dueRecords),
+     so one that breaks every request it is in cannot hold up the rest. */
   const records = state.isolation
-    ? batch.map((record) => failAttempt(record, "server_error", now, random))
+    ? batch.map((record) => ({ ...record, nextAttemptAt: resume }))
     : [];
   return {
     state: {
-      block: { reason: "server", until: until(retryDelay(streak, random)) },
+      block: { reason: "server", until: resume },
       streak,
       serverStreak,
       isolation: state.isolation || serverStreak >= ISOLATE_AFTER,

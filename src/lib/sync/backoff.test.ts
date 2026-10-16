@@ -18,8 +18,8 @@ describe("retryDelay", () => {
     expect(retryDelay(3, () => 0.25)).toBe(5_000);
   });
 
-  it("gives a failing record at most about ten minutes before it is quarantined", () => {
+  it("gives a failing record at most about twenty minutes before it is quarantined", () => {
     const waits = Array.from({ length: MAX_ATTEMPTS - 1 }, (_, i) => retryDelay(i + 1, () => 1));
-    expect(waits.reduce((sum, ms) => sum + ms, 0)).toBe(615_000);
+    expect(waits.reduce((sum, ms) => sum + ms, 0)).toBe(1_215_000);
   });
 });

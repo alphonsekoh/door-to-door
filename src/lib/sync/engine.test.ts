@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { VisitSyncItem, VisitSyncResult } from "@/generated/types.gen";
+import { MAX_ATTEMPTS } from "@/lib/sync/backoff";
 import { INITIAL_STATE } from "@/lib/sync/classify";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { BATCH_SIZE, dueRecords, flushOnce } from "@/lib/sync/engine";
@@ -19,7 +20,7 @@ function saved(ownerId: string, at: number, unit = "#05-01"): QueuedVisit {
       name: "",
       contact: "",
       religion: "",
-      sessionId: null,
+      sessionId: "0190a000-0000-7000-8000-0000000000cc",
     },
     ownerId,
     at,
@@ -212,7 +213,7 @@ describe("flushOnce", () => {
     expect(result.state.isolation).toBe(false);
   });
 
-  it("charges server failures to a record only once it is sent alone", async () => {
+  it("never charges a server failure to a record, even one sent alone", async () => {
     const queue = createMemoryQueue();
     const record = saved("ann", NOW - 2);
     await queue.put(record);
@@ -226,15 +227,43 @@ describe("flushOnce", () => {
     };
 
     let state = INITIAL_STATE;
-    for (let run = 0; run < 3; run += 1) {
+    for (let run = 0; run < 3 * MAX_ATTEMPTS; run += 1) {
       state = (await flushOnce(queue, "ann", state, d)).state;
       now += 10 * 60_000;
     }
-    expect(state.isolation).toBe(true);
-    expect((await queue.get(record.id))?.attempts).toBe(0);
+    expect(state).toMatchObject({ isolation: true, block: { reason: "server" } });
+    expect(await queue.get(record.id)).toMatchObject({ state: "queued", attempts: 0 });
+  });
 
-    state = (await flushOnce(queue, "ann", state, d)).state;
-    expect(await queue.get(record.id)).toMatchObject({ state: "failed", attempts: 1 });
+  it("lets the rest through while one record breaks every request it is in", async () => {
+    const queue = createMemoryQueue();
+    const poison = saved("ann", NOW - 3, "#05-01");
+    const good = saved("ann", NOW - 2, "#05-02");
+    await queue.putMany([poison, good]);
+    let now = NOW;
+    const d = {
+      send: vi.fn((items: VisitSyncItem[]) =>
+        Promise.resolve<SendOutcome>(
+          items.some((item) => item.id === poison.id)
+            ? { kind: "http", status: 500, code: "internal_error" }
+            : applied(items),
+        ),
+      ),
+      now: () => now,
+      random: () => 0.5,
+    };
+
+    let state = INITIAL_STATE;
+    const synced: string[] = [];
+    for (let run = 0; run < 5; run += 1) {
+      const result = await flushOnce(queue, "ann", state, d);
+      state = result.state;
+      synced.push(...result.synced);
+      now += 10 * 60_000;
+    }
+
+    expect(synced).toEqual([good.id]);
+    expect(await queue.get(poison.id)).toMatchObject({ state: "queued", attempts: 0 });
   });
 });
 
@@ -260,7 +289,7 @@ describe("flushOnce during a database outage (D-87-2)", () => {
       random: () => 0.5,
     };
 
-    // Far more runs than the cap: an outage alone must never stop a record.
+    // The first two: still whole batches, and nothing charged.
     let state = INITIAL_STATE;
     for (let run = 0; run < 2; run += 1) {
       state = (await flushOnce(queue, "ann", state, d)).state;
@@ -271,16 +300,23 @@ describe("flushOnce during a database outage (D-87-2)", () => {
       expect(await queue.get(record.id)).toMatchObject({ state: "queued", attempts: 0 });
     }
 
-    // The third switches to one at a time; from then on only the record sent
-    // alone is charged, once per run, and the queue backs off between runs.
-    state = (await flushOnce(queue, "ann", state, d)).state;
-    expect(state.isolation).toBe(true);
-    now += 10 * 60_000;
-    state = (await flushOnce(queue, "ann", state, d)).state;
+    // The third switches to one at a time. Each record sent alone still
+    // fails together with the server, so none is charged, however long the
+    // outage lasts, and the queue keeps backing off.
+    for (let run = 0; run < 3 * MAX_ATTEMPTS; run += 1) {
+      state = (await flushOnce(queue, "ann", state, d)).state;
+      now += 10 * 60_000;
+    }
+    expect(state).toMatchObject({ isolation: true, block: { reason: "server" } });
     expect(d.send.mock.calls.at(-1)?.[0]).toHaveLength(1);
-    const charged = await Promise.all(records.map((r) => queue.get(r.id)));
-    expect(charged.map((r) => r?.attempts)).toEqual([1, 0]);
-    expect(state.block?.reason).toBe("server");
+    for (const record of records) {
+      expect(await queue.get(record.id)).toMatchObject({ state: "queued", attempts: 0 });
+    }
+
+    // Back up: everything goes in.
+    d.send.mockImplementation((items: VisitSyncItem[]) => Promise.resolve(applied(items)));
+    const result = await flushOnce(queue, "ann", state, d);
+    expect(result.synced.sort()).toEqual(records.map((r) => r.id).sort());
   });
 
   it("still charges a record that fails while the rest of its batch goes in", async () => {

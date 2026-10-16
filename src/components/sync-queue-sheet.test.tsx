@@ -22,7 +22,7 @@ const record = (unitNumber: string, overrides: Partial<QueuedVisit> = {}): Queue
         name: "",
         contact: "",
         religion: "",
-        sessionId: null,
+        sessionId: "0190a000-0000-7000-8000-0000000000cc",
       },
       "ann",
       clock,

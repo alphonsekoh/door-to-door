@@ -44,12 +44,14 @@ export function BlockScreen({ blockId }: { blockId: string }) {
   /* Separate from the units, and deliberately forgiving: knowing which outing
      is running only marks tonight's rows, so failing to learn it must not
      take the list down with it. */
-  const loadSession = useCallback(async () => {
+  const loadSession = useCallback(async (): Promise<string | null> => {
     try {
       const active = await apiFetch<ActiveSession>("/sessions/active");
       setSessionId(active.session.id);
+      return active.session.id;
     } catch {
       setSessionId(null);
+      return null;
     }
   }, []);
 
@@ -157,6 +159,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
             blockId={blockId}
             known={known}
             sessionId={sessionId}
+            loadSession={loadSession}
             onRecorded={() => void load()}
           />
         </div>

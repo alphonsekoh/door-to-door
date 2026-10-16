@@ -236,11 +236,17 @@ test.describe("without signal", () => {
     const retryAll = sheet.getByRole("button", { name: "Retry all" });
     await expectTappable(retryAll);
 
-    /* Signal back. The queue's own backoff timer may send it before the tap
-       lands; either way it goes, so the tap is dispatched rather than waited
-       on, and is a no-op if the button has already been disabled. */
+    /* Still no signal, so nothing can have gone and the button is live: the
+       tap sends at once. Signal back only after it, as the phone would see
+       it, or the queue's own timer could send first and disable the button
+       under the tap. */
+    const tried = memberPage.waitForEvent("requestfailed", (request) =>
+      request.url().includes("/api/visits/sync"),
+    );
+    await retryAll.click();
+    await tried;
     await memberPage.unroute("**/api/visits/sync");
-    await retryAll.dispatchEvent("click");
+    await memberPage.evaluate(() => window.dispatchEvent(new Event("online")));
 
     await expect(sheet).toContainText("Everything has been sent.");
     await sheet.getByRole("button", { name: "Close" }).last().click();

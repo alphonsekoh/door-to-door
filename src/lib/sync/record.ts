@@ -19,7 +19,9 @@ const zEnvelope = z.object({
   enqueuedAt: z.number(),
   syncedAt: z.number().nullable(),
   serverVisit: zVisit.nullable(),
-  item: zVisitSyncItem,
+  /* One without its outing is never sent: it could only be filed in the
+     wrong one. */
+  item: zVisitSyncItem.and(z.object({ sessionId: z.uuid() })),
 });
 
 export const CORRUPT = "corrupt";
@@ -52,6 +54,7 @@ export function readRecord(raw: unknown): QueuedVisit {
       interestLevel: "no_response",
       clientCreatedAt: "",
       updatedAt: "",
+      sessionId: "",
     },
     state: "quarantined",
     attempts: 0,
