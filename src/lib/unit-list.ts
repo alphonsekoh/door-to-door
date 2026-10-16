@@ -1,4 +1,4 @@
-import type { HouseholdSummary } from "@/generated/types.gen";
+import type { Household, InterestLevel } from "@/generated/types.gen";
 import { parseUnitNumber } from "@/lib/unit-number";
 
 /*
@@ -13,7 +13,14 @@ import { parseUnitNumber } from "@/lib/unit-number";
    The leading space keeps the key out of the numeric floor namespace. */
 const UNPARSED = " other";
 
-export type Floor = { key: string; label: string; units: HouseholdSummary[] };
+/* Anything shown as a unit row: a server household, or one only this phone
+   knows about yet (#33). */
+export type UnitLike = {
+  household: Pick<Household, "unitNumber" | "name" | "contact">;
+  latestVisit: { interestLevel: InterestLevel } | null;
+};
+
+export type Floor<T extends UnitLike> = { key: string; label: string; units: T[] };
 
 export type Progress = { units: number; floors: number; answered: number };
 
@@ -35,8 +42,8 @@ function floorOrder(key: string): number {
   return key === UNPARSED ? Number.MAX_SAFE_INTEGER : Number(key);
 }
 
-export function groupByFloor(units: HouseholdSummary[]): Floor[] {
-  const buckets = new Map<string, HouseholdSummary[]>();
+export function groupByFloor<T extends UnitLike>(units: T[]): Floor<T>[] {
+  const buckets = new Map<string, T[]>();
 
   for (const entry of units) {
     const key = parseUnitNumber(entry.household.unitNumber)?.floor ?? UNPARSED;
@@ -62,7 +69,7 @@ export function groupByFloor(units: HouseholdSummary[]): Floor[] {
  * finds "#05-123" - typing # and - on a phone keyboard costs two layout
  * switches.
  */
-export function matchesQuery(entry: HouseholdSummary, query: string): boolean {
+export function matchesQuery(entry: UnitLike, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (needle === "") {
     return true;
@@ -73,7 +80,7 @@ export function matchesQuery(entry: HouseholdSummary, query: string): boolean {
   );
 }
 
-export function filterUnits(units: HouseholdSummary[], query: string): HouseholdSummary[] {
+export function filterUnits<T extends UnitLike>(units: T[], query: string): T[] {
   return units.filter((entry) => matchesQuery(entry, query));
 }
 
@@ -82,7 +89,7 @@ export function filterUnits(units: HouseholdSummary[], query: string): Household
  * no-responses is a full evening's work and should read as covered, so units
  * and answered are reported separately rather than as one percentage.
  */
-export function summariseProgress(units: HouseholdSummary[]): Progress {
+export function summariseProgress(units: readonly UnitLike[]): Progress {
   const floors = new Set<string>();
   let answered = 0;
 

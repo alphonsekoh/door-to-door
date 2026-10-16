@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
 import { InterestPicker } from "@/components/interest-picker";
+import { useSyncQueue } from "@/components/sync-provider";
 import type {
   HouseholdHistory,
   HouseholdSummary,
@@ -12,8 +13,10 @@ import type {
   Visit,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
+import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
+import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
-import { uuidv7 } from "@/lib/uuid";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
   { value: "buddhist", label: "Buddhist" },
@@ -38,16 +41,48 @@ export function validateVisit(unitNumber: string, interestLevel: InterestLevel |
   return errors;
 }
 
-/* The visit just stored, so a note can be anchored to it from here. */
-type Saved = { visitId: string; householdId: string; unitNumber: string; noted: boolean };
+/*
+ * The visit just saved. Its household is known once the server has it: at
+ * once for a direct save, and for a queued one when it has been sent. Until
+ * then no note can be anchored to it (D-33-11).
+ */
+type Saved = {
+  visitId: string;
+  householdId: string | null;
+  unitNumber: string;
+  noted: boolean;
+};
 
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
+  /* The running outing, so a queued record names the one it was saved in. */
+  sessionId: string | null;
+  /* Asks the server again which outing is running, for a save made before
+     the page learnt it. */
+  loadSession: () => Promise<OutingAnswer>;
+  /* Called after a save that went straight to the server; a queued save is
+     announced by the queue once it is sent. */
   onRecorded: () => void;
 };
 
-export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
+/* The status line for a save that went into the queue. */
+function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sending: boolean) {
+  if (sending) return `Sending ${unitNumber}…`;
+  /* One line at phone width, so the form below does not move when this
+     changes; the bar above says what happens next. */
+  if (record?.state === "held" || record?.state === "quarantined") {
+    return `Saved ${unitNumber} on this phone. Not sent.`;
+  }
+  return `Saved ${unitNumber} on this phone.`;
+}
+
+const OUTING_UNKNOWN =
+  "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
+const NO_OUTING = "No outing is running, so this visit is not saved yet.";
+
+export function RecordVisitForm({ blockId, known, sessionId, loadSession, onRecorded }: Props) {
+  const sync = useSyncQueue();
   const [unitNumber, setUnitNumber] = useState("");
   const [interestLevel, setInterestLevel] = useState<InterestLevel | null>(null);
   const [name, setName] = useState("");
@@ -129,22 +164,55 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
     setFailure(null);
     setSaved(null);
     setSaving(true);
+    const unit = normaliseUnitNumber(unitNumber);
+    const fields: VisitFields = {
+      blockId,
+      unitNumber: unit,
+      interestLevel,
+      description,
+      name,
+      contact,
+      religion,
+    };
+
+    /*
+     * Into the queue first (D-33-10): the save is done the moment it is on
+     * the phone, and sending never holds up the next door. Only if the queue
+     * cannot take it (no IndexedDB, a full disk) does it go straight to the
+     * server, where a failure keeps everything typed (D-25-8).
+     *
+     * Never queued without its outing: sent later, it would join whichever
+     * outing is running then, with a new time. Everything typed is kept.
+     * The ask is time-limited: in weak signal it stalls rather than fails.
+     */
+    if (sync.enqueue !== null) {
+      const outing: OutingAnswer =
+        sessionId === null
+          ? await askOutingWithin(loadSession)
+          : { kind: "running", id: sessionId };
+      if (outing.kind !== "running") {
+        setFailure(outing.kind === "none" ? NO_OUTING : OUTING_UNKNOWN);
+        setSaving(false);
+        return;
+      }
+      try {
+        const record = await sync.enqueue({ ...fields, sessionId: outing.id });
+        reset(nextUnitNumber(unitNumber));
+        setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
+        setSaving(false);
+        return;
+      } catch {
+        // Falls through to the direct save.
+      }
+    }
+
     try {
-      const unit = normaliseUnitNumber(unitNumber);
+      // Built as a queued one is, so both paths send the same values. The
+      // id is generated here: it is what makes a retry idempotent.
+      const visitRequest = buildVisitRequest(fields, Date.now());
       const visit = await apiFetch<Visit>("/visits", {
         method: "POST",
-        body: JSON.stringify({
-          // Generated here: the id is what makes a retry idempotent.
-          id: uuidv7(),
-          blockId,
-          unitNumber: unit,
-          interestLevel,
-          description,
-          clientCreatedAt: new Date().toISOString(),
-          name: name.trim() === "" ? null : name.trim(),
-          contact: contact.trim() === "" ? null : contact.trim(),
-          religion: religion === "" ? null : religion,
-        }),
+        body: JSON.stringify(visitRequest),
       });
       // Straight on to the next door, with the unit already filled in.
       reset(nextUnitNumber(unitNumber));
@@ -162,6 +230,16 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
     }
   }
 
+  /* A queued save's household comes from the server's row once sent. */
+  const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
+  const householdId = saved?.householdId ?? queued?.serverVisit?.householdId ?? null;
+  const status =
+    saved === null
+      ? null
+      : householdId !== null
+        ? `Saved ${saved.unitNumber}.${saved.noted ? " Follow-up added." : ""}`
+        : queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId));
+
   return (
     <form
       onSubmit={(event) => {
@@ -171,24 +249,13 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
       noValidate
       className="space-y-4"
     >
-      {failure === null ? null : (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
-          {failure}
-        </p>
-      )}
-
-      {saved === null ? null : (
+      {status === null ? null : (
         <div
           role="status"
-          className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
         >
-          <span className="break-words">
-            Saved {saved.unitNumber}.{saved.noted ? " Follow-up added." : ""}
-          </span>
-          {saved.noted ? null : (
+          <span className="break-words">{status}</span>
+          {householdId === null || saved?.noted !== false ? null : (
             <button
               type="button"
               onClick={() => {
@@ -237,11 +304,11 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         />
       )}
 
-      {saved === null || !noting ? null : (
+      {saved === null || householdId === null || !noting ? null : (
         <FollowUpSheet
           mode={{
             kind: "create",
-            householdId: saved.householdId,
+            householdId,
             visitId: saved.visitId,
             unitNumber: saved.unitNumber,
           }}
@@ -360,6 +427,16 @@ export function RecordVisitForm({ blockId, known, onRecorded }: Props) {
         scrolling to find Save at every door is how recording gets skipped.
       */}
       <div className="sticky above-nav -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+        {/* Beside the button rather than atop the form: with the details open
+            the top is scrolled away, and a failure there went unseen. */}
+        {failure === null ? null : (
+          <p
+            role="alert"
+            className="mb-2 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+          >
+            {failure}
+          </p>
+        )}
         <button
           type="submit"
           disabled={saving}

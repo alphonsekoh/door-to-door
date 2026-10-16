@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { destinationAfterSignIn, goTo } from "@/lib/navigate";
+import { destinationAfterSignIn, goTo, isLeavingOnPurpose, reloadPage } from "@/lib/navigate";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -8,9 +8,37 @@ afterEach(() => {
 describe("goTo", () => {
   it("loads the page in full rather than routing on the client", () => {
     const assign = vi.fn();
-    vi.stubGlobal("window", { location: { assign } });
+    vi.stubGlobal("window", { location: { assign }, addEventListener: vi.fn() });
     goTo("/history");
     expect(assign).toHaveBeenCalledWith("/history");
+  });
+});
+
+describe("leaving on purpose", () => {
+  /* A window whose pageshow listeners the test can fire. */
+  function stubWindow() {
+    const target = new EventTarget();
+    const location = { assign: vi.fn(), reload: vi.fn() };
+    vi.stubGlobal("window", {
+      location,
+      addEventListener: target.addEventListener.bind(target),
+    });
+    return { location, show: () => target.dispatchEvent(new Event("pageshow")) };
+  }
+
+  it("marks the app's own navigations, and forgets once the page is shown again", () => {
+    const { location, show } = stubWindow();
+    goTo("/sign-in");
+    expect(isLeavingOnPurpose()).toBe(true);
+    // Restored from the back/forward cache: in use again.
+    show();
+    expect(isLeavingOnPurpose()).toBe(false);
+
+    reloadPage();
+    expect(location.reload).toHaveBeenCalled();
+    expect(isLeavingOnPurpose()).toBe(true);
+    show();
+    expect(isLeavingOnPurpose()).toBe(false);
   });
 });
 

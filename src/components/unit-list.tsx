@@ -5,10 +5,14 @@ import { AmendVisitSheet } from "@/components/amend-visit-sheet";
 import { InterestChip } from "@/components/interest-chip";
 import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdSummary } from "@/generated/types.gen";
+import type { UnitRow as Row } from "@/lib/sync/unit-overlay";
 import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
 
 type Props = {
-  units: HouseholdSummary[];
+  /* The server's units with this phone's unsent records laid over them. */
+  rows: Row[];
+  /* Records this page is sending right now. */
+  inFlight: ReadonlySet<string>;
   /* Units recorded during the running outing, so tonight's work is legible
      against the block's whole history. Null while the session is unknown. */
   sessionId: string | null;
@@ -17,13 +21,25 @@ type Props = {
   onAmended: () => void;
 };
 
-function UnitRow({
+/* Worded, not just coloured: the difference between "on the server" and
+   "on this phone" is the one a member must be able to read in a stairwell. */
+function PendingChip({ sending }: { sending: boolean }) {
+  return (
+    <span className="shrink-0 rounded-md border border-dashed border-foreground-muted px-2 py-0.5 text-caption font-medium">
+      {sending ? "Sending…" : "Not sent"}
+    </span>
+  );
+}
+
+function ServerRow({
+  row,
   entry,
-  tonight,
+  sending,
   onSelect,
 }: {
+  row: Row;
   entry: HouseholdSummary;
-  tonight: boolean;
+  sending: boolean;
   onSelect: () => void;
 }) {
   const { household, latestVisit, outstandingFollowUps } = entry;
@@ -38,14 +54,16 @@ function UnitRow({
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <span className="text-body font-semibold tabular-nums">{household.unitNumber}</span>
-            {tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
+            {row.tonight ? (
+              <span className="text-caption text-foreground-muted">tonight</span>
+            ) : null}
           </span>
           {household.name === null ? null : (
             <span className="block truncate text-caption text-foreground-muted">
               {household.name}
             </span>
           )}
-          {latestVisit === null ? null : (
+          {latestVisit === null || row.pending !== null ? null : (
             <VisitByline visit={latestVisit} prefix="By " withTeam={false} />
           )}
           {outstandingFollowUps !== undefined && outstandingFollowUps > 0 ? (
@@ -57,23 +75,47 @@ function UnitRow({
           ) : null}
         </span>
 
-        {latestVisit === null ? null : <InterestChip level={latestVisit.interestLevel} />}
+        {row.pending === null ? null : <PendingChip sending={sending} />}
+        {row.latestVisit === null ? null : <InterestChip level={row.latestVisit.interestLevel} />}
       </button>
     </li>
   );
 }
 
-export function UnitList({ units, sessionId, teamIds = [], onAmended }: Props) {
+/*
+ * A unit only this phone knows about. Not a button: amending needs the
+ * server's row, and amends stay online-only (D-33-13, D-74-19).
+ */
+function QueuedRow({ row, sending }: { row: Row; sending: boolean }) {
+  return (
+    <li className="flex min-h-14 w-full items-center gap-3 border-b border-dashed border-border px-4 py-2 last:border-b-0">
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2">
+          <span className="text-body font-semibold tabular-nums">{row.household.unitNumber}</span>
+          {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
+        </span>
+        {row.household.name === null ? null : (
+          <span className="block truncate text-caption text-foreground-muted">
+            {row.household.name}
+          </span>
+        )}
+      </span>
+      <PendingChip sending={sending} />
+      {row.latestVisit === null ? null : <InterestChip level={row.latestVisit.interestLevel} />}
+    </li>
+  );
+}
+
+export function UnitList({ rows, inFlight, sessionId, teamIds = [], onAmended }: Props) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<HouseholdSummary | null>(null);
 
-  const visible = filterUnits(units, query);
+  const visible = filterUnits(rows, query);
   const floors = groupByFloor(visible);
   /* Progress reports the outing, not the block's whole history: what a member
-     wants to know is how far tonight has got. */
-  const progress = summariseProgress(
-    sessionId === null ? units : units.filter((e) => e.latestVisit?.sessionId === sessionId),
-  );
+     wants to know is how far tonight has got. Unsent records count: the
+     door was knocked whether or not the server has heard yet. */
+  const progress = summariseProgress(sessionId === null ? rows : rows.filter((r) => r.tonight));
 
   return (
     <div className="space-y-4">
@@ -99,7 +141,7 @@ export function UnitList({ units, sessionId, teamIds = [], onAmended }: Props) {
 
       {floors.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          {units.length === 0
+          {rows.length === 0
             ? "No units recorded here yet."
             : `Nothing here matches "${query.trim()}".`}
         </p>
@@ -110,16 +152,23 @@ export function UnitList({ units, sessionId, teamIds = [], onAmended }: Props) {
               {floor.label}
             </h2>
             <ul className="overflow-hidden rounded-xl border border-border bg-surface">
-              {floor.units.map((entry) => (
-                <UnitRow
-                  key={entry.household.id}
-                  entry={entry}
-                  tonight={sessionId !== null && entry.latestVisit?.sessionId === sessionId}
-                  onSelect={() => {
-                    setSelected(entry);
-                  }}
-                />
-              ))}
+              {floor.units.map((row) => {
+                const sending = row.pending !== null && inFlight.has(row.pending.id);
+                const { entry } = row;
+                return entry === null ? (
+                  <QueuedRow key={row.key} row={row} sending={sending} />
+                ) : (
+                  <ServerRow
+                    key={row.key}
+                    row={row}
+                    entry={entry}
+                    sending={sending}
+                    onSelect={() => {
+                      setSelected(entry);
+                    }}
+                  />
+                );
+              })}
             </ul>
           </section>
         ))

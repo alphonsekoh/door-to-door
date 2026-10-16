@@ -47,7 +47,7 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 - **D-74-8 · A live "N of 80" counter replaces a silent `maxLength`.** _Why:_ a
   browser that truncates input hides why a name was cut.
 - **D-74-9 · Sign-out clears the block cache before signing out; a failed clear never
-  blocks sign-out.** It warns first if `hasUnsyncedItems()` is true (a stub until #33).
+  blocks sign-out.** It warns first if `hasUnsyncedItems()` is true (made real by D-33-15).
   _Why:_ the cookie is what protects the account, and clearing first leaves a cache
   rather than a list if the request dies halfway. Completes D-32-7.
 - **D-74-10 · Sign-out calls `signOut({ redirect: false })` then

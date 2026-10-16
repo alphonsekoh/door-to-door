@@ -9,6 +9,7 @@ import { accountStore } from "@/lib/account-state";
 import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/own-name";
 import { signOutAndForget } from "@/lib/sign-out";
 import { hasUnsyncedItems } from "@/lib/sw-update";
+import { useRole } from "@/lib/use-role";
 import { loadCurrentUser } from "@/lib/users";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
@@ -19,6 +20,7 @@ function messageOf(error: unknown, fallback: string): string {
 
 export function AccountScreen() {
   const { update } = useSession();
+  const { userId } = useRole();
   const [user, setUser] = useState<User | null>(null);
   const [loadFailure, setLoadFailure] = useState<string | null>(null);
   // The session is no longer valid: signing out is the only thing left to offer.
@@ -96,8 +98,9 @@ export function AccountScreen() {
 
   async function startSignOut(): Promise<void> {
     /* Unsynced records stay on this phone, so signing out is the moment to
-       say they will wait; the member decides. */
-    if (await hasUnsyncedItems()) {
+       say they will wait; the member decides. Held and stopped ones count
+       too: they are still this member's unsent work. */
+    if (await hasUnsyncedItems(userId)) {
       setConfirmingSignOut(true);
       return;
     }

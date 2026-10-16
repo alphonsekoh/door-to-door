@@ -37,6 +37,7 @@ describe("overlay stacking", () => {
       "confirm-dialog.tsx",
       "follow-up-sheet.tsx",
       "record-on-behalf-form.tsx",
+      "sync-queue-sheet.tsx",
       "team-sheet.tsx",
     ]);
   });

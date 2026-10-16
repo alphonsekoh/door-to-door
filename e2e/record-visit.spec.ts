@@ -13,7 +13,9 @@ const UNIT = "#21-07";
 const NOTED_UNIT = "#21-11";
 
 /* In the viewport and actually what a tap would land on: elementFromPoint is
-   the stacking check jsdom cannot make. */
+   the stacking check jsdom cannot make. An open sheet makes the page behind
+   it inert, and hit testing skips inert elements, so a nav painted over the
+   sheet would go unseen; the check lifts inert for the instant it looks. */
 async function expectTappable(target: Locator): Promise<void> {
   await target.scrollIntoViewIfNeeded();
   await expect(target).toBeInViewport();
@@ -21,9 +23,15 @@ async function expectTappable(target: Locator): Promise<void> {
     .poll(
       () =>
         target.evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-          return top !== null && element.contains(top);
+          const inert = [...document.querySelectorAll("[inert]")];
+          for (const node of inert) node.removeAttribute("inert");
+          try {
+            const box = element.getBoundingClientRect();
+            const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+            return top !== null && element.contains(top);
+          } finally {
+            for (const node of inert) node.setAttribute("inert", "");
+          }
         }),
       { message: "something covers the button" },
     )
@@ -95,7 +103,7 @@ test("an amendment sticks, and the sheet's save is reachable", async ({ memberPa
   const save = sheet.getByRole("button", { name: "Save changes" });
   /* The bug this catches: the bottom nav painted over the sheet, leaving this
      button on screen but untappable. */
-  await expect(save).toBeInViewport();
+  await expectTappable(save);
   await save.click();
 
   await expect(sheet).toBeHidden();
@@ -159,4 +167,146 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   const owed = memberPage.getByRole("list", { name: "Outstanding follow-ups" });
   await expect(owed).toContainText("Bring the festival flyer on Sunday.");
   await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
+});
+
+test.describe("a save that cannot be queued", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  test("says why beside the Save button, even with the details open", async ({ memberPage }) => {
+    /* The home page needs the outing to list the block; the block screen
+       is opened without it, as after a reload in a dead spot. */
+    await memberPage.goto("/");
+    const block = await memberPage.getByRole("link", { name: /Blk 123/ }).getAttribute("href");
+    expect(block).not.toBeNull();
+    await memberPage.route("**/api/sessions/active", (route) =>
+      route.abort("internetdisconnected"),
+    );
+    await memberPage.goto(block ?? "/");
+
+    await memberPage.getByLabel("Unit number").fill("#21-19");
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Add details" }).click();
+    await memberPage.getByLabel("Name").fill("Mdm Lee");
+    await memberPage.getByLabel("Contact").fill("9123 4567");
+    await memberPage.getByLabel("Religion").selectOption("buddhist");
+    await memberPage.getByLabel("Notes").fill("Asked us to come back on a weekend morning.");
+
+    /* Scrolled to the bottom, as a member is after the last field: the top
+       of the form, where the failure once showed, is off screen. */
+    await memberPage.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    const save = memberPage.getByRole("button", { name: "Save and next" });
+    await save.click();
+
+    /* Not the route announcer, which is also an alert. */
+    const alert = memberPage.getByRole("alert").filter({ hasText: "not saved yet" });
+    await expect(alert).toContainText("Could not load the outing");
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect(save).toBeInViewport();
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-19");
+
+    /* Signal back, but nothing running: a different reason, same place. */
+    await memberPage.unroute("**/api/sessions/active");
+    await memberPage.route("**/api/sessions/active", (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: "not_found", message: "No session is active." } },
+      }),
+    );
+    await save.click();
+    await expect(alert).toContainText("No outing is running");
+    await expect(alert).toBeInViewport({ ratio: 1 });
+  });
+});
+
+test.describe("without signal", () => {
+  /* A request the service worker makes is out of page.route's reach in
+     WebKit, and after the reload the worker is in charge. The queue is what
+     is under test here, not the worker. */
+  test.use({ serviceWorkers: "block" });
+
+  test("a visit saved without signal waits on the phone, survives a reload and sends later", async ({
+    memberPage,
+  }) => {
+    const OFFLINE_UNIT = "#21-15";
+    /* Cut the sync request rather than the whole network: the page still
+     reloads, and it behaves the same on both engines. */
+    await memberPage.route("**/api/visits/sync", (route) => route.abort("internetdisconnected"));
+    /* Leaving with records unsent asks first; the test means to. */
+    memberPage.on("dialog", (dialog) => void dialog.accept());
+
+    await memberPage.goto("/");
+    await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+
+    /* Coming back to the app re-checks the session; without signal that
+       check fails and reads as signed out. The queue must outlast it. */
+    await memberPage.route("**/api/auth/session", (route) => route.abort("internetdisconnected"));
+    const checked = memberPage.waitForEvent("requestfailed", (request) =>
+      request.url().includes("/api/auth/session"),
+    );
+    await memberPage.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await checked;
+
+    /* The bar's row is there before anything needs it, so the form does not
+       move when it fills in mid-entry. */
+    const quiet = memberPage.locator("p", { hasText: "All visits sent" });
+    await expect(quiet).toBeVisible();
+    const slot = await quiet.boundingBox();
+    expect(slot).not.toBeNull();
+    await memberPage.getByLabel("Unit number").fill(OFFLINE_UNIT);
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+
+    /* Saved the moment it is on the phone: the form moves on regardless. */
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-16");
+    await expect(memberPage.getByRole("status")).toContainText(
+      `Saved ${OFFLINE_UNIT} on this phone`,
+    );
+
+    const bar = memberPage.getByRole("button", { name: /1 waiting to send/ });
+    await expectTappable(bar);
+    const filled = await bar.boundingBox();
+    expect(filled?.height).toBe(slot?.height);
+
+    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
+    const pending = memberPage.getByRole("listitem").filter({ hasText: OFFLINE_UNIT });
+    await expect(pending).toContainText("Not sent");
+
+    await memberPage.unroute("**/api/auth/session");
+    await memberPage.reload();
+    await expect(bar).toBeVisible();
+    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
+    await expect(pending).toContainText("Not sent");
+
+    /* The sheet's Retry all must sit above the bottom nav. */
+    await bar.click();
+    const sheet = memberPage.getByRole("dialog", { name: "Records not sent" });
+    const retryAll = sheet.getByRole("button", { name: "Retry all" });
+    await expectTappable(retryAll);
+
+    /* Still no signal, so nothing can have gone and the button is live: the
+       tap sends at once. Signal back only after it, as the phone would see
+       it, or the queue's own timer could send first and disable the button
+       under the tap. */
+    const tried = memberPage.waitForEvent("requestfailed", (request) =>
+      request.url().includes("/api/visits/sync"),
+    );
+    await retryAll.click();
+    await tried;
+    await memberPage.unroute("**/api/visits/sync");
+    await memberPage.evaluate(() => window.dispatchEvent(new Event("online")));
+
+    await expect(sheet).toContainText("Everything has been sent.");
+    await sheet.getByRole("button", { name: "Close" }).last().click();
+    await expect(bar).toBeHidden();
+    await expect(quiet).toBeVisible();
+    /* Now a server row: tappable, with no "Not sent" chip. */
+    const row = memberPage.getByRole("button", { name: new RegExp(OFFLINE_UNIT) });
+    await expect(row).toBeVisible();
+    await expect(row).not.toContainText("Not sent");
+  });
 });

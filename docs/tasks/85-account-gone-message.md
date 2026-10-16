@@ -1,6 +1,6 @@
 # #85 · One message when the account is deactivated or the session is invalid
 
-- **Status:** In review (PR #98)
+- **Status:** Done (PR #98)
 - **Phase:** 4 - Member UI
 - **Depends on:** #83, #74
 
@@ -55,7 +55,7 @@ without signing in again. No contract, schema or server change.
 - **D-85-10 · Scope cut: holding queued records on this error is #33's.** The hook is in
   place: the queue's flush must go through `apiFetch` or call
   `accountStore.reportAuthFailure` itself (for example from the worker). _Why:_ the queue
-  does not exist yet.
+  does not exist yet. Done in #33: D-33-5.
 - **D-85-11 · The app underneath is made `inert` by the shared modal hook, not unmounted.**
   `AuthFailureScreen` calls `useModal(null, button)`; the `AccountGate` wrapper div and the
   one-off body-children effect are gone. Supersedes D-85-5. _Why:_ the owner chose one

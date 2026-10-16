@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { RecordVisitForm } from "@/components/record-visit-form";
+import { useSyncQueue } from "@/components/sync-provider";
 import { UnitList } from "@/components/unit-list";
 import type {
   ActiveSession,
@@ -9,7 +10,9 @@ import type {
   HouseholdSummary,
   TeamList,
 } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import type { OutingAnswer } from "@/lib/sync/outing";
+import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/team-ui";
 import { useRole } from "@/lib/use-role";
 
@@ -17,6 +20,7 @@ type Tab = "record" | "units";
 
 export function BlockScreen({ blockId }: { blockId: string }) {
   const { userId } = useRole();
+  const { records, inFlight, syncedVersion } = useSyncQueue();
   const [known, setKnown] = useState<HouseholdSummary[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -38,15 +42,20 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     }
   }, [blockId]);
 
-  /* Separate from the units, and deliberately forgiving: knowing which outing
-     is running only marks tonight's rows, so failing to learn it must not
-     take the list down with it. */
-  const loadSession = useCallback(async () => {
+  /* Separate from the units: the outing marks tonight's rows and is what a
+     save is queued under (D-33-25), but failing to learn it must not take the
+     list down with it. A save asks again if it is still unknown. */
+  const loadSession = useCallback(async (): Promise<OutingAnswer> => {
     try {
       const active = await apiFetch<ActiveSession>("/sessions/active");
       setSessionId(active.session.id);
-    } catch {
+      return { kind: "running", id: active.session.id };
+    } catch (caught) {
       setSessionId(null);
+      // The contract's 404 is the one answer that means no outing is running.
+      return caught instanceof ApiRequestError && caught.status === 404
+        ? { kind: "none" }
+        : { kind: "unknown" };
     }
   }, []);
 
@@ -59,6 +68,20 @@ export function BlockScreen({ blockId }: { blockId: string }) {
       clearTimeout(timer);
     };
   }, [load, loadSession]);
+
+  /*
+   * Re-read once a queued record reaches the server, not after every save:
+   * a save in a dead spot must not try the network and fail just to refresh
+   * a list the queue already shows it in.
+   */
+  const seenSynced = useRef(syncedVersion);
+  useEffect(() => {
+    if (syncedVersion === seenSynced.current) return;
+    seenSynced.current = syncedVersion;
+    void load();
+  }, [syncedVersion, load]);
+
+  const rows = overlayQueued(known, records, blockId, sessionId);
 
   /*
    * Which team the viewer is on NOW decides whether a teammate's unit opens
@@ -130,18 +153,25 @@ export function BlockScreen({ blockId }: { blockId: string }) {
             tab === "units" ? "border-primary bg-primary text-primary-foreground" : "border-border"
           }`}
         >
-          Units ({known.length})
+          Units ({rows.length})
         </button>
       </div>
 
       {tab === "record" ? (
         <div role="tabpanel" id="panel-record" aria-labelledby="tab-record">
-          <RecordVisitForm blockId={blockId} known={known} onRecorded={() => void load()} />
+          <RecordVisitForm
+            blockId={blockId}
+            known={known}
+            sessionId={sessionId}
+            loadSession={loadSession}
+            onRecorded={() => void load()}
+          />
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
           <UnitList
-            units={known}
+            rows={rows}
+            inFlight={inFlight}
             sessionId={sessionId}
             teamIds={teamIds}
             onAmended={() => void load()}

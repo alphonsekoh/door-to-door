@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { signOutAndForget } from "@/lib/sign-out";
+import { isLeavingOnPurpose } from "@/lib/navigate";
 
 const { clear } = vi.hoisted(() => ({ clear: vi.fn() }));
 vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clear }));
@@ -60,11 +61,13 @@ describe("signOutAndForget", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("navigates with window.location by default", async () => {
+  it("navigates with window.location by default, as a departure the member chose", async () => {
     const assign = vi.fn();
-    vi.stubGlobal("window", { location: { assign } });
+    vi.stubGlobal("window", { location: { assign }, addEventListener: vi.fn() });
     await signOutAndForget(() => Promise.resolve(signedOut));
     expect(assign).toHaveBeenCalledWith("/sign-in");
+    // So the unsent-records warning does not stop it (D-33-23).
+    expect(isLeavingOnPurpose()).toBe(true);
     vi.unstubAllGlobals();
   });
 

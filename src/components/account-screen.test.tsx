@@ -16,6 +16,9 @@ const { apiFetch, update, signOut, hasUnsynced, signOutAndForget } = vi.hoisted(
 
 vi.mock("next-auth/react", () => ({ useSession: () => ({ update }), signOut }));
 vi.mock("@/lib/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
+/* The member whose records are asked about: their own, never the phone's
+   other users' (D-33-1). */
+vi.mock("@/lib/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
 vi.mock("@/lib/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/api-client", async () => ({
   ...(await vi.importActual<typeof ApiClientModule>("@/lib/api-client")),
@@ -269,6 +272,8 @@ describe("AccountScreen: signing out", () => {
 
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("wait here until you sign in again");
+    // Held and stopped records count too; the helper is asked about this member.
+    expect(hasUnsynced).toHaveBeenCalledWith("u1");
     expect(signOutAndForget).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Sign out anyway" }));

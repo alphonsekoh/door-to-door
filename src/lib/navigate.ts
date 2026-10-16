@@ -5,7 +5,34 @@
  * client navigation left to fail and fall back to the page being left.
  */
 export function goTo(path: string): void {
+  leaveOnPurpose();
   window.location.assign(path);
+}
+
+export function reloadPage(): void {
+  leaveOnPurpose();
+  window.location.reload();
+}
+
+let leaving = false;
+
+/* A navigation the member asked for, such as signing out, must not be met
+   with the browser's "Leave site?" prompt: answering Stay would leave them
+   signed out on a page that still looks signed in. */
+function leaveOnPurpose(): void {
+  leaving = true;
+  /* Back from the back/forward cache, the page is in use again. */
+  window.addEventListener(
+    "pageshow",
+    () => {
+      leaving = false;
+    },
+    { once: true },
+  );
+}
+
+export function isLeavingOnPurpose(): boolean {
+  return leaving;
 }
 
 const PLACEHOLDER_ORIGIN = "http://this-origin.invalid";
