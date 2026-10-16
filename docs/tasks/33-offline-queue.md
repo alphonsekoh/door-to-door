@@ -121,7 +121,7 @@ Owner decisions are marked **(owner)**.
   without one reads as corrupt (D-33-8). The direct `POST /visits` fallback (D-33-10) is
   unchanged. _Why:_ sent later it would join a later outing with a restamped time;
   closes the D-76 known limit for new records, as D-74-32 did for stored ones. Weak
-  signal stalls rather than fails, so the ask needs its own limit.
+  signal stalls rather than fails, so the ask needs its own limit. Refined by D-33-30.
 - **D-33-26 · Retry cap: 10 attempts (owner).** Supersedes the count in D-33-4. Same
   backoff; the 10th failure quarantines after 9 waits, at most 1215 s (about 20 min).
   _Why:_ the owner's choice: 8 gave at most 615 s against the "about 15 minutes" first
@@ -140,6 +140,19 @@ Owner decisions are marked **(owner)**.
   flag; `pageshow` clears it. Refines D-33-23. _Why:_ tapping Stay on a chosen
   sign-out left the member signed out on a page that still looked signed in; a page
   restored from the back/forward cache must warn again.
+- **D-33-29 · A failed save is shown beside Save, and focus is not moved.** The form's
+  `role="alert"` sits in the sticky bar above Save, for every save failure (outing
+  unknown, no outing running, direct `POST /visits` failed). Chosen over scroll-and-focus.
+  _Why:_ the bar is always on screen, so no scroll offsets or reduced-motion handling;
+  at the top of a long form it could be off screen. Trade-off: a two-line message makes
+  the bar taller until the next attempt. Focus stays where the disabled button dropped
+  it (see known limits).
+- **D-33-30 · Only a `404` means "no outing running".** Refines D-33-25: asking for the
+  outing answers running (with id), none, or unknown; a network error, `5xx` or the 4 s
+  timeout is unknown. None says "No outing is running"; unknown keeps "Could not load
+  the outing … Check your signal". Neither queues, both keep what was typed. _Why:_ the
+  member needs to know whether to find signal or ask an admin; D-10-7 makes `404` the
+  empty state.
 
 ## Relies on
 
@@ -165,6 +178,10 @@ D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
 - A record whose request fails as a whole every time, even sent alone (a `5xx` or an
   all-`internal_error` reply), is never quarantined; it retries at most every 5 min
   behind the others (D-33-27). Only the server log shows it.
+- After a failed save focus falls to `<body>`, because Save is disabled while saving
+  (D-33-29). The alert is announced, but a keyboard user starts again from the top.
+  D-85-15 returns focus to the button in the same situation on sign-out; doing the same
+  here is a small follow-up.
 
 ## Open questions
 
