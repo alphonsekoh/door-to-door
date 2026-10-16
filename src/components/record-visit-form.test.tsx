@@ -5,7 +5,7 @@ import type * as ApiClientModule from "@/lib/api-client";
 import { RecordVisitForm, validateVisit } from "@/components/record-visit-form";
 import type { HouseholdSummary } from "@/generated/types.gen";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
-import { OUTING_ASK_TIMEOUT_MS } from "@/lib/sync/outing";
+import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -37,7 +37,7 @@ const NO_QUEUE = {
 };
 
 const BLOCK = "b1";
-const noSession = vi.fn(() => Promise.resolve(null));
+const noSession = vi.fn((): Promise<OutingAnswer> => Promise.resolve({ kind: "unknown" }));
 
 const summary = (unitNumber: string, id = "h1"): HouseholdSummary => ({
   household: {
@@ -844,7 +844,9 @@ describe("saving into the offline queue", () => {
   it("asks again which outing is running when the page never learnt it", async () => {
     const queue = withQueue();
     const user = userEvent.setup();
-    const loadSession = vi.fn(() => Promise.resolve(SESSION));
+    const loadSession = vi.fn((): Promise<OutingAnswer> =>
+      Promise.resolve({ kind: "running", id: SESSION }),
+    );
     render(
       <RecordVisitForm
         sessionId={null}
@@ -891,11 +893,59 @@ describe("saving into the offline queue", () => {
     expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
   });
 
+  it("says so when no outing is running, rather than blaming the signal", async () => {
+    const queue = withQueue();
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={() => Promise.resolve({ kind: "none" })}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No outing is running, so this visit is not saved yet.");
+    expect(alert).not.toHaveTextContent("signal");
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+  });
+
+  it("shows a failed save beside the Save button, where the member is looking", async () => {
+    /* With the details open the top of the form is scrolled away; the sticky
+       bar holding Save is the one place sure to be on screen. */
+    withQueue();
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Add details" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    const alert = await screen.findByRole("alert");
+    const bar = screen.getByRole("button", { name: "Save and next" }).parentElement;
+    expect(bar).toHaveClass("sticky");
+    expect(bar).toContainElement(alert);
+  });
+
   it("stops waiting for an outing that stalls, so the member can try again", async () => {
     // Weak signal stalls a request rather than failing it (D-33-10).
     const queue = withQueue();
     const user = userEvent.setup();
-    const stalled = vi.fn(() => new Promise<string | null>(() => undefined));
+    const stalled = vi.fn(() => new Promise<OutingAnswer>(() => undefined));
     render(
       <RecordVisitForm
         sessionId={null}
@@ -946,7 +996,11 @@ describe("saving into the offline queue", () => {
     apiFetch.mockRejectedValueOnce(new Error("Failed to fetch"));
     await fill();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Failed to fetch");
+    expect(screen.getByRole("button", { name: "Save and next" }).parentElement).toContainElement(
+      alert,
+    );
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
     expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
   });

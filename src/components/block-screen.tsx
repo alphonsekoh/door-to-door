@@ -10,7 +10,8 @@ import type {
   HouseholdSummary,
   TeamList,
 } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/team-ui";
 import { useRole } from "@/lib/use-role";
@@ -41,17 +42,20 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     }
   }, [blockId]);
 
-  /* Separate from the units, and deliberately forgiving: knowing which outing
-     is running only marks tonight's rows, so failing to learn it must not
-     take the list down with it. */
-  const loadSession = useCallback(async (): Promise<string | null> => {
+  /* Separate from the units: the outing marks tonight's rows and is what a
+     save is queued under (D-33-25), but failing to learn it must not take the
+     list down with it. A save asks again if it is still unknown. */
+  const loadSession = useCallback(async (): Promise<OutingAnswer> => {
     try {
       const active = await apiFetch<ActiveSession>("/sessions/active");
       setSessionId(active.session.id);
-      return active.session.id;
-    } catch {
+      return { kind: "running", id: active.session.id };
+    } catch (caught) {
       setSessionId(null);
-      return null;
+      // The contract's 404 is the one answer that means no outing is running.
+      return caught instanceof ApiRequestError && caught.status === 404
+        ? { kind: "none" }
+        : { kind: "unknown" };
     }
   }, []);
 

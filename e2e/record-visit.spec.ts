@@ -169,6 +169,58 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
 });
 
+test.describe("a save that cannot be queued", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  test("says why beside the Save button, even with the details open", async ({ memberPage }) => {
+    /* The home page needs the outing to list the block; the block screen
+       is opened without it, as after a reload in a dead spot. */
+    await memberPage.goto("/");
+    const block = await memberPage.getByRole("link", { name: /Blk 123/ }).getAttribute("href");
+    expect(block).not.toBeNull();
+    await memberPage.route("**/api/sessions/active", (route) =>
+      route.abort("internetdisconnected"),
+    );
+    await memberPage.goto(block ?? "/");
+
+    await memberPage.getByLabel("Unit number").fill("#21-19");
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Add details" }).click();
+    await memberPage.getByLabel("Name").fill("Mdm Lee");
+    await memberPage.getByLabel("Contact").fill("9123 4567");
+    await memberPage.getByLabel("Religion").selectOption("buddhist");
+    await memberPage.getByLabel("Notes").fill("Asked us to come back on a weekend morning.");
+
+    /* Scrolled to the bottom, as a member is after the last field: the top
+       of the form, where the failure once showed, is off screen. */
+    await memberPage.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    const save = memberPage.getByRole("button", { name: "Save and next" });
+    await save.click();
+
+    /* Not the route announcer, which is also an alert. */
+    const alert = memberPage.getByRole("alert").filter({ hasText: "not saved yet" });
+    await expect(alert).toContainText("Could not load the outing");
+    await expect(alert).toBeInViewport({ ratio: 1 });
+    await expect(save).toBeInViewport();
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-19");
+
+    /* Signal back, but nothing running: a different reason, same place. */
+    await memberPage.unroute("**/api/sessions/active");
+    await memberPage.route("**/api/sessions/active", (route) =>
+      route.fulfill({
+        status: 404,
+        json: { error: { code: "not_found", message: "No session is active." } },
+      }),
+    );
+    await save.click();
+    await expect(alert).toContainText("No outing is running");
+    await expect(alert).toBeInViewport({ ratio: 1 });
+  });
+});
+
 test.describe("without signal", () => {
   /* A request the service worker makes is out of page.route's reach in
      WebKit, and after the reload the worker is in charge. The queue is what

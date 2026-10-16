@@ -14,7 +14,7 @@ import type {
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
-import { askOutingWithin } from "@/lib/sync/outing";
+import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
 
@@ -60,7 +60,7 @@ type Props = {
   sessionId: string | null;
   /* Asks the server again which outing is running, for a save made before
      the page learnt it. */
-  loadSession: () => Promise<string | null>;
+  loadSession: () => Promise<OutingAnswer>;
   /* Called after a save that went straight to the server; a queued save is
      announced by the queue once it is sent. */
   onRecorded: () => void;
@@ -77,8 +77,9 @@ function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sendi
   return `Saved ${unitNumber} on this phone.`;
 }
 
-const NO_OUTING =
+const OUTING_UNKNOWN =
   "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
+const NO_OUTING = "No outing is running, so this visit is not saved yet.";
 
 export function RecordVisitForm({ blockId, known, sessionId, loadSession, onRecorded }: Props) {
   const sync = useSyncQueue();
@@ -185,14 +186,17 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
      * The ask is time-limited: in weak signal it stalls rather than fails.
      */
     if (sync.enqueue !== null) {
-      const outing = sessionId ?? (await askOutingWithin(loadSession));
-      if (outing === null) {
-        setFailure(NO_OUTING);
+      const outing: OutingAnswer =
+        sessionId === null
+          ? await askOutingWithin(loadSession)
+          : { kind: "running", id: sessionId };
+      if (outing.kind !== "running") {
+        setFailure(outing.kind === "none" ? NO_OUTING : OUTING_UNKNOWN);
         setSaving(false);
         return;
       }
       try {
-        const record = await sync.enqueue({ ...fields, sessionId: outing });
+        const record = await sync.enqueue({ ...fields, sessionId: outing.id });
         reset(nextUnitNumber(unitNumber));
         setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
         setSaving(false);
@@ -245,15 +249,6 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
       noValidate
       className="space-y-4"
     >
-      {failure === null ? null : (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
-          {failure}
-        </p>
-      )}
-
       {status === null ? null : (
         <div
           role="status"
@@ -432,6 +427,16 @@ export function RecordVisitForm({ blockId, known, sessionId, loadSession, onReco
         scrolling to find Save at every door is how recording gets skipped.
       */}
       <div className="sticky above-nav -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+        {/* Beside the button rather than atop the form: with the details open
+            the top is scrolled away, and a failure there went unseen. */}
+        {failure === null ? null : (
+          <p
+            role="alert"
+            className="mb-2 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+          >
+            {failure}
+          </p>
+        )}
         <button
           type="submit"
           disabled={saving}

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { BlockScreen } from "@/components/block-screen";
+import { ApiRequestError } from "@/lib/api-client";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
@@ -361,6 +362,41 @@ describe("BlockScreen", () => {
 
       await user.click(await screen.findByRole("tab", { name: "Units (2)" }));
       expect(screen.getByText("#05-124").closest("li")).toHaveTextContent("Not sent");
+    });
+
+    /* Both refuse the save; only one is fixed by finding signal. */
+    it.each([
+      [
+        "the server says no outing is running",
+        () => Promise.reject(new ApiRequestError(404, undefined)),
+        "No outing is running, so this visit is not saved yet.",
+      ],
+      [
+        "the outing cannot be loaded",
+        () => Promise.reject(new TypeError("Failed to fetch")),
+        "Could not load the outing, so this visit is not saved yet. Check your signal",
+      ],
+      [
+        "the server fails",
+        () => Promise.reject(new ApiRequestError(500, undefined)),
+        "Could not load the outing, so this visit is not saved yet. Check your signal",
+      ],
+    ])("refuses to queue a save when %s", async (_, outing, message) => {
+      const enqueue = vi.fn();
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, enqueue });
+      apiFetch.mockImplementation((path: string) =>
+        path.startsWith("/sessions/active") ? outing() : Promise.resolve(list([])),
+      );
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "Units (0)" });
+
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "Low" }));
+      await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(message);
+      expect(enqueue).not.toHaveBeenCalled();
     });
 
     it("re-reads the units once a queued record reaches the server, and not before", async () => {
