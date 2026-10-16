@@ -61,9 +61,13 @@ export function noteOuting(
 ): LocalCopy {
   const base = ownedBy(copy, member);
   const outing = active?.session ?? null;
-  /* Blocks opened tonight means this outing's: another outing starts empty. */
+  /* Blocks opened tonight means this outing's: another outing starts empty,
+     and a block detached since it was opened is dropped, or the shell would
+     record units the server refuses. */
   const blocks =
-    base !== null && outing !== null && base.outing?.id === outing.id ? base.blocks : [];
+    active !== null && base !== null && base.outing?.id === active.session.id
+      ? base.blocks.filter((b) => active.blocks.some((e) => e.block.id === b.block.id))
+      : [];
   return { v: 1, member, savedAt: now, outing, blocks };
 }
 

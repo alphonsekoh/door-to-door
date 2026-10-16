@@ -122,6 +122,12 @@ describe("noteOuting", () => {
     expect(later.savedAt).toBe(NOW + 1_000);
   });
 
+  it("drops a block opened earlier that is no longer on the outing", () => {
+    const both = noteBlock(copyWithBlock(), ALICE, active(), BLK_456, [], NOW);
+    const detached = noteOuting(both, ALICE, active(TONIGHT, [BLK_123]), NOW + 1_000);
+    expect(detached.blocks.map((b) => b.block.id)).toEqual([BLK_123]);
+  });
+
   it("forgets the blocks when another outing is running", () => {
     expect(noteOuting(copyWithBlock(), ALICE, active(LAST_WEEK), NOW).blocks).toEqual([]);
   });

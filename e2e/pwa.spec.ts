@@ -233,6 +233,11 @@ test.describe("the worker in charge", () => {
       Reflect.set(window, "__stillHere", true);
     });
     await page.context().setOffline(false);
+    // A document loaded offline keeps navigator.onLine true in Playwright, so
+    // setOffline(false) fires no `online` there; a phone does. Without this the
+    // queue's own retry timer sends, and neither the wake nor the no-reload is
+    // tested.
+    await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(page.getByText("All visits sent")).toBeVisible();
     // No reload happened: the page's own state survived.
     expect(await page.evaluate(() => Reflect.get(window, "__stillHere") === true)).toBe(true);
