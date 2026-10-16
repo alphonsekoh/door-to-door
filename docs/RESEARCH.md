@@ -393,3 +393,22 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   answer changes nothing the app does, so it is asked once and ignored.
 - **Source:** [MDN, StorageManager.persist()](https://developer.mozilla.org/en-US/docs/Web/API/StorageManager/persist); iOS behaviour unverified
 - **Used by:** D-33-19
+
+### R-47 · Playwright fires no `online` for a document loaded offline
+
+- **Finding:** after `context.setOffline(true)` and a reload, `navigator.onLine` stays
+  true in the page, and `setOffline(false)` dispatches no `online` event to it. A phone
+  does fire one. Tests that depend on `online` must dispatch it themselves.
+- **Source:** observed in PR #100 (`e2e/pwa.spec.ts`, Chromium); unverified on Linux CI
+  WebKit, which skips the test (D-32-18)
+- **Used by:** D-77-16
+
+### R-48 · Pull-to-refresh follows the root scroller's `overscroll-behavior`
+
+- **Finding:** Chrome on Android triggers pull-to-refresh from the root scroller, so
+  `overscroll-behavior-y: none` on `body` alone may not stop it; it is set on `html` too.
+  Not yet checked on a real phone.
+- **Source:** [MDN, overscroll-behavior](https://developer.mozilla.org/en-US/docs/Web/CSS/overscroll-behavior);
+  [Chrome for Developers, Take control of your scroll](https://developer.chrome.com/blog/overscroll-behavior);
+  device check outstanding (#77)
+- **Used by:** D-77-14
