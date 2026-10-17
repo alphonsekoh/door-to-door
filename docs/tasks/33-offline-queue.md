@@ -20,7 +20,10 @@ Owner decisions are marked **(owner)**.
   clear of a previous member's local copy (#77) may include it. Every batch first asks
   `/api/auth/session` (no-store) who is signed in; anyone else or nobody pauses the queue
   as signed out, and an unanswered check waits like no signal. The provider keeps the
-  last confirmed member across a failed session refetch; a public page clears it.
+  last confirmed member across a failed session refetch; ~~a public page clears it~~.
+  **Refined by D-77-10:** a public page clears it, except the offline shell, where the
+  member who tapped "Continue as" is the owner for listing and recording; sending is
+  unchanged.
   _Why:_ the sync request carries no owner, so the cookie decides whose name a record is
   stored under; a stale tab must never send A's records as B. _Research:_ R-44.
 - **D-33-2 · No discard (owner).** Held and quarantined records cannot be discarded;
@@ -164,8 +167,10 @@ D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
 ## Inherited by other tasks
 
 - **#77 (offline recording screen):** clearing a previous member's local copy must
-  never touch the queue (D-33-1), and only the confirmed member's records may be shown
-  or sent. It reuses the bar (D-33-12) and the unit overlay (D-33-21), and replaces
+  never touch the queue (D-33-1), and only the confirmed member's records may be ~~shown
+  or~~ sent. **Refined by D-77-10:** on the offline shell, the records of the member
+  who tapped "Continue as" are shown, and new visits recorded under them, without server
+  confirmation. It reuses the bar (D-33-12) and the unit overlay (D-33-21), and replaces
   the `/offline` reload (D-33-22).
 - **#34 (offline tests):** fuzzing over online/offline sequences, real-database
   convergence, quota simulation and a corruption-recovery suite were left out. Pin

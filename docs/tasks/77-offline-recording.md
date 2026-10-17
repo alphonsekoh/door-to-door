@@ -47,9 +47,13 @@ Owner decisions are marked **(owner)**.
 - **D-77-9 · "Continue as <name>" gates the form, the queue and the sync bar on every
   cold shell load.** _Why:_ offline, the phone cannot know who is holding it.
 - **D-77-10 · On the shell the queue owner is only the member who tapped "Continue as",
-  from `shellState`, never the path or the session.** Sends still ask the cookie
-  (`sendAs`). Refines D-33-1, **pending owner** (see Open questions). _Why:_ the fallback
-  address is not `/offline`, and offline the session is unknown or someone else's.
+  from `shellState`, never the path or the session (owner).** Tapping is enough to list
+  that member's unsent records and record new visits under their id, with no server
+  confirmation. Sends still ask the cookie (`sendAs`). Refines D-33-1. _Why:_ offline
+  the server cannot be asked; the copy is cleared on every sign-in, so "Continue as"
+  only ever names the last member who signed in on that phone; every batch still checks
+  `/api/auth/session` and the cookie must name the owner (D-33-1), so nothing is sent as
+  the wrong member.
 - **D-77-11 · Reconnect row: Continue follows what is reachable now.** It appears once
   `/api/auth/session` answers or a record is sent after the last drop, and hides again on
   `offline` or an unanswered probe; answers to probes asked before a drop are ignored.
@@ -95,13 +99,4 @@ D-74-9.
 
 ## Open questions
 
-- **D-77-10 vs D-33-1 (owner decision).** D-33-1: "Only the owner's records are listed
-  or sent ... Every batch first asks `/api/auth/session` (no-store) who is signed in ...
-  a public page clears it", and #33's handover to this task: "only the confirmed member's
-  records may be shown or sent." D-77-10 lists a member's unsent records on a public page
-  on the strength of a tap, with no server confirmation. Sending is unchanged (the cookie
-  must still match), but if both stand as written the shell cannot list anything, and as
-  built whoever taps "Continue as A" sees A's unsent records and records new visits that
-  will be stored under A's name. The issue's own scope ("Continue as <name>", owner
-  option A) points to accepting D-77-10 as a refinement of D-33-1; the owner needs to
-  confirm before D-33-1 is annotated.
+None.
