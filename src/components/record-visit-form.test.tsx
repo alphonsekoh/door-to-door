@@ -1029,3 +1029,83 @@ const visitRow = {
   createdAt: "2026-10-15T10:00:00.000Z",
   updatedAt: "2026-10-15T10:00:00.000Z",
 };
+
+/* The offline shell asks before leaving a form with input (#77). */
+describe("telling the page whether anything would be lost", () => {
+  function mountDirty() {
+    const onDirtyChange = vi.fn();
+    const view = render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    return { onDirtyChange, view, last: () => onDirtyChange.mock.calls.at(-1)?.[0] as unknown };
+  }
+
+  it("is clean when empty, and dirty once a unit is typed", async () => {
+    const user = userEvent.setup();
+    const { last } = mountDirty();
+    expect(last()).toBe(false);
+    await user.type(screen.getByLabelText("Unit number"), "#05-1");
+    expect(last()).toBe(true);
+    await user.clear(screen.getByLabelText("Unit number"));
+    expect(last()).toBe(false);
+  });
+
+  it.each([
+    [
+      "an interest level",
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(screen.getByRole("radio", { name: "Low" }));
+      },
+    ],
+    [
+      "a note",
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(screen.getByRole("button", { name: "Add details" }));
+        await user.type(screen.getByLabelText("Notes"), "Come back");
+      },
+    ],
+    [
+      "a religion",
+      async (user: ReturnType<typeof userEvent.setup>) => {
+        await user.click(screen.getByRole("button", { name: "Add details" }));
+        await user.selectOptions(screen.getByLabelText("Religion"), "hindu");
+      },
+    ],
+  ])("is dirty with %s chosen", async (_, fill) => {
+    const user = userEvent.setup();
+    const { last } = mountDirty();
+    await fill(user);
+    expect(last()).toBe(true);
+  });
+
+  it("is clean after a save, though the next unit is filled in for them", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    const { last } = mountDirty();
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+    });
+    expect(last()).toBe(false);
+
+    await user.type(screen.getByLabelText("Unit number"), "A");
+    expect(last()).toBe(true);
+  });
+
+  it("says clean once the form is gone", async () => {
+    const user = userEvent.setup();
+    const { last, view } = mountDirty();
+    await user.type(screen.getByLabelText("Unit number"), "#05-1");
+    view.unmount();
+    expect(last()).toBe(false);
+  });
+});

@@ -13,6 +13,11 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+const { noteOuting, noteBlock } = vi.hoisted(() => ({ noteOuting: vi.fn(), noteBlock: vi.fn() }));
+vi.mock("@/components/local-copy-writer", () => ({
+  useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
+}));
+
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/use-role", () => ({ useRole }));
 
@@ -422,5 +427,61 @@ describe("BlockScreen", () => {
       });
       expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
     });
+  });
+});
+
+describe("the offline copy", () => {
+  it("is given the block's units with the outing they were loaded under", async () => {
+    const units = list(["#05-123"]);
+    serve(units);
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(noteBlock).toHaveBeenCalledWith(active, "b1", units.data);
+    });
+  });
+
+  it("waits for the outing when the units arrive first", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const units = list(["#05-123"]);
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions/active")
+        ? new Promise((resolve) => {
+            answer = resolve;
+          })
+        : Promise.resolve(path.endsWith("/teams") ? { data: [] } : units),
+    );
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("tab", { name: "Units (1)" });
+    expect(noteBlock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      answer(active);
+      await Promise.resolve();
+    });
+    expect(noteBlock).toHaveBeenCalledWith(active, "b1", units.data);
+  });
+
+  it("is not written when the outing cannot be learnt", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions/active")
+        ? Promise.reject(new ApiRequestError(500, undefined))
+        : Promise.resolve(list(["#05-123"])),
+    );
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("tab", { name: "Units (1)" });
+    expect(noteBlock).not.toHaveBeenCalled();
+  });
+
+  it("is not written when the units cannot be loaded", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions/active")
+        ? Promise.resolve(active)
+        : path.endsWith("/teams")
+          ? Promise.resolve({ data: [] })
+          : Promise.reject(new Error("offline")),
+    );
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("alert");
+    expect(noteBlock).not.toHaveBeenCalled();
   });
 });

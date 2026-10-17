@@ -18,6 +18,10 @@
   --app-interest-medium: oklch(0.72 0.15 75);
   --app-interest-low: oklch(0.65 0.13 40);
   --app-interest-none: oklch(0.62 0.01 250);
+
+  /* The bottom nav's height. The offline shell, which has no nav, sets it to
+     0 on <html>, so the Save bar sits on the bottom edge there. */
+  --nav-height: 4rem;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,7 +74,7 @@
 /* Room for the nav, plus whatever a fixed banner has claimed (see
    use-reserved-space). */
 @utility pb-nav {
-  padding-bottom: calc(4rem + env(safe-area-inset-bottom) + var(--banner-bottom, 0px));
+  padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--banner-bottom, 0px));
 }
 
 @utility pt-banner {
@@ -79,7 +83,7 @@
 
 /* Sits just above the fixed bottom nav, clearing the home indicator too. */
 @utility above-nav {
-  bottom: calc(4rem + env(safe-area-inset-bottom));
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
 }
 
 @utility inset-safe-bottom {
@@ -88,6 +92,9 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  /* On the root scroller too: Chrome on Android hangs pull-to-refresh there,
+     and a pull while offline is a cold reload (D-77-14). */
+  overscroll-behavior-y: none;
 }
 
 body {

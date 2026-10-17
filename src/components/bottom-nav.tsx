@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "@/components/nav-icon";
 import { isActiveRoute, visibleNavItems } from "@/lib/nav";
+import { useShellState } from "@/lib/offline/shell-state";
 import { isPublicPath } from "@/server/auth/routes";
 import { useRole } from "@/lib/use-role";
 
@@ -11,6 +12,7 @@ export function BottomNav() {
   const pathname = usePathname();
   const { isAdmin } = useRole();
   const items = visibleNavItems(isAdmin);
+  const shell = useShellState();
 
   /*
    * Nothing to navigate to on a public route, and rendering it there does
@@ -19,7 +21,9 @@ export function BottomNav() {
    * successful sign-in then replays the cached redirect and the member is left
    * staring at the form they just completed.
    */
-  if (isPublicPath(pathname)) {
+  /* On the offline shell every link would be a cold reload, offline, back
+     into the shell, losing the form on the way (D-77-12). */
+  if (isPublicPath(pathname) || shell.active) {
     return null;
   }
 

@@ -9,6 +9,7 @@ import {
 } from "@/lib/sync/controller";
 import type { VisitDraft } from "@/lib/sync/enqueue";
 import { isLeavingOnPurpose } from "@/lib/navigate";
+import { useShellState } from "@/lib/offline/shell-state";
 import { sharedQueue } from "@/lib/sync/idb-queue";
 import { isSending } from "@/lib/sync/sync-ui";
 import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
@@ -93,7 +94,15 @@ export function SyncProvider({
      another tab does neither, so every send first asks the server who is
      signed in, and an answer naming anyone else lets go of this member. */
   const [confirmed, setConfirmed] = useState<string | undefined>(undefined);
-  const ownerId = isPublicPath(pathname) ? undefined : (userId ?? confirmed);
+  /* On the offline shell only the member who tapped "Continue as" (D-77-10):
+     its address is wherever the fallback was shown, and the session there is
+     either unknown or someone else's. The send still asks the cookie. */
+  const shell = useShellState();
+  const ownerId = shell.active
+    ? (shell.ownerId ?? undefined)
+    : isPublicPath(pathname)
+      ? undefined
+      : (userId ?? confirmed);
   if (ownerId !== confirmed) setConfirmed(ownerId);
   const [live, setLive] = useState<Live | null>(null);
 

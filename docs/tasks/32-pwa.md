@@ -1,6 +1,6 @@
 # #32 · PWA manifest, icons, install prompt and service worker
 
-- **Status:** Done (PR #73; D-32-19 to D-32-21 in PR #93)
+- **Status:** Done (PR #73; D-32-19 to D-32-21 in PR #93; D-32-17 superseded in PR #100)
 - **Phase:** 6 - PWA & Offline
 
 ## Task
@@ -61,8 +61,8 @@ Make the app installable and the shell load with no network.
 - **D-32-16 · Lighthouse "PWA audit passes" is reinterpreted as installability checks
   plus responsive/mobile-friendly checks**, verified with Playwright at phone width.
   _Why:_ Lighthouse 12 dropped the PWA category (owner-approved). _Research:_ R-23.
-- **D-32-17 · A cold offline launch shows the static `/offline` page.** Offline
-  recording is #33. _Why:_ owner-accepted scope cut.
+- ~~**D-32-17 · A cold offline launch shows the static `/offline` page.** Offline
+  recording is #33. _Why:_ owner-accepted scope cut.~~ Superseded by D-77-1.
 - **D-32-18 · WebKit (iPhone 13) joins the Playwright projects and CI. Supersedes
   D-37-2.** Safari is covered by E2E except the offline-fallback navigation, which
   Playwright WebKit cannot exercise (owner-approved). _Research:_ R-22.

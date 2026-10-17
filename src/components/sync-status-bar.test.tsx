@@ -1,8 +1,9 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncStatusBar } from "@/components/sync-status-bar";
 import type { SyncQueueValue } from "@/components/sync-provider";
+import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
@@ -108,5 +109,27 @@ describe("SyncStatusBar", () => {
 
     await user.click(within(sheet).getByRole("button", { name: "Close" }));
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});
+
+describe("SyncStatusBar on the offline shell (#77)", () => {
+  afterEach(() => {
+    shellState.leave();
+  });
+
+  it("shows once someone is recording, even at /offline", () => {
+    usePathname.mockReturnValue("/offline");
+    useSyncQueue.mockReturnValue(running({ records: [record("#05-01")] }));
+    shellState.continueAs("ann");
+    render(<SyncStatusBar />);
+    expect(screen.getByRole("button", { name: /1 waiting to send/ })).toBeInTheDocument();
+  });
+
+  it("is not there before anyone continues, wherever the address is", () => {
+    usePathname.mockReturnValue("/blocks/b1");
+    useSyncQueue.mockReturnValue(running());
+    shellState.enter();
+    const { container } = render(<SyncStatusBar />);
+    expect(container).toBeEmptyDOMElement();
   });
 });

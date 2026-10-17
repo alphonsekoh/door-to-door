@@ -3,8 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/sign-in-form";
 
-const { signIn, goTo, get, clearCaches } = vi.hoisted(() => ({
+const { signIn, goTo, get, clearCaches, clearLocalCopy } = vi.hoisted(() => ({
   clearCaches: vi.fn(() => Promise.resolve()),
+  clearLocalCopy: vi.fn(() => Promise.resolve()),
   signIn: vi.fn(),
   goTo: vi.fn(),
   get: vi.fn<(key: string) => string | null>(),
@@ -12,6 +13,7 @@ const { signIn, goTo, get, clearCaches } = vi.hoisted(() => ({
 
 vi.mock("next-auth/react", () => ({ signIn }));
 vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
+vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
 vi.mock(import("@/lib/navigate"), async (importOriginal) => ({
   ...(await importOriginal()),
   goTo,
@@ -244,6 +246,43 @@ describe("SignInForm", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("Email or password is incorrect.");
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  /* The offline shell must never offer the previous member's blocks (#77).
+     Their queued records are another database and are not touched. */
+  it("forgets the previous member's offline copy on sign-in, not on failure", async () => {
+    signIn.mockResolvedValueOnce(failed).mockResolvedValueOnce(ok);
+    const user = userEvent.setup();
+    render(<SignInForm />);
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByRole("alert");
+    expect(clearLocalCopy).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledOnce();
+    });
+    expect(clearLocalCopy).toHaveBeenCalledOnce();
+    expect(clearLocalCopy.mock.invocationCallOrder[0]).toBeLessThan(
+      goTo.mock.invocationCallOrder[0] ?? -Infinity,
+    );
+  });
+
+  it("still leaves when the offline copy cannot be cleared", async () => {
+    signIn.mockResolvedValue(ok);
+    clearLocalCopy.mockRejectedValueOnce(new Error("IndexedDB is unavailable"));
+    const user = userEvent.setup();
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledWith("/");
     });
   });
 });

@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomNav } from "@/components/bottom-nav";
 import { accountStore } from "@/lib/account-state";
+import { shellState } from "@/lib/offline/shell-state";
 import type * as UseRoleModule from "@/lib/use-role";
 
 const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn<() => string>() }));
@@ -125,5 +126,22 @@ describe("BottomNav", () => {
       accountStore.noteCurrentUser({ id: "u1", role: "member" });
     });
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
+  });
+});
+
+describe("BottomNav on the offline shell (#77)", () => {
+  it("is hidden while the shell is shown, at any address", () => {
+    usePathname.mockReturnValue("/blocks/b1");
+    act(() => {
+      shellState.enter();
+    });
+    const { container, rerender } = render(<BottomNav />);
+    expect(container).toBeEmptyDOMElement();
+
+    act(() => {
+      shellState.leave();
+    });
+    rerender(<BottomNav />);
+    expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
   });
 });

@@ -6,7 +6,8 @@ How the codebase is put together and why. Rules for working in it live in
 ## Shape
 
 One Next.js app serves both the UI and the API. PostgreSQL is the only store on the
-server; IndexedDB holds the visit write queue on the device (#33).
+server; on the device IndexedDB holds the visit write queue (#33) and, in a separate
+database, the offline shell's local copy (#77).
 
 ```mermaid
 flowchart LR
@@ -14,6 +15,7 @@ flowchart LR
     UI[React screens<br/>src/app, src/components]
     Lib[src/lib<br/>pure logic]
     Q[(IndexedDB queue<br/>src/lib/sync)]
+    LC[(IndexedDB local copy<br/>src/lib/offline)]
   end
   subgraph Server[Next.js server]
     Proxy[src/proxy.ts<br/>optimistic redirect]
@@ -24,6 +26,7 @@ flowchart LR
   Spec[openapi.yaml] -->|generate:api| Gen[src/generated<br/>types + Zod]
   UI --> Lib
   UI -->|save| Q
+  UI <-->|note / read offline| LC
   UI -->|fetch via api-client| Proxy --> Routes --> Svc --> DB
   Gen -.validates.-> Routes
   Gen -.types.-> UI
@@ -43,6 +46,7 @@ flowchart LR
 | `src/db/`             | Drizzle schema, client, test env, seed data  | 100%     | Constraints carry the invariants the API cannot race.              |
 | `src/lib/`            | Framework-free helpers                       | 100%     | Where UI logic goes so it can be tested without rendering.         |
 | `src/lib/sync/`       | Offline queue and sync engine                | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.      |
+| `src/lib/offline/`    | Offline shell's local copy and shell state   | 100%     | Reducers, a `door-to-door-local` store, `shellState`.              |
 | `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
 | `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
 | `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
@@ -145,7 +149,7 @@ Google SSO (#14) is not built.
   unscrollable, focus back to the trigger (D-90-1 to D-90-9). A blocking modal stays on
   top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
 - The bottom nav does not render on public routes (its prefetches poisoned the
-  router cache before sign-in).
+  router cache before sign-in) nor on the offline shell.
 - Active-session screen: "Join this outing" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
@@ -167,7 +171,7 @@ Google SSO (#14) is not built.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
-- Sign-out (`src/lib/sign-out.ts`): clears the block cache (never the queue), warns
+- Sign-out (`src/lib/sign-out.ts`): clears the block cache and the local copy (never the queue), warns
   on the member's unsent records (`hasUnsyncedItems(ownerId)`, D-33-15),
   `signOut({ redirect: false })`, then a full navigation to `/sign-in` (or a given
   destination, e.g. `/sign-in?reason=signed-out`). A refusal
@@ -191,7 +195,8 @@ Google SSO (#14) is not built.
   page is controlled from its second load.
 - `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
   banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
-- Sign-in and sign-out clear the cached block list (sign-out: D-74-9).
+- Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local
+  copy (D-77-6).
 
 ## Offline
 
@@ -200,8 +205,7 @@ on `updatedAt`, reports per item (`applied`, `unchanged`, `stale`, rejected), an
 limited. Clock rules (#76) apply to it and to `POST /visits`: a batch whose `sentAt` is
 off from the server by more than `sync.clockSkewToleranceSeconds` is refused `422
 clock_skew`; items stamped in the future or before their outing are rejected
-`clock_skew` while siblings apply. A cold offline launch shows `/offline` (#32), which
-reloads itself when signal returns.
+`clock_skew` while siblings apply.
 
 **Queue (#33).** The recording form writes the visit to IndexedDB (`door-to-door`,
 store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
@@ -231,6 +235,27 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   unsent records (`unit-overlay.ts`).
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
   D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record).
+
+**Offline shell (#77).** A navigation that fails gets the precached, static `/offline`
+at the address that failed; `OfflineShell` then reads the local copy at runtime.
+
+```
+online:  outing / block screen ─► useLocalCopyWriter ─► door-to-door-local (copy)
+offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCopy (≤ 12 h)
+           ─► "Continue as <name>" ─► shellState.continueAs ─► SyncProvider owner
+           ─► BlockViews (in-page, not amendable) ─► queue as usual
+```
+
+- The copy (`src/lib/offline/`) holds the member, the outing and each opened block's
+  `HouseholdSummary[]`, validated with the generated Zod on read (D-77-3). It is cleared
+  on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; never the queue
+  (D-77-2, D-77-6).
+- While the shell is shown, `shellState` (not the path or session) decides the queue
+  owner, the sync bar and the hidden nav (D-77-10, D-77-12). Sends still go through
+  `sendAs`, so the cookie must name the owner.
+- The queue flushes on its own triggers; a reconnect row offers Continue (a full
+  `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs only when there is
+  no copy or before "Continue as".
 
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate

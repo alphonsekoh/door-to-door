@@ -6,6 +6,7 @@ import {
   isSending,
   quietText,
   recordReason,
+  savedOnPhoneText,
   stateLabel,
 } from "@/lib/sync/sync-ui";
 import type { QueuedVisit } from "@/lib/sync/types";
@@ -150,5 +151,24 @@ describe("isSending", () => {
     expect(isSending(record({ state: "held" }))).toBe(false);
     expect(isSending(record({ state: "quarantined" }))).toBe(false);
     expect(isSending(record({ state: "synced" }))).toBe(false);
+  });
+});
+
+describe("savedOnPhoneText", () => {
+  it("counts every record not yet sent, stuck ones included", () => {
+    expect(
+      savedOnPhoneText([
+        record({ id: "a" }),
+        record({ id: "b", state: "held" }),
+        record({ id: "c", state: "synced" }),
+      ]),
+    ).toBe("2 records are saved on this phone.");
+  });
+
+  it("says one in the singular, and nothing when all are sent", () => {
+    expect(savedOnPhoneText([record()])).toBe("1 record is saved on this phone.");
+    expect(savedOnPhoneText([record({ state: "synced" })])).toBe(
+      "Nothing is waiting to send on this phone.",
+    );
   });
 });

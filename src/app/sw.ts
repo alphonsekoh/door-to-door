@@ -16,6 +16,10 @@ import {
  * for a signed-in page (it is per-member), any write, anything under
  * /api/auth, and every API GET except the short allow-list in sw-cache-rules.
  * This worker never reads or writes IndexedDB.
+ *
+ * A navigation that fails gets /offline, at the address that failed: that
+ * page is the offline recording shell (#77), which reads the member's local
+ * copy and the queue from IndexedDB itself, in the page.
  */
 
 declare const self: ServiceWorkerGlobalScope & {

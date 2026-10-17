@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncProvider, useSyncQueue } from "@/components/sync-provider";
 import type { VisitSyncItem } from "@/generated/types.gen";
+import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import type * as SignedInModule from "@/lib/sync/signed-in";
@@ -102,6 +103,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  shellState.leave();
   Reflect.deleteProperty(navigator, "locks");
   Reflect.deleteProperty(navigator, "storage");
 });
@@ -460,5 +462,63 @@ describe("SyncProvider", () => {
     finish(createMemoryQueue([stored("ann", "#05-01")]));
     await act(() => Promise.resolve());
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("SyncProvider on the offline shell (#77)", () => {
+  it("runs no queue until someone continues, whoever the session names", async () => {
+    // The fallback's address is not /offline, and the session may be anyone's.
+    act(() => {
+      shellState.enter();
+    });
+    const { send, view } = mount(createMemoryQueue([stored("ann", "#05-01")]));
+    await act(() => Promise.resolve());
+    expect(text("active")).toBe("off");
+    expect(text("owner")).toBe("none");
+    expect(send).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  it("runs the queue of the member who continued, even on /offline with nobody signed in", async () => {
+    usePathname.mockReturnValue("/offline");
+    as(undefined);
+    cookieFor("ben");
+    act(() => {
+      shellState.enter();
+    });
+    mount(createMemoryQueue([stored("ben", "#05-01"), stored("ann", "#06-01")]));
+
+    act(() => {
+      shellState.continueAs("ben");
+    });
+    await waitFor(() => {
+      expect(text("owner")).toBe("ben");
+    });
+    // Only Ben's records, and sent because the cookie is his.
+    await waitFor(() => {
+      expect(text("units")).toBe("#05-01:synced");
+    });
+  });
+
+  it("sends when signal returns, with no reload", async () => {
+    as(undefined);
+    let online = false;
+    const send = vi.fn((items: VisitSyncItem[]) =>
+      Promise.resolve<SendOutcome>(online ? applied(items) : { kind: "network" }),
+    );
+    act(() => {
+      shellState.continueAs("ann");
+    });
+    mount(createMemoryQueue([stored("ann", "#05-01")]), send);
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+    expect(text("units")).toBe("#05-01:queued");
+
+    online = true;
+    window.dispatchEvent(new Event("online"));
+    await waitFor(() => {
+      expect(text("units")).toBe("#05-01:synced");
+    });
   });
 });
