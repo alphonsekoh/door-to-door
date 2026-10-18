@@ -27,14 +27,16 @@ in the production build. Assume that class of bug is present until you have look
    - back, refresh and deep links land somewhere sensible
 4. **Prove the gates bite.** For one or two of the PR's key tests, break the guarded
    code, confirm the test fails, restore. Report any test that passed while broken.
-5. **Offline and PWA (Phase 6 onward):** with the browser context offline, record, go
-   back online, and confirm each visit is stored exactly once. Note that Safari/WebKit
-   is not covered by the suite - say so if the change is iOS-sensitive.
+5. **Offline and PWA:** with the browser context offline, record, go back online, and
+   confirm each visit is stored exactly once. The suite runs WebKit (iPhone 13) as well
+   as Chromium, but Playwright's WebKit offline emulation bypasses the service worker,
+   so the offline-navigation tests are skipped there (D-32-18). Say so if the change is
+   iOS-sensitive and offline.
 
 ## What you may change
 
-- Add or adjust a spec in `e2e/` only if the PR adds a flow the three existing flows do
-  not cover. Keep the suite thin; Vitest owns coverage.
+- Add or adjust a spec in `e2e/` only if the PR adds a flow the existing specs do not
+  cover. Keep the suite thin; Vitest owns coverage.
 - Do not fix application code. Report the bug with steps, a screenshot path and the
   likely cause; the builder fixes it.
 

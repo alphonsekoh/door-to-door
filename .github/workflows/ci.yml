@@ -155,7 +155,7 @@ jobs:
       - name: Install the browsers
         run: npx playwright install --with-deps chromium webkit
 
-      - name: Three flows that must never break
+      - name: Flows that must never break
         run: npm run test:e2e
 
       - name: Upload the report
