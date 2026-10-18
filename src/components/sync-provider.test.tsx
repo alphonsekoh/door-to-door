@@ -1,7 +1,8 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncProvider, useSyncQueue } from "@/components/sync-provider";
+import { SyncStatusBar } from "@/components/sync-status-bar";
 import type { VisitSyncItem } from "@/generated/types.gen";
 import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -462,6 +463,53 @@ describe("SyncProvider", () => {
     finish(createMemoryQueue([stored("ann", "#05-01")]));
     await act(() => Promise.resolve());
     expect(send).not.toHaveBeenCalled();
+  });
+});
+
+describe("SyncProvider over a damaged store (#34)", () => {
+  it("keeps the page up when the queue cannot be read at all", async () => {
+    const queue = createMemoryQueue([stored("ann", "#05-01")]);
+    const gone = () => Promise.reject(new DOMException("closed", "InvalidStateError"));
+    queue.listByOwner = gone;
+    queue.listAll = gone;
+    queue.get = gone;
+    queue.deleteSyncedBefore = gone;
+    const { send } = mount(queue);
+
+    await waitFor(() => {
+      expect(text("active")).toBe("on");
+    });
+    await act(() => Promise.resolve());
+    expect(text("units")).toBe("");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("sends a record with damaged bookkeeping, and shows an unreadable one with nothing to press", async () => {
+    const user = userEvent.setup();
+    const salvaged = stored("ann", "#05-01");
+    const unreadable = stored("ann", "#05-02");
+    const queue = createMemoryQueue([
+      { ...salvaged, state: "sending", attempts: -1 },
+      { ...unreadable, item: { ...unreadable.item, interestLevel: "keen" } },
+    ]);
+    const send = vi.fn((items: VisitSyncItem[]) => Promise.resolve(applied(items)));
+    render(
+      <SyncProvider openQueue={() => Promise.resolve(queue)} send={send}>
+        <SyncStatusBar />
+      </SyncProvider>,
+    );
+
+    await user.click(await screen.findByRole("button", { name: /1 not sent/ }));
+    const sheet = screen.getByRole("dialog", { name: "Records not sent" });
+    expect(sheet).toHaveTextContent("This record could not be read on this phone.");
+    expect(within(sheet).queryByRole("button", { name: /^Retry #/ })).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Retry all" })).toBeDisabled();
+
+    // Only the salvaged one went out, and nothing was deleted.
+    expect(send.mock.calls.flatMap(([items]) => items.map((item) => item.id))).toEqual([
+      salvaged.id,
+    ]);
+    expect([...queue.raw.keys()].sort()).toEqual([salvaged.id, unreadable.id].sort());
   });
 });
 
