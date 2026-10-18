@@ -69,6 +69,7 @@ offline (D-33-13).
 
 - Node.js 20+ (CI and the Docker image use 24) and npm 10+
 - PostgreSQL 17, either through Docker Desktop (`docker compose`) or installed natively
+- `psql`, to create databases when not using Docker (it ships with PostgreSQL)
 
 ### Quick start with Docker
 
@@ -122,7 +123,8 @@ npm run dev
 
 Open http://localhost:3000. If your database is elsewhere, edit `database.url` in
 `config.yaml`, with no username or password in it: those stay in the environment. The
-variables must be exported in every shell that runs the app or a `db:*` script;
+variables must be exported in every shell that runs the app or a `db:*` script (a `.env`
+file covers only some commands; see [Environment variables](#environment-variables)).
 [`.env.example`](.env.example) lists them all and shows one way to keep them in a file.
 
 ### Record your first visit
@@ -192,15 +194,18 @@ The least obvious part of the system. In short (details in
    signed in; another member's records stay on the phone untouched (D-33-1).
 3. **The server answers per item**, in request order (D-21-3):
 
-   | Result                  | Meaning                                             | The phone                        |
-   | ----------------------- | --------------------------------------------------- | -------------------------------- |
-   | `applied`               | Created, or a newer edit was written                | Marks it sent                    |
-   | `unchanged`             | Already stored: a replay of the same id (D-21-1)    | Marks it sent                    |
-   | `stale`                 | The server's copy has a newer `updatedAt` (D-21-2)  | Marks it sent; the server's wins |
-   | `session_not_active`    | Its outing has ended (D-21-4)                       | Holds it; a reopen lets it in    |
-   | `clock_skew`            | Stamped in the future or before its outing (D-76-4) | Restamps and resends (D-33-3)    |
-   | `conflict`, `not_found` | Not this member's to change, or would move a visit  | Holds it for a tap (D-33-16)     |
-   | `internal_error`        | Something failed on the server                      | Retries with backoff (D-33-4)    |
+   Each item's `status` is `applied`, `unchanged`, `stale` or `rejected`; a rejected item
+   also carries an `error` whose `code` says why.
+
+   | Status, or code when `rejected`     | Meaning                                             | The phone                        |
+   | ----------------------------------- | --------------------------------------------------- | -------------------------------- |
+   | `applied`                           | Created, or a newer edit was written                | Marks it sent                    |
+   | `unchanged`                         | Already stored: a replay of the same id (D-21-1)    | Marks it sent                    |
+   | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)  | Marks it sent; the server's wins |
+   | `rejected`: `session_not_active`    | Its outing has ended (D-21-4)                       | Holds it; a reopen lets it in    |
+   | `rejected`: `clock_skew`            | Stamped in the future or before its outing (D-76-4) | Restamps and resends (D-33-3)    |
+   | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit  | Holds it for a tap (D-33-16)     |
+   | `rejected`: `internal_error`        | Something failed on the server                      | Retries with backoff (D-33-4)    |
 
 4. **Conflicts resolve last-write-wins on `updatedAt`**, within what a sync may change.
    Replaying is harmless because the id is the idempotency key. An update can change only
@@ -230,8 +235,8 @@ To add or change an endpoint:
    never edit it by hand.
 3. **Implement.** The handler lives at the path the spec implies:
    `/sessions/{id}/start` → `src/app/api/sessions/[id]/start/route.ts`. Export the method
-   wrapped in `withContract({ operationId, body, query, responses }, handler)` with the
-   generated `z*` schemas. The handler re-checks authorization itself (`currentUser()`,
+   wrapped in `withContract({ operationId, path, query, body, responses }, handler)` with
+   the generated `z*` schemas. The handler re-checks authorization itself (`currentUser()`,
    `currentUser("admin")`) and calls a service in `src/server/<domain>/`.
 4. **Test.** Integration tests call the handler against a real database. A spec
    operation with no route file fails `src/server/http/route-registry.test.ts`; a
@@ -266,9 +271,21 @@ Numbers must be whole and at least 1. `database.url` may carry only the `sslmode
 
 ## Environment variables
 
-Secrets and process plumbing only; every setting is in the file. A `.env` file is **not**
-read for settings: if one exists the server warns at startup, and the `db:*` scripts never
-read it (D-75-16). [`.env.example`](.env.example) lists every variable with placeholders.
+Secrets and process plumbing only; every setting is in the file. **Export them** in the
+shell that runs the command. A `.env` file reaches some commands and not others, so do not
+rely on one:
+
+| Command                                       | Reads `.env`?                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------- |
+| `npm run dev`, `npm run build`                | Yes: Next loads it. `build` also copies it into `.next/standalone/`       |
+| `npm run start:standalone`                    | Only that copy from the last `build`, so a changed `.env` needs a rebuild |
+| `npm run db:generate`, `db:push`, `db:studio` | Yes: drizzle-kit loads it                                                 |
+| `npm run db:migrate`, `db:seed`, `db:reset`   | **No.** These run under `tsx`; the variables must be exported             |
+
+Because Next still loads a `.env`, a stale one can look as though it configures the app.
+The server therefore warns once at startup when it finds one (D-75-16): settings belong in
+`config.yaml`. [`.env.example`](.env.example) is a checklist of every variable to export,
+with placeholders.
 
 Each secret also has a `_FILE` variant naming a file to read it from (a trailing newline
 is dropped), which is how Docker and Kubernetes secrets arrive. Set one or the other;
@@ -362,9 +379,10 @@ to `medium` between March and June.
 | `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                              |
 
 The `db:*` scripts read `config.yaml` and need `DATABASE_USER` and `DATABASE_PASSWORD`
-exported. `db:generate` is the partial exception: it never connects, so with no config file
-it runs without them, but once a `config.yaml` exists (as the quick start creates) it still
-loads it and fails without them. Any value will do for `generate`.
+exported (the drizzle-kit ones, `db:generate`, `db:push` and `db:studio`, also take them
+from a `.env`). `db:generate` is the partial exception: it never connects, so with no
+config file it runs without them, but once a `config.yaml` exists (as the quick start
+creates) it still loads it and fails without them. Any value will do for `generate`.
 
 ## Testing
 
@@ -374,6 +392,16 @@ export TEST_DATABASE_URL=postgresql://postgres:postgres@localhost:5433/door_to_d
 npm run test:integration   # against a real PostgreSQL
 npm run test:coverage      # everything, with thresholds enforced
 ```
+
+`docker compose up -d db-test` provides that database. With a native PostgreSQL, create it
+first; the suite migrates it but does not create it:
+
+```bash
+psql postgresql://postgres:postgres@localhost:5433/postgres -c "create database door_to_door_test"
+```
+
+If your server listens on another port (say 5432), change it in both places: the `psql`
+command and `TEST_DATABASE_URL`. For E2E, set `E2E_DATABASE_URL` to the same server.
 
 Vitest runs three projects, picked by file suffix: `*.test.ts` is `unit` (node),
 `*.integration.test.ts` is `integration` (node, real PostgreSQL, one file at a time) and
@@ -459,20 +487,20 @@ docker run -p 3000:3000 \
 
 ## Troubleshooting
 
-| Symptom                                                         | Cause and fix                                                                                                                   |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                               |
-| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. A `.env` file is not read.                                   |
-| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                              |
-| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                              |
-| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                         |
-| `Found a .env file ... It is not used for app settings`         | Settings moved to `config.yaml`. Move them there and delete `.env`.                                                             |
-| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
-| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
-| Members see "No outing is running"                              | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                     |
-| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
-| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
-| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
+| Symptom                                                         | Cause and fix                                                                                                                     |
+| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                                 |
+| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. `db:migrate`, `db:seed` and `db:reset` never read `.env`.      |
+| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                                |
+| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                                |
+| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                           |
+| `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` (or the copy `build` put in `.next/standalone/`). Move settings to `config.yaml`, export secrets, delete it. |
+| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running.   |
+| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                              |
+| Members see "No outing is running"                              | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                       |
+| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.       |
+| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                              |
+| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                         |
 
 ## Project structure
 

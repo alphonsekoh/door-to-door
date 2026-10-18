@@ -28,8 +28,9 @@ changed file - not just the hunks.
 
 - Every handler re-checks the role or ownership server-side. A hidden button is never
   the only guard.
-- Members act on their own records and a current teammate's (D-74-22), never a
-  stranger's; admins on anyone's. Refusals use the status codes the contract declares.
+- Members act on their own records and a current teammate's (D-74-17; through sync,
+  D-74-22), never a stranger's; admins on anyone's. Refusals use the status codes the
+  contract declares.
 
 **Prior decisions**
 
