@@ -21,3 +21,10 @@ export const RATE_LIMIT_MS = 60_000;
 export function retryDelay(attempts: number, random: () => number): number {
   return Math.floor(random() * Math.min(CAP_MS, BASE_MS * 2 ** (attempts - 1)));
 }
+
+/* After a run the phone's own storage failed (a closed connection, a full
+   disk). Doubling, no jitter: the wait is for this phone's disk, not for a
+   server a whole team is hitting at once. */
+export function storageRetryDelay(failures: number): number {
+  return Math.min(CAP_MS, BASE_MS * 2 ** (failures - 1));
+}

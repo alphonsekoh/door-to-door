@@ -7,6 +7,7 @@ import {
   retryRecord,
 } from "@/lib/sync/classify";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
+import { storageRetryDelay } from "@/lib/sync/backoff";
 import { flushOnce } from "@/lib/sync/engine";
 import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
 
@@ -80,6 +81,9 @@ export function createSyncController(deps: ControllerDeps): SyncController {
   let timer: unknown;
   let persisted = false;
   let disposed = false;
+  /* Runs in a row that storage failed, and when the last one did. */
+  let storageFailures = 0;
+  let failedAt = 0;
 
   function emit(): void {
     if (disposed) return;
@@ -119,7 +123,11 @@ export function createSyncController(deps: ControllerDeps): SyncController {
       .filter((r) => r.state === "queued" || r.state === "failed" || r.state === "held")
       .flatMap((r) => (r.nextAttemptAt === null ? [] : [r.nextAttemptAt]));
     if (times.length === 0 || state.block?.until === null) return;
-    const at = Math.max(Math.min(...times), state.block?.until ?? 0);
+    let at = Math.max(Math.min(...times), state.block?.until ?? 0);
+    /* The records above are from before the failure, so one already due
+       would otherwise fire again at once, and again, for as long as the
+       disk stays broken. */
+    if (storageFailures > 0) at = Math.max(at, failedAt + storageRetryDelay(storageFailures));
     timer = deps.setTimer(() => void flush(), Math.max(0, at - deps.now()));
   }
 
@@ -147,6 +155,7 @@ export function createSyncController(deps: ControllerDeps): SyncController {
   };
 
   async function run(): Promise<void> {
+    let failed = false;
     try {
       do {
         dirty = false;
@@ -163,7 +172,10 @@ export function createSyncController(deps: ControllerDeps): SyncController {
       } while (runAgain());
     } catch {
       /* Storage failed mid-run. Nothing was lost; the next trigger tries again. */
+      failed = true;
     } finally {
+      storageFailures = failed ? storageFailures + 1 : 0;
+      failedAt = deps.now();
       inFlight.clear();
       justSaved.clear();
       running = null;
