@@ -534,7 +534,7 @@ src/
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)
 drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
-scripts/        migrate, seed, generate-icons, check-standalone (postbuild)
+scripts/        migrate, seed, create-admin, generate-icons, check-standalone (postbuild)
 docs/           architecture, research and per-issue decisions
 ```
 
