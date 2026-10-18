@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files: settings live in config.yaml now, and .env is ignored by the app
+# env files: settings live in config.yaml now, and .env is ignored by the app.
+# .env.example is the placeholder-only list of environment variables.
 .env*
+!.env.example
 
 # Real settings. The example and docker files hold no secrets, so they are tracked.
 /config.yaml

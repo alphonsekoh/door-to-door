@@ -52,7 +52,7 @@ flowchart LR
 | `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
 | `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue; the logic they call is in `src/db`.                          |
 | `src/app/sw.ts`       | Service worker source (Serwist)              | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.   |
-| `e2e/`                | Playwright smoke flows                       | —        | Three flows, phone viewport, production build.                     |
+| `e2e/`                | Playwright specs                             | —        | Pixel 5 and iPhone 13 profiles, standalone production build.       |
 
 ## Domain model
 
@@ -83,6 +83,67 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
   `canAmend`). Participants and team operations are in `src/server/teams/service.ts`
   and are online-only.
+
+## Contested decisions
+
+The issue-by-issue records in [tasks/](tasks/) are this project's ADRs (D-38-1). These are
+the decisions that had a real alternative, summarised from those records; the record is
+authoritative, and a change to any of them needs the owner.
+
+### Households and visits, not flat visit records
+
+- **Context.** A unit is knocked on many times, months apart, by different members. One
+  flat row per knock would either repeat the person's details on every row or overwrite
+  them, and would lose what an earlier visit learned.
+- **Decision.** Split in two. A household is `(block_id, unit_number)`, unique, holding
+  name, contact and religion as latest-known fields that are only ever updated with
+  non-null values (D-07-1). A visit holds `interest_level` and `description`, which a
+  later visit never overwrites (D-07-2). Follow-ups attach to the household, and
+  `visit_id` is set null if the visit goes (D-07-5). Recording upserts the household by
+  block and unit; the request never names a household id (D-20-1).
+- **Why.** A later visit that learns nothing must not erase what an earlier one
+  recorded; the interest trajectory over time is the product; losing a visit must not
+  lose the promise made at the door.
+- **Consequences.** Every write path has to merge identity rather than replace it
+  (including teammates' amends through sync, D-74-22), and a visit can never be moved to
+  another unit by an amend (D-74-32).
+
+### JWT sessions (forced, not chosen)
+
+- **Context.** Auth.js supports database sessions, which can be revoked on the server.
+- **Decision.** JWT strategy (D-13-1). The Drizzle adapter's `auth_sessions` table
+  exists only because the adapter requires it, and is unused (D-07-6).
+- **Why.** The Credentials provider (email and password, #15) cannot use database
+  sessions (R-2).
+- **Consequences.** A token cannot be revoked and its claims are frozen at sign-in, so
+  role and deactivation are read from the database on every API request and admin page;
+  the token's claims are UI hints only (D-83-1, D-83-3). Deactivation is a
+  `403 account_deactivated` on any operation (D-10-4, D-83-4).
+
+### One active session app-wide
+
+- **Context.** Admins run outings; members record into whichever is running.
+- **Decision.** At most one `outing_sessions` row has `status = 'active'`, enforced by a
+  partial unique index (D-07-4). A second start is `409 session_already_active`, decided
+  by the database with no pre-check (D-17-2).
+- **Why.** Two concurrent starts are a race the API cannot close on its own.
+- **Consequences.** Members never choose an outing, only a block in the running one.
+  Queued visits for an ended outing are held, not dropped, until it is reopened
+  (D-21-4). The E2E suite runs on one worker because parallel specs would fight over the
+  one active outing (D-37-4).
+
+### Serwist, not next-pwa
+
+- **Context.** The app needs a service worker for installability and an offline
+  fallback.
+- **Decision.** Serwist (D-32-1), now through `@serwist/turbopack`, with the worker built
+  by a route handler at `/serwist/sw.js` (D-32-2, superseding D-32-1's `@serwist/next`).
+- **Why.** `next-pwa` is unmaintained and Serwist is its maintained successor, the option
+  the Next.js PWA guide points to (R-1). `@serwist/next` is a webpack plugin, and Next 16
+  builds with Turbopack by default (R-17).
+- **Consequences.** The worker is disabled outside production builds and updates are
+  prompted, never forced (D-32-6, D-32-14); what it may cache is deliberately narrow
+  (D-32-3, D-32-4).
 
 ## Request path
 
