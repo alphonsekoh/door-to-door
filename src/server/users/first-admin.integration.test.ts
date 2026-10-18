@@ -10,12 +10,13 @@ import { authorizeCredentials } from "@/server/auth/credentials";
 import { createRateLimiter } from "@/server/auth/rate-limit";
 import {
   ADMIN_EXISTS_MESSAGE,
+  CREATE_ADMIN_LOCK,
   CreateAdminError,
   adminExists,
   createFirstAdmin,
 } from "@/server/users/first-admin";
 
-/* Room for two transactions at once, which the race test needs. */
+/* Room for the lock holder, the blocked run and the poller at once. */
 const pool = new Pool({ connectionString: requireTestDatabaseUrl(), max: 4 });
 attachPoolErrorHandler(pool);
 const db = drizzle(pool, { schema }) as unknown as Database;
@@ -109,18 +110,39 @@ describe("createFirstAdmin refusals", () => {
     expect(await snapshotUsers()).toEqual(before);
   });
 
-  it("creates exactly one admin when two runs race", async () => {
-    const results = await Promise.allSettled([
-      createFirstAdmin(db, { ...INPUT, email: "one@example.org" }),
-      createFirstAdmin(db, { ...INPUT, email: "two@example.org" }),
-      createFirstAdmin(db, { ...INPUT, email: "three@example.org" }),
-    ]);
+  it("waits on the lock, so an admin created meanwhile makes it refuse", async () => {
+    // Two runs racing only overlap by chance, so the interleaving is forced:
+    // hold the lock, let a run block on it, create an admin, then release.
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query("SELECT pg_advisory_xact_lock(hashtext($1))", [CREATE_ADMIN_LOCK]);
 
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    for (const result of results.filter((r) => r.status === "rejected")) {
-      expect(result.reason).toBeInstanceOf(CreateAdminError);
+      const run = createFirstAdmin(db, INPUT);
+      run.catch(() => undefined);
+
+      const deadline = Date.now() + 5_000;
+      let waiting = false;
+      while (!waiting && Date.now() < deadline) {
+        const { rows } = await pool.query<{ count: string }>(
+          "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+        );
+        waiting = rows[0]?.count !== "0";
+        if (!waiting) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(waiting).toBe(true);
+
+      await holder.query(
+        "INSERT INTO users (email, role, password_hash) VALUES ('first@t.local', 'admin', 'h')",
+      );
+      await holder.query("COMMIT");
+
+      await expect(run).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
+      const admins = (await snapshotUsers()).filter((row) => row.role === "admin");
+      expect(admins.map((row) => row.email)).toEqual(["first@t.local"]);
+    } finally {
+      await holder.query("ROLLBACK").catch(() => undefined);
+      holder.release();
     }
-    const admins = (await snapshotUsers()).filter((row) => row.role === "admin");
-    expect(admins).toHaveLength(1);
   });
 });

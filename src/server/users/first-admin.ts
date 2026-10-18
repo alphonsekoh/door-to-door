@@ -63,6 +63,9 @@ export async function adminExists(db: Pick<Database, "select">): Promise<boolean
   return rows.length > 0;
 }
 
+/* Exported so a test can hold the same lock and prove the check waits on it. */
+export const CREATE_ADMIN_LOCK = "door-to-door:create-admin";
+
 export type FirstAdminInput = { email: string; name: string | null; password: string };
 export type CreatedAdmin = { id: string; email: string };
 
@@ -84,7 +87,7 @@ export async function createFirstAdmin(
        * check and the insert are serialised on a transaction-scoped advisory
        * lock instead; it is released by the commit or rollback.
        */
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('door-to-door:create-admin'))`);
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${CREATE_ADMIN_LOCK}))`);
       if (await adminExists(tx)) {
         throw new CreateAdminError(ADMIN_EXISTS_MESSAGE);
       }
