@@ -37,7 +37,8 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# Migrations and their runner, so a production container can migrate itself.
+# Migrations only, not their runner: apply them from a checkout or a dev-stage
+# container (see README, Deployment).
 COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
 
 # The settings file is not in the image: mount it read-only, e.g.
