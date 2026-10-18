@@ -241,9 +241,8 @@ CI regenerates on every push and fails if `src/generated/` differs, so a spec ch
 without regenerating and a hand edit are both caught. A test also asserts that the spec's
 enums match the database `pgEnum` values.
 
-To browse the documented API, render it to one HTML file:
-`npx redocly build-docs openapi.yaml -o /tmp/api-docs.html`. (`npm run spec:preview` is
-broken; see [Troubleshooting](#troubleshooting).)
+To browse the documented API, `npm run spec:preview` renders it to one HTML file,
+`.next/api-docs.html`; open it in a browser.
 
 ## Configuration
 
@@ -331,39 +330,41 @@ to `medium` between March and June.
 
 ## Scripts
 
-| Script                     | What it does                                                                     |
-| -------------------------- | -------------------------------------------------------------------------------- |
-| `npm run dev`              | Dev server on port 3000 (`npm run dev -- -p 4000` for another)                   |
-| `npm run build`            | Production build (standalone output); needs neither config nor database          |
-| `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default      |
-| `npm start`                | `next start`. **Does not work** with this app's standalone output; use the above |
-| `npm run lint`             | `next typegen`, then type-aware ESLint                                           |
-| `npm run lint:fix`         | The same, with autofix                                                           |
-| `npm run typecheck`        | `next typegen`, then `tsc --noEmit`                                              |
-| `npm run format`           | Prettier, writing                                                                |
-| `npm run format:check`     | Prettier, check only                                                             |
-| `npm test`                 | Unit and component tests; no database needed                                     |
-| `npm run test:watch`       | Vitest watch mode                                                                |
-| `npm run test:unit`        | Unit project only                                                                |
-| `npm run test:components`  | Component project only                                                           |
-| `npm run test:integration` | Integration project (**needs `TEST_DATABASE_URL`**)                              |
-| `npm run test:all`         | Every project (**needs `TEST_DATABASE_URL`**)                                    |
-| `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)      |
-| `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433)     |
-| `npm run test:e2e:ui`      | The same in Playwright's UI mode                                                 |
-| `npm run db:generate`      | Generate a migration from schema changes (no database needed)                    |
-| `npm run db:migrate`       | Apply pending migrations                                                         |
-| `npm run db:seed`          | Seed deterministic demo data                                                     |
-| `npm run db:reset`         | Migrate, then seed. Does not delete anything                                     |
-| `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)         |
-| `npm run db:studio`        | Open Drizzle Studio                                                              |
-| `npm run spec:lint`        | Lint `openapi.yaml`                                                              |
-| `npm run spec:preview`     | **Broken** with Redocly CLI 2; see [Troubleshooting](#troubleshooting)           |
-| `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                             |
-| `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                                  |
+| Script                     | What it does                                                                 |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `npm run dev`              | Dev server on port 3000 (`npm run dev -- -p 4000` for another)               |
+| `npm run build`            | Production build (standalone output); needs neither config nor database      |
+| `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default  |
+| `npm start`                | Alias for `npm run start:standalone`                                         |
+| `npm run lint`             | `next typegen`, then type-aware ESLint                                       |
+| `npm run lint:fix`         | The same, with autofix                                                       |
+| `npm run typecheck`        | `next typegen`, then `tsc --noEmit`                                          |
+| `npm run format`           | Prettier, writing                                                            |
+| `npm run format:check`     | Prettier, check only                                                         |
+| `npm test`                 | Unit and component tests; no database needed                                 |
+| `npm run test:watch`       | Vitest watch mode                                                            |
+| `npm run test:unit`        | Unit project only                                                            |
+| `npm run test:components`  | Component project only                                                       |
+| `npm run test:integration` | Integration project (**needs `TEST_DATABASE_URL`**)                          |
+| `npm run test:all`         | Every project (**needs `TEST_DATABASE_URL`**)                                |
+| `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)  |
+| `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433) |
+| `npm run test:e2e:ui`      | The same in Playwright's UI mode                                             |
+| `npm run db:generate`      | Generate a migration from schema changes (no running database needed)        |
+| `npm run db:migrate`       | Apply pending migrations                                                     |
+| `npm run db:seed`          | Seed deterministic demo data                                                 |
+| `npm run db:reset`         | Migrate, then seed. Does not delete anything                                 |
+| `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)     |
+| `npm run db:studio`        | Open Drizzle Studio                                                          |
+| `npm run spec:lint`        | Lint `openapi.yaml`                                                          |
+| `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                 |
+| `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                         |
+| `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                              |
 
-The `db:*` scripts other than `db:generate` read `config.yaml` and need `DATABASE_USER`
-and `DATABASE_PASSWORD` exported.
+The `db:*` scripts read `config.yaml` and need `DATABASE_USER` and `DATABASE_PASSWORD`
+exported. `db:generate` is the partial exception: it never connects, so with no config file
+it runs without them, but once a `config.yaml` exists (as the quick start creates) it still
+loads it and fails without them. Any value will do for `generate`.
 
 ## Testing
 
@@ -386,7 +387,8 @@ and `src/app/**`. Generated code, migrations, the integration-test harness
 (`src/db/testing.ts`) and route `layout.tsx` files are excluded.
 
 The offline sync fuzz (`src/lib/sync/fuzz.test.ts`) runs a fixed seed. To explore further
-or replay a failure: `FC_SEED=7 FC_RUNS=2000 npx vitest run src/lib/sync/fuzz.test.ts`.
+or replay a failure: `FC_SEED=7 FC_RUNS=400 npx vitest run src/lib/sync/fuzz.test.ts`. The test has a fixed
+30-second timeout, so keep `FC_RUNS` to a few hundred (400 runs take about 9 seconds).
 
 ### End-to-end
 
@@ -457,22 +459,20 @@ docker run -p 3000:3000 \
 
 ## Troubleshooting
 
-| Symptom                                                                   | Cause and fix                                                                                                                   |
-| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Cannot start: Configuration file not found at .../config.yaml`           | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                               |
-| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)            | Export the variable in the shell that starts the server or script. A `.env` file is not read.                                   |
-| `AUTH_SECRET must be a random value of at least 32 characters`            | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                              |
-| `Set either X or X_FILE, not both.`                                       | Unset one of them.                                                                                                              |
-| `database.url: must not contain a username or password`                   | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                         |
-| `Found a .env file ... It is not used for app settings`                   | Settings moved to `config.yaml`. Move them there and delete `.env`.                                                             |
-| `npm start` warns `"next start" does not work with "output: standalone"`  | Use `npm run start:standalone` after `npm run build`.                                                                           |
-| `npm run spec:preview` fails with `Unknown arguments: port, preview-docs` | Redocly CLI 2 removed `preview-docs`. Run `npx redocly build-docs openapi.yaml -o /tmp/api-docs.html` and open the file.        |
-| `TEST_DATABASE_URL is not set` from the integration project               | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
-| The E2E suite cannot reach its database                                   | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
-| Members see "No outing is running"                                        | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                     |
-| A new deploy does not show up on a phone                                  | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
-| The service worker never registers in development                         | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
-| The dev server does not hot-reload in Docker                              | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
+| Symptom                                                         | Cause and fix                                                                                                                   |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                               |
+| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. A `.env` file is not read.                                   |
+| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                              |
+| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                              |
+| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                         |
+| `Found a .env file ... It is not used for app settings`         | Settings moved to `config.yaml`. Move them there and delete `.env`.                                                             |
+| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
+| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
+| Members see "No outing is running"                              | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                     |
+| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
+| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
+| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
 
 ## Project structure
 

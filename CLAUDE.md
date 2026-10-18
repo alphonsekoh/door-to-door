@@ -92,10 +92,12 @@ must fail a test, not ship.
 
 ### Database
 
-**[CI]** Schema changes are always generated with `npm run db:generate`, never
-hand-written SQL. CI regenerates and fails if `drizzle/` differs from the schema.
+**[CI]** A schema change without a matching generated migration fails CI: it reruns
+`drizzle-kit generate` and fails if the snapshots in `drizzle/meta` drift from
+`src/db/schema.ts`. That check never reads the `.sql` files.
 
-**[convention]** Never edit an applied migration; add a new one.
+**[convention]** So generate every migration with `npm run db:generate`; never hand-write
+or hand-edit migration SQL, and never edit an applied migration - add a new one.
 
 ### Configuration
 
