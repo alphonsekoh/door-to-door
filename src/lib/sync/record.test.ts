@@ -84,6 +84,19 @@ describe("readRecord", () => {
     expect(read.item.unitNumber).toBe("");
   });
 
+  it("never sends a record whose id is not its knock's, since its result could not be matched", () => {
+    const other = "0190a000-0000-7000-8000-0000000000dd";
+    const salvageable = readRecord({ ...good, attempts: -1, item: { ...good.item, id: other } });
+    expect(salvageable).toMatchObject({
+      id: good.id,
+      ownerId: "ann",
+      state: "quarantined",
+      lastError: { code: CORRUPT },
+    });
+    expect(salvageable.item.id).toBe(good.id);
+    expect(isCorrupt(readRecord({ ...good, item: { ...good.item, id: other } }))).toBe(true);
+  });
+
   it("makes something of a record with almost nothing left", () => {
     expect(readRecord({ id: 7 })).toMatchObject({ id: "7", ownerId: "", enqueuedAt: 0 });
     expect(readRecord("junk")).toMatchObject({ id: "undefined", state: "quarantined" });

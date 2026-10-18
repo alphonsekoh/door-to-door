@@ -43,11 +43,16 @@ function field(raw: unknown, key: string): unknown {
  * the server already holds is answered unchanged (D-21-1). Anything else
  * comes back stopped, with a placeholder item that is never sent, because a
  * corrupt record cannot be retried.
+ *
+ * Either way its id must be its item's: the engine files results by the
+ * record's id and the server answers by the item's, so a mismatch would be
+ * charged a missing result until quarantined for a visit the server holds.
  */
 export function readRecord(raw: unknown): QueuedVisit {
   /* The checked value as stored, not zod's copy: zod's output types every
      optional field as possibly undefined, which the contract's types forbid. */
-  if (zEnvelope.safeParse(raw).success) return raw as QueuedVisit;
+  const whole = zEnvelope.safeParse(raw);
+  if (whole.success && whole.data.id === whole.data.item.id) return raw as QueuedVisit;
 
   const id = String(field(raw, "id"));
   const ownerId = field(raw, "ownerId");
@@ -55,7 +60,7 @@ export function readRecord(raw: unknown): QueuedVisit {
   const enqueuedAt = typeof stamp === "number" ? stamp : 0;
 
   const salvage = zSalvageable.safeParse(raw);
-  if (salvage.success) {
+  if (salvage.success && salvage.data.id === salvage.data.item.id) {
     return {
       id: salvage.data.id,
       ownerId: salvage.data.ownerId,

@@ -8,6 +8,7 @@ import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import { isCorrupt, readRecord } from "@/lib/sync/record";
 import { type SignedIn, sendAs } from "@/lib/sync/signed-in";
 import type { QueuedVisit, SendOutcome, SyncQueue } from "@/lib/sync/types";
+import { uuidv7 } from "@/lib/uuid";
 
 /*
  * Random online/offline/fault sequences against the real controller and
@@ -87,11 +88,16 @@ type Step =
   | { kind: "storage"; storage: Storage }
   | { kind: "reload"; owner: Owner }
   | { kind: "damage"; pick: number; owner: Owner }
-  | { kind: "corrupt"; owner: Owner; how: "item" | "no_outing" };
+  | { kind: "corrupt"; owner: Owner; how: "item" | "no_outing" | "renamed" | "renamed_damaged" };
 
 type Row = { item: VisitSyncItem; memberId: string };
 
+/* Past the fixed BLOCK and SESSION ids, so no generated id can be one. */
+const FIRST_ID = 0x1000;
+
 function world(seed: number) {
+  // Each run starts the counter afresh, so a seed and path replay its ids exactly.
+  ids.next = FIRST_ID;
   const random = mulberry32(seed);
   let now = START;
   let online = true;
@@ -409,7 +415,12 @@ const step: fc.Arbitrary<Step> = fc.oneof(
     arbitrary: fc.record({
       kind: fc.constant("corrupt" as const),
       owner: fc.constantFrom<Owner>(...OWNERS),
-      how: fc.constantFrom("item" as const, "no_outing" as const),
+      how: fc.constantFrom<"item" | "no_outing" | "renamed" | "renamed_damaged">(
+        "item",
+        "no_outing",
+        "renamed",
+        "renamed_damaged",
+      ),
     }),
   },
 );
@@ -433,6 +444,8 @@ type Tracked = {
   poison: Set<string>;
   /* Rows no build could read, as written, to check they are never touched. */
   corrupt: Map<string, unknown>;
+  /* Item ids of corrupt rows filed under another id. */
+  renamed: Set<string>;
   /* The last state seen for each record, to tell a purge from a loss. */
   lastState: Map<string, QueuedVisit["state"]>;
 };
@@ -474,6 +487,7 @@ function checkInvariants(w: ReturnType<typeof world>, t: Tracked): void {
   }
 
   for (const id of t.poison) expect(w.rows.has(id)).toBe(false);
+  for (const id of t.renamed) expect(w.reached.has(id)).toBe(false);
 
   // Every row the server holds is stored under the member who saved it.
   for (const [id, row] of w.rows) {
@@ -553,10 +567,17 @@ async function apply(w: ReturnType<typeof world>, t: Tracked, s: Step): Promise<
     case "corrupt": {
       const record = buildQueuedVisit(draft(0, false), s.owner, w.now);
       const { sessionId: _outing, ...withoutOuting } = record.item;
+      /* A knock filed under another id: its result could never be matched. */
+      const renamed = { ...record.item, id: uuidv7() };
       const raw =
         s.how === "no_outing"
           ? { ...record, item: withoutOuting }
-          : { ...record, state: "sending", item: { ...record.item, interestLevel: "keen" } };
+          : s.how === "renamed"
+            ? { ...record, item: renamed }
+            : s.how === "renamed_damaged"
+              ? { ...record, state: "sending", item: renamed }
+              : { ...record, state: "sending", item: { ...record.item, interestLevel: "keen" } };
+      if (s.how === "renamed" || s.how === "renamed_damaged") t.renamed.add(renamed.id);
       w.store.raw.set(record.id, raw);
       t.corrupt.set(record.id, structuredClone(raw));
       break;
@@ -620,6 +641,7 @@ describe("offline sync under random sequences", () => {
             saved: new Set(),
             poison: new Set(),
             corrupt: new Map(),
+            renamed: new Set(),
             lastState: new Map(),
           };
           await w.controller().start();
