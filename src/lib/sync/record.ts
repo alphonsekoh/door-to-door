@@ -24,6 +24,9 @@ const zEnvelope = z.object({
   item: zVisitSyncItem.and(z.object({ sessionId: z.uuid() })),
 });
 
+/* Enough to send it as whoever saved it: the knock itself and its owner. */
+const zSalvageable = zEnvelope.pick({ id: true, ownerId: true, item: true });
+
 export const CORRUPT = "corrupt";
 
 function field(raw: unknown, key: string): unknown {
@@ -31,10 +34,15 @@ function field(raw: unknown, key: string): unknown {
 }
 
 /*
- * A record that fails the check comes back stopped, never thrown and never
- * deleted (D-33-8): one bad row must not take the whole list down, and
- * deleting it would silently drop what may be a real knock. Its item is a
- * placeholder that is never sent, because a corrupt record cannot be retried.
+ * A record that fails the check is never thrown and never deleted (D-33-8):
+ * one bad row must not take the whole list down, and deleting it would
+ * silently drop what may be a real knock.
+ *
+ * When only the bookkeeping is damaged, and the item and its owner still
+ * pass, it comes back as a fresh queued record and is sent; a replay of one
+ * the server already holds is answered unchanged (D-21-1). Anything else
+ * comes back stopped, with a placeholder item that is never sent, because a
+ * corrupt record cannot be retried.
  */
 export function readRecord(raw: unknown): QueuedVisit {
   /* The checked value as stored, not zod's copy: zod's output types every
@@ -43,7 +51,26 @@ export function readRecord(raw: unknown): QueuedVisit {
 
   const id = String(field(raw, "id"));
   const ownerId = field(raw, "ownerId");
-  const enqueuedAt = field(raw, "enqueuedAt");
+  const stamp = field(raw, "enqueuedAt");
+  const enqueuedAt = typeof stamp === "number" ? stamp : 0;
+
+  const salvage = zSalvageable.safeParse(raw);
+  if (salvage.success) {
+    return {
+      id: salvage.data.id,
+      ownerId: salvage.data.ownerId,
+      item: field(raw, "item") as QueuedVisit["item"],
+      state: "queued",
+      attempts: 0,
+      skewCount: 0,
+      nextAttemptAt: 0,
+      lastError: null,
+      enqueuedAt,
+      syncedAt: null,
+      serverVisit: null,
+    };
+  }
+
   return {
     id,
     ownerId: typeof ownerId === "string" ? ownerId : "",
@@ -61,7 +88,7 @@ export function readRecord(raw: unknown): QueuedVisit {
     skewCount: 0,
     nextAttemptAt: null,
     lastError: { code: CORRUPT },
-    enqueuedAt: typeof enqueuedAt === "number" ? enqueuedAt : 0,
+    enqueuedAt,
     syncedAt: null,
     serverVisit: null,
   };
