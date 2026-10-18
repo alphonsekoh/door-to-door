@@ -148,7 +148,7 @@ authoritative, and a change to any of them needs the owner.
 ## Request path
 
 1. `src/proxy.ts` redirects page requests with no session to `/sign-in` and returns
-   `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `baseAuthConfig` (no adapter).
+   `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
    It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
    return before `auth()` runs (D-32-19).
 2. The route handler is wrapped in `withContract(operation, handler)`: path, query

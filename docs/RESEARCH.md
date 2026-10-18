@@ -100,7 +100,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   standalone build must be run with `node .next/standalone/server.js` after copying
   `public/` and `.next/static/`.
 - **Source:** Observed while building the E2E suite (#37)
-- **Used by:** D-37-1
+- **Used by:** D-37-1, D-38-10
 
 ### R-13 · Router prefetch while signed out
 
@@ -443,3 +443,12 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** observed in PR #103 (`gh api` on branch protection and rulesets);
   [GitHub Docs, About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 - **Used by:** D-36-7
+
+### R-52 · Redocly CLI 2 has no `preview-docs`
+
+- **Finding:** `@redocly/cli` 2.x dropped the `preview-docs` command; `redocly preview`
+  previews a Redocly project, not a bare spec. `build-docs` still renders one spec to a
+  single static HTML file with no network or licence.
+- **Source:** observed in PR #104 (`npx redocly --help`, CLI 2.48.0);
+  [Redocly CLI, build-docs](https://redocly.com/docs/cli/commands/build-docs)
+- **Used by:** D-38-11
