@@ -61,11 +61,11 @@ describe("pruneDotEnv", () => {
     expect(existsSync(join(dir, "server.js"))).toBe(true);
   });
 
-  it("leaves a directory alone even if its name starts with .env", () => {
-    touch(".envs/keep.txt");
+  it("leaves a directory alone even when its name matches the .env pattern", () => {
+    touch(".env.d/keep.txt");
 
     expect(pruneDotEnv(dir)).toEqual([]);
-    expect(existsSync(join(dir, ".envs/keep.txt"))).toBe(true);
+    expect(existsSync(join(dir, ".env.d/keep.txt"))).toBe(true);
   });
 });
 
