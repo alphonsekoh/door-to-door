@@ -696,6 +696,7 @@ describe("validation and failure", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No session is active.");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
   });
+
   it("reports a failure that gives no reason in plain words", async () => {
     apiFetch.mockRejectedValue("boom");
     const user = userEvent.setup();

@@ -70,6 +70,8 @@ export default defineConfig({
         "src/server/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "src/db/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "src/app/api/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        // Root-level entry points: the proxy and instrumentation hooks.
+        "src/*.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
 
         // UI sits at 90: chasing the last 10% of JSX branches produces tests
         // that assert nothing.

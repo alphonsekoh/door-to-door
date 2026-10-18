@@ -131,6 +131,20 @@ describe("InstallPrompt on Chromium", () => {
     expect(banner()).toBeNull();
   });
 
+  it("offers Install when the app is installed, then removed, before this page has read its storage", async () => {
+    render(<InstallPrompt />);
+    // The removal proves the app is installable again; the install before it
+    // must not leave a half-built state for the removal to build on.
+    act(() => {
+      window.dispatchEvent(new Event("appinstalled"));
+      window.dispatchEvent(installEvent().event);
+    });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+    expect(localStorage.getItem(INSTALLED_KEY)).toBeNull();
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+  });
+
   it("shows again for someone who installed, then removed the app", async () => {
     // Only a real beforeinstallprompt proves the app is no longer installed.
     localStorage.setItem(INSTALLED_KEY, "1");
