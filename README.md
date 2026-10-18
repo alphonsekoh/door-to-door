@@ -413,6 +413,10 @@ Vitest runs three projects, picked by file suffix: `*.test.ts` is `unit` (node),
 `*.test.tsx` is `components` (jsdom and Testing Library). Integration tests fail loudly
 when `TEST_DATABASE_URL` is unset rather than skipping: a suite that quietly runs nothing
 is worse than one that does not run.
+Each run writes its test `config.yaml` to a private folder under the system temp directory
+and removes it afterwards, so two runs at once (two worktrees, or two terminals) do not
+share a config. Give them different `TEST_DATABASE_URL`s, since each run truncates its
+database.
 
 Coverage is enforced per glob: **100%** for `src/server/**`, `src/lib/**`,
 `src/app/api/**`, `src/db/**` and root-level `src/*.ts`; **90%** for `src/components/**`
