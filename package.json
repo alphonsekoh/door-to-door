@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "npm run start:standalone",
     "lint": "next typegen && eslint .",
     "lint:fix": "next typegen && eslint . --fix",
     "typecheck": "next typegen && tsc --noEmit",
@@ -25,7 +25,7 @@
     "db:reset": "tsx scripts/migrate.ts && tsx scripts/seed.ts",
     "test:all": "vitest run",
     "spec:lint": "redocly lint openapi.yaml",
-    "spec:preview": "redocly preview-docs openapi.yaml",
+    "spec:preview": "redocly build-docs openapi.yaml -o .next/api-docs.html",
     "generate:api": "openapi-ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",

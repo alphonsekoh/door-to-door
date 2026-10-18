@@ -4,8 +4,8 @@ import { dirname, resolve } from "node:path";
 import { stringify } from "yaml";
 
 /*
- * A deliberately thin E2E layer. Vitest owns UI coverage; these three flows
- * exist to catch the breakage between layers that no jsdom test can see -
+ * A deliberately thin E2E layer. Vitest owns UI coverage; these specs exist
+ * to catch the breakage between layers that no jsdom test can see -
  * including layout, which is how a Save button ended up under the bottom nav
  * and shipped through three PRs and eleven hundred passing tests.
  */

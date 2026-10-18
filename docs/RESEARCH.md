@@ -100,7 +100,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   standalone build must be run with `node .next/standalone/server.js` after copying
   `public/` and `.next/static/`.
 - **Source:** Observed while building the E2E suite (#37)
-- **Used by:** D-37-1
+- **Used by:** D-37-1, D-38-10
 
 ### R-13 · Router prefetch while signed out
 
@@ -219,7 +219,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
 - **Finding:** `next build` copies a local `.env` into `.next/standalone`.
 - **Source:** Observed in #75
-- **Used by:** D-75-16
+- **Used by:** D-75-16, D-38-5
 
 ### R-29 · Unicode categories for non-printing characters
 
@@ -443,3 +443,21 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** observed in PR #103 (`gh api` on branch protection and rulesets);
   [GitHub Docs, About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
 - **Used by:** D-36-7
+
+### R-52 · Redocly CLI 2 has no `preview-docs`
+
+- **Finding:** `@redocly/cli` 2.x dropped the `preview-docs` command; `redocly preview`
+  previews a Redocly project, not a bare spec. `build-docs` still renders one spec to a
+  single static HTML file with no network or licence.
+- **Source:** observed in PR #104 (`npx redocly --help`, CLI 2.48.0);
+  [Redocly CLI, build-docs](https://redocly.com/docs/cli/commands/build-docs)
+- **Used by:** D-38-11
+
+### R-53 · Which commands load `.env`
+
+- **Finding:** Next loads `.env` for `dev` and `build`; drizzle-kit loads it for
+  `db:generate`, `db:push` and `db:studio`. The `tsx` scripts (`db:migrate`, `db:seed`,
+  `db:reset`) do not, and fail with "DATABASE_USER is not set". `start:standalone` reads
+  the copy `build` put in `.next/standalone/` (R-28).
+- **Source:** Measured in #38 fix round 3, with a `.env` present and nothing exported
+- **Used by:** D-38-5, D-38-16, D-38-17

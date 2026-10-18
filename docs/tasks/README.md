@@ -106,7 +106,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                                  |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | In review (PR #103)                                   |
 | 37  | [E2E smoke](37-e2e.md)                                  | Done; D-37-3 partly superseded (#93)                  |
-| 38  | [Documentation pass](38-docs-pass.md)                   | Open                                                  |
+| 38  | [Documentation pass](38-docs-pass.md)                   | In review (PR #104)                                   |
 | 74  | [Teams and own name](74-teams.md)                       | Done                                                  |
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                                  |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                                  |
