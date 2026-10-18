@@ -22,10 +22,11 @@ note (D-38-21).
   "row has a hash".
 - **D-105-3 · Refuses if any admin exists, deactivated ones included; nothing changes.**
   _Why:_ the script must never become a second way to add admins; later admins are added
-  on Admin → Team. Pending owner confirmation (open question 1).
+  on Admin → Team. Owner decision: confirmed; a database left adminless by a hand edit is
+  fixed by hand.
 - **D-105-4 · An email that already belongs to an account is refused, not promoted.**
-  _Why:_ the script only ever creates, never alters, an account. Pending owner
-  confirmation (open question 2).
+  _Why:_ the script only ever creates, never alters, an account. Owner decision:
+  confirmed.
 - **D-105-5 · Check and insert run in one transaction under `pg_advisory_xact_lock`.**
   _Why:_ no constraint can say "no second admin until the first exists", since further
   admins are allowed; a partial unique index would forbid them. Hashing happens before the
@@ -36,7 +37,11 @@ note (D-38-21).
   come from.** The password comes from `ADMIN_PASSWORD` / `ADMIN_PASSWORD_FILE` (the
   `readSecret` convention, both set is an error, D-75-2) or a no-echo terminal prompt
   asked twice. With neither, it refuses rather than reading a pipe. _Why:_ arguments land
-  in shell history and `ps`. _Research:_ R-57.
+  in shell history and `ps`. _Research:_ R-57. _Amended (review round 2):_ that guarantee
+  is claimed only for the prompt and the file; the README recommends
+  `ADMIN_PASSWORD_FILE` or `read -rs ADMIN_PASSWORD` without a terminal, and keeps a
+  directly set `ADMIN_PASSWORD` for orchestrators and secret managers, since one typed at
+  a prompt lands in history.
 - **D-105-8 · Input follows the app's rules.** Email and password use the contract's
   `CreateUserRequest` (email up to 320, password 8 to 200) plus
   `assertPasswordAcceptable`; the email is trimmed and lower-cased (D-31-1); `--name`
@@ -45,7 +50,11 @@ note (D-38-21).
 - **D-105-9 · Fix round: the race test forces the interleaving.** It holds the advisory
   lock on another connection, waits until the run blocks in `pg_locks`, inserts an admin,
   releases, and expects the refusal. _Why:_ the timing-based version failed only about one
-  run in six with the lock removed; the forced one fails 5 of 5.
+  run in six with the lock removed; the forced one fails 5 of 5. _Amended (review round
+  2):_ the poll counts only an ungranted advisory lock in `current_database()` on the
+  code's own key (`hashtext(CREATE_ADMIN_LOCK)`, passed from the exported constant).
+  _Why:_ any other waiter on the server would have released the test early; still fails
+  5 of 5 with the lock removed. _Research:_ R-58.
 
 ## Relies on
 
@@ -54,10 +63,4 @@ admin deactivated), D-38-12, D-38-21, D-74-4, D-75-2, D-08-2.
 
 ## Open questions
 
-1. Should the script treat deactivated admins as absent, so it can recover a database
-   where every admin was deactivated by hand? Builder recommends no (as built, D-105-3):
-   through the app the last admin can never be deactivated (D-31-5), and fixing a hand
-   edit by hand is safer than a way to add a second admin.
-2. Should an email that already belongs to a member be promoted to admin? Builder
-   recommends no (as built, D-105-4): the script then never changes an existing account,
-   and on a truly fresh database the case cannot arise.
+None. Both were answered by the owner (D-105-3, D-105-4).

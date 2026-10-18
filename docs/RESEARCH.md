@@ -503,3 +503,13 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** measured in PR #108;
   [Node.js, readline](https://nodejs.org/api/readline.html)
 - **Used by:** D-105-7
+
+### R-58 · How `pg_locks` shows a single-bigint advisory lock
+
+- **Finding:** `pg_advisory_xact_lock(bigint)` appears in `pg_locks` with
+  `locktype = 'advisory'`, the high 32 bits in `classid`, the low 32 bits in `objid`, and
+  `objsubid = 1` (the two-`int4` form uses 2). `database` is the lock's database, so
+  matching all of these plus `granted = false` finds only waiters on that one key.
+- **Source:** measured in PR #108;
+  [PostgreSQL, `pg_locks`](https://www.postgresql.org/docs/current/view-pg-locks.html)
+- **Used by:** D-105-9
