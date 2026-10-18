@@ -83,7 +83,7 @@ export function HouseholdHistoryPanel({
           <ul aria-label="Outstanding follow-ups" className="mt-1 space-y-2">
             {outstanding.map((note) => (
               <li key={note.id}>
-                <FollowUpItem note={note} now={now} controls onChanged={onChanged} onEdit={edit} />
+                <FollowUpItem note={note} now={now} onChanged={onChanged} onEdit={edit} />
               </li>
             ))}
           </ul>
@@ -127,13 +127,7 @@ export function HouseholdHistoryPanel({
             ) : (
               <li key={entry.item.id}>
                 <p className="mb-1 text-caption font-medium text-foreground-muted">Follow-up</p>
-                <FollowUpItem
-                  note={entry.item}
-                  now={now}
-                  controls
-                  onChanged={onChanged}
-                  onEdit={edit}
-                />
+                <FollowUpItem note={entry.item} now={now} onChanged={onChanged} onEdit={edit} />
               </li>
             ),
           )}

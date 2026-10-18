@@ -165,7 +165,8 @@ export function ConsolidatedHistory() {
       ...parseHistoryFilters(new URLSearchParams(search)),
       teamId: "",
     });
-    router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
+    // Teams are only known once an outing is chosen, so the outing keeps the query non-empty.
+    router.replace(`/admin/history?${next}`);
   }, [unknownTeam, search, router]);
 
   function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
@@ -460,21 +461,20 @@ export function ConsolidatedHistory() {
       ) : (
         <ul className="space-y-2">
           {groups.map((group) => {
-            const first = group.entries[0];
-            if (!first) return null;
+            const { household, block } = group;
             return (
               <li key={group.key} className="rounded-xl border border-border bg-surface p-4">
                 <div className="flex items-baseline justify-between gap-3">
                   <Link
-                    href={`/households/${first.household.id}`}
+                    href={`/households/${household.id}`}
                     className="flex min-h-11 min-w-0 flex-col justify-center"
                   >
                     <span className="block text-body font-semibold tabular-nums">
-                      Blk {first.block.name}, {first.household.unitNumber}
+                      Blk {block.name}, {household.unitNumber}
                     </span>
-                    {first.household.name === null ? null : (
+                    {household.name === null ? null : (
                       <span className="block truncate text-caption text-foreground-muted">
-                        {first.household.name}
+                        {household.name}
                       </span>
                     )}
                   </Link>

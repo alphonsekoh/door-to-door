@@ -124,6 +124,20 @@ describe("RecordOnBehalfForm", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
+  it("refuses a record on an outing with no blocks rather than send it nowhere", async () => {
+    const user = userEvent.setup();
+    render(
+      <RecordOnBehalfForm members={members} blocks={[]} onRecorded={vi.fn()} onClose={vi.fn()} />,
+    );
+    await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save the record" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/a block/);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
   it("refuses a record with no interest level", async () => {
     const user = renderForm();
     await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");

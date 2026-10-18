@@ -216,6 +216,14 @@ describe("groupByHousehold", () => {
     expect(groups[0]?.entries).toHaveLength(2);
   });
 
+  it("heads each row with its door, so the row never needs a visit to name it", () => {
+    const groups = groupByHousehold([
+      entry("h2", "2026-03-01T11:00:00.000Z", { unitNumber: "#05-124", name: "Tan" }),
+    ]);
+    expect(groups[0]?.household).toMatchObject({ id: "h2", unitNumber: "#05-124", name: "Tan" });
+    expect(groups[0]?.block).toMatchObject({ id: "b1", name: "123" });
+  });
+
   it("reads the trajectory oldest first", () => {
     // Interest moves over time; the direction is the point of the row.
     const groups = groupByHousehold([

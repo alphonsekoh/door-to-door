@@ -130,6 +130,25 @@ describe("UpdatePrompt", () => {
     unmount();
     expect(registration.removeEventListener).toHaveBeenCalled();
   });
+
+  it("never starts watching if it unmounts before the worker is ready", async () => {
+    const { registration, serviceWorker } = stubServiceWorker(null);
+    let register: (value: unknown) => void = () => undefined;
+    Object.assign(serviceWorker, {
+      ready: new Promise((resolve) => {
+        register = resolve;
+      }),
+    });
+    const { unmount } = render(<UpdatePrompt hasUnsynced={nothingQueued} />);
+    unmount();
+
+    await act(async () => {
+      register(registration);
+      await Promise.resolve();
+    });
+    // A listener added now would outlive the component, with nothing to remove it.
+    expect(registration.addEventListener).not.toHaveBeenCalled();
+  });
 });
 
 describe("UpdatePrompt reserved space", () => {

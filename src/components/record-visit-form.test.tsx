@@ -75,6 +75,8 @@ const history = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+type Late = { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
+
 const body = () =>
   JSON.parse((apiFetch.mock.calls[0]?.[1] as { body: string }).body) as Record<string, unknown>;
 
@@ -452,6 +454,60 @@ describe("history before knocking", () => {
     });
   });
 
+  /* A promise settles once, so the late answer and the late failure each
+     need their own first lookup. */
+  it.each([
+    [
+      "answer",
+      (late: Late) => {
+        late.resolve(history());
+      },
+    ],
+    [
+      "failure",
+      (late: Late) => {
+        late.reject(new TypeError("Failed to fetch"));
+      },
+    ],
+  ])(
+    "never lets a late %s for a unit already passed replace the unit now typed",
+    async (_, settle) => {
+      const late: Late = { resolve: () => undefined, reject: () => undefined };
+      const lee = { ...summary("#05-125", "h2").household, name: "Mdm Lee" };
+      apiFetch.mockImplementation((path: string) =>
+        path === "/households/h1"
+          ? new Promise((resolve, reject) => {
+              late.resolve = resolve;
+              late.reject = reject;
+            })
+          : Promise.resolve(history({ household: lee })),
+      );
+      render(
+        <RecordVisitForm
+          sessionId={null}
+          loadSession={noSession}
+          blockId={BLOCK}
+          known={[summary("#05-123"), summary("#05-125", "h2")]}
+          onRecorded={vi.fn()}
+        />,
+      );
+      const unit = screen.getByLabelText("Unit number");
+      fireEvent.change(unit, { target: { value: "#05-123" } });
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith("/households/h1");
+      });
+      fireEvent.change(unit, { target: { value: "#05-125" } });
+      expect(await screen.findByText("Mdm Lee")).toBeInTheDocument();
+
+      await act(async () => {
+        settle(late);
+        await Promise.resolve();
+      });
+      expect(screen.getByText("Mdm Lee")).toBeInTheDocument();
+      expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
+    },
+  );
+
   it("matches a unit typed without the hash", async () => {
     apiFetch.mockResolvedValue(history());
     const user = userEvent.setup();
@@ -638,6 +694,26 @@ describe("validation and failure", () => {
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No session is active.");
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+  it("reports a failure that gives no reason in plain words", async () => {
+    apiFetch.mockRejectedValue("boom");
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this visit.");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
   });
 });

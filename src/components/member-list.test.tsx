@@ -256,9 +256,15 @@ describe("MemberList", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the team.");
   });
 
-  it("falls back to the email for somebody with no name", async () => {
+  it("falls back to the email for somebody with no name, in the row and when deactivating", async () => {
+    const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([{ ...member("u1", "Alice"), name: null }]));
     render(<MemberList />);
     expect(await screen.findAllByText("alice@t.local")).toHaveLength(2);
+
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
+    expect(
+      screen.getByRole("alertdialog", { name: "Deactivate alice@t.local?" }),
+    ).toBeInTheDocument();
   });
 });

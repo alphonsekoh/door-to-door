@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRecords } from "@/components/admin-records";
@@ -203,6 +203,17 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(replace).toHaveBeenCalledWith("/admin/records");
+  });
+
+  it("goes back to a bare URL when the only filter is set back to Any", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams("blockId=b1");
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+
+    await user.selectOptions(screen.getByLabelText("Filter by block"), "");
     expect(replace).toHaveBeenCalledWith("/admin/records");
   });
 
@@ -462,18 +473,24 @@ describe("AdminRecords", () => {
     expect(screen.getByLabelText("Filter by team").querySelectorAll("option")).toHaveLength(1);
   });
 
-  it("drops a team that is not one of this outing's teams from the URL", async () => {
-    // A real-looking id from an earlier outing would filter to nothing while
-    // the picker said "Any team".
-    const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
-    searchParams.value = new URLSearchParams(`interestLevel=high&teamId=${other}`);
-    serve([]);
-    render(<AdminRecords />);
+  it.each([
+    ["with the other filters kept", "interestLevel=high&", "/admin/records?interestLevel=high"],
+    ["back to a bare URL when it was the only filter", "", "/admin/records"],
+  ])(
+    "drops a team that is not one of this outing's teams from the URL, %s",
+    async (_, rest, url) => {
+      // A real-looking id from an earlier outing would filter to nothing while
+      // the picker said "Any team".
+      const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
+      searchParams.value = new URLSearchParams(`${rest}teamId=${other}`);
+      serve([]);
+      render(<AdminRecords />);
 
-    await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith("/admin/records?interestLevel=high");
-    });
-  });
+      await waitFor(() => {
+        expect(replace).toHaveBeenCalledWith(url);
+      });
+    },
+  );
 
   it("keeps a team that is one of this outing's", async () => {
     searchParams.value = new URLSearchParams(`teamId=${TEAM_ID}`);
@@ -511,4 +528,57 @@ describe("AdminRecords", () => {
       expect(screen.queryByText(/Nothing has been recorded/)).not.toBeInTheDocument();
     },
   );
+
+  it("shows the household's name and the visit's notes on its row", async () => {
+    const visit = entry("#05-123", { name: "Tan" });
+    serve([{ ...visit, visit: { ...visit.visit, description: "Asked for Mandarin material" } }]);
+    render(<AdminRecords />);
+
+    expect(await screen.findByText("Blk 123 · Tan")).toBeInTheDocument();
+    expect(screen.getByText("Asked for Mandarin material")).toBeInTheDocument();
+  });
+
+  it("offers a member with no name in the picker by their email", async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+      if (path === "/sessions/s1/teams") return Promise.resolve(teamList);
+      if (path.startsWith("/users")) {
+        return Promise.resolve({
+          ...userPage,
+          data: userPage.data.map((user) => ({ ...user, name: null })),
+        });
+      }
+      return Promise.resolve({
+        data: [entry("#05-123")],
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+      });
+    });
+    render(<AdminRecords />);
+
+    expect(await screen.findByRole("option", { name: "alice@t.local" })).toHaveValue("u1");
+  });
+
+  it("re-reads the records every 30 seconds, so a member's new record turns up", async () => {
+    vi.useFakeTimers();
+    try {
+      serve([entry("#05-123")]);
+      render(<AdminRecords />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("#05-123")).toBeInTheDocument();
+
+      serve([entry("#05-123"), entry("#05-124")]);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(29_000);
+      });
+      expect(screen.queryByText("#05-124")).not.toBeInTheDocument();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1_000);
+      });
+      expect(screen.getByText("#05-124")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

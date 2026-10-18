@@ -53,6 +53,7 @@ export default defineConfig({
       include: ["src/**/*.{ts,tsx}"],
       exclude: [
         "src/generated/**",
+        // Integration-test harness: only tests import it, so it is not app code.
         "src/db/testing.ts",
         "drizzle/**",
         "src/**/*.test.{ts,tsx}",

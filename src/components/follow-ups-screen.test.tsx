@@ -39,6 +39,11 @@ function note(id: string, overrides: Partial<FollowUp> = {}): FollowUp {
   };
 }
 
+type Settle = {
+  resolve: (value: FollowUpList) => void;
+  reject: (reason: unknown) => void;
+};
+
 const page = (data: FollowUp[], total = data.length, offset = 0): FollowUpList => ({
   data,
   pagination: { limit: 20, offset, total, hasMore: offset + data.length < total },
@@ -186,15 +191,29 @@ describe("FollowUpsScreen", () => {
     expect(await screen.findByText("No follow-ups waiting.")).toBeInTheDocument();
   });
 
-  it("lets only the newest answer land", async () => {
-    let releaseFirst: (value: FollowUpList) => void = () => undefined;
-    let failFirst: (reason: unknown) => void = () => undefined;
+  /* A promise settles once, so the late answer and the late failure each
+     need their own first request. */
+  it.each([
+    [
+      "answer",
+      (first: Settle) => {
+        first.resolve(page([note("1")]));
+      },
+    ],
+    [
+      "failure",
+      (first: Settle) => {
+        first.reject(new Error("late"));
+      },
+    ],
+  ])("lets only the newest answer land, not a late %s", async (_, settle) => {
+    const first: Settle = { resolve: () => undefined, reject: () => undefined };
     apiFetch
       .mockImplementationOnce(
         () =>
           new Promise((resolve, reject) => {
-            releaseFirst = resolve;
-            failFirst = reject;
+            first.resolve = resolve;
+            first.reject = reject;
           }),
       )
       .mockResolvedValue(page([]));
@@ -206,9 +225,9 @@ describe("FollowUpsScreen", () => {
     rerender(<FollowUpsScreen />);
     expect(await screen.findByText("You have no follow-ups waiting.")).toBeInTheDocument();
 
-    releaseFirst(page([note("1")]));
-    failFirst(new Error("late"));
+    settle(first);
     await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByText("You have no follow-ups waiting.")).toBeInTheDocument();
     expect(screen.queryByText("Note 1")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
+import { SessionProvider } from "next-auth/react";
 import { AppShell } from "@/components/app-shell";
 import { PwaProvider } from "@/components/pwa-provider";
-import { SessionProvider } from "@/components/session-provider";
 import "./globals.css";
 
 const geistSans = Geist({

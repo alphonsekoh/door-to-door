@@ -156,6 +156,22 @@ describe("SyncProvider", () => {
     expect((await queue.listByOwner("ann"))[0]?.state).toBe("synced");
   });
 
+  it("still saves and sends in a browser with no BroadcastChannel", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined);
+    try {
+      mount();
+      await waitFor(() => {
+        expect(text("active")).toBe("on");
+      });
+      await userEvent.click(screen.getByRole("button", { name: "save" }));
+      await waitFor(() => {
+        expect(text("units")).toBe("#09-01:synced");
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("never shows or sends another member's records on a shared phone (D-33-1)", async () => {
     const theirs = stored("ben", "#05-01");
     const { send } = mount(createMemoryQueue([theirs]));
