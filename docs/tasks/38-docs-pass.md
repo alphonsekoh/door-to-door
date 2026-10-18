@@ -1,6 +1,6 @@
 # #38 · Final documentation pass
 
-- **Status:** In review (PR #104)
+- **Status:** Done (PR #104)
 - **Phase:** 7 - Hardening
 
 ## Task
@@ -27,6 +27,7 @@ workflow and offline model documented; ADR-style notes for contested decisions.
   drizzle-kit (`db:generate`, `db:push`, `db:studio`) load it, `start:standalone` reads
   the copy `build` made, and only the `tsx` scripts (`db:migrate`, `db:seed`, `db:reset`)
   skip it. D-75-16 only adds a warning. _Research:_ R-28, R-53. Owner confirmed (D-38-22).
+  _Refined by D-106-5:_ the build now deletes that copy, so `start:standalone` reads no `.env`.
 - **D-38-6 · The README env table is derived from the code, not the old docs:** secrets
   from `src/lib/config.ts`, process variables per D-75-7, plus Compose, test, E2E and
   fuzz variables from `docker-compose.yml`, `playwright.config.ts` and the tests, and

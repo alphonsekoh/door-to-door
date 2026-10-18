@@ -183,6 +183,10 @@ export function OfflineShell({
         ) : null}
       </div>
 
+      {/* Mounted from the first render, not once the copy is read: signal
+          coming back while it loads would otherwise go unheard. */}
+      {phase.kind === "recording" ? null : <ReloadWhenOnline />}
+
       {phase.kind === "loading" ? (
         <p className="text-body text-foreground-muted">Looking for what is saved on this phone…</p>
       ) : null}
@@ -192,7 +196,6 @@ export function OfflineShell({
           <p className="text-body">
             Nothing is saved on this phone to record with. Connect and open your outing first.
           </p>
-          <ReloadWhenOnline />
           <form action="/" method="get">
             <button
               type="submit"
@@ -206,7 +209,6 @@ export function OfflineShell({
 
       {phase.kind === "gate" ? (
         <>
-          <ReloadWhenOnline />
           <button
             type="button"
             onClick={() => {

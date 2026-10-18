@@ -50,7 +50,7 @@ flowchart LR
 | `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
 | `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
 | `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
-| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue; the logic they call is in `src/db`.                          |
+| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue over `src/db`; `check-standalone.ts` runs as `postbuild`.     |
 | `src/app/sw.ts`       | Service worker source (Serwist)              | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.   |
 | `e2e/`                | Playwright specs                             | —        | Pixel 5 and iPhone 13 profiles, standalone production build.       |
 
@@ -317,8 +317,9 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   owner, the sync bar and the hidden nav (D-77-10, D-77-12). Sends still go through
   `sendAs`, so the cookie must name the owner.
 - The queue flushes on its own triggers; a reconnect row offers Continue (a full
-  `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs only when there is
-  no copy or before "Continue as".
+  `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs from the first render
+  until "Continue as": while the copy loads, when there is none, and at the gate
+  (D-106-8).
 
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
@@ -350,6 +351,9 @@ another member's visit (D-21-5) has a team exception (D-74-22), not a way around
 - **Dev:** `docker compose up` → `db`, one-shot `migrate` (migrate + seed), `web`.
 - **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
   `node .next/standalone/server.js`.
+  The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
+  copies and fails the build on anything else (D-106-2, D-106-3). Settings and secrets
+  arrive at runtime.
 - **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
   Next's separate module graphs share it; changing `database.url` needs a restart. Every
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`

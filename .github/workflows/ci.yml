@@ -190,5 +190,15 @@ jobs:
             next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
             next-${{ runner.os }}-
 
-      # No config.yaml and no database: a build must need neither (D-13-4).
+      # Decoys, so the postbuild check has something to catch: a trace only
+      # copies files that exist. The config is deliberately invalid, so a build
+      # that read it would still fail - it must need no config and no
+      # database (D-13-4).
+      - name: Plant a decoy config.yaml and .env
+        run: |
+          echo "decoy: the build must neither read nor copy this file" > config.yaml
+          echo "STANDALONE_DECOY=must-not-reach-the-standalone-output" > .env
+
+      # postbuild prunes the .env Next copies into .next/standalone/ and fails
+      # if a settings file or secret is left there (#106).
       - run: npm run build

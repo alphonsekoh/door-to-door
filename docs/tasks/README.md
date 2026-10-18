@@ -104,16 +104,17 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Done; D-33-22 refined (#100), D-33-8 refined (#101)   |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Done (PR #101)                                        |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                                  |
-| 36  | [Coverage gaps](36-coverage-gaps.md)                    | In review (PR #103)                                   |
+| 36  | [Coverage gaps](36-coverage-gaps.md)                    | Done (PR #103)                                        |
 | 37  | [E2E smoke](37-e2e.md)                                  | Done; D-37-3 partly superseded (#93)                  |
-| 38  | [Documentation pass](38-docs-pass.md)                   | In review (PR #104)                                   |
+| 38  | [Documentation pass](38-docs-pass.md)                   | Done (PR #104); D-38-5 refined (#106)                 |
 | 74  | [Teams and own name](74-teams.md)                       | Done                                                  |
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                                  |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                                  |
-| 77  | [Offline recording screen](77-offline-recording.md)     | In review (PR #100)                                   |
+| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); D-77-11 refined (#106)                |
 | 83  | [Per-request auth](83-per-request-auth.md)              | Done                                                  |
 | 85  | [Account gone message](85-account-gone-message.md)      | Done                                                  |
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                                  |
 | 86  | [Rate limit counts failures](86-rate-limit-failures.md) | Done                                                  |
 | 88  | [Flaky load tests](88-flaky-load-tests.md)              | Done                                                  |
 | 90  | [Modal sheets](90-modal-sheets.md)                      | Done; D-90-5/7/9 amended (#98)                        |
+| 106 | [Standalone output](106-standalone-output.md)           | In review (PR #107)                                   |
