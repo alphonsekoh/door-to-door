@@ -513,3 +513,15 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** measured in PR #108;
   [PostgreSQL, `pg_locks`](https://www.postgresql.org/docs/current/view-pg-locks.html)
 - **Used by:** D-105-9
+
+### R-59 · Vitest workers inherit env set in globalSetup; Ctrl-C skips its teardown
+
+- **Finding:** globalSetup runs once in the main process before any worker starts, and
+  each worker's env is built from `process.env` afterwards, so a variable set there
+  reaches every worker of that run only. Its returned teardown runs whether tests pass or
+  fail, but not on Ctrl-C: Vitest exits on the first signal, and npm forwarding a second
+  kills it. Measured: two concurrent integration runs went from 74 and 128 failures to
+  687/687 each; no folder left after pass, fail, SIGINT or SIGTERM.
+- **Source:** measured in PR #110;
+  [Vitest, globalSetup](https://vitest.dev/config/#globalsetup)
+- **Used by:** D-109-1, D-109-4

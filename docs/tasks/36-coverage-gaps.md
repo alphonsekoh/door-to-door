@@ -13,7 +13,7 @@ rather than covered.
 
 - **D-36-1 · Thresholds, include and exclusions stay as D-04-2/D-04-3 set them; nothing
   was loosened** (one glob added later, D-36-10). The only extra exclusions are `src/db/testing.ts` (test harness, now
-  commented as such), `global-error.tsx`, `*.d.ts` and `**/*.config.*`. _Why:_ the audit
+  commented as such; unit-tested since D-109-5), `global-error.tsx`, `*.d.ts` and `**/*.config.*`. _Why:_ the audit
   found the config already matches the issue's targets.
 - **D-36-2 · `src/` carries no coverage-ignore comments.** Remaining uncovered lines sit
   in the 90% components glob and are left uncovered, not ignored: TypeScript-only
