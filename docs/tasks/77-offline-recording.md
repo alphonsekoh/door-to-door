@@ -1,6 +1,6 @@
 # #77 · Offline recording screen
 
-- **Status:** In review (PR #100)
+- **Status:** Done (PR #100)
 - **Phase:** 6 - PWA & Offline
 - **Depends on:** #32, #33
 

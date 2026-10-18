@@ -1,6 +1,6 @@
 # #36 · Close coverage gaps
 
-- **Status:** In review (PR #103)
+- **Status:** Done (PR #103)
 - **Phase:** 7 - Hardening
 
 ## Task

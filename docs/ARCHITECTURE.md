@@ -50,7 +50,7 @@ flowchart LR
 | `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
 | `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
 | `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
-| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue; the logic they call is in `src/db`.                          |
+| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue over `src/db`; `check-standalone.ts` runs as `postbuild`.     |
 | `src/app/sw.ts`       | Service worker source (Serwist)              | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.   |
 | `e2e/`                | Playwright specs                             | —        | Pixel 5 and iPhone 13 profiles, standalone production build.       |
 
@@ -350,6 +350,9 @@ another member's visit (D-21-5) has a team exception (D-74-22), not a way around
 - **Dev:** `docker compose up` → `db`, one-shot `migrate` (migrate + seed), `web`.
 - **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
   `node .next/standalone/server.js`.
+  The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
+  copies and fails the build on anything else (D-106-2, D-106-3). Settings and secrets
+  arrive at runtime.
 - **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
   Next's separate module graphs share it; changing `database.url` needs a restart. Every
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`

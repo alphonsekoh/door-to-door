@@ -217,7 +217,8 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
 ### R-28 · Next copies `.env` into `.next/standalone`
 
-- **Finding:** `next build` copies a local `.env` into `.next/standalone`.
+- **Finding:** `next build` copies a local `.env` into `.next/standalone`. Since #106 the
+  build deletes it (R-54).
 - **Source:** Observed in #75
 - **Used by:** D-75-16, D-38-5
 
@@ -458,6 +459,25 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** Next loads `.env` for `dev` and `build`; drizzle-kit loads it for
   `db:generate`, `db:push` and `db:studio`. The `tsx` scripts (`db:migrate`, `db:seed`,
   `db:reset`) do not, and fail with "DATABASE_USER is not set". `start:standalone` reads
-  the copy `build` put in `.next/standalone/` (R-28).
+  the copy `build` put in `.next/standalone/` (R-28). No longer true since #106: the copy is
+  deleted after the build (D-106-2).
 - **Source:** Measured in #38 fix round 3, with a `.env` present and nothing exported
 - **Used by:** D-38-5, D-38-16, D-38-17
+
+### R-54 · Next copies `.env` into the standalone output with no opt-out
+
+- **Finding:** `writeStandaloneDirectory` in `next/dist/build/index.js` copies `.env` and
+  `.env.production` into `.next/standalone/` whenever the build loaded them. No config
+  option disables it; `outputFileTracingExcludes` filters traces only, not this copy.
+- **Source:** `node_modules/next/dist/build/index.js` (Next 16.3.3);
+  `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`
+- **Used by:** D-106-2
+
+### R-55 · `turbopackIgnore` must sit inside `join`, not only on the fs call
+
+- **Finding:** Turbopack resolves `join(process.cwd(), "config.yaml")` (and the `.env`
+  check) to project files and traces them into every server entry, even with
+  `/* turbopackIgnore: true */` on the `readFileSync`/`existsSync` argument. Putting the
+  comment inside the `join` empties those traces.
+- **Source:** Observed in PR #107 (local build with a throwaway `config.yaml` and `.env`)
+- **Used by:** D-106-1
