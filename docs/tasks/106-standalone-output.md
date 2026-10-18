@@ -55,6 +55,7 @@ carried secrets. Docker was unaffected (`.dockerignore`). Found in #38 (D-38-23)
   Library's `setTimeout(0)` could dispatch `online` before React attached the listener.
   Mounting in the first render puts the listener inside the test's `act()`. Loading holds
   no input, so D-77-11's "never navigate under someone mid-form" still holds.
+  **Owner decision:** confirmed as a refinement of D-77-11, not a supersede.
 - **D-106-9 · README notes that the standalone check is a `postbuild` hook, so a bare
   `next build` skips it.** Placed under the scripts table, not in the `build` row.
   _Why:_ a plain line inside a Markdown table breaks the table.
@@ -65,5 +66,4 @@ D-13-4, D-33-22, D-37-1, D-75-14, D-75-16, D-75-19, D-77-11, D-38-5, D-38-23.
 
 ## Open questions
 
-- **D-106-8 widens D-77-11's `online` reload to the loading state.** Recorded as a
-  refinement (no input is held while loading); confirm, or ask for it as a supersede.
+None. The one question was answered by the owner (D-106-8).
