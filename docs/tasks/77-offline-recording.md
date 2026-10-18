@@ -86,6 +86,14 @@ D-32-4, D-32-5, D-32-7, D-32-15, D-32-18 (WebKit skips the offline E2E), D-32-21
 D-33-1, D-33-8, D-33-9, D-33-12, D-33-13, D-33-15, D-33-19, D-33-21, D-33-25, D-33-28,
 D-74-9.
 
+## Inherited by other tasks
+
+- **#34 (offline tests):** the separate `door-to-door-local` store (D-77-2) keeps its
+  "unreadable copy deleted" and "never touches the queue" tests; #34 added that a queue
+  database missing its store, from a newer build, or closed never takes the page down
+  (D-34-7), and the fuzz checks owner scoping across reloads as the owner switches
+  (D-34-9, D-77-10).
+
 ## Known limits
 
 - The install and update prompts still follow the path and the session, not

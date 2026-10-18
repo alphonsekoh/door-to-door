@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_ATTEMPTS, retryDelay } from "@/lib/sync/backoff";
+import { MAX_ATTEMPTS, retryDelay, storageRetryDelay } from "@/lib/sync/backoff";
 
 describe("retryDelay", () => {
   it("doubles from five seconds", () => {
@@ -21,5 +21,13 @@ describe("retryDelay", () => {
   it("gives a failing record at most about twenty minutes before it is quarantined", () => {
     const waits = Array.from({ length: MAX_ATTEMPTS - 1 }, (_, i) => retryDelay(i + 1, () => 1));
     expect(waits.reduce((sum, ms) => sum + ms, 0)).toBe(1_215_000);
+  });
+});
+
+describe("storageRetryDelay", () => {
+  it("doubles from five seconds to a five-minute ceiling, the same every time", () => {
+    expect([1, 2, 3, 7, 30].map(storageRetryDelay)).toEqual([
+      5_000, 10_000, 20_000, 300_000, 300_000,
+    ]);
   });
 });

@@ -174,6 +174,9 @@ describe("createSyncController", () => {
     const h = harness({ queue });
     await expect(h.controller.enqueue(draft())).rejects.toThrow("full");
     expect(h.send).not.toHaveBeenCalled();
+    // Nothing half-saved is left showing as sending or waiting.
+    await h.controller.flush();
+    expect(h.last()).toMatchObject({ records: [], inFlight: new Set(), justSaved: new Set() });
   });
 
   it("purges records sent more than a day ago on start, then sends what is due", async () => {
@@ -289,6 +292,62 @@ describe("createSyncController", () => {
     expect(h.last()?.inFlight.size).toBe(0);
     await h.controller.flush();
     expect(h.send).toHaveBeenCalledTimes(2);
+  });
+
+  describe("after storage fails", () => {
+    it("backs off from five seconds rather than spinning on a closed database", async () => {
+      const queue = createMemoryQueue([stored("ann", START - 1)]);
+      const h = harness({ queue });
+      await h.controller.refresh();
+      // The connection has gone (another tab upgraded): every read now fails.
+      queue.listByOwner = () => Promise.reject(new DOMException("closed", "InvalidStateError"));
+
+      await h.controller.flush();
+      expect(h.timers.map((t) => t.at)).toEqual([START + 5_000]);
+
+      await h.tick(5_000);
+      expect(h.timers.map((t) => t.at)).toEqual([START + 5_000 + 10_000]);
+      expect(h.send).not.toHaveBeenCalled();
+    });
+
+    it("does not re-send a batch in a tight loop when the disk is full", async () => {
+      const queue = createMemoryQueue([stored("ann", START - 1)]);
+      const putMany = queue.putMany;
+      queue.putMany = () => Promise.reject(new DOMException("full", "QuotaExceededError"));
+      const h = harness({ queue });
+
+      await h.controller.start();
+      expect(h.send).toHaveBeenCalledTimes(1);
+      expect(h.timers.map((t) => t.at)).toEqual([START + 5_000]);
+
+      // Disk freed: the timer replays the batch and this time it is written.
+      queue.putMany = putMany;
+      await h.tick(5_000);
+      expect(h.send).toHaveBeenCalledTimes(2);
+      expect(h.last()?.records.map((r) => r.state)).toEqual(["synced"]);
+      expect(h.timers).toEqual([]);
+    });
+
+    it("still runs at once on a trigger, and drops the storage wait once a run works", async () => {
+      let broken = false;
+      const queue = createMemoryQueue([stored("ann", START - 1)]);
+      const listByOwner = queue.listByOwner;
+      queue.listByOwner = (owner) =>
+        broken ? Promise.reject(new Error("closed")) : listByOwner(owner);
+      const h = harness({ queue, send: () => Promise.resolve({ kind: "network" }) });
+      await h.controller.refresh();
+
+      broken = true;
+      await h.controller.flush();
+      await h.controller.flush();
+      expect(h.timers.map((t) => t.at)).toEqual([START + 10_000]);
+
+      broken = false;
+      await h.controller.wake();
+      expect(h.send).toHaveBeenCalledTimes(1);
+      // Only the no-signal backoff (2.5 s at random 0.5) is left.
+      expect(h.timers.map((t) => t.at)).toEqual([START + 2_500]);
+    });
   });
 
   describe("timing", () => {

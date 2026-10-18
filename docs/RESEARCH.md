@@ -412,3 +412,24 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [Chrome for Developers, Take control of your scroll](https://developer.chrome.com/blog/overscroll-behavior);
   device check outstanding (#77)
 - **Used by:** D-77-14
+
+### R-49 · fast-check replays a run exactly from its seed
+
+- **Finding:** given `{ seed, numRuns }`, `fc.assert` generates the same sequence every
+  time and, on failure, prints the seed and the shrunk counterexample's path to replay
+  it. Determinism holds only if the property itself is deterministic, which is why the
+  fuzz mocks uuid and runs its own seeded PRNG and clock.
+- **Source:** [fast-check, Runners and reporters / replay](https://fast-check.dev/docs/tutorials/quick-start/read-test-reports/)
+- **Used by:** D-34-1, D-34-4
+
+### R-50 · fake-indexeddb has no quota or eviction
+
+- **Finding:** fake-indexeddb implements the IndexedDB API in memory with no storage
+  limit, so a `QuotaExceededError` has to be simulated (a rejected `put`); an aborted
+  transaction does roll back, so `putMany`'s atomicity is real. Real limits differ by
+  browser (Safari caps per origin and may evict script-written storage after 7 days of
+  no use); iOS may surface a full disk as `UnknownError` (unverified).
+- **Source:** [fake-indexeddb README](https://github.com/dumbmatter/fakeIndexedDB);
+  [MDN, Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria);
+  iOS error name unverified
+- **Used by:** D-34-7

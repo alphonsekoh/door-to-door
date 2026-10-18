@@ -43,9 +43,58 @@ describe("readRecord", () => {
     expect(isCorrupt(readRecord({ ...good, item: withoutOuting }))).toBe(true);
   });
 
-  it("stops a record whose bookkeeping is damaged", () => {
-    expect(readRecord({ ...good, state: "sending" }).state).toBe("quarantined");
-    expect(readRecord({ ...good, attempts: -1 }).lastError).toEqual({ code: CORRUPT });
+  it("sends again a record whose bookkeeping is damaged but whose knock and owner are intact", () => {
+    const fresh = {
+      ...good,
+      state: "queued",
+      attempts: 0,
+      skewCount: 0,
+      nextAttemptAt: 0,
+      lastError: null,
+      syncedAt: null,
+      serverVisit: null,
+    };
+    expect(readRecord({ ...good, state: "sending", attempts: 4 })).toEqual(fresh);
+    expect(
+      readRecord({ ...good, state: "held", attempts: -1, lastError: { code: "conflict" } }),
+    ).toEqual(fresh);
+    // Claiming to be sent is bookkeeping too: a replay is answered unchanged.
+    expect(readRecord({ ...good, state: "synced", syncedAt: "yesterday" })).toEqual(fresh);
+    expect(isCorrupt(readRecord({ ...good, skewCount: null }))).toBe(false);
+  });
+
+  it("keeps a salvaged record's place in the queue only when its time is readable", () => {
+    expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(NOW);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(0);
+  });
+
+  it("does not salvage a record whose owner is lost, so it is never sent as anyone", () => {
+    const { ownerId: _owner, ...ownerless } = good;
+    expect(readRecord({ ...ownerless, attempts: -1 })).toMatchObject({
+      ownerId: "",
+      state: "quarantined",
+      lastError: { code: CORRUPT },
+    });
+    expect(isCorrupt(readRecord({ ...good, ownerId: 42, attempts: -1 }))).toBe(true);
+  });
+
+  it("does not salvage a record whose knock is damaged along with its bookkeeping", () => {
+    const read = readRecord({ ...good, attempts: -1, item: { ...good.item, unitNumber: 5 } });
+    expect(isCorrupt(read)).toBe(true);
+    expect(read.item.unitNumber).toBe("");
+  });
+
+  it("never sends a record whose id is not its knock's, since its result could not be matched", () => {
+    const other = "0190a000-0000-7000-8000-0000000000dd";
+    const salvageable = readRecord({ ...good, attempts: -1, item: { ...good.item, id: other } });
+    expect(salvageable).toMatchObject({
+      id: good.id,
+      ownerId: "ann",
+      state: "quarantined",
+      lastError: { code: CORRUPT },
+    });
+    expect(salvageable.item.id).toBe(good.id);
+    expect(isCorrupt(readRecord({ ...good, item: { ...good.item, id: other } }))).toBe(true);
   });
 
   it("makes something of a record with almost nothing left", () => {

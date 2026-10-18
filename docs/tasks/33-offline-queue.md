@@ -57,6 +57,9 @@ Owner decisions are marked **(owner)**.
   schema comes back quarantined as `corrupt`: never thrown, never deleted, never sent,
   not retryable. _Why:_ storage outlives the code that wrote it; deleting may drop a
   real knock.
+  **Refined by D-34-8 (owner):** a record whose `item` (with `sessionId`) and `ownerId`
+  still pass is salvaged as a fresh `queued` record and sent; only the rest are
+  `corrupt`.
 - **D-33-9 · Sent records are kept 24 h, purged on app start.** _Why:_ the unit list
   and Add follow-up need the server's row after the send.
 - **D-33-10 · The form saves to the queue first.** It falls back to a direct
@@ -172,15 +175,17 @@ D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
   who tapped "Continue as" are shown, and new visits recorded under them, without server
   confirmation. It reuses the bar (D-33-12) and the unit overlay (D-33-21), and replaces
   the `/offline` reload (D-33-22).
-- **#34 (offline tests):** fuzzing over online/offline sequences, real-database
-  convergence, quota simulation and a corruption-recovery suite were left out. Pin
-  these: nothing unsent deleted (D-33-2), owner scoping (D-33-1), the cap (D-33-26),
-  an outage not charged (D-33-27), no outing means not queued (D-33-25).
+- **#34 (offline tests):** done in PR #101. A seeded fuzz (D-34-1, D-34-9) checks
+  D-33-1, D-33-2, D-33-26 and D-33-27 after every step and ends converged; Postgres
+  convergence, quota and corruption suites were added (D-34-2, D-34-7). D-33-25 stays
+  pinned by the form and `record` tests (D-34-10). It found a 0 ms retry loop after a
+  storage failure, fixed in D-34-6, and salvage refines D-33-8 (D-34-8).
 
 ## Known limits
 
-- A corrupt record (D-33-8) can be neither retried nor discarded, so it counts toward
-  the sign-out warning and the bar's "not sent" until #34's corruption work recovers it.
+- A corrupt record (D-33-8) whose knock or owner is unreadable can be neither retried
+  nor discarded, so it counts toward the sign-out warning and the bar's "not sent" for
+  good. Damaged bookkeeping alone is salvaged (D-34-8).
 - A record whose request fails as a whole every time, even sent alone (a `5xx` or an
   all-`internal_error` reply), is never quarantined; it retries at most every 5 min
   behind the others (D-33-27). Only the server log shows it.
