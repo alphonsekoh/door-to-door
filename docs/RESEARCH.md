@@ -433,3 +433,13 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [MDN, Storage quotas and eviction criteria](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria);
   iOS error name unverified
 - **Used by:** D-34-7
+
+### R-51 · Required status checks are unavailable on a private free-tier repo
+
+- **Finding:** the branch-protection and rulesets APIs return 403 for this private
+  repository on GitHub Free, so no check can be made required to merge; checks still run
+  and report red. Protected branches and rulesets on private repos need Pro, Team or
+  Enterprise.
+- **Source:** observed in PR #103 (`gh api` on branch protection and rulesets);
+  [GitHub Docs, About protected branches](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches)
+- **Used by:** D-36-7
