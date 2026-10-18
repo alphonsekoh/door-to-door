@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postbuild": "tsx scripts/check-standalone.ts",
     "start": "npm run start:standalone",
     "lint": "next typegen && eslint .",
     "lint:fix": "next typegen && eslint . --fix",

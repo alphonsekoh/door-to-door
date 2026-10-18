@@ -275,12 +275,12 @@ Secrets and process plumbing only; every setting is in the file. **Export them**
 shell that runs the command. A `.env` file reaches some commands and not others, so do not
 rely on one:
 
-| Command                                       | Reads `.env`?                                                             |
-| --------------------------------------------- | ------------------------------------------------------------------------- |
-| `npm run dev`, `npm run build`                | Yes: Next loads it. `build` also copies it into `.next/standalone/`       |
-| `npm run start:standalone`                    | Only that copy from the last `build`, so a changed `.env` needs a rebuild |
-| `npm run db:generate`, `db:push`, `db:studio` | Yes: drizzle-kit loads it                                                 |
-| `npm run db:migrate`, `db:seed`, `db:reset`   | **No.** These run under `tsx`; the variables must be exported             |
+| Command                                       | Reads `.env`?                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------ |
+| `npm run dev`, `npm run build`                | Yes: Next loads it. The copy Next puts in `.next/standalone/` is deleted |
+| `npm run start:standalone`                    | **No.** The standalone output holds no `.env` and no `config.yaml`       |
+| `npm run db:generate`, `db:push`, `db:studio` | Yes: drizzle-kit loads it                                                |
+| `npm run db:migrate`, `db:seed`, `db:reset`   | **No.** These run under `tsx`; the variables must be exported            |
 
 Because Next still loads a `.env`, a stale one can look as though it configures the app.
 The server therefore warns once at startup when it finds one (D-75-16): settings belong in
@@ -350,7 +350,7 @@ to `medium` between March and June.
 | Script                     | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
 | `npm run dev`              | Dev server on port 3000 (`npm run dev -- -p 4000` for another)               |
-| `npm run build`            | Production build (standalone output); needs neither config nor database      |
+| `npm run build`            | Standalone build free of `.env`/`config.yaml`; needs no config or database   |
 | `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default  |
 | `npm start`                | Alias for `npm run start:standalone`                                         |
 | `npm run lint`             | `next typegen`, then type-aware ESLint                                       |
@@ -488,20 +488,20 @@ docker run -p 3000:3000 \
 
 ## Troubleshooting
 
-| Symptom                                                         | Cause and fix                                                                                                                     |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                                 |
-| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. `db:migrate`, `db:seed` and `db:reset` never read `.env`.      |
-| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                                |
-| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                                |
-| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                           |
-| `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` (or the copy `build` put in `.next/standalone/`). Move settings to `config.yaml`, export secrets, delete it. |
-| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running.   |
-| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                              |
-| Members see "No outing is running"                              | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                       |
-| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.       |
-| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                              |
-| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                         |
+| Symptom                                                         | Cause and fix                                                                                                                   |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                               |
+| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. `db:migrate`, `db:seed` and `db:reset` never read `.env`.    |
+| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                              |
+| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                              |
+| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                         |
+| `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` from the directory the server runs in. Move settings to `config.yaml`, export secrets, delete it.          |
+| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
+| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
+| Members see "No outing is running"                              | An admin starts one: **Admin**, open the outing, **Start outing**. Only one runs at a time.                                     |
+| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
+| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
+| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
 
 ## Project structure
 

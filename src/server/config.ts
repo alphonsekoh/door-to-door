@@ -18,9 +18,11 @@ import {
  * build` needs neither the file nor a database (D-13-4), so every caller
  * reaches for the config inside a function.
  *
- * The turbopackIgnore comments stop the bundler tracing a dynamic path and
- * pulling the whole project - config.yaml included - into the standalone
- * output, where it would be frozen at build time.
+ * The turbopackIgnore comments stop the bundler tracing these paths into the
+ * standalone output, where the file would be frozen at build time. Turbopack
+ * resolves `join(process.cwd(), "config.yaml")` - cwd defaults to it - to a
+ * project file and copies it, so the comment belongs inside each join, not
+ * only on the fs call. `postbuild` fails the build if one slips through.
  */
 
 export const DEFAULT_CONFIG_FILE = "config.yaml";
@@ -36,7 +38,7 @@ const readUtf8: ReadTextFile = (path) => readFileSync(/* turbopackIgnore: true *
 export function resolveConfigPath(env: EnvSource, cwd: string): string {
   const configured = env["CONFIG_PATH"];
   if (configured === undefined || configured === "") {
-    return join(cwd, DEFAULT_CONFIG_FILE);
+    return join(/* turbopackIgnore: true */ cwd, DEFAULT_CONFIG_FILE);
   }
   /* Not path.resolve(): the bundler reads it as "anything under the working
      directory" and traces the whole tree into the standalone output. */
@@ -100,7 +102,7 @@ export function warnIfDotEnv({
     console.warn(message);
   },
 }: DotEnvCheck = {}): boolean {
-  const found = exists(join(cwd, ".env"));
+  const found = exists(join(/* turbopackIgnore: true */ cwd, ".env"));
   if (found) {
     warn(
       `Found a .env file in ${cwd}. It is not used for app settings: move them to ` +
