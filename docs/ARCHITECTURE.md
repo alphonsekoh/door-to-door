@@ -317,8 +317,9 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   owner, the sync bar and the hidden nav (D-77-10, D-77-12). Sends still go through
   `sendAs`, so the cookie must name the owner.
 - The queue flushes on its own triggers; a reconnect row offers Continue (a full
-  `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs only when there is
-  no copy or before "Continue as".
+  `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs from the first render
+  until "Continue as": while the copy loads, when there is none, and at the gate
+  (D-106-8).
 
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate

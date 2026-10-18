@@ -110,7 +110,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 74  | [Teams and own name](74-teams.md)                       | Done                                                  |
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                                  |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                                  |
-| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100)                                        |
+| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); D-77-11 refined (#106)                |
 | 83  | [Per-request auth](83-per-request-auth.md)              | Done                                                  |
 | 85  | [Account gone message](85-account-gone-message.md)      | Done                                                  |
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                                  |

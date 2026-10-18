@@ -60,7 +60,7 @@ Owner decisions are marked **(owner)**.
   Probes run on mount, `online`, focus, visibility and every 30 s. Continue is a `goTo`
   (D-33-28), confirms first if the form has input, and nothing navigates by itself while
   recording. Refines D-33-22: the `online` reload stays only in the no-copy and gate
-  states; flushing relies on the queue's own triggers (D-33-19). _Why:_ never navigate
+  states (_refined by D-106-8:_ and while the copy loads); flushing relies on the queue's own triggers (D-33-19). _Why:_ never navigate
   under someone mid-form, never offer a full load into a dead zone, and
   `navigator.onLine` lies with one bar.
 - **D-77-12 · Blocks are in-page state; the bottom nav is hidden and `--nav-height` is

@@ -113,7 +113,7 @@ Owner decisions are marked **(owner)**.
   `/offline`), so the member's queue starts with no tap. Not Serwist's
   `reloadOnOnline`, which stays off (D-32-14): this page holds no input. _Why:_ no
   queue runs on the offline page. _Refined by D-77-11:_ only in the shell's no-copy and
-  gate states; never while recording.
+  gate states; never while recording. D-106-8 adds the loading state.
 - **D-33-23 · `beforeunload` warns while the member's records are being sent.** _Why:_
   issue criterion; closing loses nothing, but the member should know it has not gone.
   Refined by D-33-28.

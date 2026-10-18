@@ -22,7 +22,8 @@ carried secrets. Docker was unaffected (`.dockerignore`). Found in #38 (D-38-23)
   standalone root,** rather than failing and asking the developer to remove `.env`.
   _Why:_ Next copies them on every build that loaded them and no option, including
   `outputFileTracingExcludes`, stops it; failing would break every local build that has a
-  `.env`. Pending owner confirmation (Open questions). _Research:_ R-54.
+  `.env`. Pending owner confirmation (Open questions). _Research:_ R-54. _Amended by
+  D-106-7:_ the first build of it pruned every `.env*` at the root.
 - **D-106-3 · `postbuild` (`scripts/check-standalone.ts`, logic in
   `src/server/standalone-output.ts`) fails the build if any `.env*`, `config.yaml` or
   `config.*.yaml` is left anywhere in `.next/standalone/`, skipping `node_modules`.**
@@ -41,14 +42,31 @@ carried secrets. Docker was unaffected (`.dockerignore`). Found in #38 (D-38-23)
 - **D-106-6 · Fix round 1: the `.env`-named-directory test now exercises the `isFile`
   guard in `pruneDotEnv`.** _Why:_ the first version passed without it, so it proved
   nothing.
+- **D-106-7 · Amends D-106-2: `pruneDotEnv` deletes only `.env` and `.env.production`
+  (plain files) at the standalone root; any other `.env*` there, e.g. `.env.local`, is
+  left for D-106-3 to fail.** _Why:_ those two are all Next's standalone writer copies;
+  anything else got there by a trace, and tidying it away would hide the bug the check
+  exists to catch.
+- **D-106-8 · `ReloadWhenOnline` mounts from the shell's first render in every phase but
+  recording, including loading.** Refines D-77-11. _Why:_ it used to mount only once the
+  copy was read, so signal returning mid-read went unheard; the same gap made the
+  `online` tests flaky in CI, since the read resolves outside `act()` and Testing
+  Library's `setTimeout(0)` could dispatch `online` before React attached the listener.
+  Mounting in the first render puts the listener inside the test's `act()`. Loading holds
+  no input, so D-77-11's "never navigate under someone mid-form" still holds.
+- **D-106-9 · README notes that the standalone check is a `postbuild` hook, so a bare
+  `next build` skips it.** Placed under the scripts table, not in the `build` row.
+  _Why:_ a plain line inside a Markdown table breaks the table.
 
 ## Relies on
 
-D-13-4, D-37-1, D-75-14, D-75-16, D-75-19, D-38-5, D-38-23.
+D-13-4, D-33-22, D-37-1, D-75-14, D-75-16, D-75-19, D-77-11, D-38-5, D-38-23.
 
 ## Open questions
 
 - **Delete the copied `.env`, or fail the build and ask for `.env` to be removed?** The
   builder recommends delete (built, D-106-2): Next copies it every time with no setting to
   stop it, so failing would break every local build for anyone who keeps a `.env`. A
-  traced `config.yaml` still fails the build.
+  traced `config.yaml`, or any other `.env*` (D-106-7), still fails the build.
+- **D-106-8 widens D-77-11's `online` reload to the loading state.** Recorded as a
+  refinement (no input is held while loading); confirm, or ask for it as a supersede.
