@@ -3,6 +3,10 @@ import { createDatabase, getDatabase, getPool, resetDatabase } from "@/db/client
 
 const URL = "postgresql://postgres:postgres@localhost:5432/nowhere";
 
+/* drizzle() keeps the pool it runs on as $client; Database leaves it out so a
+   transaction still fits where a client is expected. */
+const clientOf = (db: object): unknown => Reflect.get(db, "$client");
+
 const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }));
 vi.mock("@/server/config", () => ({ getConfig }));
 
@@ -16,11 +20,13 @@ afterEach(async () => {
 });
 
 describe("createDatabase", () => {
-  it("builds a pool and a typed client without connecting", () => {
+  it("builds a pool for the URL, and a client on that pool, without connecting", () => {
     // Creating a Pool opens no socket, which is why this needs no database.
     const { pool, db } = createDatabase(URL);
-    expect(pool).toBeDefined();
-    expect(db).toBeDefined();
+    expect(pool.options.connectionString).toBe(URL);
+    expect(pool.totalCount).toBe(0);
+    expect(pool.listenerCount("error")).toBe(1);
+    expect(clientOf(db)).toBe(pool);
     return pool.end();
   });
 });
@@ -42,12 +48,13 @@ describe("getDatabase", () => {
   });
 
   it("shares the pool with the client", () => {
-    getDatabase();
-    expect(getPool()).toBe(getPool());
+    expect(clientOf(getDatabase())).toBe(getPool());
   });
 
-  it("creates the pool on first access via getPool too", () => {
-    expect(getPool()).toBeDefined();
+  it("creates the pool on first access via getPool too, and the client then uses it", () => {
+    const pool = getPool();
+    expect(pool.options.connectionString).toBe(URL);
+    expect(clientOf(getDatabase())).toBe(pool);
   });
 
   it("connects with the URL composed from config and credentials", () => {

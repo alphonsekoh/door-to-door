@@ -140,7 +140,6 @@ export function FollowUpsScreen() {
                   note={note}
                   now={now}
                   showUnit
-                  controls
                   onChanged={reload}
                   onEdit={setEditing}
                 />

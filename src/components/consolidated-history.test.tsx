@@ -665,4 +665,55 @@ describe("teams", () => {
     });
     expect(replace).not.toHaveBeenCalled();
   });
+
+  it("names the household under its door when a name is known, and the notes under each visit", async () => {
+    const named = entry("h1", { description: "Asked for Mandarin material" });
+    serve([
+      { ...named, household: { ...named.household, name: "Tan" } },
+      entry("h2", { unitNumber: "#05-124" }),
+    ]);
+    render(<ConsolidatedHistory />);
+
+    const known = await card("Blk 123, #05-123");
+    expect(within(known).getByText("Tan")).toBeInTheDocument();
+    expect(within(known).getByText("Asked for Mandarin material")).toBeInTheDocument();
+    expect(within(known).getByRole("link")).toHaveAttribute("href", "/households/h1");
+    // A door nobody has named shows just its unit.
+    expect(within(await card("Blk 123, #05-124")).getByRole("link")).toHaveTextContent(
+      /^Blk 123, #05-124$/,
+    );
+  });
+
+  it("offers a member with no name in the picker by their email", async () => {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/users")) {
+        return Promise.resolve({
+          ...pickers.users,
+          data: pickers.users.data.map((user) => ({ ...user, name: null })),
+        });
+      }
+      if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+      if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+      return Promise.resolve({
+        data: [entry("h1")],
+        pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
+      });
+    });
+    render(<ConsolidatedHistory />);
+
+    expect(await screen.findByRole("option", { name: "alice@t.local" })).toHaveValue("u1");
+  });
+
+  it("reports an export that failed for no stated reason", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText("Blk 123, #05-123");
+
+    apiFetch.mockRejectedValue("boom");
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
+
+    expect(await screen.findByText("Could not export those records.")).toBeInTheDocument();
+    expect(csv).toBe("");
+  });
 });

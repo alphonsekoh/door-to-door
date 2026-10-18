@@ -34,21 +34,18 @@ export function followUpTone(note: FollowUp, now: Date): string {
 
 /*
  * One note: the door (when the list spans doors), the words, when it is due,
- * and who wrote and who closed it. Controls are opt-in, so a read-only list
- * does not need a signed-in session to render.
+ * who wrote and who closed it, and its controls.
  */
 export function FollowUpItem({
   note,
   now,
   showUnit = false,
-  controls = false,
   onChanged,
   onEdit,
 }: {
   note: FollowUp;
   now: Date;
   showUnit?: boolean;
-  controls?: boolean;
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
 }) {
@@ -82,7 +79,7 @@ export function FollowUpItem({
         <p className="text-caption break-words text-foreground-muted">{resolved}</p>
       )}
 
-      {controls ? <FollowUpControls note={note} onChanged={onChanged} onEdit={onEdit} /> : null}
+      <FollowUpControls note={note} onChanged={onChanged} onEdit={onEdit} />
     </div>
   );
 }

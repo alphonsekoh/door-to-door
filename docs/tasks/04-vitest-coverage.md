@@ -14,7 +14,7 @@ Test runner with unit, integration and component projects, and coverage gates pe
   bookkeeping.
 - **D-04-2 · Per-glob thresholds:** 100% for `src/lib`, `src/server`, `src/db`,
   `src/app/api`; 90% for `src/components`, `src/app`. _Why:_ a global number hid an
-  uncovered branch at 96%.
+  uncovered branch at 96%. _Amended by D-36-10:_ `src/*.ts` added at 100%.
 - **D-04-3 · `coverage.include` lists every source file.** _Why:_ otherwise an untested
   file contributes nothing and passes.
 - **D-04-4 · No `passWithNoTests`.** _Why:_ a broken include glob would pass CI silently.

@@ -125,6 +125,9 @@ export function hasHistoryFilter(filters: HistoryFilters): boolean {
 
 export type HouseholdGroup = {
   key: string;
+  /* Every entry for a door carries the same household and block. */
+  household: HistoryEntry["household"];
+  block: HistoryEntry["block"];
   entries: HistoryEntry[];
 };
 
@@ -136,18 +139,23 @@ export type HouseholdGroup = {
  * reads oldest first, which is the direction interest moves in.
  */
 export function groupByHousehold(entries: HistoryEntry[]): HouseholdGroup[] {
-  const groups = new Map<string, HistoryEntry[]>();
+  const groups = new Map<string, HouseholdGroup>();
   for (const entry of entries) {
-    const bucket = groups.get(entry.household.id);
-    if (bucket) {
-      bucket.push(entry);
+    const group = groups.get(entry.household.id);
+    if (group) {
+      group.entries.push(entry);
     } else {
-      groups.set(entry.household.id, [entry]);
+      groups.set(entry.household.id, {
+        key: entry.household.id,
+        household: entry.household,
+        block: entry.block,
+        entries: [entry],
+      });
     }
   }
-  return [...groups.entries()].map(([key, list]) => ({
-    key,
-    entries: [...list].sort(
+  return [...groups.values()].map((group) => ({
+    ...group,
+    entries: [...group.entries].sort(
       (a, b) => new Date(a.visit.createdAt).getTime() - new Date(b.visit.createdAt).getTime(),
     ),
   }));

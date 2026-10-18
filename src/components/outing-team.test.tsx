@@ -496,6 +496,23 @@ describe("offline", () => {
     // The card behind now reads as offline, too.
     expect(within(sheet).getByRole("button", { name: "Create team" })).toBeDisabled();
   });
+
+  it("disables every control when a change finds the sign-in gone", async () => {
+    world.participants = [participant("me", "Ann Tan"), participant("ben", "Ben Lim")];
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Pair up" }));
+    const sheet = screen.getByRole("dialog", { name: "Pair up" });
+    await userEvent.click(within(sheet).getByRole("button", { name: /Ben Lim/ }));
+    writes = () =>
+      Promise.reject(
+        new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } } as never),
+      );
+    await userEvent.click(within(sheet).getByRole("button", { name: "Create team" }));
+
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent(/Sign in again/);
+    // Nothing is retried under a sign-in that has ended.
+    expect(within(sheet).getByRole("button", { name: "Create team" })).toBeDisabled();
+  });
 });
 
 describe("loading", () => {

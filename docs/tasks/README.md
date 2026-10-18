@@ -104,7 +104,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Done; D-33-22 refined (#100), D-33-8 refined (#101)   |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Done (PR #101)                                        |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                                  |
-| 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                                  |
+| 36  | [Coverage gaps](36-coverage-gaps.md)                    | In review (PR #103)                                   |
 | 37  | [E2E smoke](37-e2e.md)                                  | Done; D-37-3 partly superseded (#93)                  |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Open                                                  |
 | 74  | [Teams and own name](74-teams.md)                       | Done                                                  |

@@ -120,20 +120,19 @@ export function RecordVisitForm({
   const matchId = match?.household.id ?? null;
 
   useEffect(() => {
-    let cancelled = false;
     if (matchId === null) {
       /*
        * Deferred rather than set inline: React warns that setting state
        * synchronously inside an effect triggers a cascading render.
        */
       const clear = setTimeout(() => {
-        if (!cancelled) setHistory(null);
+        setHistory(null);
       }, 0);
       return () => {
-        cancelled = true;
         clearTimeout(clear);
       };
     }
+    let cancelled = false;
     void apiFetch<HouseholdHistory>(`/households/${matchId}`)
       .then((data) => {
         if (!cancelled) setHistory(data);

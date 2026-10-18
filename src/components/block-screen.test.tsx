@@ -94,6 +94,8 @@ const teamOf = (id: string, memberIds: string[]) => ({
   ],
 });
 
+type Late = { resolve: (value: unknown) => void; reject: (error: unknown) => void };
+
 async function openUnit(unitNumber: string): Promise<void> {
   const user = userEvent.setup();
   await user.click(await screen.findByRole("tab", { name: "Units (1)" }));
@@ -296,7 +298,22 @@ describe("BlockScreen", () => {
     expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
-  it("does not let a late answer for an earlier viewer take Amend away", async () => {
+  /* A promise settles once, so the late answer and the late failure each
+     need their own first request. */
+  it.each([
+    [
+      "answer",
+      (late: Late) => {
+        late.resolve({ data: [] });
+      },
+    ],
+    [
+      "failure",
+      (late: Late) => {
+        late.reject(new Error("late"));
+      },
+    ],
+  ])("does not let a late %s for an earlier viewer take Amend away", async (_, settle) => {
     const signedIn = (userId: string) => ({
       userId,
       role: "member",
@@ -305,10 +322,7 @@ describe("BlockScreen", () => {
       isLoading: false,
       isSignedIn: true,
     });
-    const late: { resolve: (value: unknown) => void; reject: (error: unknown) => void } = {
-      resolve: () => undefined,
-      reject: () => undefined,
-    };
+    const late: Late = { resolve: () => undefined, reject: () => undefined };
     let first = true;
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith("/sessions/active")) return Promise.resolve(active);
@@ -335,8 +349,7 @@ describe("BlockScreen", () => {
     expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
 
     await act(async () => {
-      late.resolve({ data: [] });
-      late.reject(new Error("late"));
+      settle(late);
       await Promise.resolve();
     });
     expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();

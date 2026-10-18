@@ -92,6 +92,23 @@ describe("SessionDetail", () => {
     expect(await screen.findByText("6 visits recorded across 2 blocks.")).toBeInTheDocument();
   });
 
+  it("counts one visit to one unit on one block in the singular, with no repeat count", async () => {
+    serve("ended", [sessionBlock("b1", "123", { visitCount: 1, householdCount: 1 })]);
+    render(<SessionDetail sessionId="s1" />);
+
+    expect(await screen.findByText("1 visit recorded across 1 block.")).toBeInTheDocument();
+    // Every unit had one knock, so a visit count would only repeat the unit count.
+    expect(screen.getByText("1 unit")).toBeInTheDocument();
+  });
+
+  it("calls a member working a block with no name on record Someone", async () => {
+    const block = sessionBlock("b1", "123");
+    serve("active", [{ ...block, activeMembers: [{ id: "m1", name: null, image: null }] }]);
+    render(<SessionDetail sessionId="s1" />);
+
+    expect(await screen.findByText(/Someone\s+here now/)).toBeInTheDocument();
+  });
+
   it("offers reopen on an ended outing", async () => {
     serve("ended", []);
     render(<SessionDetail sessionId="s1" />);
