@@ -119,3 +119,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 90  | [Modal sheets](90-modal-sheets.md)                      | Done; D-90-5/7/9 amended (#98)                        |
 | 105 | [Create first admin](105-create-admin.md)               | In review (PR #108)                                   |
 | 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                        |
+| 109 | [Private test config](109-private-test-config.md)       | In review (PR #110)                                   |
