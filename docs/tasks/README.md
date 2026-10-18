@@ -101,8 +101,8 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 30  | [Consolidated history](30-consolidated-history.md)      | Done                                                  |
 | 31  | [Member management](31-member-management.md)            | Done                                                  |
 | 32  | [PWA and service worker](32-pwa.md)                     | Done; D-32-6 refined (#99), D-32-17 superseded (#100) |
-| 33  | [Offline queue and sync engine](33-offline-queue.md)    | Done; D-33-22 refined (#100)                          |
-| 34  | [Offline sync tests](34-offline-tests.md)               | Open                                                  |
+| 33  | [Offline queue and sync engine](33-offline-queue.md)    | Done; D-33-22 refined (#100), D-33-8 refined (#101)   |
+| 34  | [Offline sync tests](34-offline-tests.md)               | In review (PR #101)                                   |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                                  |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Open                                                  |
 | 37  | [E2E smoke](37-e2e.md)                                  | Done; D-37-3 partly superseded (#93)                  |

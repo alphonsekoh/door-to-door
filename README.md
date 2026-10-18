@@ -240,6 +240,10 @@ npm run test:coverage      # everything, with thresholds enforced
 offline. Integration tests fail loudly when `TEST_DATABASE_URL` is unset rather than skipping —
 a suite that quietly runs nothing is worse than one that does not run.
 
+The offline sync fuzz (`src/lib/sync/fuzz.test.ts`) runs a fixed seed in CI. To explore
+further or replay a failure, set `FC_SEED` and `FC_RUNS`, e.g.
+`FC_SEED=7 FC_RUNS=2000 npx vitest run src/lib/sync/fuzz.test.ts`.
+
 ### End-to-end
 
 ```bash

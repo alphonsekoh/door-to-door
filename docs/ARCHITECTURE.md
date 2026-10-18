@@ -227,7 +227,9 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
 - `src/lib/sync/`: `enqueue` builds the item, `engine` sends a run, `classify` decides
   each outcome, `backoff` times retries, `controller` owns triggers, the lock and the
   timer. `idb-queue` and `memory-queue` implement `SyncQueue`; `record` validates every
-  read. `signed-in` checks the cookie's member before each batch.
+  read, salvaging a record whose knock and owner are intact (D-34-8). `signed-in`
+  checks the cookie's member before each batch. After a run storage fails, the
+  controller waits 5 s doubling to 5 min before its timer fires again (D-34-6).
 - Triggers: app start, each save, `online`, focus and visibility, the backoff timer,
   Retry. No Background Sync.
 - `SyncProvider` (in `AppShell`) runs one controller for the signed-in member;
