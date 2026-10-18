@@ -124,8 +124,17 @@ describe("createFirstAdmin refusals", () => {
       const deadline = Date.now() + 5_000;
       let waiting = false;
       while (!waiting && Date.now() < deadline) {
+        // Only this database's waiter on this key, so another suite on the shared
+        // server cannot satisfy it. A bigint key is split into classid (high 32
+        // bits) and objid (low 32 bits), with objsubid 1.
         const { rows } = await pool.query<{ count: string }>(
-          "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND NOT granted",
+          `WITH k AS (SELECT hashtext($1)::bigint AS key)
+           SELECT count(*) FROM pg_locks, k
+           WHERE locktype = 'advisory' AND NOT granted AND objsubid = 1
+             AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+             AND classid::bigint = (k.key >> 32) & 4294967295
+             AND objid::bigint = k.key & 4294967295`,
+          [CREATE_ADMIN_LOCK],
         );
         waiting = rows[0]?.count !== "0";
         if (!waiting) await new Promise((resolve) => setTimeout(resolve, 20));

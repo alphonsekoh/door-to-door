@@ -494,10 +494,13 @@ docker run -p 3000:3000 \
   npm run create-admin -- --email lead@example.org --name "Lead Organiser"
   ```
 
-  It prompts twice for the password without echoing it. Without a terminal, export
-  `ADMIN_PASSWORD` or point `ADMIN_PASSWORD_FILE` at a file holding it; there is no
-  `--password` flag, so the password never lands in shell history or `ps`. The email and
-  password follow the rules of **Admin → Team** (a valid address, 8 to 200 characters).
+  It prompts twice for the password without echoing it. Without a terminal, point
+  `ADMIN_PASSWORD_FILE` at a file holding it, or read it into the environment unechoed
+  with `read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD`. Setting `ADMIN_PASSWORD`
+  directly is meant for orchestrators and secret managers, not for typing at a prompt.
+  There is no `--password` flag, so through the prompt or the file the password never
+  lands in shell history or `ps`. The email and password follow the rules of
+  **Admin → Team** (a valid address, 8 to 200 characters).
   The script refuses, changing nothing, if any admin already exists, deactivated ones
   included: later admins are added in the app.
 
