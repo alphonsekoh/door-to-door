@@ -18,10 +18,16 @@ export function isForbiddenFile(name: string): boolean {
   return isDotEnv(name) || (name.startsWith("config.") && name.endsWith(".yaml"));
 }
 
-/* The .env files Next copies land at the output root; nothing else is touched. */
+/*
+ * Only the two files Next's writeStandaloneDirectory copies to the output
+ * root. Any other .env there was traced, and must fail the check rather than
+ * be tidied away.
+ */
+const COPIED_BY_NEXT = new Set([".env", ".env.production"]);
+
 export function pruneDotEnv(dir: string): string[] {
   const removed = readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && isDotEnv(entry.name))
+    .filter((entry) => entry.isFile() && COPIED_BY_NEXT.has(entry.name))
     .map((entry) => entry.name);
   for (const name of removed) {
     rmSync(join(dir, name));

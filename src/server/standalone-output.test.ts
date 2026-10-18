@@ -61,11 +61,20 @@ describe("pruneDotEnv", () => {
     expect(existsSync(join(dir, "server.js"))).toBe(true);
   });
 
-  it("leaves a directory alone even when its name matches the .env pattern", () => {
-    touch(".env.d/keep.txt");
+  it("leaves any other .env at the root for the check to refuse", () => {
+    touch(".env.local");
+    touch(".env.development");
 
     expect(pruneDotEnv(dir)).toEqual([]);
-    expect(existsSync(join(dir, ".env.d/keep.txt"))).toBe(true);
+    expect(existsSync(join(dir, ".env.local"))).toBe(true);
+    expect(existsSync(join(dir, ".env.development"))).toBe(true);
+  });
+
+  it("leaves a directory alone even when it has a copied file's name", () => {
+    touch(".env/keep.txt");
+
+    expect(pruneDotEnv(dir)).toEqual([]);
+    expect(existsSync(join(dir, ".env/keep.txt"))).toBe(true);
   });
 });
 
@@ -105,6 +114,17 @@ describe("checkStandaloneOutput", () => {
     touch(".env");
 
     expect(checkStandaloneOutput(dir)).toEqual({ removed: [".env"], forbidden: [] });
+  });
+
+  it("fails a build with a traced .env.local at the root, though it prunes the copied ones", () => {
+    buildOutput();
+    touch(".env");
+    touch(".env.production");
+    touch(".env.local");
+
+    const { removed, forbidden } = checkStandaloneOutput(dir);
+    expect(removed.sort()).toEqual([".env", ".env.production"]);
+    expect(forbidden).toEqual([".env.local"]);
   });
 
   it("fails loudly when there is no standalone output to check", () => {

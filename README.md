@@ -378,6 +378,9 @@ to `medium` between March and June.
 | `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                         |
 | `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                              |
 
+The `npm run build` check of the standalone output runs as an npm `postbuild` hook, so
+running `next build` directly skips it: always build with `npm run build`.
+
 The `db:*` scripts read `config.yaml` and need `DATABASE_USER` and `DATABASE_PASSWORD`
 exported (the drizzle-kit ones, `db:generate`, `db:push` and `db:studio`, also take them
 from a `.env`). `db:generate` is the partial exception: it never connects, so with no

@@ -143,6 +143,12 @@ describe("OfflineShell, before anyone continues", () => {
     expect(screen.getByText("Looking for what is saved on this phone…")).toBeInTheDocument();
   });
 
+  it("reloads when signal returns while the copy is still being read", () => {
+    mount({ load: () => new Promise(() => undefined) });
+    window.dispatchEvent(new Event("online"));
+    expect(location.reload).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["nothing saved", () => Promise.resolve(null)],
     ["a copy that cannot be read", () => Promise.reject(new Error("IndexedDB broke"))],
