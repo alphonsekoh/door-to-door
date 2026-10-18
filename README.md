@@ -266,18 +266,19 @@ once #7 lands) and `components` (jsdom + Testing Library). Test files are picked
 suffix: `*.test.ts` is a unit test, `*.integration.test.ts` an integration test, and
 `*.test.tsx` a component test.
 
-Coverage is enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`
-and `src/db/**`; **90%** for `src/components/**` and `src/app/**`. Generated output,
+Coverage is enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`,
+`src/db/**` and root-level `src/*.ts`; **90%** for `src/components/**` and `src/app/**`. Generated output,
 migrations and `layout.tsx` are excluded.
 
 ## CI
 
-Every push to `main` and every pull request runs three jobs:
+Every push to `main` and every pull request runs four jobs:
 
 | Job        | Checks                                                                                  |
 | ---------- | --------------------------------------------------------------------------------------- |
 | **Static** | lint · typecheck · format · migrations match the schema                                 |
 | **Tests**  | unit, component and integration tests against a real PostgreSQL, then the coverage gate |
+| **E2E**    | Playwright smoke flows at a phone viewport                                              |
 | **Build**  | production `next build`                                                                 |
 
 The migration drift check regenerates from the schema and fails if anything changed — so a

@@ -12,7 +12,7 @@ rather than covered.
 ## Decisions
 
 - **D-36-1 · Thresholds, include and exclusions stay as D-04-2/D-04-3 set them; nothing
-  was loosened.** The only extra exclusions are `src/db/testing.ts` (test harness, now
+  was loosened** (one glob added later, D-36-10). The only extra exclusions are `src/db/testing.ts` (test harness, now
   commented as such), `global-error.tsx`, `*.d.ts` and `**/*.config.*`. _Why:_ the audit
   found the config already matches the issue's targets.
 - **D-36-2 · `src/` carries no coverage-ignore comments.** Remaining uncovered lines sit
@@ -38,10 +38,30 @@ rather than covered.
 - **D-36-7 · "CI enforces the gate" is met as "the Tests and coverage job runs on every
   PR and goes red", not "blocks the merge".** _Why:_ GitHub refuses required checks on
   this private free-tier repo (R-51); only the owner merges, and not on red. See open
-  questions.
+  D-36-9.
 - **D-36-8 · The D-06-3 concern recorded here earlier does not reproduce.** Without
   `TEST_DATABASE_URL`, `test:coverage` fails in global setup with
   `MissingTestDatabaseUrlError`. _Why:_ verified, so no change.
+
+- **D-36-9 · Owner: the coverage gate stays non-required; the rule is "nothing merges
+  on red".** If the repo moves to GitHub Pro or goes public, add a `main` ruleset
+  requiring all four CI checks (Lint types and format, Tests and coverage, End-to-end
+  smoke, Production build). _Why:_ only the owner, or Claude on the owner's say-so,
+  merges, so the rule holds without the API GitHub refuses here (R-51).
+- **D-36-10 · Owner: root-level `src/*.ts` is gated at 100%.** Amends D-04-2's list
+  (adds a glob, changes no existing threshold). Covers `src/proxy.ts` (auth guard) and
+  `src/instrumentation.ts`; a one-line comment names them, since the glob does not.
+  _Why:_ both sat under no glob, so a drop would have passed. Proved by dropping
+  `instrumentation`'s test: 81.81% lines fails the glob.
+- **D-36-11 · Owner: `RecordVisitForm` discriminated props deferred to a later cleanup.**
+  The offline page keeps passing an uncallable `loadSession` and a no-op `onRecorded`
+  (D-36-2). _Why:_ touches `RecordVisitForm`, `BlockViews`, `BlockScreen`; out of scope
+  for a coverage sweep.
+- **D-36-12 · `install-prompt`'s `onInstalled` guard is kept and now pinned by a test.**
+  The existing test fired `beforeinstallprompt` then `appinstalled`, an order in which
+  the guard's removal is invisible; the new test fires `appinstalled` first, before
+  storage is read, and crashes without the guard. _Why:_ the guard matters, so D-36-3
+  (delete) did not apply; it leaves D-36-2's list of uncovered `install-prompt` guards.
 
 ## Relies on
 
@@ -50,13 +70,4 @@ D-04-2, D-04-3, D-04-4, D-06-3, D-06-4, D-12-5, D-35-7 (the recording form does 
 
 ## Open questions
 
-- **Make the coverage gate a required check?** Branch-protection and rulesets APIs
-  return 403 here (R-51). Builder's recommendation: keep "never merge on red"; on GitHub
-  Pro or a public repo, add a `main` ruleset requiring Tests and coverage, Lint types
-  and format, End-to-end smoke, and Production build.
-- **Threshold for root-level `src` files?** `src/proxy.ts` (auth guard) and
-  `src/instrumentation.ts` are under no glob; 100% today but nothing fails if that
-  drops. Builder recommends a 100% `src/*.ts` glob.
-- **Discriminated props for `RecordVisitForm`?** The offline page passes a
-  `loadSession` it can never call and a no-op `onRecorded`. Builder recommends leaving
-  it for a later cleanup (touches `RecordVisitForm`, `BlockViews`, `BlockScreen`).
+None. All three answered by the owner (D-36-9, D-36-10, D-36-11).

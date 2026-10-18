@@ -53,7 +53,7 @@ workaround or trade-off earns its place; `// increment the counter` does not.
 
 **[CI]** Every feature and every API endpoint ships with Vitest tests. Coverage thresholds
 are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`,
-`src/db/**`; **90%** for `src/components/**` and `src/app/**`.
+`src/db/**`, root-level `src/*.ts`; **90%** for `src/components/**` and `src/app/**`.
 
 **[CI]** Three end-to-end flows run in a real browser at a phone viewport:
 signing in, recording a visit, and an outing's whole lifecycle. They exist for what
