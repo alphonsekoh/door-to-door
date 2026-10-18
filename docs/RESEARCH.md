@@ -219,7 +219,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
 - **Finding:** `next build` copies a local `.env` into `.next/standalone`.
 - **Source:** Observed in #75
-- **Used by:** D-75-16
+- **Used by:** D-75-16, D-38-5
 
 ### R-29 · Unicode categories for non-printing characters
 
@@ -452,3 +452,12 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** observed in PR #104 (`npx redocly --help`, CLI 2.48.0);
   [Redocly CLI, build-docs](https://redocly.com/docs/cli/commands/build-docs)
 - **Used by:** D-38-11
+
+### R-53 · Which commands load `.env`
+
+- **Finding:** Next loads `.env` for `dev` and `build`; drizzle-kit loads it for
+  `db:generate`, `db:push` and `db:studio`. The `tsx` scripts (`db:migrate`, `db:seed`,
+  `db:reset`) do not, and fail with "DATABASE_USER is not set". `start:standalone` reads
+  the copy `build` put in `.next/standalone/` (R-28).
+- **Source:** Measured in #38 fix round 3, with a `.env` present and nothing exported
+- **Used by:** D-38-5, D-38-16, D-38-17

@@ -21,8 +21,12 @@ workflow and offline model documented; ADR-style notes for contested decisions.
   and `AUTH_GOOGLE_SECRET` stay documented as reserved. _Why:_ both exist and are
   validated at startup; leaving them out would mislead. Reword when #14 lands.
 - **D-38-5 · `.env.example` is a placeholder-only checklist of variables to export**, not
-  a file the app loads; tracked through `!.env.example`. Relies on D-75-16 (no `.env` is
-  read) and D-75-2. _Why:_ the issue asks for it and contributors need one list.
+  a file the app relies on; tracked through `!.env.example`. Relies on D-75-2 and D-75-16.
+  _Why:_ the issue asks for it and contributors need one list. _Amended (fix round 3):_
+  this first said D-75-16 means "no `.env` is read". Wrong: Next (`dev`, `build`) and
+  drizzle-kit (`db:generate`, `db:push`, `db:studio`) load it, `start:standalone` reads
+  the copy `build` made, and only the `tsx` scripts (`db:migrate`, `db:seed`, `db:reset`)
+  skip it. D-75-16 only adds a warning. _Research:_ R-28, R-53. Owner confirmed (D-38-22).
 - **D-38-6 · The README env table is derived from the code, not the old docs:** secrets
   from `src/lib/config.ts`, process variables per D-75-7, plus Compose, test, E2E and
   fuzz variables from `docker-compose.yml`, `playwright.config.ts` and the tests, and
@@ -54,32 +58,38 @@ workflow and offline model documented; ADR-style notes for contested decisions.
   env secrets, migrate before start, HTTPS for the worker). _Why:_ no host is chosen.
 - **D-38-14 · Screenshots are seed data only**, phone width (393 px), small PNGs in
   `docs/screenshots/`. _Why:_ never real people; kept light for the repo.
-- **D-38-15 · Left out:** a first-admin bootstrap (README says insert by hand), a
+- **D-38-15 · Left out:** a first-admin bootstrap (README says insert by hand until #105), a
   migration runner in the image, and the `.next/standalone/config.yaml` copy. `docker
 compose up` itself was not run (only `docker compose config`). _Why:_ code changes
-  beyond a docs pass; each is an open question below.
+  beyond a docs pass. Now tracked: first admin #105 (D-38-21), frozen standalone config
+  #106 (D-38-23), image migration a separate code issue if wanted (D-38-20).
+
+- **D-38-16 · The README says to export variables, and tabulates which commands read
+  `.env`,** rather than telling contributors to use one. _Why:_ the `tsx` db scripts never
+  load it, so a `.env` works for `dev` and fails for `db:migrate` (R-53).
+- **D-38-17 · `.env.example` suggests a file outside the repo**, sourced with
+  `set -a; . ~/door-to-door.env; set +a`, not `.env.local`. _Why:_ Next loads `.env.local`
+  too, which would trip the D-75-16 warning and still miss the `tsx` scripts.
+- **D-38-18 · Owner: Google SSO stays "not built yet (#14)";** confirms D-38-4.
+- **D-38-19 · Owner: hosting is not chosen;** deployment notes stay provider-neutral
+  (D-38-13) until it is.
+- **D-38-20 · Owner: production migrations run from a checkout or a `dev`-stage container
+  for now** (D-38-12). Making the image migrate itself would be a separate code issue.
+- **D-38-21 · Owner: first admin on a fresh database is #105** (a `create-admin` script
+  that refuses if an admin exists). The README's insert-by-hand note points at it.
+- **D-38-22 · Owner: keep `.env.example` (D-38-5), `npm start` as an alias (D-38-10) and
+  `spec:preview` via `build-docs` (D-38-11).**
+- **D-38-23 · Owner: the frozen `.next/standalone/config.yaml` is #106.**
+- **D-38-24 · Owner: the `Read(./.env.*)` deny (D-02-4) stays as is for agents;** the
+  owner decides the permission rule. Agents do not change settings.
 
 ## Relies on
 
-D-02-1, D-02-2, D-08-1, D-10-1, D-12-1, D-13-1, D-32-2, D-32-18, D-37-1, D-74-22,
+D-02-1, D-02-2, D-02-4, D-08-1, D-10-1, D-12-1, D-13-1, D-32-2, D-32-18, D-37-1, D-74-22,
 D-75-1, D-75-2, D-75-7, D-75-16, D-75-17.
 
 ## Open questions
 
-Raised by the builder; the docs follow each recommendation until the owner decides.
-
-- **Google SSO wording** (D-38-4): keep "not built yet (#14)", drop it, or say "planned"?
-- **Hosting:** which provider, managed Postgres and HTTPS terminator? Then add a
-  provider-specific deployment section (D-38-13).
-- **Production migrations** (D-38-12): bundle `scripts/migrate.ts` into the runner image
-  and document `docker run ... node migrate.js`, or keep migrating from a checkout?
-- **First admin:** a fresh production database has none. Add a `create-admin` script
-  (argon2id, refuses if an admin exists)?
-- **`.claude/settings.json` denies `Read(./.env.*)`** (D-02-4), which also blocks agents
-  from reading `.env.example` even though D-38-9 lets the docs agent edit it. Allow
-  `Read(./.env.example)` or narrow the deny? Owner-only change.
-- **Confirm** the fixes made without an explicit answer: keeping `.env.example` (D-38-5),
-  `npm start` as an alias (D-38-10), `spec:preview` via `build-docs` (D-38-11).
-- **`.next/standalone/config.yaml`:** a local `npm run build` copies `config.yaml` into the
-  standalone output, and `node .next/standalone/server.js` without `CONFIG_PATH` reads that
-  frozen copy. Docker and `start:standalone` are unaffected. File a follow-up bug?
+- **Hand-deployed standalone folder:** `build` also copies `.env` into
+  `.next/standalone/` (R-28). The Docker build excludes it, but a folder copied to a server
+  by hand would carry secrets. Fold into #106, or a separate issue?

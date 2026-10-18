@@ -483,7 +483,8 @@ docker run -p 3000:3000 \
   restart. A dropped connection fails that request with a `500` and is replaced.
 - **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. Only the seed
   creates an admin, so the first admin of a fresh production database has to be inserted
-  by hand.
+  by hand until a `create-admin` script lands
+  ([#105](https://github.com/alphonsekoh/door-to-door/issues/105)).
 
 ## Troubleshooting
 
