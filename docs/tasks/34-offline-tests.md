@@ -1,6 +1,6 @@
 # #34 · Offline sync test suite
 
-- **Status:** In review (PR #101)
+- **Status:** Done (PR #101)
 - **Phase:** 6 - PWA & Offline
 - **Depends on:** #33, #77
 
@@ -26,7 +26,10 @@ Owner decisions are marked **(owner)**.
   _Why:_ a helper under `src/lib` would carry the 100% threshold and only get random
   coverage.
 - **D-34-4 · The fuzz mocks `@/lib/uuid` with a counter.** _Why:_ uuidv7's random bits
-  break ties in send order, so a failure would not replay exactly.
+  break ties in send order, so a failure would not replay exactly. _Amended in review:_
+  the counter resets to `0x1000` at the start of every run, above the fixed block and
+  session ids; it had carried over between runs, so a replay from seed and path did not
+  reproduce the same ids.
 - **D-34-5 · Integration convergence goes through the real route and `sendBatch`
   (`fetch` stubbed, auth mocked), with a fresh member per test.** _Why:_ exercises
   `withContract` and transport parsing; the route's limiter is module-level and would
@@ -48,12 +51,15 @@ Owner decisions are marked **(owner)**.
   `unchanged` (D-21-1). Anything else stays `corrupt`: never sent, never deleted, still
   counted by D-33-15. Refines D-33-8. _Why:_ a knock and its owner intact is a real
   visit to deliver; owner scoping (D-33-1) holds because `ownerId` must pass, and no
-  outing still means not sent (D-33-25).
+  outing still means not sent (D-33-25). _Amended in review:_ a sendable record, whole
+  or salvaged, also needs `id === item.id`; a mismatch stays `corrupt`. _Why:_ the engine
+  matches results by the record's id and the server answers by the item's, so a mismatch
+  would come back `missing_result` and be quarantined after a send.
 - **D-34-9 · The fuzz pins the queue's invariants after every step.** Nothing unsent
   missing (D-33-2); sent only as its owner (D-33-1, D-77-10); attempts ≤ 10 (D-33-26)
   and never above what the server charged, so whole-request faults charge nothing
   (D-33-27); quarantine only for a poison record, a corrupt row or 10 charged failures;
-  corrupt rows never sent or deleted, salvageable ones end synced; no timer re-arming
+  corrupt rows (including ones whose item id differs) never sent or deleted, salvageable ones end synced; no timer re-arming
   itself with no wait. Healed, every deliverable record is synced and the server holds
   its newest version. _Why:_ the pins #33 handed on, checked over sequences no one wrote
   by hand.
