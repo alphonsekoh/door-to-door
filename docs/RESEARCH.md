@@ -481,3 +481,35 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   comment inside the `join` empties those traces.
 - **Source:** Observed in PR #107 (local build with a throwaway `config.yaml` and `.env`)
 - **Used by:** D-106-1
+
+### R-56 · An advisory lock is the only way to serialise "first admin"
+
+- **Finding:** two concurrent check-then-insert transactions both see no admin under
+  `READ COMMITTED`. `pg_advisory_xact_lock` blocks the second until the first commits or
+  rolls back, and the blocked session is visible in `pg_locks` with `granted = false`,
+  which lets a test force the interleaving. With the lock removed the forced test failed
+  5 of 5 runs.
+- **Source:** measured in PR #108;
+  [PostgreSQL, Advisory Lock Functions](https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS)
+- **Used by:** D-105-5, D-105-9
+
+### R-57 · `readline` in terminal mode echoes through its `output`
+
+- **Finding:** `createInterface({ terminal: true })` writes typed characters to its
+  `output` stream itself, so giving it a sink that discards writes (and printing the
+  question directly) hides the input. Ctrl-C emits `SIGINT` on the interface and end of
+  input emits `close`; both must reject or the promise hangs. Checked through a real pty:
+  nothing echoed, Ctrl-C exited 1 with no row written.
+- **Source:** measured in PR #108;
+  [Node.js, readline](https://nodejs.org/api/readline.html)
+- **Used by:** D-105-7
+
+### R-58 · How `pg_locks` shows a single-bigint advisory lock
+
+- **Finding:** `pg_advisory_xact_lock(bigint)` appears in `pg_locks` with
+  `locktype = 'advisory'`, the high 32 bits in `classid`, the low 32 bits in `objid`, and
+  `objsubid = 1` (the two-`int4` form uses 2). `database` is the lock's database, so
+  matching all of these plus `granted = false` finds only waiters on that one key.
+- **Source:** measured in PR #108;
+  [PostgreSQL, `pg_locks`](https://www.postgresql.org/docs/current/view-pg-locks.html)
+- **Used by:** D-105-9

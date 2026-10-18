@@ -1,6 +1,6 @@
 # #106 · Standalone build copies config.yaml and .env into its output
 
-- **Status:** In review (PR #107)
+- **Status:** Done (PR #107)
 - **Phase:** 7 - Hardening
 - **Depends on:** #75, #38
 

@@ -35,24 +35,24 @@ flowchart LR
 
 ## Layers
 
-| Path                  | Holds                                        | Coverage | Notes                                                              |
-| --------------------- | -------------------------------------------- | -------- | ------------------------------------------------------------------ |
-| `openapi.yaml`        | The API contract                             | —        | Source of truth. Edited first, always.                             |
-| `src/generated/`      | Types and Zod schemas from the contract      | excluded | Never hand-edited; CI regenerates and diffs.                       |
-| `src/app/api/**`      | Route handlers, one file per path            | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.      |
-| `src/server/http/`    | `withContract`, `ApiError`s, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope.     |
-| `src/server/auth/`    | Auth.js config, guards, rate limit           | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                |
-| `src/server/<domain>` | Services, queries, serialisers per domain    | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users. |
-| `src/db/`             | Drizzle schema, client, test env, seed data  | 100%     | Constraints carry the invariants the API cannot race.              |
-| `src/lib/`            | Framework-free helpers                       | 100%     | Where UI logic goes so it can be tested without rendering.         |
-| `src/lib/sync/`       | Offline queue and sync engine                | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.      |
-| `src/lib/offline/`    | Offline shell's local copy and shell state   | 100%     | Reducers, a `door-to-door-local` store, `shellState`.              |
-| `src/components/`     | React components                             | 90%      | Client components; call the API with `fetch`.                      |
-| `src/app/**` (pages)  | Routes                                       | 90%      | Admin pages call `requireAdminPage()` → 404 for members.           |
-| `drizzle/`            | Generated migrations                         | excluded | From `drizzle-kit generate` only.                                  |
-| `scripts/`            | `migrate.ts`, `seed.ts`, `generate-icons.ts` | excluded | Glue over `src/db`; `check-standalone.ts` runs as `postbuild`.     |
-| `src/app/sw.ts`       | Service worker source (Serwist)              | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.   |
-| `e2e/`                | Playwright specs                             | —        | Pixel 5 and iPhone 13 profiles, standalone production build.       |
+| Path                  | Holds                                                           | Coverage | Notes                                                                                 |
+| --------------------- | --------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------- |
+| `openapi.yaml`        | The API contract                                                | —        | Source of truth. Edited first, always.                                                |
+| `src/generated/`      | Types and Zod schemas from the contract                         | excluded | Never hand-edited; CI regenerates and diffs.                                          |
+| `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
+| `src/server/http/`    | `withContract`, `ApiError`s, route registry                     | 100%     | Validates request _and_ response; maps errors to the envelope.                        |
+| `src/server/auth/`    | Auth.js config, guards, rate limit                              | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
+| `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users.                    |
+| `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
+| `src/lib/`            | Framework-free helpers                                          | 100%     | Where UI logic goes so it can be tested without rendering.                            |
+| `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
+| `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
+| `src/components/`     | React components                                                | 90%      | Client components; call the API with `fetch`.                                         |
+| `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()` → 404 for members.                              |
+| `drizzle/`            | Generated migrations                                            | excluded | From `drizzle-kit generate` only.                                                     |
+| `scripts/`            | `migrate.ts`, `seed.ts`, `create-admin.ts`, `generate-icons.ts` | excluded | Glue over `src/db` and `src/server/users`; `check-standalone.ts` runs as `postbuild`. |
+| `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
+| `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
 
 ## Domain model
 
@@ -192,6 +192,8 @@ are never used for authorization, which reads the database per request (also for
 pages, with `admin/layout.tsx` as a structural guard). Credentials use argon2id
 (`@node-rs/argon2`) with a decoy hash for unknown emails and a per-email rate limit
 on failed attempts (a success clears it; a spent budget refuses even the right password).
+The first admin of a fresh database comes from `npm run create-admin`, which refuses once
+any admin exists (D-105-3).
 Google SSO (#14) is not built.
 
 ## Client

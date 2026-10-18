@@ -117,4 +117,5 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 86  | [Rate limit counts failures](86-rate-limit-failures.md) | Done                                                  |
 | 88  | [Flaky load tests](88-flaky-load-tests.md)              | Done                                                  |
 | 90  | [Modal sheets](90-modal-sheets.md)                      | Done; D-90-5/7/9 amended (#98)                        |
-| 106 | [Standalone output](106-standalone-output.md)           | In review (PR #107)                                   |
+| 105 | [Create first admin](105-create-admin.md)               | In review (PR #108)                                   |
+| 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                        |
