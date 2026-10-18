@@ -281,6 +281,7 @@ rely on one:
 | `npm run start:standalone`                    | **No.** The standalone output holds no `.env` and no `config.yaml`       |
 | `npm run db:generate`, `db:push`, `db:studio` | Yes: drizzle-kit loads it                                                |
 | `npm run db:migrate`, `db:seed`, `db:reset`   | **No.** These run under `tsx`; the variables must be exported            |
+| `npm run create-admin`                        | **No.** As above                                                         |
 
 Because Next still loads a `.env`, a stale one can look as though it configures the app.
 The server therefore warns once at startup when it finds one (D-75-16): settings belong in
@@ -371,6 +372,7 @@ to `medium` between March and June.
 | `npm run db:migrate`       | Apply pending migrations                                                     |
 | `npm run db:seed`          | Seed deterministic demo data                                                 |
 | `npm run db:reset`         | Migrate, then seed. Does not delete anything                                 |
+| `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))  |
 | `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)     |
 | `npm run db:studio`        | Open Drizzle Studio                                                          |
 | `npm run spec:lint`        | Lint `openapi.yaml`                                                          |
@@ -484,10 +486,20 @@ docker run -p 3000:3000 \
   `trustHost: false`, set `AUTH_URL`.
 - **Database connections:** one `pg` pool per process; changing `database.url` needs a
   restart. A dropped connection fails that request with a `500` and is replaced.
-- **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. Only the seed
-  creates an admin, so the first admin of a fresh production database has to be inserted
-  by hand until a `create-admin` script lands
-  ([#105](https://github.com/alphonsekoh/door-to-door/issues/105)).
+- **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
+  database has no admin, so after migrating, create the first one from the same place you
+  ran `db:migrate`, with the same `config.yaml` and credentials:
+
+  ```bash
+  npm run create-admin -- --email lead@example.org --name "Lead Organiser"
+  ```
+
+  It prompts twice for the password without echoing it. Without a terminal, export
+  `ADMIN_PASSWORD` or point `ADMIN_PASSWORD_FILE` at a file holding it; there is no
+  `--password` flag, so the password never lands in shell history or `ps`. The email and
+  password follow the rules of **Admin → Team** (a valid address, 8 to 200 characters).
+  The script refuses, changing nothing, if any admin already exists, deactivated ones
+  included: later admins are added in the app.
 
 ## Troubleshooting
 
