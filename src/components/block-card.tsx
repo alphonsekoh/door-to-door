@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LinkPending } from "@/components/link-pending";
 import type { SessionBlock } from "@/generated/types.gen";
 
 /*
@@ -14,7 +15,7 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
     <li>
       <Link
         href={`/blocks/${block.id}`}
-        className="flex min-h-16 items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+        className="relative flex min-h-16 press items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
       >
         <span className="min-w-0">
           <span className="block text-title font-semibold">Blk {block.name}</span>
@@ -37,6 +38,7 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
             </span>
           ) : null}
         </span>
+        <LinkPending />
       </Link>
     </li>
   );

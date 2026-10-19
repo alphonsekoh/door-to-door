@@ -9,7 +9,11 @@ export default async function AdminHistoryPage() {
   await requireAdminPage();
   return (
     <>
-      <PageHeader title="All records" subtitle="Every visit, across every outing." />
+      <PageHeader
+        title="All records"
+        subtitle="Every visit, across every outing."
+        back={{ href: "/admin/sessions", label: "Outings" }}
+      />
       {/* useSearchParams needs a boundary, or the route opts out of static
           rendering at build time. */}
       <Suspense fallback={<p className="text-body text-foreground-muted">Loading…</p>}>

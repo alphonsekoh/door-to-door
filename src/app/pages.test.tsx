@@ -10,6 +10,7 @@ import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
 import AdminTeamPage from "@/app/admin/team/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
+import BlockLoading from "@/app/blocks/[id]/loading";
 import BlockPage from "@/app/blocks/[id]/page";
 import HouseholdPage from "@/app/households/[id]/page";
 import NotFound from "@/app/not-found";
@@ -115,6 +116,15 @@ describe("block screen", () => {
     );
     expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
+  });
+});
+
+describe("block screen while it loads", () => {
+  it("answers the tap at once, with a way back", () => {
+    render(<BlockLoading />);
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
+    expect(screen.getByText("Loading the block…")).toBeInTheDocument();
   });
 });
 

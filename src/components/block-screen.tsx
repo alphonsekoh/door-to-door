@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
 import { useLocalCopyWriter } from "@/components/local-copy-writer";
+import { PageHeader } from "@/components/page-header";
 import { useSyncQueue } from "@/components/sync-provider";
 import type {
   ActiveSession,
@@ -116,8 +117,18 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     };
   }, [sessionId, userId]);
 
+  /* Named for the block, so a member moving between blocks can see where
+     the next Save lands. Generic only until the outing has answered. */
+  const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
+
   return (
     <div className="space-y-5">
+      <PageHeader
+        title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
+        subtitle={here === undefined ? "One unit at a time." : here.street}
+        back={{ href: "/", label: "Session" }}
+      />
+
       {error === null ? null : (
         <p
           role="alert"

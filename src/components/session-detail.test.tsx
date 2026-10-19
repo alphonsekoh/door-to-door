@@ -53,9 +53,16 @@ function sessionBlock(
 }
 
 /* Routed by path: the screen loads the outing and its blocks in parallel. */
+/* The block registry is listed as soon as the attach sheet opens. */
+const EMPTY_REGISTRY = { data: [], pagination: { limit: 50, offset: 0, total: 0, hasMore: false } };
+
 function serve(status: SessionStatus, blocks: SessionBlock[]) {
   apiFetch.mockImplementation((path: string) =>
-    path.endsWith("/blocks") ? Promise.resolve(blocks) : Promise.resolve(session(status)),
+    path.endsWith("/blocks")
+      ? Promise.resolve(blocks)
+      : path.startsWith("/blocks")
+        ? Promise.resolve(EMPTY_REGISTRY)
+        : Promise.resolve(session(status)),
   );
 }
 
@@ -316,7 +323,9 @@ describe("SessionDetail", () => {
 
     await user.click(screen.getByRole("button", { name: "Add blocks" }));
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("shows the team panel for the outing's state", async () => {

@@ -116,6 +116,41 @@ beforeEach(() => {
 });
 
 describe("BlockScreen", () => {
+  it("is named for its block once the outing says which one it is, with a way back", async () => {
+    serve(list([]), {
+      ...active,
+      blocks: [
+        {
+          block: {
+            id: "b1",
+            name: "123",
+            street: "Ang Mo Kio Ave 3",
+            postalCode: null,
+            createdAt: "",
+          },
+          visitCount: 0,
+          householdCount: 0,
+          activeMembers: [],
+        },
+      ],
+    });
+    render(<BlockScreen blockId="b1" />);
+    // Generic only until the outing answers.
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    expect(screen.getByText("Ang Mo Kio Ave 3")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
+  });
+
+  it("stays generic for a block the outing does not have", async () => {
+    serve(list([]));
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+  });
+
   it("loads the units already recorded on this block", async () => {
     serve(list(["#05-123", "#05-124"]));
     render(<BlockScreen blockId="b1" />);

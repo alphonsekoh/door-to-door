@@ -18,3 +18,16 @@ describe("PageHeader", () => {
     expect(container.querySelector("p")).toBeNull();
   });
 });
+
+describe("PageHeader back link", () => {
+  it("offers a way back to the screen it came from", () => {
+    render(<PageHeader title="Blk 123" back={{ href: "/", label: "Outing" }} />);
+    const link = screen.getByRole("link", { name: "Back to Outing" });
+    expect(link).toHaveAttribute("href", "/");
+  });
+
+  it("has none on a top-level screen", () => {
+    render(<PageHeader title="History" />);
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+});

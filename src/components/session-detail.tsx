@@ -5,14 +5,18 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminTeams } from "@/components/admin-teams";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { PageHeader } from "@/components/page-header";
 import { SessionActionButton } from "@/components/session-action-button";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/sessions";
+import { SheetPresence } from "@/components/sheet";
 
 /* While an outing runs the numbers move, so they refresh on their own. Long
    enough not to drain the phone an admin is watching it on. */
 const POLL_INTERVAL_MS = 30_000;
+
+const BACK = { href: "/admin/sessions", label: "Outings" };
 
 type State =
   | { status: "loading" }
@@ -91,21 +95,29 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   }
 
   if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
+    return (
+      <>
+        <PageHeader title="Outing" back={BACK} />
+        <p className="text-body text-foreground-muted">Loading…</p>
+      </>
+    );
   }
 
   if (state.status === "error") {
     return (
-      <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
-        <p className="text-body">{state.message}</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
-        >
-          Try again
-        </button>
-      </div>
+      <>
+        <PageHeader title="Outing" back={BACK} />
+        <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
+          <p className="text-body">{state.message}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
+          >
+            Try again
+          </button>
+        </div>
+      </>
     );
   }
 
@@ -114,10 +126,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-heading font-semibold">{session.title}</p>
-        <p className="text-body text-foreground-muted">{statusLabel(session.status)}</p>
-      </div>
+      {/* The outing's own name is the heading, not the word "Outing". */}
+      <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
 
       {session.status === "ended" ? (
         <div className="rounded-xl border border-border bg-surface-muted p-4">
@@ -134,7 +144,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       {session.status === "active" ? (
         <Link
           href="/admin/records"
-          className="block min-h-12 rounded-xl border border-border px-4 py-3 text-body font-medium"
+          className="block min-h-12 btn-secondary rounded-xl px-4 py-3 text-body font-medium"
         >
           See every record on this outing
         </Link>
@@ -158,7 +168,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
               setNotice(null);
               setAttaching(true);
             }}
-            className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+            className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
           >
             Add blocks
           </button>
@@ -206,7 +216,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                     onClick={() => {
                       setDetaching(entry);
                     }}
-                    className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+                    className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
                   >
                     Remove
                   </button>
@@ -219,32 +229,36 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />
 
-      {attaching ? (
-        <BlockAttachSheet
-          attachedIds={blocks.map((entry) => entry.block.id)}
-          onAttach={attach}
-          onClose={() => {
-            setAttaching(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {attaching ? (
+          <BlockAttachSheet
+            attachedIds={blocks.map((entry) => entry.block.id)}
+            onAttach={attach}
+            onClose={() => {
+              setAttaching(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
 
-      {detaching === null ? null : (
-        <ConfirmDialog
-          title={`Remove Blk ${detaching.block.name}?`}
-          detail={
-            detaching.visitCount > 0
-              ? `${String(detaching.visitCount)} visits were recorded here. They are kept, but members will not be able to record here again until it is re-attached.`
-              : "Members will no longer see it in the block picker."
-          }
-          confirmLabel="Remove the block"
-          busy={busy}
-          onConfirm={() => void detach(detaching)}
-          onCancel={() => {
-            setDetaching(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {detaching === null ? null : (
+          <ConfirmDialog
+            title={`Remove Blk ${detaching.block.name}?`}
+            detail={
+              detaching.visitCount > 0
+                ? `${String(detaching.visitCount)} visits were recorded here. They are kept, but members will not be able to record here again until it is re-attached.`
+                : "Members will no longer see it in the block picker."
+            }
+            confirmLabel="Remove the block"
+            busy={busy}
+            onConfirm={() => void detach(detaching)}
+            onCancel={() => {
+              setDetaching(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

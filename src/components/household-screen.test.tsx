@@ -80,8 +80,17 @@ describe("HouseholdScreen", () => {
     apiFetch.mockResolvedValue(history);
     render(<HouseholdScreen householdId="h1" />);
 
-    expect(await screen.findByText("#05-123")).toBeInTheDocument();
+    // The unit is the page's heading, so the outline has somewhere to land.
+    expect(await screen.findByRole("heading", { level: 1, name: "#05-123" })).toBeInTheDocument();
     expect(screen.getByText("Blk 123, Test Ave")).toBeInTheDocument();
+  });
+
+  it("offers a way back in every state, so a failed load is no trap", async () => {
+    apiFetch.mockRejectedValue(new Error("Could not load this unit."));
+    render(<HouseholdScreen householdId="h1" />);
+    expect(screen.getByRole("link", { name: "Back" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/follow-ups");
   });
 
   it("shows what every member learned, not only the caller's own visit", async () => {
@@ -176,7 +185,9 @@ describe("HouseholdScreen", () => {
     render(<HouseholdScreen householdId="h1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Add follow-up" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("offers a follow-up on each visit row", async () => {

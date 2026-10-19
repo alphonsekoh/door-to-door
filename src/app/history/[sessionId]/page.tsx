@@ -11,6 +11,7 @@ export default async function SessionHistoryPage({ params }: PageProps<"/history
       <PageHeader
         title="Outing records"
         subtitle="What you, or your team, recorded on this outing."
+        back={{ href: "/history", label: "History" }}
       />
       {/* useSearchParams (the Me / My team choice) needs a boundary. */}
       <Suspense fallback={<p className="text-body text-foreground-muted">Loading…</p>}>
