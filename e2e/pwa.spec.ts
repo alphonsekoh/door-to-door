@@ -247,7 +247,7 @@ test.describe("the worker in charge", () => {
     await expect(page.getByText("Sent", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Record a visit" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /^Blk / })).toBeVisible();
     await page.getByRole("tab", { name: /Units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
   });

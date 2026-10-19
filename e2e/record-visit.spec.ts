@@ -1,4 +1,4 @@
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { adminRequest, endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
 
 /*
@@ -52,7 +52,18 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
   await memberPage.goto("/");
 
   await memberPage.getByRole("link", { name: /Blk 123/ }).click();
-  await expect(memberPage.getByRole("heading", { level: 1, name: "Record a visit" })).toBeVisible();
+  /* Named for the block, so the member can see where the next Save lands. */
+  await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+
+  /* With the details open the Save bar is pinned, and docks on the nav edge
+     to edge: a strip between them once showed the form scrolling through. */
+  await memberPage.getByRole("button", { name: "Add details" }).click();
+  const bar = memberPage.locator('[data-dock="nav"]');
+  await expect(bar).toHaveAttribute("data-docked", "");
+  const nav = memberPage.getByRole("navigation", { name: "Primary" });
+  const [barBox, navBox] = await Promise.all([bar.boundingBox(), nav.boundingBox()]);
+  expect(Math.abs((barBox?.y ?? 0) + (barBox?.height ?? 0) - (navBox?.y ?? 0))).toBeLessThan(1);
+  await memberPage.getByRole("button", { name: "Hide details" }).click();
 
   await memberPage.getByLabel("Unit number").fill(UNIT);
   await memberPage.getByRole("radio", { name: "High" }).click();
@@ -122,9 +133,11 @@ test("the amend sheet works from the keyboard alone", async ({ memberPage }) => 
 
   const sheet = memberPage.getByRole("dialog", { name: `Amend ${UNIT}` });
   await expect(sheet).toBeFocused();
-  /* The page behind cannot be reached, by Tab or by a screen reader. */
+  /* The page behind cannot be reached, by Tab or by a screen reader: the
+     sheet is on the body, so the app around the nav is what goes inert. */
   const nav = memberPage.getByRole("navigation", { name: "Primary" });
-  await expect(nav).toHaveAttribute("inert", "");
+  const inertAround = () => nav.evaluate((element) => element.closest("[inert]") !== null);
+  await expect.poll(inertAround).toBe(true);
 
   await memberPage.keyboard.press("Shift+Tab");
   await expect(sheet.getByRole("button", { name: "Save changes" })).toBeFocused();
@@ -136,7 +149,7 @@ test("the amend sheet works from the keyboard alone", async ({ memberPage }) => 
   await memberPage.keyboard.press("Escape");
   await expect(sheet).toBeHidden();
   await expect(row).toBeFocused();
-  await expect(nav).not.toHaveAttribute("inert");
+  await expect.poll(inertAround).toBe(false);
 });
 
 test("a follow-up added after saving is waiting the next time the unit is typed", async ({
@@ -167,6 +180,154 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   const owed = memberPage.getByRole("list", { name: "Outstanding follow-ups" });
   await expect(owed).toContainText("Bring the festival flyer on Sunday.");
   await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
+});
+
+/*
+ * What jsdom cannot see of #111: a press shows before release, sheets travel
+ * (and only fade when motion is reduced), the display settings for contrast
+ * and transparency are honoured, and the recording screen reflows at large
+ * text sizes instead of overlapping.
+ */
+test.describe("the phone's display settings", () => {
+  async function openBlock(page: Page): Promise<void> {
+    await page.goto("/");
+    await page.getByRole("link", { name: /Blk 123/ }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+  }
+
+  /* Every computed transform of the open sheet's panel, frame by frame,
+     from just before it is opened. */
+  async function sampleSheet(page: Page, open: () => Promise<void>): Promise<string[]> {
+    await page.evaluate(() => {
+      const seen: string[] = [];
+      Reflect.set(window, "__sheetFrames", seen);
+      const frame = () => {
+        const panel = document.querySelector('[data-state="open"] [role="dialog"]');
+        if (panel !== null) seen.push(getComputedStyle(panel).transform);
+        if (seen.length < 30) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+    });
+    await open();
+    await expect
+      .poll(() => page.evaluate(() => (Reflect.get(window, "__sheetFrames") as string[]).length))
+      .toBeGreaterThanOrEqual(30);
+    return page.evaluate(() => Reflect.get(window, "__sheetFrames") as string[]);
+  }
+
+  test("a press shows the moment a finger lands, before anything is sent", async ({
+    memberPage,
+  }) => {
+    await openBlock(memberPage);
+    const save = memberPage.getByRole("button", { name: "Save and next" });
+    const box = await save.boundingBox();
+    await memberPage.mouse.move((box?.x ?? 0) + 20, (box?.y ?? 0) + 10);
+    await memberPage.mouse.down();
+    await expect
+      .poll(() => save.evaluate((element) => getComputedStyle(element).transform))
+      .not.toBe("none");
+    await memberPage.mouse.up();
+  });
+
+  test("a sheet rises into place, and only fades when motion is reduced", async ({
+    memberPage,
+  }) => {
+    await openBlock(memberPage);
+    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(UNIT);
+    const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
+
+    const moving = await sampleSheet(memberPage, () => row.click());
+    expect(moving.some((transform) => transform !== "none")).toBe(true);
+    await memberPage.keyboard.press("Escape");
+    // Gone from the page, not only from the accessibility tree.
+    await expect(memberPage.locator('[data-state="closed"]')).toHaveCount(0);
+
+    await memberPage.emulateMedia({ reducedMotion: "reduce" });
+    const still = await sampleSheet(memberPage, () => row.click());
+    expect(still.every((transform) => transform === "none")).toBe(true);
+  });
+
+  test("more contrast gives fields a firmer edge and the nav a solid face", async ({
+    memberPage,
+  }) => {
+    await openBlock(memberPage);
+    const field = memberPage.getByLabel("Unit number");
+    const nav = memberPage.getByRole("navigation", { name: "Primary" });
+    const edge = () => field.evaluate((element) => getComputedStyle(element).borderTopColor);
+    const before = await edge();
+    await memberPage.emulateMedia({ contrast: "more" });
+    await expect.poll(edge).not.toBe(before);
+    await expect
+      .poll(() => nav.evaluate((element) => getComputedStyle(element).backdropFilter))
+      .toBe("none");
+  });
+
+  test("less transparency makes the glass solid", async ({ memberPage, browserName }) => {
+    test.skip(browserName !== "chromium", "only Chromium can emulate reduced transparency");
+    await openBlock(memberPage);
+    const nav = memberPage.getByRole("navigation", { name: "Primary" });
+    await expect
+      .poll(() => nav.evaluate((element) => getComputedStyle(element).backdropFilter))
+      .not.toBe("none");
+
+    const cdp = await memberPage.context().newCDPSession(memberPage);
+    await cdp.send("Emulation.setEmulatedMedia", {
+      features: [{ name: "prefers-reduced-transparency", value: "reduce" }],
+    });
+    await expect
+      .poll(() => nav.evaluate((element) => getComputedStyle(element).backdropFilter))
+      .toBe("none");
+  });
+
+  test("at twice the text size the recording screen reflows rather than overlaps", async ({
+    memberPage,
+  }) => {
+    await openBlock(memberPage);
+    await memberPage.evaluate(() => {
+      document.documentElement.style.fontSize = "200%";
+    });
+
+    // Interest levels wrap onto rows; no label spills out of its button.
+    const levels = memberPage.getByRole("radio");
+    const boxes = await levels.evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const box = button.getBoundingClientRect();
+        return {
+          top: box.top,
+          bottom: box.bottom,
+          left: box.left,
+          right: box.right,
+          fits: button.scrollWidth <= button.clientWidth,
+        };
+      }),
+    );
+    expect(boxes.every((box) => box.fits)).toBe(true);
+    for (const [i, a] of boxes.entries()) {
+      for (const b of boxes.slice(i + 1)) {
+        const apart =
+          a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+        expect(apart, "two interest buttons overlap").toBe(true);
+      }
+    }
+
+    // Nav labels never wrap; where there is no room they are left to screen readers.
+    const nav = memberPage.getByRole("navigation", { name: "Primary" });
+    const wrapped = await nav.locator("li a span").evaluateAll((labels) =>
+      labels.some((label) => {
+        const box = label.getBoundingClientRect();
+        const line = Number.parseFloat(getComputedStyle(label).lineHeight);
+        return box.height > line * 1.5;
+      }),
+    );
+    expect(wrapped).toBe(false);
+    await expect(nav.getByRole("link", { name: "Follow-ups" })).toBeAttached();
+
+    const overflow = await memberPage.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
 });
 
 test.describe("a save that cannot be queued", () => {
@@ -284,7 +445,7 @@ test.describe("without signal", () => {
 
     /* The sheet's Retry all must sit above the bottom nav. */
     await bar.click();
-    const sheet = memberPage.getByRole("dialog", { name: "Records not sent" });
+    const sheet = memberPage.getByRole("dialog", { name: "Waiting to send" });
     const retryAll = sheet.getByRole("button", { name: "Retry all" });
     await expectTappable(retryAll);
 

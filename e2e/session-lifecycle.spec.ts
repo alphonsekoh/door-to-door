@@ -34,7 +34,9 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   await expect(row).toContainText("Draft");
 
   await row.getByRole("link", { name: new RegExp(TITLE) }).click();
-  await expect(adminPage.getByRole("heading", { level: 1, name: "Outing" })).toBeVisible();
+  // The outing's own name heads its page, with a way back to the list.
+  await expect(adminPage.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
+  await expect(adminPage.getByRole("link", { name: "Back to Outings" })).toBeVisible();
   await expect(adminPage.getByText(/Members cannot record anywhere/)).toBeVisible();
 
   // Attach a block, then start.
@@ -42,7 +44,8 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   const sheet = adminPage.getByRole("dialog", { name: "Add blocks" });
   await sheet.getByRole("button", { name: /Blk 123/ }).click();
   await sheet.getByRole("button", { name: "Attach 1 block" }).click();
-  await expect(adminPage.getByText("Blk 123")).toBeVisible();
+  /* On the outing, not in the sheet that may still be sliding away. */
+  await expect(adminPage.getByRole("main").getByText("Blk 123")).toBeVisible();
 
   await adminPage.getByRole("button", { name: "Start outing" }).click();
   await expect(adminPage.getByText("Running now")).toBeVisible();
@@ -53,12 +56,18 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   await second.getByRole("button", { name: /Blk 125/ }).click();
   await second.getByRole("button", { name: "Attach 1 block" }).click();
   await expect(adminPage.getByText(/Members will see it the next time they refresh/)).toBeVisible();
-  await expect(adminPage.getByText("Blk 125")).toBeVisible();
+  await expect(adminPage.getByRole("main").getByText("Blk 125")).toBeVisible();
 
   // Ending asks first, and says what it costs.
   await adminPage.getByRole("button", { name: "End outing" }).click();
   const confirm = adminPage.getByRole("alertdialog", { name: "End outing" });
   await expect(confirm).toContainText("reopened");
+  /* The scrim reaches the bottom edge: it once stopped 20px short, leaving
+     the nav undimmed under a destructive question. */
+  const scrimBottom = await confirm.evaluate(
+    (panel) => panel.closest(".fixed")?.getBoundingClientRect().bottom,
+  );
+  expect(scrimBottom).toBe(await adminPage.evaluate(() => window.innerHeight));
   await confirm.getByRole("button", { name: "End outing" }).click();
 
   await expect(adminPage.getByText("Ended", { exact: true })).toBeVisible();

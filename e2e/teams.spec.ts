@@ -73,7 +73,10 @@ test("two members join, pair up, and one leaves", async ({ memberPage, partnerPa
   await create.click();
 
   await expect(memberPage.getByText("Alice & Ben", { exact: true })).toBeVisible();
-  await expect(memberPage.getByText("Ben Lim", { exact: true })).toBeVisible();
+  /* In the team itself: the sheet that chose him may still be sliding away. */
+  await expect(
+    memberPage.getByLabel("Your team").getByText("Ben Lim", { exact: true }),
+  ).toBeVisible();
   await noSideScroll(memberPage);
 
   // Ben sees it once his screen re-reads.
