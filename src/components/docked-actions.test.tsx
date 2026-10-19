@@ -1,18 +1,32 @@
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DockedActions } from "@/components/docked-actions";
+import { DockHost, DockedActions } from "@/components/docked-actions";
+import userEvent from "@testing-library/user-event";
 
 type Callback = (entries: Partial<IntersectionObserverEntry>[]) => void;
 
 /* jsdom has no IntersectionObserver; this one is driven by hand. */
 function stubObserver() {
-  const seen: { callback: Callback; margin: string | undefined; disconnect: () => void }[] = [];
+  const seen: {
+    callback: Callback;
+    margin: string | undefined;
+    disconnect: () => void;
+    observed: Element[];
+  }[] = [];
   class Stub {
     disconnect = vi.fn();
+    observed: Element[] = [];
     constructor(callback: Callback, options?: IntersectionObserverInit) {
-      seen.push({ callback, margin: options?.rootMargin, disconnect: this.disconnect });
+      seen.push({
+        callback,
+        margin: options?.rootMargin,
+        disconnect: this.disconnect,
+        observed: this.observed,
+      });
     }
-    observe = vi.fn();
+    observe = (target: Element) => {
+      this.observed.push(target);
+    };
   }
   vi.stubGlobal("IntersectionObserver", Stub);
   return seen;
@@ -93,5 +107,45 @@ describe("DockedActions", () => {
     );
     expect(bar()).toHaveClass("sticky");
     expect(bar()).not.toHaveClass("material-chrome");
+  });
+
+  it("in a host, sits at the end of the whole screen, out of its form, and still submits it", async () => {
+    const seen = stubObserver();
+    const submitted = vi.fn((event: Event) => {
+      event.preventDefault();
+    });
+    render(
+      <DockHost className="space-y-5">
+        <h1>Blk 123</h1>
+        <form
+          id="visit"
+          aria-label="Visit"
+          onSubmit={(event) => {
+            submitted(event.nativeEvent);
+          }}
+        >
+          <input aria-label="Unit" />
+          <DockedActions>
+            <button type="submit" form="visit">
+              Save
+            </button>
+          </DockedActions>
+        </form>
+      </DockHost>,
+    );
+    const form = screen.getByRole("form", { name: "Visit" });
+    const docked = bar();
+    if (docked === null) throw new Error("no bar");
+    // Its sticky parent is the host, which starts at the top of the screen.
+    expect(form).not.toContainElement(docked);
+    expect(docked.parentElement).toContainElement(screen.getByRole("heading", { name: "Blk 123" }));
+    // Only the marker follows it.
+    expect(docked.nextElementSibling).toHaveAttribute("aria-hidden", "true");
+    expect(docked.nextElementSibling?.nextElementSibling).toBeNull();
+    // The marker it watches is the one beside it now.
+    expect(seen.at(-1)?.observed).toEqual([docked.nextElementSibling]);
+
+    await userEvent.setup().click(screen.getByRole("button", { name: "Save" }));
+    expect(submitted).toHaveBeenCalledOnce();
   });
 });

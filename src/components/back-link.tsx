@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { canRetrace } from "@/lib/screen-trail";
 
 export type Back = {
   href: string;
   label: string;
   /* For a screen reached from several places: go back the way the member
-     came, and use `href` only when there is nowhere to go back to (a cold
-     launch onto this address). */
+     came, and use `href` when what is behind is not one of the app's own
+     screens (a cold launch, a new tab, the sign-in form). */
   retrace?: boolean;
 };
 
@@ -17,7 +18,7 @@ export function BackLink({ href, label, retrace = false }: Back) {
       href={href}
       aria-label={retrace ? label : `Back to ${label}`}
       onClick={(event) => {
-        if (retrace && window.history.length > 1) {
+        if (retrace && canRetrace()) {
           event.preventDefault();
           window.history.back();
         }

@@ -54,8 +54,8 @@ const OVERLAY = {
   dialog: "fixed inset-0 z-60 flex flex-col justify-end",
 } as const;
 
-/* `origin` is where the sheet was when grabbed: px, or mid-entrance the
-   percentage it rose from, read against the panel once it moves. */
+/* `origin` is where the sheet was when the drag began: px, or mid-entrance
+   the percentage it was rising from, read against the panel as it moves. */
 type Gesture = {
   id: number;
   from: number;
@@ -103,14 +103,14 @@ export function Sheet({
   const y = useMotionValue<number | string>(0);
   const gesture = useRef<Gesture | null>(null);
 
-  /* Grabbing a sheet that is still settling takes it from where it is. */
+  /* Nothing stops until the touch is known to be a drag: a tap that stopped
+     the rise or a settle would leave the sheet resting partway. */
   function grab(event: ReactPointerEvent<HTMLElement>): void {
     if (!draggable || !event.isPrimary) return;
-    y.stop();
     gesture.current = {
       id: event.pointerId,
       from: event.clientY,
-      origin: y.get(),
+      origin: 0,
       dragging: false,
       samples: [],
     };
@@ -122,7 +122,10 @@ export function Sheet({
     const moved = event.clientY - current.from;
     if (!current.dragging) {
       if (Math.abs(moved) < DRAG_THRESHOLD) return;
-      // Start from here rather than jump by the threshold.
+      // A sheet still settling is taken from where it is, and starts from
+      // here rather than jumping by the threshold.
+      y.stop();
+      current.origin = y.get();
       current.dragging = true;
       current.from += Math.sign(moved) * DRAG_THRESHOLD;
       event.currentTarget.setPointerCapture(event.pointerId);

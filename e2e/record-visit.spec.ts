@@ -323,6 +323,26 @@ test.describe("the phone's display settings", () => {
     expect(wrapped).toBe(false);
     await expect(nav.getByRole("link", { name: "Follow-ups" })).toBeAttached();
 
+    /* From the top of the screen, before any scroll, Save clears the nav.
+       Held inside the form, which starts low at this size, it could not
+       rise that far and sat half under the nav. */
+    await memberPage.evaluate(() => {
+      window.scrollTo(0, 0);
+    });
+    const save = memberPage.getByRole("button", { name: "Save and next" });
+    await expect
+      .poll(async () => {
+        const [saveBox, navBox] = await Promise.all([save.boundingBox(), nav.boundingBox()]);
+        return (saveBox?.y ?? Infinity) + (saveBox?.height ?? 0) - (navBox?.y ?? 0);
+      })
+      .toBeLessThanOrEqual(1);
+    const covered = await save.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return top === null || !element.contains(top);
+    });
+    expect(covered, "the nav covers Save").toBe(false);
+
     const overflow = await memberPage.evaluate(
       () => document.documentElement.scrollWidth - window.innerWidth,
     );

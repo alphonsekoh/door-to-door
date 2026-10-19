@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
+import { DockHost } from "@/components/docked-actions";
 import { useLocalCopyWriter } from "@/components/local-copy-writer";
 import { PageHeader } from "@/components/page-header";
 import { useSyncQueue } from "@/components/sync-provider";
@@ -122,7 +123,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
   const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
 
   return (
-    <div className="space-y-5">
+    <DockHost className="space-y-5">
       <PageHeader
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
         subtitle={here === undefined ? "One unit at a time." : here.street}
@@ -147,6 +148,6 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         onRecorded={() => void load()}
         teamIds={teamIds}
       />
-    </div>
+    </DockHost>
   );
 }

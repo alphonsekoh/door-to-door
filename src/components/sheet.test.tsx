@@ -58,6 +58,42 @@ function drag(panel: HTMLElement, handle: HTMLElement, points: number[], step = 
   fireEvent.pointerUp(panel, { pointerId: 1, clientY: points.at(-1) });
 }
 
+/* The real spring, so there is an entrance to interrupt. */
+function realSpring() {
+  MotionGlobalConfig.skipAnimations = false;
+  onTestFinished(() => {
+    MotionGlobalConfig.skipAnimations = true;
+  });
+}
+
+function rendered() {
+  render(
+    <Sheet label="Edit" title="Edit" onClose={vi.fn()}>
+      <p>Body</p>
+    </Sheet>,
+  );
+  const panel = screen.getByRole("dialog", { name: "Edit" });
+  const handle = screen.getByText("Edit", { selector: "p" }).closest(".touch-none");
+  if (!(handle instanceof HTMLElement)) throw new Error("no drag handle");
+  return { panel, handle };
+}
+
+/* Partway up: drawn, but not yet at rest. */
+async function rising(panel: HTMLElement) {
+  await waitFor(() => {
+    const percent = Number(/translateY\(([\d.]+)%\)/.exec(panel.style.transform)?.[1]);
+    expect(percent).toBeGreaterThan(5);
+    expect(percent).toBeLessThan(95);
+  });
+}
+
+/* The panel's offset in px while it is dragged. */
+function offset(panel: HTMLElement): number {
+  const match = /translateY\((-?[\d.]+)px\)/.exec(panel.style.transform);
+  if (match === null) throw new Error(`not dragged: ${panel.style.transform}`);
+  return Number(match[1]);
+}
+
 describe("Sheet", () => {
   it("renders on the body, out of any parent that could offset a fixed overlay", () => {
     render(
@@ -138,6 +174,38 @@ describe("Sheet", () => {
     await settled(panel);
     await userEvent.setup().click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("finishes rising when its header is tapped mid-entrance", async () => {
+    realSpring();
+    const { panel, handle } = rendered();
+    await rising(panel);
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 100 });
+    // Not left resting partway, with Save below the screen.
+    await waitFor(
+      () => {
+        expect(panel.style.transform).toBe("none");
+      },
+      { timeout: 3000 },
+    );
+  });
+
+  it("follows the finger, not the entrance, when grabbed mid-entrance", async () => {
+    realSpring();
+    const { panel, handle } = rendered();
+    await rising(panel);
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 120 });
+    // Motion draws the drag on the next frame.
+    const held = await waitFor(() => offset(panel));
+    // Long enough for a running spring to have moved it a long way.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(offset(panel)).toBe(held);
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 150 });
+    await waitFor(() => {
+      expect(offset(panel)).toBe(held + 30);
+    });
   });
 
   it("ignores a second finger, and moves from another pointer", async () => {

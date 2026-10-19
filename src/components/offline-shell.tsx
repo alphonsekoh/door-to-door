@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { DockHost } from "@/components/docked-actions";
 import { ReloadWhenOnline } from "@/components/reload-when-online";
 import { useSyncQueue } from "@/components/sync-provider";
 import { goTo } from "@/lib/navigate";
@@ -160,7 +161,7 @@ export function OfflineShell({
   };
 
   return (
-    <div className="space-y-5">
+    <DockHost className="space-y-5">
       {/* Held one line high in every state, so nothing moves when it changes. */}
       <div
         aria-live="polite"
@@ -259,7 +260,7 @@ export function OfflineShell({
           />
         )}
       </SheetPresence>
-    </div>
+    </DockHost>
   );
 }
 

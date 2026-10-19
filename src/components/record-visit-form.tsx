@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { DockedActions } from "@/components/docked-actions";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
@@ -108,6 +108,7 @@ export function RecordVisitForm({
   onDirtyChange,
 }: Props) {
   const sync = useSyncQueue();
+  const formId = useId();
   const [unitNumber, setUnitNumber] = useState("");
   /* The next unit filled in after a save is the app's guess, not input. */
   const [suggested, setSuggested] = useState("");
@@ -299,6 +300,7 @@ export function RecordVisitForm({
 
   return (
     <form
+      id={formId}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
@@ -503,8 +505,10 @@ export function RecordVisitForm({
             {failure ?? blocked}
           </p>
         )}
+        {/* Named, since a DockHost moves the bar out of the form. */}
         <button
           type="submit"
+          form={formId}
           disabled={saving}
           className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
         >
