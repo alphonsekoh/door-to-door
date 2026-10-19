@@ -90,10 +90,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
           </p>
         ) : null}
         {failed ? (
-          <p
-            role="alert"
-            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
+          <p role="alert" className="notice-danger">
             Could not sign out. Try again.
           </p>
         ) : null}
@@ -104,7 +101,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
           onClick={() => {
             void leave();
           }}
-          className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
+          className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
         >
           {busy ? "Signing out…" : copy.action}
         </button>

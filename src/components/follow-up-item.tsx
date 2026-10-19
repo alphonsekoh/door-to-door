@@ -9,27 +9,25 @@ import {
   addedByline,
   describeFollowUpFailure,
   doneByline,
-  formatDay,
   isOverdue,
   mayEditFollowUp,
   unitLabel,
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
+import { formatDay } from "@/lib/dates";
 
 /* Words as well as colour: colour alone is lost in sunlight and to some eyes. */
 export function OverdueBadge() {
   return (
-    <span className="shrink-0 rounded-full border border-interest-low bg-interest-low/15 px-2 py-0.5 text-caption font-semibold">
+    <span className="shrink-0 rounded-full border border-danger bg-danger/15 px-2 py-0.5 text-caption font-semibold">
       Overdue
     </span>
   );
 }
 
 export function followUpTone(note: FollowUp, now: Date): string {
-  return isOverdue(note, now)
-    ? "border-interest-low/60 bg-interest-low/10"
-    : "border-border bg-surface";
+  return isOverdue(note, now) ? "border-danger/60 bg-danger/10" : "border-border bg-surface";
 }
 
 /*
@@ -59,7 +57,7 @@ export function FollowUpItem({
           {showUnit ? (
             <Link
               href={`/households/${note.householdId}`}
-              className="inline-flex min-h-11 items-center text-body font-semibold text-primary tabular-nums"
+              className="inline-flex min-h-11 items-center text-body font-semibold btn-text tabular-nums"
             >
               {unitLabel(note)}
             </Link>
@@ -126,10 +124,7 @@ function FollowUpControls({
   return (
     <div className="mt-2">
       {failure === null ? null : (
-        <p
-          role="alert"
-          className="mb-2 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="mb-2 notice-danger">
           {failure}
         </p>
       )}
@@ -138,7 +133,7 @@ function FollowUpControls({
           type="button"
           disabled={busy || !online}
           onClick={() => void toggle()}
-          className="min-h-11 rounded-lg border border-border bg-background px-4 text-body font-medium disabled:opacity-60"
+          className="min-h-11 btn-secondary rounded-lg bg-background px-4 text-body font-medium"
         >
           {busy ? "Saving…" : label}
         </button>
@@ -149,7 +144,7 @@ function FollowUpControls({
             onClick={() => {
               onEdit(note);
             }}
-            className="min-h-11 rounded-lg px-4 text-body font-medium text-primary disabled:opacity-60"
+            className="min-h-11 rounded-lg px-4 text-body font-medium btn-text"
           >
             Edit
           </button>

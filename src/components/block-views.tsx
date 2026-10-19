@@ -57,8 +57,10 @@ export function BlockViews({
           onClick={() => {
             setTab("record");
           }}
-          className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-            tab === "record" ? "border-primary bg-primary text-primary-foreground" : "border-border"
+          className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+            tab === "record"
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border-strong"
           }`}
         >
           Record
@@ -72,8 +74,10 @@ export function BlockViews({
           onClick={() => {
             setTab("units");
           }}
-          className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-            tab === "units" ? "border-primary bg-primary text-primary-foreground" : "border-border"
+          className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+            tab === "units"
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border-strong"
           }`}
         >
           Units ({rows.length})

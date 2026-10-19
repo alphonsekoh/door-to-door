@@ -69,7 +69,7 @@ export function TeamRecords() {
         <button
           type="button"
           onClick={() => void load(0)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -100,7 +100,7 @@ export function TeamRecords() {
               setLoadingMore(false);
             });
           }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
+          className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
           {loadingMore ? "Loading…" : "Show earlier records"}
         </button>

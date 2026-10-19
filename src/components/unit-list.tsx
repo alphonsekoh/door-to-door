@@ -8,6 +8,7 @@ import type { HouseholdSummary } from "@/generated/types.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
 import type { UnitRow as Row } from "@/lib/sync/unit-overlay";
 import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
+import { SheetPresence } from "@/components/sheet";
 
 type Props = {
   /* The server's units with this phone's unsent records laid over them. */
@@ -68,7 +69,7 @@ function ServerRow({
           <VisitByline visit={latestVisit} prefix="By " withTeam={false} />
         )}
         {outstandingFollowUps !== undefined && outstandingFollowUps > 0 ? (
-          <span className="block text-caption font-medium text-interest-medium">
+          <span className="block text-caption font-medium text-interest-medium-text">
             {outstandingFollowUps === 1
               ? "1 follow-up outstanding"
               : `${String(outstandingFollowUps)} follow-ups outstanding`}
@@ -85,7 +86,7 @@ function ServerRow({
     <li className={line}>{content}</li>
   ) : (
     <li>
-      <button type="button" onClick={onSelect} className={line}>
+      <button type="button" onClick={onSelect} className={`press-row ${line}`}>
         {content}
       </button>
     </li>
@@ -152,7 +153,7 @@ export function UnitList({
             setQuery(event.target.value);
           }}
           placeholder="Unit, name or contact"
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
       </div>
 
@@ -195,19 +196,21 @@ export function UnitList({
         ))
       )}
 
-      {selected === null ? null : (
-        <AmendVisitSheet
-          entry={selected}
-          teamIds={teamIds}
-          onClose={() => {
-            setSelected(null);
-          }}
-          onSaved={() => {
-            setSelected(null);
-            onAmended();
-          }}
-        />
-      )}
+      <SheetPresence>
+        {selected === null ? null : (
+          <AmendVisitSheet
+            entry={selected}
+            teamIds={teamIds}
+            onClose={() => {
+              setSelected(null);
+            }}
+            onSaved={() => {
+              setSelected(null);
+              onAmended();
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

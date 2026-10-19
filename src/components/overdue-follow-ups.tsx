@@ -50,7 +50,7 @@ export function OverdueFollowUps() {
   return (
     <section
       aria-label="Overdue follow-ups"
-      className="rounded-xl border border-interest-low/60 bg-interest-low/10 p-4"
+      className="rounded-xl border border-danger/60 bg-danger/10 p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-body font-semibold">
@@ -72,7 +72,7 @@ export function OverdueFollowUps() {
       </ul>
       <Link
         href="/follow-ups"
-        className="mt-2 inline-flex min-h-11 items-center text-body font-medium text-primary"
+        className="mt-2 inline-flex min-h-11 items-center text-body font-medium btn-text"
       >
         See all
       </Link>

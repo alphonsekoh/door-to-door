@@ -61,7 +61,7 @@ export function AttentionList() {
         <button
           type="button"
           onClick={() => void load(wide)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -79,7 +79,7 @@ export function AttentionList() {
         onClick={() => {
           setWide((open) => !open);
         }}
-        className="min-h-11 w-full rounded-lg border border-border text-body font-medium"
+        className="min-h-11 w-full btn-secondary rounded-lg text-body font-medium"
       >
         {wide ? "High interest only" : "Include medium interest"}
       </button>

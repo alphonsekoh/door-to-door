@@ -145,7 +145,7 @@ export function InstallPrompt() {
             onClick={() => {
               void install();
             }}
-            className="min-h-11 rounded-lg bg-primary px-4 text-body font-semibold text-primary-foreground"
+            className="min-h-11 btn-primary rounded-lg px-4 text-body font-semibold"
           >
             Install
           </button>

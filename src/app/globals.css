@@ -6,11 +6,18 @@
   --app-bg: oklch(0.99 0.002 250);
   --app-surface: oklch(1 0 0);
   --app-surface-muted: oklch(0.97 0.004 250);
+  /* Dividers only. A control's edge uses border-strong, which clears the 3:1
+     WCAG 1.4.11 asks of a boundary someone has to find in daylight. */
   --app-border: oklch(0.92 0.005 250);
+  --app-border-strong: oklch(0.64 0.01 250);
   --app-fg: oklch(0.21 0.01 250);
   --app-fg-muted: oklch(0.52 0.015 250);
   --app-primary: oklch(0.55 0.16 255);
   --app-primary-fg: oklch(0.99 0 0);
+  /* Errors and actions that take something away. Never an interest colour:
+     an error beside the Low button must not read as "Low". */
+  --app-danger: oklch(0.53 0.2 27);
+  --app-danger-fg: oklch(0.99 0 0);
 
   /* Interest levels double as status colours across the app. Hue carries the meaning,
      lightness keeps them distinguishable in greyscale. */
@@ -18,10 +25,21 @@
   --app-interest-medium: oklch(0.72 0.15 75);
   --app-interest-low: oklch(0.65 0.13 40);
   --app-interest-none: oklch(0.62 0.01 250);
+  /* Amber is too light to read as small text on white; this one is 4.5:1. */
+  --app-interest-medium-text: oklch(0.5 0.11 75);
 
   /* The bottom nav's height. The offline shell, which has no nav, sets it to
      0 on <html>, so the Save bar sits on the bottom edge there. */
   --nav-height: 4rem;
+
+  /* Chrome material: tint, the lit top edge and the grain over the blur. */
+  --material-tint: var(--app-surface);
+  --material-edge: oklch(1 0 0 / 0.7);
+  --material-grain-opacity: 0.12;
+
+  /* Press feedback lands at once; only the release eases back. */
+  --press-release: 160ms;
+  --ease-out-soft: cubic-bezier(0.25, 1, 0.5, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,15 +48,39 @@
     --app-surface: oklch(0.21 0.01 250);
     --app-surface-muted: oklch(0.25 0.012 250);
     --app-border: oklch(0.31 0.012 250);
+    --app-border-strong: oklch(0.53 0.012 250);
     --app-fg: oklch(0.96 0.003 250);
     --app-fg-muted: oklch(0.7 0.015 250);
     --app-primary: oklch(0.7 0.14 255);
     --app-primary-fg: oklch(0.17 0.008 250);
+    --app-danger: oklch(0.72 0.17 27);
+    --app-danger-fg: oklch(0.17 0.008 250);
 
     --app-interest-high: oklch(0.72 0.15 145);
     --app-interest-medium: oklch(0.8 0.14 75);
     --app-interest-low: oklch(0.72 0.14 40);
     --app-interest-none: oklch(0.6 0.01 250);
+    --app-interest-medium-text: oklch(0.8 0.14 75);
+
+    --material-edge: oklch(1 0 0 / 0.1);
+    --material-grain-opacity: 0.08;
+  }
+}
+
+/* Increased contrast: stronger edges and secondary text, in both schemes. */
+@media (prefers-contrast: more) {
+  :root {
+    --app-border: oklch(0.6 0.01 250);
+    --app-border-strong: oklch(0.38 0.01 250);
+    --app-fg-muted: oklch(0.36 0.01 250);
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --app-border: oklch(0.62 0.012 250);
+    --app-border-strong: oklch(0.82 0.01 250);
+    --app-fg-muted: oklch(0.88 0.01 250);
   }
 }
 
@@ -47,27 +89,37 @@
   --color-surface: var(--app-surface);
   --color-surface-muted: var(--app-surface-muted);
   --color-border: var(--app-border);
+  --color-border-strong: var(--app-border-strong);
   --color-foreground: var(--app-fg);
   --color-foreground-muted: var(--app-fg-muted);
   --color-primary: var(--app-primary);
   --color-primary-foreground: var(--app-primary-fg);
+  --color-danger: var(--app-danger);
+  --color-danger-foreground: var(--app-danger-fg);
 
   --color-interest-high: var(--app-interest-high);
   --color-interest-medium: var(--app-interest-medium);
   --color-interest-low: var(--app-interest-low);
   --color-interest-none: var(--app-interest-none);
+  --color-interest-medium-text: var(--app-interest-medium-text);
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  /* The platform's own face: SF on Apple devices, Roboto on Android. It ships
+     optical sizes and tracking tables, and costs no download in a dead spot. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Mobile-first type scale. Body sits at 16px so iOS does not zoom on input focus. */
+  /* Mobile-first type scale. Body sits at 16px so iOS does not zoom on input focus.
+     Tracking is per size: tighter as type grows, a touch open on captions. */
   --text-caption: 0.75rem;
   --text-caption--line-height: 1rem;
+  --text-caption--letter-spacing: 0.01em;
   --text-body: 1rem;
   --text-body--line-height: 1.5rem;
   --text-title: 1.125rem;
   --text-title--line-height: 1.625rem;
+  --text-title--letter-spacing: -0.01em;
   --text-heading: 1.375rem;
   --text-heading--line-height: 1.875rem;
+  --text-heading--letter-spacing: -0.02em;
 }
 
 /* The nav is fixed, so content needs clearance for it plus the home indicator. */
@@ -88,6 +140,196 @@
 
 @utility inset-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+ * Chrome (the bottom nav, the Save bar docked on it): frosted glass with a
+ * fine grain, so it reads as a material rather than a smear of whatever
+ * scrolls underneath. The grain is a grey SVG noise tile above the tint and
+ * below the content; the tint stays opaque enough to read the labels even
+ * where a browser draws no blur. A lit top edge replaces the grey divider.
+ *
+ * Never one on another: the Save bar docks against the nav, it does not
+ * overlap it. Solid whenever someone asked for less transparency or more
+ * contrast.
+ */
+@utility material-chrome {
+  isolation: isolate;
+  background-color: color-mix(in oklab, var(--material-tint) 82%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: inset 0 1px 0 var(--material-edge);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
+    opacity: var(--material-grain-opacity);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background-color: var(--material-tint);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    &::before {
+      display: none;
+    }
+  }
+
+  @media (prefers-contrast: more) {
+    background-color: var(--material-tint);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: inset 0 1px 0 var(--app-fg);
+    &::before {
+      display: none;
+    }
+  }
+}
+
+/* Press feedback. The base layer dims anything tappable; these replace that
+   for filled and outlined controls (a slight press-in) and for list rows (a
+   tint, since a whole row shrinking reads as the list moving). */
+@utility press {
+  &:active:not(:disabled) {
+    opacity: 1;
+    transform: scale(0.97);
+    filter: brightness(0.92);
+    transition-duration: 0s;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active:not(:disabled) {
+      transform: none;
+    }
+  }
+}
+
+@utility press-row {
+  &:active:not(:disabled) {
+    opacity: 1;
+    background-color: var(--app-surface-muted);
+    transition-duration: 0s;
+  }
+}
+
+@utility btn-primary {
+  background-color: var(--app-primary);
+  color: var(--app-primary-fg);
+  @apply press disabled:opacity-60;
+}
+
+@utility btn-danger {
+  background-color: var(--app-danger);
+  color: var(--app-danger-fg);
+  @apply press disabled:opacity-60;
+}
+
+/* Outlined: the edge a thumb aims for, at control contrast. */
+@utility btn-secondary {
+  border: 1px solid var(--app-border-strong);
+  @apply press disabled:opacity-60;
+}
+
+@utility btn-danger-outline {
+  border: 1px solid var(--app-danger);
+  color: var(--app-danger);
+  @apply press disabled:opacity-60;
+}
+
+/* A text-only action. Under increased contrast it gains an underline, its
+   only shape. */
+@utility btn-text {
+  color: var(--app-primary);
+  @apply disabled:opacity-60;
+  @media (prefers-contrast: more) {
+    text-decoration-line: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+/* Text inputs, selects and text areas share one edge and one error state. */
+@utility field {
+  @apply w-full rounded-lg border border-border-strong bg-surface px-3 text-body;
+  &[aria-invalid="true"] {
+    border-color: var(--app-danger);
+  }
+}
+
+@utility field-error {
+  @apply text-caption font-medium text-danger;
+}
+
+@utility notice-danger {
+  @apply rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-body;
+}
+
+@utility notice-success {
+  @apply rounded-lg border border-interest-high/40 bg-interest-high/10 px-3 py-2 text-body;
+}
+
+/*
+ * A scroll-edge effect in place of a hard rule under sticky chrome: a short
+ * fade that appears only once the page has scrolled, which is when content is
+ * actually beneath it. Where scroll-driven animations are unsupported there
+ * is simply no edge.
+ */
+@utility scroll-edge {
+  &::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    top: 100%;
+    height: 0.5rem;
+    pointer-events: none;
+    background: linear-gradient(to bottom, var(--app-surface-muted), transparent);
+    opacity: 0;
+  }
+  @supports (animation-timeline: scroll()) {
+    &::after {
+      animation: scroll-edge-in linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0 2rem;
+      /* Scroll-linked, not timed: the reduced-motion rule must not cut it. */
+      animation-duration: auto !important;
+    }
+  }
+}
+
+@keyframes scroll-edge-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@layer base {
+  /* No double-tap-to-zoom wait on controls; pinch zoom stays (WCAG 1.4.4). */
+  a[href],
+  button,
+  input,
+  select,
+  textarea,
+  label,
+  summary,
+  [role="button"],
+  [role="radio"] {
+    touch-action: manipulation;
+  }
+
+  :where(a[href], button, summary, [role="button"]) {
+    transition-property: opacity, transform, filter;
+    transition-duration: var(--press-release);
+    transition-timing-function: var(--ease-out-soft);
+  }
+
+  /* Feedback on touch-down, before the network has said anything. */
+  :where(a[href], button:not(:disabled), summary, [role="button"]):active {
+    opacity: 0.6;
+    transition-duration: 0s;
+  }
 }
 
 html {

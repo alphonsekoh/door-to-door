@@ -71,7 +71,7 @@ export function UpdatePrompt({ hasUnsynced, reload = reloadPage }: Props) {
           onClick={() => {
             void onReload(waiting);
           }}
-          className="min-h-11 rounded-lg bg-primary px-4 text-body font-semibold text-primary-foreground"
+          className="min-h-11 btn-primary rounded-lg px-4 text-body font-semibold"
         >
           Reload
         </button>

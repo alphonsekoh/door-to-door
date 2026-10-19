@@ -45,7 +45,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
         onClick={() => {
           setOpen(true);
         }}
-        className="min-h-12 w-full rounded-xl border border-border text-body font-medium"
+        className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
       >
         New outing
       </button>
@@ -62,10 +62,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       className="rounded-xl border border-border bg-surface p-4"
     >
       {failure === null ? null : (
-        <p
-          role="alert"
-          className="mb-3 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="mb-3 notice-danger">
           {failure}
         </p>
       )}
@@ -80,14 +77,14 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
           setTitle(event.target.value);
         }}
         placeholder="Saturday morning, Blk 123"
-        className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+        className="min-h-12 field"
       />
 
       <div className="mt-3 flex gap-2">
         <button
           type="submit"
           disabled={saving}
-          className="min-h-12 flex-1 rounded-xl bg-primary text-body font-semibold text-primary-foreground disabled:opacity-60"
+          className="min-h-12 flex-1 btn-primary rounded-xl text-body font-semibold"
         >
           {saving ? "Creating…" : "Create draft"}
         </button>
@@ -97,7 +94,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
             setOpen(false);
             setFailure(null);
           }}
-          className="min-h-12 rounded-xl border border-border px-4 text-body font-medium"
+          className="min-h-12 btn-secondary rounded-xl px-4 text-body font-medium"
         >
           Cancel
         </button>

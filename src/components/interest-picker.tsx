@@ -10,6 +10,9 @@ import type { InterestLevel } from "@/generated/types.gen";
  *
  * "No response" sits first and spans the row because most knocks go
  * unanswered: that is the two-tap path - pick the unit, tap this, done.
+ *
+ * The other three share a row while they fit and wrap at large text sizes.
+ * The selection fills at once: a fade would leave the thumb unsure it took.
  */
 
 const OPTIONS: { value: InterestLevel; label: string; className: string }[] = [
@@ -31,7 +34,7 @@ export function InterestPicker({ value, onChange, describedBy }: Props) {
       role="radiogroup"
       aria-label="Interest level"
       aria-describedby={describedBy}
-      className="grid grid-cols-3 gap-2"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-2"
     >
       {OPTIONS.map((option) => {
         const selected = value === option.value;
@@ -44,8 +47,8 @@ export function InterestPicker({ value, onChange, describedBy }: Props) {
             onClick={() => {
               onChange(option.value);
             }}
-            className={`min-h-14 rounded-xl border-2 px-2 text-body font-medium transition-colors ${
-              option.value === "no_response" ? "col-span-3" : ""
+            className={`min-h-14 press rounded-xl border-2 px-2 text-body font-medium break-words ${
+              option.value === "no_response" ? "col-span-full" : ""
             } ${option.className} ${
               selected ? "bg-primary text-primary-foreground" : "bg-surface"
             }`}

@@ -133,7 +133,7 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
             onChange={(event) => {
               setBlockId(event.target.value);
             }}
-            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 field"
           >
             <option value="">All blocks</option>
             {blocks.map((block) => (
@@ -154,7 +154,7 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
             onChange={(event) => {
               setInterestLevel(event.target.value as InterestLevel | "");
             }}
-            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 field"
           >
             <option value="">Any interest</option>
             {LEVELS.map((level) => (

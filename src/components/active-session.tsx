@@ -77,7 +77,7 @@ export function ActiveSessionScreen() {
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -100,13 +100,15 @@ export function ActiveSessionScreen() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-body font-medium">{session.title}</p>
+      {/* Wraps at large text sizes, so the title is not squeezed into a
+          one-word column beside Refresh. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="min-w-0 text-body font-medium break-words">{session.title}</p>
         <button
           type="button"
           onClick={() => void load(true)}
           disabled={refreshing}
-          className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-caption font-medium disabled:opacity-60"
+          className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-caption font-medium"
         >
           {refreshing ? "Refreshing…" : "Refresh"}
         </button>

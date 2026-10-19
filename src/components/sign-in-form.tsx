@@ -84,10 +84,7 @@ export function SignInForm() {
         </p>
       ) : null}
       {failure ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {failure}
         </p>
       ) : null}
@@ -108,10 +105,10 @@ export function SignInForm() {
           }}
           aria-invalid={errors.email !== undefined}
           aria-describedby={errors.email === undefined ? undefined : "email-error"}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
         {errors.email === undefined ? null : (
-          <p id="email-error" className="mt-1 text-caption text-interest-low">
+          <p id="email-error" className="mt-1 field-error">
             {errors.email}
           </p>
         )}
@@ -132,10 +129,10 @@ export function SignInForm() {
           }}
           aria-invalid={errors.password !== undefined}
           aria-describedby={errors.password === undefined ? undefined : "password-error"}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
         {errors.password === undefined ? null : (
-          <p id="password-error" className="mt-1 text-caption text-interest-low">
+          <p id="password-error" className="mt-1 field-error">
             {errors.password}
           </p>
         )}
@@ -144,7 +141,7 @@ export function SignInForm() {
       <button
         type="submit"
         disabled={submitting}
-        className="min-h-12 w-full rounded-lg bg-primary text-body font-medium text-primary-foreground disabled:opacity-60"
+        className="min-h-12 w-full btn-primary rounded-lg text-body font-medium"
       >
         {submitting ? "Signing in…" : "Sign in"}
       </button>

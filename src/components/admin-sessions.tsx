@@ -56,7 +56,7 @@ export function AdminSessions() {
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -68,7 +68,7 @@ export function AdminSessions() {
     <div className="space-y-4">
       <Link
         href="/admin/team"
-        className="flex min-h-12 items-center justify-center rounded-xl border border-border text-body font-medium"
+        className="flex min-h-12 btn-secondary items-center justify-center rounded-xl text-body font-medium"
       >
         Team
       </Link>
@@ -76,13 +76,13 @@ export function AdminSessions() {
       <div className="flex gap-2">
         <Link
           href="/admin/attention"
-          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+          className="flex min-h-12 flex-1 btn-secondary items-center justify-center rounded-xl text-body font-medium"
         >
           Needs a return visit
         </Link>
         <Link
           href="/admin/history"
-          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+          className="flex min-h-12 flex-1 btn-secondary items-center justify-center rounded-xl text-body font-medium"
         >
           All records
         </Link>
