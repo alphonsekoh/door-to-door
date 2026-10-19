@@ -2,14 +2,15 @@ import Link from "next/link";
 import { InterestSummary } from "@/components/interest-summary";
 import type { SessionHistorySummary } from "@/generated/types.gen";
 import { isSameDay } from "@/lib/history";
+import { formatDay } from "@/lib/dates";
 
 /* An outing spanning midnight, or reopened days later, needs both ends. */
 function dateRange(from: string, to: string): string {
-  const start = new Date(from).toLocaleDateString();
+  const start = formatDay(from);
   if (isSameDay(from, to)) {
     return start;
   }
-  return `${start} – ${new Date(to).toLocaleDateString()}`;
+  return `${start} – ${formatDay(to)}`;
 }
 
 /*
@@ -24,7 +25,7 @@ export function SessionHistoryCard({ summary }: { summary: SessionHistorySummary
     <li>
       <Link
         href={`/history/${session.id}`}
-        className="block rounded-xl border border-border bg-surface p-4"
+        className="block press rounded-xl border border-border bg-surface p-4"
       >
         <div className="flex items-baseline justify-between gap-3">
           <span className="min-w-0 text-title font-semibold">{session.title}</span>

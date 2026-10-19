@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { OverdueBadge, followUpTone } from "@/components/follow-up-item";
 import type { FollowUp } from "@/generated/types.gen";
-import { formatDay, isOverdue, sortOutstanding, unitLabel } from "@/lib/follow-ups";
+import { formatDay } from "@/lib/dates";
+import { isOverdue, sortOutstanding, unitLabel } from "@/lib/follow-ups";
 
 /*
  * The notes this member left themselves, at the top of their history.

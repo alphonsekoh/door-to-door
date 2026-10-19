@@ -1,3 +1,4 @@
+import { formatDay } from "@/lib/dates";
 import type { FollowUp, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import { displayName } from "@/lib/team-ui";
@@ -85,15 +86,6 @@ export function mayEditFollowUp(
   viewer: { userId: string | undefined; isAdmin: boolean },
 ): boolean {
   return viewer.isAdmin || (viewer.userId !== undefined && note.author.id === viewer.userId);
-}
-
-/* "3 Mar 2026": day first, as dates are written where the app is used. */
-export function formatDay(instant: string): string {
-  return new Date(instant).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function addedByline(note: Pick<FollowUp, "author" | "createdAt">): string {

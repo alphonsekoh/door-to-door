@@ -7,7 +7,6 @@ import {
   describeFollowUpFailure,
   doneByline,
   dueDayToInstant,
-  formatDay,
   instantToDueDay,
   isOverdue,
   mayEditFollowUp,
@@ -197,10 +196,6 @@ describe("bylines", () => {
 
   it("has no resolver line while outstanding", () => {
     expect(doneByline(note())).toBeNull();
-  });
-
-  it("formats a day with the day first", () => {
-    expect(formatDay(local(2026, 10, 14, 12).toISOString())).toBe("14 Oct 2026");
   });
 });
 

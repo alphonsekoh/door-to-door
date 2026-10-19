@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SessionHistoryCard } from "@/components/session-history-card";
 import type { Block, SessionHistorySummary } from "@/generated/types.gen";
+import { formatDay } from "@/lib/dates";
 
 const block = (id: string, name: string): Block => ({
   id,
@@ -49,7 +50,7 @@ describe("SessionHistoryCard", () => {
   });
 
   it("shows one date for an outing worked in an evening", () => {
-    const day = new Date(2026, 2, 14, 19).toLocaleDateString();
+    const day = formatDay(new Date(2026, 2, 14, 19));
     render(<SessionHistoryCard summary={summaryFor()} />);
     expect(screen.getByText(day)).toBeInTheDocument();
   });
@@ -61,11 +62,7 @@ describe("SessionHistoryCard", () => {
     render(
       <SessionHistoryCard summary={summaryFor({ firstRecordedAt: from, lastRecordedAt: to })} />,
     );
-    expect(
-      screen.getByText(
-        `${new Date(from).toLocaleDateString()} – ${new Date(to).toLocaleDateString()}`,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(`${formatDay(from)} – ${formatDay(to)}`)).toBeInTheDocument();
   });
 
   it("separates units from visits only when they differ", () => {
