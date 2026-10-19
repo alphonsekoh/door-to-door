@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { availableActions, statusLabel } from "@/lib/sessions";
 
 describe("availableActions", () => {
+  it("marks only ending as destructive", () => {
+    expect(availableActions("active")[0]?.destructive).toBe(true);
+    expect(availableActions("draft")[0]?.destructive).toBe(false);
+    expect(availableActions("ended")[0]?.destructive).toBe(false);
+  });
+
   it("offers only start on a draft", () => {
     expect(availableActions("draft").map((spec) => spec.action)).toEqual(["start"]);
   });

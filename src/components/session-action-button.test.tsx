@@ -24,6 +24,11 @@ beforeEach(() => {
 });
 
 describe("SessionActionButton", () => {
+  it("keeps the ordinary look for starting and reopening", () => {
+    render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Start outing" })).toHaveClass("btn-primary");
+  });
+
   it("starts without asking, since nothing is lost", async () => {
     const onDone = vi.fn();
     apiFetch.mockResolvedValue({ id: "s1" });
@@ -45,6 +50,17 @@ describe("SessionActionButton", () => {
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/reopen", { method: "POST" });
     });
+  });
+
+  it("looks like it takes something away, and its confirm does too", async () => {
+    const user = userEvent.setup();
+    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "End outing" });
+    expect(button).toHaveClass("btn-danger-outline");
+    await user.click(button);
+    expect(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End outing" }),
+    ).toHaveClass("btn-danger");
   });
 
   it("asks before ending, and does nothing until confirmed", async () => {

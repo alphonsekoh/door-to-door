@@ -27,6 +27,7 @@ import {
   toSearchParams,
   type RecordFilters,
 } from "@/lib/record-filters";
+import { SheetPresence } from "@/components/sheet";
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 30_000;
@@ -170,7 +171,7 @@ export function AdminRecords() {
         <button
           type="button"
           onClick={() => void load(filters)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -192,7 +193,7 @@ export function AdminRecords() {
           onClick={() => {
             setRecording(true);
           }}
-          className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+          className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
         >
           Record for a member
         </button>
@@ -211,7 +212,7 @@ export function AdminRecords() {
               setFilter("q", event.target.value);
             }}
             placeholder="Unit, name or contact"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
         </div>
 
@@ -226,7 +227,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -247,7 +248,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -268,7 +269,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("teamId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any team</option>
               {teams.map((team) => (
@@ -289,7 +290,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -307,7 +308,7 @@ export function AdminRecords() {
             onClick={() => {
               router.replace("/admin/records");
             }}
-            className="min-h-11 text-body font-medium text-primary"
+            className="min-h-11 text-body font-medium btn-text"
           >
             Clear filters
           </button>
@@ -329,7 +330,7 @@ export function AdminRecords() {
                 onClick={() => {
                   setAmending(entry);
                 }}
-                className="flex min-h-14 w-full items-center gap-3 border-b border-border px-4 py-2 text-left last:border-b-0"
+                className="flex min-h-14 w-full items-center gap-3 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-body font-semibold tabular-nums">
@@ -359,32 +360,36 @@ export function AdminRecords() {
         </p>
       ) : null}
 
-      {amending === null ? null : (
-        <AmendVisitSheet
-          entry={asHouseholdSummary(amending)}
-          onClose={() => {
-            setAmending(null);
-          }}
-          onSaved={() => {
-            setAmending(null);
-            void load(filters);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {amending === null ? null : (
+          <AmendVisitSheet
+            entry={asHouseholdSummary(amending)}
+            onClose={() => {
+              setAmending(null);
+            }}
+            onSaved={() => {
+              setAmending(null);
+              void load(filters);
+            }}
+          />
+        )}
+      </SheetPresence>
 
-      {recording ? (
-        <RecordOnBehalfForm
-          members={members}
-          blocks={blocks}
-          onRecorded={() => {
-            setRecording(false);
-            void load(filters);
-          }}
-          onClose={() => {
-            setRecording(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {recording ? (
+          <RecordOnBehalfForm
+            members={members}
+            blocks={blocks}
+            onRecorded={() => {
+              setRecording(false);
+              void load(filters);
+            }}
+            onClose={() => {
+              setRecording(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </div>
   );
 }

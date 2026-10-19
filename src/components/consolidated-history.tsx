@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history";
 import { loadAllUsers } from "@/lib/users";
+import { formatDay } from "@/lib/dates";
 import {
   groupByHousehold,
   hasHistoryFilter,
@@ -32,6 +33,7 @@ import {
   toHistorySearch,
   type HistoryFilters,
 } from "@/lib/history-filters";
+import { SheetPresence } from "@/components/sheet";
 
 const PAGE_SIZE = 100;
 /* An export walks the whole filtered set a page at a time. The cap stops a
@@ -229,7 +231,7 @@ export function ConsolidatedHistory() {
         <button
           type="button"
           onClick={() => void load(filters, 0)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -256,7 +258,7 @@ export function ConsolidatedHistory() {
               setFilter("q", event.target.value);
             }}
             placeholder="Unit, name or contact"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
         </div>
 
@@ -271,7 +273,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -292,7 +294,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("sessionId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">All outings</option>
               {sessions.map((session) => (
@@ -314,7 +316,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("teamId", event.target.value);
                 }}
-                className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="h-12 min-h-12 field"
               >
                 <option value="">Any team</option>
                 {teams.map((team) => (
@@ -336,7 +338,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -357,7 +359,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -378,7 +380,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("religion", event.target.value as Religion | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any religion</option>
               {RELIGIONS.map((religion) => (
@@ -403,7 +405,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("from", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="min-h-12 field"
               />
             </div>
             <div>
@@ -417,7 +419,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("to", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="min-h-12 field"
               />
             </div>
           </div>
@@ -428,7 +430,7 @@ export function ConsolidatedHistory() {
             type="button"
             disabled={exporting}
             onClick={() => void exportCsv()}
-            className="min-h-11 flex-1 rounded-lg border border-border text-body font-medium disabled:opacity-60"
+            className="min-h-11 flex-1 btn-secondary rounded-lg text-body font-medium"
           >
             {exporting ? "Exporting…" : "Export CSV"}
           </button>
@@ -438,7 +440,7 @@ export function ConsolidatedHistory() {
               onClick={() => {
                 router.replace("/admin/history");
               }}
-              className="min-h-11 rounded-lg px-3 text-body font-medium text-primary"
+              className="min-h-11 rounded-lg px-3 text-body font-medium btn-text"
             >
               Clear filters
             </button>
@@ -492,12 +494,11 @@ export function ConsolidatedHistory() {
                         onClick={() => {
                           setAmending(entry);
                         }}
-                        className="flex min-h-11 w-full items-center gap-3 py-1 text-left"
+                        className="flex min-h-11 w-full items-center gap-3 press-row py-1 text-left"
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block text-caption text-foreground-muted">
-                            {new Date(entry.visit.createdAt).toLocaleDateString()} ·{" "}
-                            {entry.session.title}
+                            {formatDay(entry.visit.createdAt)} · {entry.session.title}
                           </span>
                           <VisitByline visit={entry.visit} prefix="By " />
                           {entry.visit.description === "" ? null : (
@@ -525,24 +526,26 @@ export function ConsolidatedHistory() {
             setOffset(next);
             void load(filters, next);
           }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium"
+          className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
           Show more ({entries.length} of {total})
         </button>
       ) : null}
 
-      {amending === null ? null : (
-        <AmendVisitSheet
-          entry={asHouseholdSummary(amending)}
-          onClose={() => {
-            setAmending(null);
-          }}
-          onSaved={() => {
-            setAmending(null);
-            void load(filters, 0);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {amending === null ? null : (
+          <AmendVisitSheet
+            entry={asHouseholdSummary(amending)}
+            onClose={() => {
+              setAmending(null);
+            }}
+            onSaved={() => {
+              setAmending(null);
+              void load(filters, 0);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

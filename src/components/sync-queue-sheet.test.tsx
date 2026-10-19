@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, cleanup } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncQueueSheet } from "@/components/sync-queue-sheet";
@@ -54,7 +54,10 @@ const open = (value: SyncQueueValue, onClose = vi.fn()) => {
       <SyncQueueSheet onClose={onClose} />
     </>,
   );
-  return { sheet: screen.getByRole("dialog", { name: "Records not sent" }), onClose };
+  return {
+    sheet: screen.getByRole("dialog", { name: /^(Waiting to send|Records not sent)$/ }),
+    onClose,
+  };
 };
 
 beforeEach(() => {
@@ -119,6 +122,27 @@ describe("SyncQueueSheet", () => {
       queue({ records: [record("#05-01")], block: { reason: "offline", until: null } }),
     );
     expect(sheet).toHaveTextContent("No signal. Sends when you're back online.");
+    // Not the loud action when it cannot succeed, but still there: one bar
+    // can read as none.
+    const retryAll = within(sheet).getByRole("button", { name: "Retry all" });
+    expect(retryAll).toBeEnabled();
+    expect(retryAll).toHaveClass("btn-secondary");
+    expect(retryAll).not.toHaveClass("btn-primary");
+  });
+
+  it("makes Retry all the main action again with signal", () => {
+    const { sheet } = open(queue({ records: [record("#05-01")] }));
+    expect(within(sheet).getByRole("button", { name: "Retry all" })).toHaveClass("btn-primary");
+  });
+
+  it("is titled as the bar is: waiting, until a record is stuck", () => {
+    const { sheet } = open(queue({ records: [record("#05-01")] }));
+    expect(sheet).toHaveAccessibleName("Waiting to send");
+    cleanup();
+    const { sheet: stuck } = open(
+      queue({ records: [record("#05-01", { state: "held", nextAttemptAt: null })] }),
+    );
+    expect(stuck).toHaveAccessibleName("Records not sent");
   });
 
   it("retries one record, or all of them", async () => {

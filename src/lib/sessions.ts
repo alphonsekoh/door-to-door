@@ -15,18 +15,21 @@ export type ActionSpec = {
   label: string;
   /* Ending locks members out until someone reopens, so it asks first. */
   confirm: string | null;
+  /* Styled as taking something away, the same on the list and the detail. */
+  destructive: boolean;
 };
 
 const SPECS: Record<SessionStatus, ActionSpec[]> = {
-  draft: [{ action: "start", label: "Start outing", confirm: null }],
+  draft: [{ action: "start", label: "Start outing", confirm: null, destructive: false }],
   active: [
     {
       action: "end",
       label: "End outing",
       confirm: "Members will not be able to record or amend until it is reopened.",
+      destructive: true,
     },
   ],
-  ended: [{ action: "reopen", label: "Reopen outing", confirm: null }],
+  ended: [{ action: "reopen", label: "Reopen outing", confirm: null, destructive: false }],
 };
 
 export function availableActions(status: SessionStatus): ActionSpec[] {

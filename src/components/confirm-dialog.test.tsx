@@ -60,4 +60,16 @@ describe("ConfirmDialog", () => {
     expect(onCancel).toHaveBeenCalledOnce();
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  it("looks destructive by default, so it never passes for Save", () => {
+    render(<ConfirmDialog {...props} onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "End outing" })).toHaveClass("btn-danger");
+  });
+
+  it("can ask in the ordinary tone when nothing is taken away", () => {
+    render(<ConfirmDialog {...props} tone="default" onConfirm={vi.fn()} onCancel={vi.fn()} />);
+    const confirm = screen.getByRole("button", { name: "End outing" });
+    expect(confirm).toHaveClass("btn-primary");
+    expect(confirm).not.toHaveClass("btn-danger");
+  });
 });

@@ -6,6 +6,8 @@ import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-up-sh
 import { VisitByline } from "@/components/visit-byline";
 import type { FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { buildTimeline, sortOutstanding } from "@/lib/follow-ups";
+import { formatDay } from "@/lib/dates";
+import { SheetPresence } from "@/components/sheet";
 
 const INTEREST_LABEL: Record<string, string> = {
   no_response: "No response",
@@ -100,7 +102,7 @@ export function HouseholdHistoryPanel({
                 </span>
                 <span className="text-foreground-muted">
                   {" · "}
-                  {new Date(entry.item.createdAt).toLocaleDateString()}
+                  {formatDay(entry.item.createdAt)}
                 </span>
                 <VisitByline visit={entry.item} />
                 {entry.item.description === "" ? null : (
@@ -112,7 +114,7 @@ export function HouseholdHistoryPanel({
                     onClick={() => {
                       anchor(entry.item);
                     }}
-                    className="min-h-11 text-body font-medium text-primary"
+                    className="min-h-11 text-body font-medium btn-text"
                   >
                     Follow up on this visit
                   </button>
@@ -134,18 +136,20 @@ export function HouseholdHistoryPanel({
         </ol>
       ) : null}
 
-      {sheet === null ? null : (
-        <FollowUpSheet
-          mode={sheet}
-          onClose={() => {
-            setSheet(null);
-          }}
-          onSaved={() => {
-            setSheet(null);
-            onChanged();
-          }}
-        />
-      )}
+      <SheetPresence>
+        {sheet === null ? null : (
+          <FollowUpSheet
+            mode={sheet}
+            onClose={() => {
+              setSheet(null);
+            }}
+            onSaved={() => {
+              setSheet(null);
+              onChanged();
+            }}
+          />
+        )}
+      </SheetPresence>
     </section>
   );
 }

@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { InterestPicker } from "@/components/interest-picker";
+import { Sheet, SheetActions } from "@/components/sheet";
 import type { Block, InterestLevel, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { normaliseUnitNumber } from "@/lib/unit-number";
 import { uuidv7 } from "@/lib/uuid";
-import { useModal } from "@/lib/use-modal";
 
 /*
  * An admin entering a record someone else made - phoned in from a corridor, or
@@ -64,37 +64,18 @@ export function RecordOnBehalfForm({
     }
   }
 
-  const { overlay, panel } = useModal<HTMLFormElement>(onClose);
-
   return (
-    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-      <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
-
+    <Sheet label="Record on behalf of a member" title="Record for a member" onClose={onClose}>
       <form
-        ref={panel}
-        tabIndex={-1}
         onSubmit={(event) => {
           event.preventDefault();
           void save();
         }}
         noValidate
-        role="dialog"
-        aria-modal="true"
-        aria-label="Record on behalf of a member"
-        className="max-h-[85vh] space-y-4 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom pb-4 focus:outline-none"
+        className="space-y-4 pt-2"
       >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-title font-semibold">Record for a member</p>
-          <button type="button" onClick={onClose} className="min-h-11 text-body text-primary">
-            Cancel
-          </button>
-        </div>
-
         {failure === null ? null : (
-          <p
-            role="alert"
-            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
+          <p role="alert" className="notice-danger">
             {failure}
           </p>
         )}
@@ -109,7 +90,7 @@ export function RecordOnBehalfForm({
             onChange={(event) => {
               setMemberId(event.target.value);
             }}
-            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 field"
           >
             <option value="">Choose a member</option>
             {members.map((member) => (
@@ -130,7 +111,7 @@ export function RecordOnBehalfForm({
             onChange={(event) => {
               setBlockId(event.target.value);
             }}
-            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 field"
           >
             {blocks.map((block) => (
               <option key={block.id} value={block.id}>
@@ -152,7 +133,7 @@ export function RecordOnBehalfForm({
             }}
             placeholder="#05-123"
             autoComplete="off"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
         </div>
 
@@ -172,20 +153,20 @@ export function RecordOnBehalfForm({
             onChange={(event) => {
               setDescription(event.target.value);
             }}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body"
+            className="field py-2"
           />
         </div>
 
-        <div className="sticky bottom-0 -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+        <SheetActions>
           <button
             type="submit"
             disabled={saving}
-            className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
           >
             {saving ? "Saving…" : "Save the record"}
           </button>
-        </div>
+        </SheetActions>
       </form>
-    </div>
+    </Sheet>
   );
 }

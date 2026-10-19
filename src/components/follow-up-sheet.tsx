@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -13,7 +12,7 @@ import {
   instantToDueDay,
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
-import { useModal } from "@/lib/use-modal";
+import { Sheet, SheetActions, SheetPresence } from "@/components/sheet";
 
 export type FollowUpSheetMode =
   | { kind: "create"; householdId: string; visitId: string | null; unitNumber: string }
@@ -28,6 +27,14 @@ export function diffFollowUp(before: FollowUp, text: string, day: string): Chang
   if (text.trim() !== before.note) changes.note = text.trim();
   if (day !== instantToDueDay(before.dueDate)) changes.dueDate = dueDayToInstant(day);
   return changes;
+}
+
+/* Why a note cannot be saved yet, or null when it can. */
+function checkNote(text: string): string | null {
+  const length = text.trim().length;
+  if (length === 0) return "Write the note first.";
+  if (length > MAX_NOTE_LENGTH) return `Keep the note to ${String(MAX_NOTE_LENGTH)} characters.`;
+  return null;
 }
 
 /*
@@ -49,6 +56,8 @@ export function FollowUpSheet({
   const [day, setDay] = useState(instantToDueDay(editing?.dueDate ?? null));
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* Under the field it is about, not in the banner a request failure uses. */
+  const [noteError, setNoteError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
@@ -73,14 +82,9 @@ export function FollowUpSheet({
   }
 
   function submit(): void {
-    if (length === 0) {
-      setFailure("Write the note first.");
-      return;
-    }
-    if (length > MAX_NOTE_LENGTH) {
-      setFailure(`Keep the note to ${String(MAX_NOTE_LENGTH)} characters.`);
-      return;
-    }
+    const problem = checkNote(text);
+    setNoteError(problem);
+    if (problem !== null) return;
     if (mode.kind === "create") {
       void send(() =>
         apiFetch("/follow-ups", {
@@ -108,36 +112,11 @@ export function FollowUpSheet({
     );
   }
 
-  /*
-   * Portalled to the body: the panel that opens it sits inside the recording
-   * form, where Enter in the date field would otherwise submit the visit.
-   */
-  const { overlay, panel } = useModal(onClose);
-
-  return createPortal(
-    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-      <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
-
-      <div
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-title font-semibold break-words">{title}</p>
-          <button type="button" onClick={onClose} className="min-h-11 text-body text-primary">
-            Cancel
-          </button>
-        </div>
-
+  return (
+    <>
+      <Sheet label={title} title={title} onClose={onClose}>
         {failure === null ? null : (
-          <p
-            role="alert"
-            className="mt-3 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
+          <p role="alert" className="mt-3 notice-danger">
             {failure}
           </p>
         )}
@@ -155,11 +134,20 @@ export function FollowUpSheet({
             id="follow-up-note"
             rows={4}
             value={text}
+            aria-invalid={noteError !== null}
+            aria-describedby={noteError === null ? undefined : "follow-up-note-error"}
             onChange={(event) => {
               setText(event.target.value);
+              // Cleared as soon as it is fixed, never raised while typing.
+              if (noteError !== null && checkNote(event.target.value) === null) setNoteError(null);
             }}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body"
+            className="field py-2"
           />
+          {noteError === null ? null : (
+            <p id="follow-up-note-error" className="mt-1 field-error">
+              {noteError}
+            </p>
+          )}
         </div>
 
         <div className="mt-3">
@@ -175,7 +163,7 @@ export function FollowUpSheet({
             onChange={(event) => {
               setDay(event.target.value);
             }}
-            className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="h-12 min-h-12 field"
           />
         </div>
 
@@ -186,13 +174,13 @@ export function FollowUpSheet({
             onClick={() => {
               setConfirming(true);
             }}
-            className="mt-3 min-h-11 text-body font-medium text-interest-low disabled:opacity-60"
+            className="mt-3 min-h-11 text-body font-medium text-danger disabled:opacity-60"
           >
             Delete this note
           </button>
         )}
 
-        <div className="sticky bottom-0 -mx-4 mt-4 bg-background/95 px-4 py-3 backdrop-blur">
+        <SheetActions>
           {online ? null : (
             <p className="mb-2 text-center text-caption text-foreground-muted">
               {FOLLOW_UP_OFFLINE_NOTE}
@@ -202,32 +190,33 @@ export function FollowUpSheet({
             type="button"
             disabled={busy || !online}
             onClick={submit}
-            className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
           >
             {busy ? "Saving…" : editing === null ? "Save follow-up" : "Save changes"}
           </button>
-        </div>
-      </div>
+        </SheetActions>
+      </Sheet>
 
-      {editing !== null && confirming ? (
-        <ConfirmDialog
-          title="Delete this follow-up?"
-          detail="It disappears from this unit's history for everyone."
-          confirmLabel="Delete"
-          busy={busy}
-          onCancel={() => {
-            setConfirming(false);
-          }}
-          onConfirm={() => {
-            void send(() => apiFetch(`/follow-ups/${editing.id}`, { method: "DELETE" })).then(
-              () => {
-                setConfirming(false);
-              },
-            );
-          }}
-        />
-      ) : null}
-    </div>,
-    document.body,
+      <SheetPresence>
+        {editing !== null && confirming ? (
+          <ConfirmDialog
+            title="Delete this follow-up?"
+            detail="It disappears from this unit's history for everyone."
+            confirmLabel="Delete"
+            busy={busy}
+            onCancel={() => {
+              setConfirming(false);
+            }}
+            onConfirm={() => {
+              void send(() => apiFetch(`/follow-ups/${editing.id}`, { method: "DELETE" })).then(
+                () => {
+                  setConfirming(false);
+                },
+              );
+            }}
+          />
+        ) : null}
+      </SheetPresence>
+    </>
   );
 }

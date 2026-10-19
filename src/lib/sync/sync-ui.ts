@@ -86,6 +86,13 @@ export function barSummary(
   return { count, text: stuck ? `${String(count)} not sent` : `${String(count)} waiting to send` };
 }
 
+/* The sheet's title says what the bar said: "waiting" until something is
+   actually stuck, and only then "not sent". */
+export function queueTitle(records: readonly QueuedVisit[]): string {
+  const stuck = records.some((r) => r.state === "held" || r.state === "quarantined");
+  return stuck ? "Records not sent" : "Waiting to send";
+}
+
 /* What the bar reads when it has nothing to count. A record saved on this
    page and still on its first send is not done yet. */
 export function quietText(records: readonly QueuedVisit[], justSaved: ReadonlySet<string>): string {

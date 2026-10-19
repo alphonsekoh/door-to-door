@@ -12,6 +12,7 @@ import { shellState } from "@/lib/offline/shell-state";
 import { type SignedIn, fetchSignedIn } from "@/lib/sync/signed-in";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { savedOnPhoneText } from "@/lib/sync/sync-ui";
+import { SheetPresence } from "@/components/sheet";
 
 /*
  * What a reload in a dead zone opens (#77): the service worker's navigation
@@ -176,7 +177,7 @@ export function OfflineShell({
                 navigate(returnTarget());
               });
             }}
-            className="min-h-11 shrink-0 font-medium text-primary"
+            className="min-h-11 shrink-0 font-medium btn-text"
           >
             Continue
           </button>
@@ -199,7 +200,7 @@ export function OfflineShell({
           <form action="/" method="get">
             <button
               type="submit"
-              className="min-h-12 rounded-xl bg-primary px-6 text-body font-semibold text-primary-foreground"
+              className="min-h-12 btn-primary rounded-xl px-6 text-body font-semibold"
             >
               Try again
             </button>
@@ -215,7 +216,7 @@ export function OfflineShell({
               shellState.continueAs(phase.copy.member.id);
               setPhase({ kind: "recording", copy: phase.copy });
             }}
-            className="min-h-14 w-full rounded-xl bg-primary px-4 text-title font-semibold text-primary-foreground"
+            className="min-h-14 w-full btn-primary rounded-xl px-4 text-title font-semibold"
           >
             Continue as {phase.copy.member.name}
           </button>
@@ -241,21 +242,23 @@ export function OfflineShell({
         />
       ) : null}
 
-      {confirming === null ? null : (
-        <ConfirmDialog
-          title="Leave without saving this visit?"
-          detail="What you typed for this unit has not been saved."
-          confirmLabel="Leave"
-          busy={false}
-          onConfirm={() => {
-            setConfirming(null);
-            confirming.run();
-          }}
-          onCancel={() => {
-            setConfirming(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {confirming === null ? null : (
+          <ConfirmDialog
+            title="Leave without saving this visit?"
+            detail="What you typed for this unit has not been saved."
+            confirmLabel="Leave"
+            busy={false}
+            onConfirm={() => {
+              setConfirming(null);
+              confirming.run();
+            }}
+            onCancel={() => {
+              setConfirming(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }
@@ -304,7 +307,7 @@ function Recording({
                 onClick={() => {
                   onPick(entry.block.id);
                 }}
-                className="flex min-h-16 w-full flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
+                className="flex min-h-16 w-full press flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
               >
                 <span className="block text-title font-semibold">Blk {entry.block.name}</span>
                 <span className="block truncate text-caption text-foreground-muted">
@@ -321,7 +324,7 @@ function Recording({
             <button
               type="button"
               onClick={onAllBlocks}
-              className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-caption font-medium"
+              className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-caption font-medium"
             >
               All blocks
             </button>

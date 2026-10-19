@@ -449,4 +449,71 @@ describe("useModal", () => {
       expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
     });
   });
+
+  describe("letting go while still on screen", () => {
+    function Leaving({ active }: { active: boolean }) {
+      const { overlay, panel } = useModal(vi.fn(), undefined, active);
+      return (
+        <div ref={overlay}>
+          <div ref={panel} tabIndex={-1} role="dialog" aria-label="Leaving" />
+        </div>
+      );
+    }
+
+    function Host() {
+      const [open, setOpen] = useState(false);
+      const [active, setActive] = useState(true);
+      return (
+        <>
+          <main>
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(true);
+              }}
+            >
+              Open
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActive((value) => !value);
+              }}
+            >
+              Toggle
+            </button>
+          </main>
+          {open ? <Leaving active={active} /> : null}
+        </>
+      );
+    }
+
+    it("hands back focus, the page and scrolling as soon as it is told to, not on unmount", async () => {
+      const user = userEvent.setup();
+      render(<Host />);
+      await user.click(screen.getByRole("button", { name: "Open" }));
+      expect(screen.getByRole("dialog", { name: "Leaving" })).toHaveFocus();
+      expect(screen.getByRole("main")).toHaveAttribute("inert");
+
+      // The toggle is behind the modal; press it the way an exit animation's
+      // start would, without a pointer.
+      fireEvent.click(screen.getByRole("button", { name: "Toggle", hidden: true }));
+      expect(screen.getByRole("dialog", { name: "Leaving" })).toBeInTheDocument();
+      expect(screen.getByRole("main")).not.toHaveAttribute("inert");
+      expect(document.body.style.overflow).toBe("");
+      expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
+    });
+
+    it("takes them back if it returns before it has gone", async () => {
+      const user = userEvent.setup();
+      render(<Host />);
+      await user.click(screen.getByRole("button", { name: "Open" }));
+      fireEvent.click(screen.getByRole("button", { name: "Toggle", hidden: true }));
+      fireEvent.click(screen.getByRole("button", { name: "Toggle" }));
+
+      expect(screen.getByRole("main")).toHaveAttribute("inert");
+      expect(document.body.style.overflow).toBe("hidden");
+      expect(screen.getByRole("dialog", { name: "Leaving" })).toHaveFocus();
+    });
+  });
 });

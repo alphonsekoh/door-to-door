@@ -18,6 +18,7 @@ import {
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
 import { loadAllUsers } from "@/lib/users";
+import { SheetPresence } from "@/components/sheet";
 
 type Loaded = { teams: Team[]; users: User[] };
 
@@ -284,64 +285,62 @@ export function AdminTeams({
       )}
 
       {authFailed && loadFailure !== null && actionFailure === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {loadFailure}
         </p>
       ) : null}
 
       {actionFailure !== null && sheet === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {actionFailure}
         </p>
       ) : null}
 
       <p className="text-caption text-foreground-muted">{ADMIN_UNSYNCED_NOTE}</p>
 
-      {sheet === null ? null : (
-        <AdminTeamSheet
-          key={sheet.mode}
-          mode={sheet.mode}
-          initialName={sheet.mode === "create" ? "" : sheet.team.name}
-          candidates={candidates}
-          meId={userId}
-          canChange={canChange}
-          onSubmit={(value) => submit(sheet, value)}
-          onClose={() => {
-            setSheet(null);
-            setActionFailure(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {sheet === null ? null : (
+          <AdminTeamSheet
+            key={sheet.mode}
+            mode={sheet.mode}
+            initialName={sheet.mode === "create" ? "" : sheet.team.name}
+            candidates={candidates}
+            meId={userId}
+            canChange={canChange}
+            onSubmit={(value) => submit(sheet, value)}
+            onClose={() => {
+              setSheet(null);
+              setActionFailure(null);
+            }}
+          />
+        )}
+      </SheetPresence>
 
-      {confirm === null ? null : confirm.kind === "delete" ? (
-        <ConfirmDialog
-          title={`Delete ${confirm.team.name}?`}
-          detail="Only a team with no records can be deleted. If this team recorded anything, remove its members instead."
-          confirmLabel="Delete team"
-          busy={busy}
-          onConfirm={() => void confirmed(confirm)}
-          onCancel={() => {
-            setConfirm(null);
-          }}
-        />
-      ) : (
-        <ConfirmDialog
-          title={`Remove ${displayName(confirm.member.name)} from ${confirm.team.name}?`}
-          detail="Their records keep this team, and the team keeps access to them. They lose access to their teammates' records."
-          confirmLabel="Remove from team"
-          busy={busy}
-          onConfirm={() => void confirmed(confirm)}
-          onCancel={() => {
-            setConfirm(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {confirm === null ? null : confirm.kind === "delete" ? (
+          <ConfirmDialog
+            title={`Delete ${confirm.team.name}?`}
+            detail="Only a team with no records can be deleted. If this team recorded anything, remove its members instead."
+            confirmLabel="Delete team"
+            busy={busy}
+            onConfirm={() => void confirmed(confirm)}
+            onCancel={() => {
+              setConfirm(null);
+            }}
+          />
+        ) : (
+          <ConfirmDialog
+            title={`Remove ${displayName(confirm.member.name)} from ${confirm.team.name}?`}
+            detail="Their records keep this team, and the team keeps access to them. They lose access to their teammates' records."
+            confirmLabel="Remove from team"
+            busy={busy}
+            onConfirm={() => void confirmed(confirm)}
+            onCancel={() => {
+              setConfirm(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </section>
   );
 }

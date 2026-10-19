@@ -8,6 +8,7 @@ import {
   recordReason,
   savedOnPhoneText,
   stateLabel,
+  queueTitle,
 } from "@/lib/sync/sync-ui";
 import type { QueuedVisit } from "@/lib/sync/types";
 
@@ -128,6 +129,21 @@ describe("barSummary", () => {
       "2 not sent",
     );
     expect(barSummary([record({ state: "quarantined" })], none)?.text).toBe("1 not sent");
+  });
+});
+
+describe("queueTitle", () => {
+  it("says waiting while records are only waiting, as the bar does", () => {
+    expect(queueTitle([record({ state: "queued" }), record({ state: "failed" })])).toBe(
+      "Waiting to send",
+    );
+  });
+
+  it("says not sent once a record is held or stopped", () => {
+    expect(queueTitle([record({ state: "queued" }), record({ state: "held" })])).toBe(
+      "Records not sent",
+    );
+    expect(queueTitle([record({ state: "quarantined" })])).toBe("Records not sent");
   });
 });
 

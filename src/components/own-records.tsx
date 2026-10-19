@@ -10,6 +10,8 @@ import { mayAmendVisit } from "@/lib/amend";
 import { asHouseholdSummary } from "@/lib/history";
 import { vouchedTeamIds } from "@/lib/team-view";
 import { useRole } from "@/lib/use-role";
+import { formatDay } from "@/lib/dates";
+import { SheetPresence } from "@/components/sheet";
 
 /* What a team view adds, and its one limit (D-74-1). */
 export const TEAM_VIEW_NOTE =
@@ -60,7 +62,7 @@ export function OwnRecords({
                   </span>
                   {showOuting ? (
                     <span className="block text-caption break-words text-foreground-muted">
-                      {session.title} · {new Date(visit.createdAt).toLocaleDateString()}
+                      {session.title} · {formatDay(visit.createdAt)}
                     </span>
                   ) : null}
                   {own && visit.team === null ? null : <VisitByline visit={visit} prefix="By " />}
@@ -79,7 +81,7 @@ export function OwnRecords({
                   onClick={() => {
                     setAmending(entry);
                   }}
-                  className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+                  className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
                 >
                   Amend
                 </button>
@@ -89,19 +91,21 @@ export function OwnRecords({
         })}
       </ul>
 
-      {amending === null ? null : (
-        <AmendVisitSheet
-          entry={asHouseholdSummary(amending)}
-          teamIds={teamIds}
-          onClose={() => {
-            setAmending(null);
-          }}
-          onSaved={() => {
-            setAmending(null);
-            onAmended();
-          }}
-        />
-      )}
+      <SheetPresence>
+        {amending === null ? null : (
+          <AmendVisitSheet
+            entry={asHouseholdSummary(amending)}
+            teamIds={teamIds}
+            onClose={() => {
+              setAmending(null);
+            }}
+            onSaved={() => {
+              setAmending(null);
+              onAmended();
+            }}
+          />
+        )}
+      </SheetPresence>
     </>
   );
 }
