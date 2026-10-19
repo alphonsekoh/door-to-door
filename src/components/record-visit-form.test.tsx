@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
-import { RecordVisitForm, validateVisit } from "@/components/record-visit-form";
+import { RecordVisitForm, blockedMessage, validateVisit } from "@/components/record-visit-form";
 import type { HouseholdSummary } from "@/generated/types.gen";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
@@ -114,6 +114,22 @@ describe("validateVisit", () => {
 
   it("accepts a complete minimum", () => {
     expect(validateVisit("#05-123", "no_response")).toEqual({});
+  });
+});
+
+describe("blockedMessage", () => {
+  it("names everything that stopped the save, in one line", () => {
+    expect(blockedMessage(validateVisit("", null))).toBe(
+      "Not saved. Enter the unit number and choose an interest level.",
+    );
+    expect(blockedMessage(validateVisit("", "low"))).toBe("Not saved. Enter the unit number.");
+    expect(blockedMessage(validateVisit("#05-01", null))).toBe(
+      "Not saved. Choose an interest level.",
+    );
+  });
+
+  it("is silent when nothing is wrong", () => {
+    expect(blockedMessage({})).toBeNull();
   });
 });
 
@@ -658,6 +674,76 @@ describe("validation and failure", () => {
     expect(await screen.findByText("Enter the unit number.")).toBeInTheDocument();
     expect(screen.getByText("Choose an interest level.")).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("says beside Save why it did nothing, when the field at fault is scrolled away", async () => {
+    // Notes typed with the details open push the picker off screen; a Save
+    // that silently refuses is a visit lost at the next door.
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("button", { name: "Add details" }));
+    await user.type(screen.getByLabelText("Notes"), "Asked us back on Sunday.");
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("Not saved. Choose an interest level.");
+    expect(screen.getByRole("button", { name: "Save and next" }).parentElement).toContainElement(
+      alert,
+    );
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("clears each error the moment its field is fixed", async () => {
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not saved. Enter the unit number and choose an interest level.",
+    );
+
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    expect(screen.queryByText("Choose an interest level.")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("Not saved. Enter the unit number.");
+
+    await user.type(screen.getByLabelText("Unit number"), "#05-1");
+    expect(screen.queryByText("Enter the unit number.")).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveAttribute("aria-invalid", "false");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("asks for the unit when it is left empty, before any Save", async () => {
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByLabelText("Unit number"));
+    await user.tab();
+    expect(screen.getByText("Enter the unit number.")).toBeInTheDocument();
+    // The summary beside Save belongs to a refused Save, not to a blur.
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it("marks the invalid field for assistive tech", async () => {
