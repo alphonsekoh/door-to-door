@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { MEMBER_STATE, SEED_BLOCK } from "./accounts";
 import { adminRequest, endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
 
 /*
@@ -95,6 +96,20 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
   await expect(row).toBeVisible();
   await expect(row).toContainText("High");
   await expect(row).toContainText("tonight");
+});
+
+test("Save is on the first paint, before any script has run", async ({ browser }) => {
+  /* The docked bar moves to the end of the screen once the page is live.
+     Until then it must be drawn where it is written: on a slow first load
+     the server's HTML is all there is. */
+  const context = await browser.newContext({
+    storageState: MEMBER_STATE,
+    javaScriptEnabled: false,
+  });
+  const page = await context.newPage();
+  await page.goto(`/blocks/${SEED_BLOCK}`);
+  await expect(page.getByRole("button", { name: "Save and next" })).toBeVisible();
+  await context.close();
 });
 
 test("what the member recorded is on their own history", async ({ memberPage }) => {
@@ -286,6 +301,28 @@ test.describe("the phone's display settings", () => {
     await expect
       .poll(() => panel.evaluate((element) => getComputedStyle(element).transitionProperty))
       .toBe("none");
+  });
+
+  test("the pinned Save still knows it is pinned after the text size changes", async ({
+    memberPage,
+  }) => {
+    // Opened at the default size, then the text made larger, as from
+    // Control Centre: the nav doubles in height under a bar already shown.
+    await openBlock(memberPage);
+    await memberPage.evaluate(() => {
+      document.documentElement.style.fontSize = "32px";
+    });
+    await memberPage.getByRole("button", { name: "Add details" }).click();
+    const bar = memberPage.locator('[data-dock="nav"]');
+    // A little of the form still runs on under the bar: it is held on the
+    // nav, so it is glass. Measured against the old nav it read as resting.
+    await memberPage.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight - window.innerHeight - 32);
+    });
+    await expect(bar).toHaveAttribute("data-docked", "");
+    const nav = memberPage.getByRole("navigation", { name: "Primary" });
+    const [barBox, navBox] = await Promise.all([bar.boundingBox(), nav.boundingBox()]);
+    expect(Math.abs((barBox?.y ?? 0) + (barBox?.height ?? 0) - (navBox?.y ?? 0))).toBeLessThan(1);
   });
 
   test("more contrast gives fields a firmer edge and the nav a solid face", async ({

@@ -1,4 +1,6 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DockHost, DockedActions } from "@/components/docked-actions";
 import userEvent from "@testing-library/user-event";
@@ -107,6 +109,44 @@ describe("DockedActions", () => {
     );
     expect(bar()).toHaveClass("sticky");
     expect(bar()).not.toHaveClass("material-chrome");
+  });
+
+  it("is in the server's HTML, so Save is on the first paint, and hydrates before it moves", async () => {
+    stubObserver();
+    const screenWithSave = (
+      <DockHost className="space-y-5">
+        <form id="visit" aria-label="Visit">
+          <input aria-label="Unit" />
+          <DockedActions>
+            <button type="submit" form="visit">
+              Save
+            </button>
+          </DockedActions>
+        </form>
+      </DockHost>
+    );
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(screenWithSave);
+    document.body.append(container);
+    // Drawn in its form until the host is known.
+    const form = within(container).getByRole("form", { name: "Visit" });
+    expect(form).toContainElement(within(container).getByRole("button", { name: "Save" }));
+
+    const mismatch = vi.fn();
+    const root = await act(() =>
+      hydrateRoot(container, screenWithSave, { onRecoverableError: mismatch }),
+    );
+    expect(mismatch).not.toHaveBeenCalled();
+    // Then out to the end of the screen, the one Save there is.
+    const saves = within(container).getAllByRole("button", { name: "Save" });
+    expect(saves).toHaveLength(1);
+    expect(within(container).getByRole("form", { name: "Visit" })).not.toContainElement(
+      saves[0] ?? null,
+    );
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
   });
 
   it("in a host, sits at the end of the whole screen, out of its form, and still submits it", async () => {

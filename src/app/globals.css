@@ -150,6 +150,14 @@
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
 }
 
+/* Pushed down by the same distance, so something placed just after a bar
+   held above the nav sits on the bottom of the screen when that bar is
+   pinned (docked-actions.tsx). */
+@utility below-by-nav {
+  position: relative;
+  top: calc(var(--nav-height) + env(safe-area-inset-bottom));
+}
+
 @utility inset-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
 }

@@ -4,10 +4,10 @@ import { createContext, use, useEffect, useRef, useState, type ReactNode } from 
 import { createPortal } from "react-dom";
 
 /*
- * Where a screen's docked bar is put: undefined outside any host (the bar
- * stays where it is written), null while the host is mounting.
+ * Where a screen's docked bar is put. Null outside any host, and inside one
+ * until it has mounted: the bar is then drawn where it is written.
  */
-const Dock = createContext<HTMLElement | null | undefined>(undefined);
+const Dock = createContext<HTMLElement | null>(null);
 
 /*
  * Holds a screen's docked bar at the end of the whole screen rather than of
@@ -39,24 +39,25 @@ export function DockHost({ className, children }: { className: string; children:
  * short enough to need no scroll, it is just part of the page; glass there
  * would be a tinted strip floating over nothing.
  *
- * Pinned is read from a marker just after the bar: it leaves the area above
- * the nav exactly when the bar is held there.
+ * Pinned is read from a marker just after the bar, held down in CSS by the
+ * bar's own offset: it drops below the screen exactly when the bar is held
+ * above the nav. Being CSS, it follows the nav when the text size changes or
+ * the phone turns, with nothing to re-measure.
  *
- * Inside a DockHost the bar is moved out of its form, so a submit button in
- * it names the form with `form=`.
+ * Inside a DockHost the bar is moved out of its form once the host has
+ * mounted, so a submit button in it names the form with `form=`. Until then,
+ * which includes the server's HTML, it is drawn where it is written: Save is
+ * on the first paint, not only after hydration.
  */
 export function DockedActions({ children }: { children: ReactNode }) {
   const host = use(Dock);
-  const bar = useRef<HTMLDivElement>(null);
   const marker = useRef<HTMLDivElement>(null);
   const [docked, setDocked] = useState(false);
 
   useEffect(() => {
-    const barElement = bar.current;
     const markerElement = marker.current;
-    if (barElement === null || markerElement === null) return;
+    if (markerElement === null) return;
     if (typeof IntersectionObserver === "undefined") return;
-    const offset = Number.parseFloat(getComputedStyle(barElement).bottom) || 0;
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
@@ -64,7 +65,7 @@ export function DockedActions({ children }: { children: ReactNode }) {
           setDocked(!entry.isIntersecting && entry.boundingClientRect.top > 0);
         }
       },
-      { rootMargin: `0px 0px ${String(-Math.ceil(offset) - 1)}px 0px` },
+      { rootMargin: "0px 0px -1px 0px" },
     );
     observer.observe(markerElement);
     return () => {
@@ -72,22 +73,19 @@ export function DockedActions({ children }: { children: ReactNode }) {
     };
   }, [host]);
 
-  if (host === null) return null;
-
   const dock = (
     <>
       {/* mt-4 collapses with a margin above it; mb-0: a margin below would
           hold the pinned bar off the nav. */}
       <div
-        ref={bar}
         data-dock="nav"
         data-docked={docked ? "" : undefined}
         className={`sticky above-nav -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
       >
         {children}
       </div>
-      <div ref={marker} aria-hidden="true" className="h-0" />
+      <div ref={marker} aria-hidden="true" className="below-by-nav h-0" />
     </>
   );
-  return host === undefined ? dock : createPortal(dock, host);
+  return host === null ? dock : createPortal(dock, host);
 }
