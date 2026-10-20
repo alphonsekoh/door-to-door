@@ -44,7 +44,9 @@ shared primitive fixes every one of them.
   and the nav go inert too while a modal is open. _Amended by D-85-14:_ siblings that
   mount while a modal is open go inert too. _Refined by D-111-14:_ lifted as a sheet's
   exit starts, not when it unmounts; with sheets on `<body>`, the app wrapper is the
-  sibling that goes inert.
+  sibling that goes inert. _Refined by D-111-42:_ over typed work, a backdrop tap asks
+  before closing. _Refined by D-111-45:_ the leaving copy stays inert, so it cannot be
+  grabbed back.
 - **D-90-8 · Body scroll is locked while any modal is open and the previous `overflow`
   value is restored when the last closes.** _Why:_ nested modals must not unlock early.
   _Refined by D-111-14:_ unlocked as the last exit starts.
@@ -60,8 +62,8 @@ shared primitive fixes every one of them.
   enforce `inert`, so the E2E is what proves it in a real browser. _Refined by
   D-111-32:_ sheets live on `<body>`, so it checks that the nav has an `inert` ancestor.
 
-Unchanged by design: backdrop behaviour, explicit buttons on destructive confirms,
-`role="alert"` errors, and `z-50` sheet / `z-60` confirm layering.
+Unchanged by design: backdrop behaviour (since refined by D-111-42), explicit buttons on
+destructive confirms, `role="alert"` errors, and `z-50` sheet / `z-60` confirm layering.
 
 ## Relies on
 

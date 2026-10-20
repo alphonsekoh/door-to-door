@@ -216,8 +216,10 @@ Google SSO (#14) is not built.
   stays on top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
   The account message calls `useModal` directly.
 - Inside `SheetPresence`, a sheet rises and leaves on a Motion spring and drags down to
-  dismiss. The physics is in `src/lib/sheet-motion.ts`. `useModal` gives back focus, the
-  page and scrolling as the exit starts (D-111-13 to D-111-18).
+  dismiss, its scrim following it. The physics is in `src/lib/sheet-motion.ts`.
+  `useModal` gives back focus, the page and scrolling as the exit starts (D-111-13 to
+  D-111-18, D-111-41). A sheet given `discard` holds typed work: a pull resists, and a
+  dismissing pull or a backdrop tap asks first (D-111-42).
 - Motion (`motion`, pinned) is imported only by `sheet.tsx`, through `LazyMotion`. The
   root layout reaches no sheet statically: the sync sheet is fetched when the page is
   idle (`sync-queue-loader.ts`, `src/lib/when-idle.ts`). `src/app/first-load.test.ts`
@@ -238,8 +240,10 @@ Google SSO (#14) is not built.
   See D-111-10, D-111-11, D-111-19, D-111-22 and D-111-24.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
-  pinned. `DockHost` holds it at the end of the block screen and the offline shell
-  (D-111-20).
+  pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
+  draws a `standIn` there until it mounts, so Save is in the server's HTML (D-111-20,
+  D-111-40). Unit numbers are shown through `UnitNumber`, which never splits them
+  (D-111-36).
 - Child screens pass `back` to `PageHeader`. A retracing `BackLink` uses
   `src/lib/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28). Every
   date goes through `src/lib/dates.ts` (D-111-29).
@@ -288,8 +292,11 @@ Google SSO (#14) is not built.
 - The worker never touches IndexedDB. Updates are prompted and defer while the
   signed-in member's records are queued or failed (`hasRecordsToSend`, D-33-14); a
   page is controlled from its second load.
-- `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
-  banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
+- `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` render inside
+  `main`. `UpdatePrompt` is a fixed banner at `z-30` that reserves `--banner-top`.
+  `InstallPrompt` floats the same way above the nav, reserving `--banner-bottom`, only
+  while it is at most a quarter of the screen and no docked Save is on screen; otherwise
+  it is a card at the end of the page (D-111-46).
 - Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local
   copy (D-77-6).
 

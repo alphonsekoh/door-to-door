@@ -278,8 +278,8 @@ invisible to B until it syncs cannot run until the queue (#33) exists.
   server filter is set, or the client search hides loaded rows; otherwise each screen
   says nothing was recorded (on `/history/[id]`: "You recorded nothing on this outing." or
   "Neither you nor your team recorded anything on this outing."). _Why:_ an empty filtered
-  page says nothing about whether anything was recorded. _Wording refined by D-111-7:_
-  "on this session".
+  page says nothing about whether anything was recorded. _Wording refined by D-111-7
+  and D-111-39:_ "in this session".
 - **D-74-58 · Admin team filter.** UUID-validated on read; on all-records offered and
   kept only once an outing is chosen and cleared when the outing changes; DROPPED from the
   URL once the loaded team list lacks it, kept if the list cannot be read. _Why:_ D-29-4;

@@ -626,3 +626,42 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
   (Next 16.3.3)
 - **Used by:** D-111-12
+
+### R-67 · Layout at the 32px text cap (measured)
+
+- **Finding:** Before the fixes in PR #112's fourth and fifth rounds, at 32px:
+  - on the iPhone 13 profile the install banner was 273px of a 664px screen (81px at the
+    default), so with the nav it covered 60% of the screen;
+  - the block screen's first paint put Save at 498 to 610px, under a nav starting at
+    536px, and it jumped about 98px up on hydration;
+  - "Record for a member" pushed Records 280px sideways, and the Sessions list squeezed
+    each title to 2 to 20px.
+
+  Changing the root font size, which is how an iOS text-size change reaches the page
+  (D-111-24), resizes elements without resizing the viewport, so no `resize` event fires.
+  Not yet seen on a real iPhone.
+
+- **Source:** measured in PR #112 (`e2e/large-text.spec.ts` and the verifier's device
+  pass); [CSSOM View, resizing viewports](https://drafts.csswg.org/cssom-view/#resizing-viewports)
+- **Used by:** D-111-35, D-111-40, D-111-46, D-111-47
+
+### R-68 · A submit button with no form owner does nothing
+
+- **Finding:** A `type="submit"` button submits only its form owner: the form it is in,
+  or the one its `form` attribute names. With neither, activating it does nothing. Before
+  hydration, a submit button inside a `<form>` makes the browser submit natively, which
+  loads a new page.
+- **Source:** [HTML, the button element](https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element)
+- **Used by:** D-111-40
+
+### R-69 · How iOS guards a sheet with unsaved changes
+
+- **Finding:** UIKit's `isModalInPresentation` stops a sheet being dismissed
+  interactively. The sheet still gives a little under a pull and springs back, and the
+  system then calls `presentationControllerDidAttemptToDismiss(_:)`, where the app asks
+  whether to discard. Apps set it only while there are unsaved changes, as Calendar's New
+  Event sheet does.
+- **Source:** [Apple, `isModalInPresentation`](https://developer.apple.com/documentation/uikit/uiviewcontroller/ismodalinpresentation);
+  [Apple, `presentationControllerDidAttemptToDismiss(_:)`](<https://developer.apple.com/documentation/uikit/uiadaptivepresentationcontrollerdelegate/presentationcontrollerdidattempttodismiss(_:)>);
+  [WWDC19, Modernizing Your UI for iOS 13](https://developer.apple.com/videos/play/wwdc2019/224/)
+- **Used by:** D-111-42

@@ -41,9 +41,10 @@ The household/visit split is the heart of the app and the thing most likely to b
 - `visits.id` is a **client-generated UUIDv7** — this is what makes the offline queue
   idempotent. Do not replace it with a database default.
 - The word users see is **session** (D-111-7), as in the API (`/sessions`). Only the
-  table, `outing_sessions`, and some code identifiers say "outing"; never put "outing" in
-  UI text. Members may pair into per-session **teams**; a current teammate may amend a
-  teammate's records.
+  table, `outing_sessions`, some code identifiers, and internal comments that must tell
+  it from the sign-in session say "outing" (D-111-39); never put "outing" in UI text.
+  Members may pair into per-session **teams**; a current teammate may amend a teammate's
+  records.
 
 ## Rules
 

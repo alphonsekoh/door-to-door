@@ -19,8 +19,9 @@ and there was no `:active` style, so no press gave any response.
 ## Decisions
 
 Owner decisions are marked **(owner)**. D-111-1 to D-111-6 are on the issue thread.
-D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed them on
-2026-10-19 and they are not on the issue thread.
+D-111-7 to D-111-9 answer the builder's three questions; the owner posted them on the
+issue on 2026-10-20. D-111-33 and D-111-34 answer the two open questions; the workflow
+relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue thread.
 
 - **D-111-1 · Recorded UI decisions may be reworked where the design calls for it
   (owner).** Only where it clearly improves the experience. Each decision keeps its intent
@@ -49,7 +50,8 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   D-38-7's "outing" vs "session" clause. Refines the quoted wording of D-24-3, D-33-30,
   D-74-36, D-74-56 and D-74-57. _Why:_ the home tab said "Session" while everything
   inside said "outing"; the app should use one word, the nav's. A count of "0 units" read
-  as the size of the block.
+  as the size of the block. _Refined by D-111-38 and D-111-39:_ every per-session count
+  says "visited", and "in this session".
 - **D-111-8 · The text follows the iOS text-size setting (owner).** It uses
   `font: -apple-system-body` on iOS touch devices only. Body text is never below 16px,
   and spacing scales with the text. A real-iPhone check at the default and the largest
@@ -77,7 +79,8 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   eases back over 160 ms. `PressFeedback` registers one passive, empty `touchstart`
   listener so iOS applies `:active`. Controls get `touch-action: manipulation`, and pinch
   zoom stays. The interest picker fills at once. _Why:_ skill §1; before, nothing showed
-  between a tap and the network's answer. _Research:_ R-60.
+  between a tap and the network's answer. _Research:_ R-60. _Refined by D-111-41:_ the
+  sheet backdrop takes no press dim.
 - **D-111-12 · A block tap answers before the network does.**
   `/blocks/[id]/loading.tsx` commits the navigation on the first frame, and `LinkPending`
   (`useLinkStatus`) tints the card while the route loads. The block-attach sheet loads
@@ -106,7 +109,7 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   `online`. `src/app/first-load.test.ts` fails if the root layout, sign-in or not-found
   import Motion statically. _Why:_ sign-in is a new phone's first load, often in poor
   signal. Fetching when idle, not on the tap, lets the sheet open offline even with no
-  worker in charge. _Research:_ R-64.
+  worker in charge. _Research:_ R-64. The owner accepted the download (D-111-33).
 - **D-111-16 · Springs use Apple's damping ratio and response,** converted to stiffness
   and damping (`src/lib/sheet-motion.ts`).
   - Open and close: 1.0 / 0.42 s.
@@ -127,14 +130,17 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
 
   Confirmations are not draggable. _Why:_ skill §2, §5, §6 and §9. Only the header
   starts a drag, so a sheet's own scroll is untouched, and a confirmation should take a
-  deliberate answer.
+  deliberate answer. _Refined by D-111-42:_ a sheet holding typed work resists and asks.
+  _Refined by D-111-45:_ "grabbed mid-flight" covers the rise and the settle, not the
+  exit.
 
 - **D-111-18 · Reduced motion: a cross-fade, never no feedback.** Sheets cross-fade over
   150 ms with no travel and no springs. A drag settles instantly. Press states drop the
   scale and keep the dim. The global reduce rule stays; the scroll-edge fade is exempt
   because it follows scrolling, not time. The scrim and panel are `transition-none`, so
   only Motion moves them. _Why:_ skill §14. In WebKit, a CSS transition on those layers
-  replayed the fade, a one-frame blink.
+  replayed the fade, a one-frame blink. _Refined by D-111-41:_ the scrim follows a drag
+  under reduced motion too.
 - **D-111-19 · The glass is one utility, `material-chrome`.**
   - Surface tint at 82% (`color-mix`).
   - `blur(24px) saturate(180%)`, with the `-webkit-` prefix.
@@ -156,7 +162,8 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   submit button uses `form=`. The account screen keeps its bar in place. Refines D-25-4;
   Save is still pinned above the nav. _Why:_ a 7px strip of form showed between the bar
   and the nav. A sticky bar cannot rise above its parent, so at 200% text it sat under
-  the nav. _Research:_ R-63.
+  the nav. _Research:_ R-63. _Refined by D-111-40:_ a stand-in puts Save in the first
+  paint, and the marker is offset in CSS, not measured.
 - **D-111-21 · The sync bar is pinned only while something is unsent.** As D-33-12
   intended, its row is still held one line high from the first paint. When quiet ("All
   visits sent"), it scrolls away with the page. A scroll-edge fade replaces its
@@ -184,7 +191,7 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   and `@media (pointer: coarse)`, so the root follows Dynamic Type, at 17px by default.
   - The 16px floor stops iOS zooming on input focus and keeps targets at 44px.
   - The 32px ceiling is the largest size the E2E proves. Above it, a title was crushed
-    and a sheet's Save sat under its header.
+    and a sheet's Save sat under its header. The owner kept it (D-111-34).
 
   Implements D-111-8. _Why:_ the `@supports` check is what keeps desktop Safari and
   Playwright's WebKit out. `pointer: coarse` alone matches both test engines.
@@ -199,7 +206,8 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
     the chevron.
 
   _Why:_ at 200%, "Medium" overlapped "High", and "Follow-ups" wrapped and pushed its
-  icon out of line.
+  icon out of line. _Refined by D-111-35 and D-111-36:_ the 12ch rule covers every row,
+  and unit numbers never split.
 
 - **D-111-26 · A refused Save says why, beside Save.** It uses one line in D-33-29's
   `role="alert"` slot ("Not saved. Choose an interest level."). Field errors clear as
@@ -253,6 +261,99 @@ D-111-7 to D-111-9 answer the builder's three questions; the workflow relayed th
   assertions in existing specs. Because sheets now live on `<body>`, the keyboard E2E
   checks that the nav has an `inert` ancestor (refines D-90-11). _Why:_ these are the
   layout, stacking and media emulation that jsdom cannot see (D-37-6). _Research:_ R-65.
+  _Refined by D-111-37:_ the 32px sweep is a spec file of its own.
+
+- **D-111-33 · Motion's download is accepted (owner).** About 37 kB gzip (R-64), fetched
+  once a signed-in page is idle and precached, never on sign-in or a first load
+  (D-111-15). _Why:_ it never stands between a new phone and signing in, and downloads
+  once per app version.
+- **D-111-34 · The 32px text ceiling is kept for now (owner).**
+  `--reader-rem: clamp(16px, 1rem, 32px)` stays, so AX2 to AX5 (33 to 53px) are held at
+  32px (D-111-24). _Why:_ 32px is what the E2E proves; past it the screens need
+  redesigning, not scaling.
+- **D-111-35 · What sits beside a title drops under it once the title would get less
+  than 12ch.** One rule (`flex-wrap`, the title at `flex-[1_1_12ch]`) for every row with
+  an action, date, chip, count, Select, Remove or Retry beside its title, on member and
+  admin screens, pickers and sheets. A dropped count, Select, Remove or Retry keeps to the
+  right; an action may wrap its own label; team actions stack only when both labels do
+  not fit. Page titles break a long word, and "Blk N" never breaks between its words.
+  Refines D-111-25. _Why:_ at 28 to 32px the Sessions list squeezed titles to 2 to 20px
+  over their End button, "Record for a member" pushed Records 280px sideways, and block
+  cards set "Blk" over "123". _Research:_ R-67.
+- **D-111-36 · A unit number is never split.** `UnitNumber`
+  (`src/components/unit-number.tsx`), a no-wrap wrapper, is the one place this is done,
+  wherever a unit number shows; `FollowUpDoor` replaces `unitLabel`. Non-breaking hyphens
+  were rejected: they change the text, which breaks copying and search. _Why:_ "#06-"
+  over "203" reads as two doors.
+- **D-111-37 · `e2e/large-text.spec.ts` sweeps every member and admin screen at the
+  32px cap.** A spec file of its own, outside D-111-32's describe block. It flags
+  sideways scroll, a control past the edge or into the page margin, text spilling or
+  drawn over a control, a split unit number, a column under 12ch cut short or set a word
+  a line, chrome over half the screen, and a first control a tap would not reach.
+  Refines D-111-32; layout only, so within D-37-6. _Why:_ jsdom lays nothing out, and no
+  spec opened every screen at the cap; each fault in D-111-35 passed the existing suite.
+- **D-111-38 · Every per-session unit count reads "N visited".** The admin session
+  detail's block card and the history card now match the home card; `admin-session.png`
+  and `history.png` were retaken (D-38-14). Refines D-111-7. _Why:_ "N units" read as
+  the size of the block.
+- **D-111-39 · "In this session", and a refused change says why.** "On this session" is
+  "in this session" everywhere. A refused start, end or reopen reads "This session is
+  already running, so it cannot be started." (or "has not started", "has already
+  ended"). Comments beside UI text say session; server, sync and offline comments keep
+  "outing" where it tells the domain session from the sign-in session. Refines D-111-7
+  and D-74-57's wording. _Why:_ the race message read "A active session cannot be
+  started.", and D-28-3 shows it as it comes.
+- **D-111-40 · The docked Save is in the first paint.** Until it mounts, which includes
+  the server's HTML, `DockHost` draws a `standIn` at its own end, where the bar docks;
+  the form's bar then replaces it with no hydration mismatch. The block screen's stand-in
+  is `SaveAndNext` naming no form, so a tap before hydration does nothing. The offline
+  shell has none, as its form appears only after mount. Pinned is read from a marker held
+  down by `below-by-nav`, the bar's own CSS offset, not by an offset measured at mount.
+  Refines D-111-20, and so D-25-4. _Why:_ at 32px the first paint put Save under the nav,
+  and it jumped about 98px on hydration; a native submit would reload the page and lose
+  the typed unit; a measured offset went stale when the text size changed or the phone
+  turned. _Research:_ R-67, R-68.
+- **D-111-41 · The scrim follows the sheet.** Its opacity comes from the sheet's offset
+  (`scrimOpacity`): it lightens as the sheet is pulled and darkens as it rises or
+  settles. Under reduced motion it cross-fades with the panel on open and close, and
+  still follows a drag. The backdrop takes no press dim. Refines D-111-18 and D-111-11.
+  _Why:_ a scrim fading on its own clock did not answer the finger (skill §2, §12), and a
+  press dim lightened it under the finger.
+- **D-111-42 · A sheet holding typed work asks before throwing it away.** `Sheet` takes
+  `discard`, set only while the follow-up, amend or record-for-a-member sheet holds
+  unsaved typed changes. A pull then rubber-bands instead of tracking 1:1. A release that
+  would have dismissed, judged on the finger's travel and speed, springs back and asks on
+  `ConfirmDialog` (destructive): "Discard this note?", "Discard your changes?" when
+  editing, or "Discard this visit?", with Keep editing or Discard. A backdrop tap asks
+  too, and focus then returns to the sheet. Refines D-111-17 and D-90-7's backdrop close.
+  Only unsaved input is discarded; queued records stay untouchable (D-33-2). _Why:_ a
+  flick or a stray tap at a door lost the note, and iOS guards a sheet with unsaved
+  changes the same way. _Research:_ R-69.
+- **D-111-43 · Cancel and Escape close at once, even over typed work.** Only a drag, a
+  flick or a backdrop tap asks. D-90-6 still ignores an Escape that ends an IME
+  composition. _Why:_ Cancel and Escape are deliberate answers; the other three can be
+  slips.
+- **D-111-44 · Only sheets with typed text worth keeping ask.** The team, block-attach
+  and sync sheets never do. _Why:_ they hold picks, a search or a short name, all cheap
+  to redo, and a confirmation used too often trains people to tap through (skill §16).
+- **D-111-45 · A leaving sheet cannot be grabbed back.** Once a close starts, the
+  leaving copy is `inert` and `aria-hidden` (D-111-14), so a touch on it does nothing;
+  reopening makes a new sheet. Refines D-111-17 and D-90-7. _Why:_ focus, the page and
+  scrolling are handed back as the exit starts. Catching the sheet would have to take
+  them back from a page the member may already be using, and a live leaving copy could be
+  closed twice.
+- **D-111-46 · The install banner floats only while it covers little.** It floats above
+  the nav and reserves `--banner-bottom` only while it is at most a quarter of the screen
+  tall and no docked Save is on screen (`bannerFloats`, `useDockedBarOnScreen`).
+  Otherwise it is a card at the end of the page that scrolls with it and reserves
+  nothing, so `PwaPrompts` now renders inside `main`. It is measured before paint and
+  whenever it resizes, and is no wider in the page than floating, so it cannot flip at
+  the limit. Refines D-32-13; D-32-12 is unchanged. _Why:_ at 32px on the iPhone profile
+  it was 273px of a 664px screen, so with the nav it covered 60% of each screen, and on
+  Account it covered the pinned Save. _Research:_ R-67.
+- **D-111-47 · `useReservedSpace` also re-measures on a `ResizeObserver`.** Refines
+  D-32-20. _Why:_ a text-size change resizes a banner with no `resize` event.
+  _Research:_ R-67.
 
 ## Audit
 
@@ -306,16 +407,21 @@ take something away, and specific nav labels.
 | -------------------------------------------- | ------------------------------------------------------------------------------- | ------------------ |
 | D-90-1                                       | "No wrapper component" superseded; the hook stays                               | D-111-13           |
 | D-90-7, D-90-8, D-90-9                       | Refined: released as the exit starts                                            | D-111-14           |
+| D-90-7                                       | Refined: a backdrop tap over typed work asks; a leaving sheet stays inert       | D-111-42, D-111-45 |
 | D-90-10, D-90-11                             | Refined: roles come from `Sheet`; the E2E checks the nav's `inert` ancestor     | D-111-13, D-111-32 |
 | D-90-2 to D-90-6, D-85-4, D-85-11 to D-85-13 | Unchanged; the account message only takes the shared tokens                     | —                  |
-| D-25-4                                       | Refined: `DockedActions` and `DockHost`                                         | D-111-20           |
+| D-25-4                                       | Refined: `DockedActions` and `DockHost`; Save is in the first paint             | D-111-20, D-111-40 |
+| D-32-13                                      | Refined: the install banner floats only while it covers little                  | D-111-46           |
+| D-32-20                                      | Refined: also re-measures on a `ResizeObserver`                                 | D-111-47           |
 | D-33-12                                      | Refined: pinned only while something is unsent; a fade replaces its rule        | D-111-21           |
 | D-33-29                                      | Extended: the same slot explains a refused Save                                 | D-111-26           |
 | D-38-7                                       | "Outing" clause superseded                                                      | D-111-7            |
 | D-24-3, D-33-30, D-74-36, D-74-56, D-74-57   | Quoted wording now says "session"                                               | D-111-7            |
+| D-74-57                                      | Wording: "in this session"                                                      | D-111-39           |
 | D-74-47                                      | Refined: the shared `Sheet` caps height and scrolls the focused field into view | D-111-31           |
 | D-77-12                                      | Kept: no nav and `--nav-height: 0` on the shell; Save sits on the bottom edge   | D-111-20           |
 | D-30-7, D-74-62, D-37-6, D-38-14, D-01-2     | Kept                                                                            | —                  |
+| D-32-12, D-33-2, D-90-6, D-28-3              | Kept                                                                            | —                  |
 
 ## Deferred
 
@@ -326,33 +432,38 @@ take something away, and specific nav labels.
 - **Haptics** (skill §13). The audit did not raise them, and iOS has no Vibration API.
 - **Showing that each new E2E test fails when broken.** Each break needs a production
   rebuild, so this is left to the verifier. The new Vitest tests were each broken and
-  seen to fail.
+  seen to fail. From fix round 4, the builder showed each new E2E test failing on both
+  engines against a build with its fix reverted.
 - **What only a real iPhone shows,** listed for the owner as manual checks:
   - Dynamic Type at the default and the largest accessibility size;
   - the blur and grain (Playwright's WebKit draws no backdrop blur);
   - press states on touch-down (these depend on the `touchstart` listener);
   - how a drag feels, with a flick and with a slow pull;
-  - the amend sheet with the keyboard up.
+  - the amend sheet with the keyboard up;
+  - at AX1 and above: the household, Sessions and Records screens fit, unit numbers stay
+    whole, and the install banner (Safari, not installed) sits at the end of the page and
+    never covers Account's Save;
+  - a typed follow-up note, flicked: the sheet gives, springs back and asks, and the
+    scrim lightens during a slow pull;
+  - a slow first load of a block screen at AX1: Save is above the nav from the first
+    frame and does not jump;
+  - a text-size change from Control Centre with a long form open: the docked Save turns
+    to glass when it pins.
 
 ## Relies on
 
-D-01-2, D-25-4, D-28-2, D-30-7, D-30-8, D-32-12, D-32-13, D-33-12, D-33-20, D-33-29,
-D-37-6, D-38-14, D-74-47, D-74-62, D-77-12, D-77-14, D-85-4, D-85-11, D-85-12, D-90-2 to
-D-90-6.
+D-01-2, D-25-4, D-28-2, D-28-3, D-30-7, D-30-8, D-32-12, D-32-13, D-32-20, D-33-2,
+D-33-12, D-33-20, D-33-29, D-37-6, D-38-14, D-74-47, D-74-62, D-77-12, D-77-14, D-85-4,
+D-85-11, D-85-12, D-90-2 to D-90-6.
 
 ## Known limits
 
 - Reduced transparency is proven on Chromium only, because WebKit cannot emulate it
   (R-65).
 - Where scroll-driven animations are unsupported, sticky chrome shows no edge at all.
-- Text larger than 32px is held at 32px (D-111-24).
+- Text larger than 32px is held at 32px (D-111-24, kept by D-111-34).
+- A sheet that is sliding away cannot be caught (D-111-45).
 
 ## Open questions
 
-- **Motion's download.** The chunk holding Motion is 36.9 kB gzip (R-64). It is never
-  part of a first load or of sign-in. A signed-in page fetches it once idle (D-111-15),
-  and the worker precaches it once per app version. Is that acceptable for a field app
-  used in poor signal? The builder recommends accepting it.
-- **The 32px text ceiling.** D-111-8 says to follow the iOS setting, but `--reader-rem`
-  holds the four largest accessibility sizes (AX2 to AX5, 33px to 53px) at 32px. Accept
-  the cap, or prove the screens at larger sizes first?
+None. Motion's download and the 32px ceiling were answered as D-111-33 and D-111-34.
