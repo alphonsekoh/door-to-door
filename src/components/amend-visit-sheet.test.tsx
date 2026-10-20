@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AmendVisitSheet } from "@/components/amend-visit-sheet";
@@ -342,6 +342,26 @@ describe("AmendVisitSheet", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks before a stray tap on the backdrop loses a correction", async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<AmendVisitSheet entry={entryFor()} onClose={onClose} onSaved={vi.fn()} />);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    const ask = screen.getByRole("alertdialog", { name: "Discard your changes?" });
+    expect(ask).toHaveTextContent("The visit stays as it was recorded.");
+    await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute("aria-checked", "true");
+
+    // Put back as it was, there is nothing left to lose.
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("hides the details again on a second tap", async () => {

@@ -64,6 +64,16 @@ export function FollowUpSheet({
 
   const length = text.trim().length;
   const title = mode.kind === "create" ? `Follow-up for ${mode.unitNumber}` : "Edit follow-up";
+  /* Asked before a flick or a stray tap loses what was typed at the door. An
+     edit asks about the changes: "this note" would read as deleting it. */
+  const discard =
+    editing === null
+      ? text.trim() === "" && day === ""
+        ? undefined
+        : { title: "Discard this note?", detail: "What you typed has not been saved." }
+      : Object.keys(diffFollowUp(editing, text, day)).length === 0
+        ? undefined
+        : { title: "Discard your changes?", detail: "The note stays as it was." };
 
   async function send(request: () => Promise<unknown>): Promise<void> {
     if (sending.current) return;
@@ -114,7 +124,7 @@ export function FollowUpSheet({
 
   return (
     <>
-      <Sheet label={title} title={title} onClose={onClose}>
+      <Sheet label={title} title={title} onClose={onClose} discard={discard}>
         {failure === null ? null : (
           <p role="alert" className="mt-3 notice-danger">
             {failure}

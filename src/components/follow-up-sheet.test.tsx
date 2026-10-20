@@ -269,6 +269,68 @@ describe("editing a note", () => {
   });
 });
 
+describe("a stray tap or flick", () => {
+  const backdrop = () => screen.getByRole("button", { name: "Close" });
+  const asking = (name: string) => within(screen.getByRole("alertdialog", { name }));
+
+  it("closes an untouched sheet at once", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    fireEvent.click(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("asks before losing a typed note, and keeps it to go on with", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    type("Note", "Call back after six");
+    fireEvent.click(backdrop());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      asking("Discard this note?").getByText("What you typed has not been saved."),
+    ).toBeVisible();
+
+    fireEvent.click(asking("Discard this note?").getByRole("button", { name: "Keep editing" }));
+    expect(sheet().getByLabelText("Note")).toHaveValue("Call back after six");
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(backdrop());
+    fireEvent.click(asking("Discard this note?").getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("counts a due day on its own as something typed", () => {
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type("Due (optional)", "2026-12-24");
+    fireEvent.click(backdrop());
+    expect(screen.getByRole("alertdialog", { name: "Discard this note?" })).toBeInTheDocument();
+  });
+
+  it("asks about the changes to a note being edited, never as if deleting it", () => {
+    const onClose = vi.fn();
+    render(
+      <FollowUpSheet mode={{ kind: "edit", note: existing }} onClose={onClose} onSaved={vi.fn()} />,
+    );
+    fireEvent.click(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+
+    type("Note", "Bring two flyers.");
+    fireEvent.click(backdrop());
+    expect(asking("Discard your changes?").getByText("The note stays as it was.")).toBeVisible();
+    expect(screen.queryByRole("alertdialog", { name: "Discard this note?" })).toBeNull();
+  });
+
+  it("still closes at once from Cancel, with a note typed", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    type("Note", "Call back");
+    fireEvent.click(sheet().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
 describe("diffFollowUp", () => {
   it("is empty when nothing moved, ignoring surrounding spaces", () => {
     expect(diffFollowUp(existing, " Bring the flyer. ", "2026-11-01")).toEqual({});

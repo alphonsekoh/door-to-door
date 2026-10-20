@@ -95,6 +95,12 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
   const mayAmend = route !== null;
   const othersRecord = visit !== null && visit.member.id !== userId;
 
+  /* Asked before a flick or a stray tap loses a correction. */
+  const discard =
+    Object.keys(diffVisit(original, draft)).length === 0
+      ? undefined
+      : { title: "Discard your changes?", detail: "The visit stays as it was recorded." };
+
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -132,6 +138,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
       label={`Amend ${entry.household.unitNumber}`}
       title={entry.household.unitNumber}
       onClose={onClose}
+      discard={discard}
     >
       {visit === null ? (
         <p className="py-6 text-body text-foreground-muted">

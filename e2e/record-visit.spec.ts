@@ -194,6 +194,25 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   const sheet = memberPage.getByRole("dialog", { name: `Follow-up for ${NOTED_UNIT}` });
   await sheet.getByLabel("Note").fill("Bring the festival flyer on Sunday.");
 
+  /* A flick down the header would throw an empty sheet away. Holding a note
+     typed at the door, it gives, springs back and asks instead. Measured
+     once it has risen, so the finger lands on the header. */
+  await expect
+    .poll(() => sheet.evaluate((panel) => getComputedStyle(panel).transform))
+    .toBe("none");
+  const header = await sheet.getByText(`Follow-up for ${NOTED_UNIT}`).boundingBox();
+  const x = (header?.x ?? 0) + 20;
+  const y = (header?.y ?? 0) + (header?.height ?? 0) / 2;
+  await memberPage.mouse.move(x, y);
+  await memberPage.mouse.down();
+  await memberPage.mouse.move(x, y + 300, { steps: 5 });
+  await memberPage.mouse.up();
+  const ask = memberPage.getByRole("alertdialog", { name: "Discard this note?" });
+  await expectTappable(ask.getByRole("button", { name: "Keep editing" }));
+  await ask.getByRole("button", { name: "Keep editing" }).click();
+  await expect(ask).toBeHidden();
+  await expect(sheet.getByLabel("Note")).toHaveValue("Bring the festival flyer on Sunday.");
+
   /* The sheet opens over the recording form and the bottom nav: the same
      place a Save button has been buried before. */
   const save = sheet.getByRole("button", { name: "Save follow-up" });
@@ -232,12 +251,16 @@ test.describe("the phone's display settings", () => {
       Reflect.set(window, "__sheetFrames", seen);
       const frame = () => {
         const panel = document.querySelector('[data-state="open"] [role="dialog"]');
-        const scrim = panel?.previousElementSibling;
-        if (panel && scrim) {
+        // The backdrop fades when motion is reduced; the dim inside it
+        // follows the sheet's travel otherwise. What shows is both.
+        const backdrop = panel?.previousElementSibling;
+        const dim = backdrop?.firstElementChild;
+        if (panel && backdrop && dim) {
           seen.push({
             transform: getComputedStyle(panel).transform,
             opacity: Number(getComputedStyle(panel).opacity),
-            scrim: Number(getComputedStyle(scrim).opacity),
+            scrim:
+              Number(getComputedStyle(backdrop).opacity) * Number(getComputedStyle(dim).opacity),
           });
         }
         if (seen.length < 30) requestAnimationFrame(frame);
@@ -301,6 +324,40 @@ test.describe("the phone's display settings", () => {
     await expect
       .poll(() => panel.evaluate((element) => getComputedStyle(element).transitionProperty))
       .toBe("none");
+  });
+
+  test("a sheet pulled down lightens its scrim as it goes, and settles back", async ({
+    memberPage,
+  }) => {
+    await openBlock(memberPage);
+    await memberPage.getByRole("tab", { name: /^All units/ }).click();
+    await memberPage.getByLabel("Search this block").fill(UNIT);
+    await memberPage.getByRole("button", { name: new RegExp(UNIT) }).click();
+    const sheet = memberPage.getByRole("dialog", { name: `Amend ${UNIT}` });
+    const risen = () => sheet.evaluate((panel) => getComputedStyle(panel).transform);
+    await expect.poll(risen).toBe("none");
+    const dim = () =>
+      sheet.evaluate((panel) => {
+        const layer = panel.previousElementSibling?.firstElementChild;
+        return layer ? Number(getComputedStyle(layer).opacity) : Number.NaN;
+      });
+    expect(await dim()).toBe(1);
+
+    const header = await sheet.getByText(UNIT, { exact: true }).first().boundingBox();
+    const x = (header?.x ?? 0) + 10;
+    const y = (header?.y ?? 0) + (header?.height ?? 0) / 2;
+    await memberPage.mouse.move(x, y);
+    await memberPage.mouse.down();
+    await memberPage.mouse.move(x, y + 100, { steps: 10 });
+    // Lighter while the finger is still down, not only once it lets go.
+    await expect.poll(dim).toBeLessThan(0.95);
+    expect(await dim()).toBeGreaterThan(0.5);
+    // Held still, then let go short of the line: back, and fully dim again.
+    await memberPage.waitForTimeout(200);
+    await memberPage.mouse.up();
+    await expect.poll(risen).toBe("none");
+    await expect.poll(dim).toBe(1);
+    await expect(sheet).toBeVisible();
   });
 
   test("the pinned Save still knows it is pinned after the text size changes", async ({

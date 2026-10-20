@@ -57,8 +57,59 @@ describe("Sheet with reduced motion", () => {
     await waitFor(() => {
       expect(panel.style.transform).toBe("translateY(50px)");
     });
+    // The scrim lightens with it: following a finger is not motion to spare.
+    const scrim = screen.getByRole("button", { name: "Close" }).firstElementChild;
+    if (!(scrim instanceof HTMLElement)) throw new Error("no scrim");
+    expect(Number(scrim.style.opacity)).toBeCloseTo(1 - 50 / 600, 2);
     fireEvent.pointerUp(panel, { pointerId: 1, clientY: 160 });
     expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(panel.style.transform).toBe("none");
+    });
+    expect(Number(scrim.style.opacity)).toBe(1);
+  });
+
+  it("cross-fades the scrim with the sheet", async () => {
+    render(
+      <Sheet label="Edit" title="Edit" onClose={vi.fn()}>
+        <p>Body</p>
+      </Sheet>,
+    );
+    const backdrop = screen.getByRole("button", { name: "Close" });
+    expect(backdrop.style.opacity).toBe("0");
+    await waitFor(() => {
+      expect(backdrop.style.opacity).toBe("1");
+    });
+  });
+
+  it("asks before a pull throws away unsaved work, and is back in place at once", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(600);
+    Object.defineProperty(HTMLElement.prototype, "setPointerCapture", {
+      configurable: true,
+      value: vi.fn(),
+    });
+    const onClose = vi.fn();
+    render(
+      <Sheet
+        label="Edit"
+        title="Edit"
+        onClose={onClose}
+        discard={{ title: "Discard this note?", detail: "What you typed has not been saved." }}
+      >
+        <p>Body</p>
+      </Sheet>,
+    );
+    const panel = screen.getByRole("dialog", { name: "Edit" });
+    const handle = screen.getByText("Edit", { selector: "p" }).closest(".touch-none");
+    if (!(handle instanceof HTMLElement)) throw new Error("no drag handle");
+
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 500 });
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 500 });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("alertdialog", { name: "Discard this note?" }),
+    ).toBeInTheDocument();
     await waitFor(() => {
       expect(panel.style.transform).toBe("none");
     });

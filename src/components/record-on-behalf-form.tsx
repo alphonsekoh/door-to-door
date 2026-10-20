@@ -35,6 +35,12 @@ export function RecordOnBehalfForm({
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
+  /* Asked before a flick or a stray tap loses a record typed in from paper. */
+  const discard =
+    unitNumber.trim() === "" && description.trim() === ""
+      ? undefined
+      : { title: "Discard this visit?", detail: "What you typed has not been saved." };
+
   async function save(): Promise<void> {
     if (memberId === "" || blockId === "" || unitNumber.trim() === "" || interestLevel === null) {
       setFailure("Choose a member, a block, a unit and an interest level.");
@@ -65,7 +71,12 @@ export function RecordOnBehalfForm({
   }
 
   return (
-    <Sheet label="Record on behalf of a member" title="Record for a member" onClose={onClose}>
+    <Sheet
+      label="Record on behalf of a member"
+      title="Record for a member"
+      onClose={onClose}
+      discard={discard}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();

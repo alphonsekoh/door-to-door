@@ -16,6 +16,7 @@ export function ConfirmDialog({
   title,
   detail,
   confirmLabel,
+  cancelLabel = "Keep as it is",
   busy,
   tone = "destructive",
   onConfirm,
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   title: string;
   detail: string;
   confirmLabel: string;
+  cancelLabel?: string;
   busy: boolean;
   tone?: "destructive" | "default";
   onConfirm: () => void;
@@ -61,7 +63,7 @@ export function ConfirmDialog({
           onClick={onCancel}
           className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
-          Keep as it is
+          {cancelLabel}
         </button>
       </div>
     </Sheet>

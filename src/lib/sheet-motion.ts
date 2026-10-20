@@ -33,6 +33,43 @@ export function rubberband(overshoot: number, dimension: number, constant = 0.55
   return (overshoot * dimension * constant) / (dimension + constant * Math.abs(overshoot));
 }
 
+/* The inverse: how far a pull past the edge went, to draw it `shown` px out. */
+export function unrubberband(shown: number, dimension: number, constant = 0.55): number {
+  return (shown * dimension) / (constant * (dimension - Math.abs(shown)));
+}
+
+/*
+ * Where the sheet is drawn for a finger that has moved it `offset` px from
+ * rest. Above its resting place it always resists. One holding unsaved work
+ * resists going down as well, so it can be tugged but not thrown away.
+ */
+export function resist(offset: number, height: number, down: boolean): number {
+  if (offset < 0) return -rubberband(-offset, height);
+  return down ? rubberband(offset, height) : offset;
+}
+
+/* The finger's offset that draws the sheet at `shown`. A drag that takes
+   hold of a sheet still springing back starts from here, so it does not
+   jump under the finger. */
+export function unresist(shown: number, height: number, down: boolean): number {
+  if (shown < 0) return -unrubberband(-shown, height);
+  return down ? unrubberband(shown, height) : shown;
+}
+
+/*
+ * How dim the scrim is, from 1 to 0, with the sheet `offset` down from rest.
+ * It lightens as the sheet is pulled away and darkens as it rises, so it
+ * follows the sheet rather than fading on a clock of its own.
+ */
+export function scrimOpacity(offset: number | string, height: number): number {
+  const down =
+    typeof offset === "string" && offset.endsWith("%")
+      ? Number.parseFloat(offset) / 100
+      : toPx(offset, height) / height;
+  // At rest before the panel is measured, 0 / 0: fully dim.
+  return Math.min(1, Math.max(0, 1 - (down || 0)));
+}
+
 /* The sheet's offset in px. Mid-entrance it can still be the percentage it
    rose from, which a drag grabbing it then has to start from. */
 export function toPx(value: number | string, height: number): number {

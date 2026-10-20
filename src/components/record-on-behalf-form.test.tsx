@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RecordOnBehalfForm } from "@/components/record-on-behalf-form";
@@ -201,6 +201,18 @@ describe("RecordOnBehalfForm", () => {
     await user.click(screen.getByRole("button", { name: "Close" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks before a stray tap on the backdrop loses a record typed in", async () => {
+    const onClose = vi.fn();
+    const user = renderForm({ onClose });
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+
+    const ask = screen.getByRole("alertdialog", { name: "Discard this visit?" });
+    expect(ask).toHaveTextContent("What you typed has not been saved.");
+    await user.click(within(ask).getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it("is a modal: focus moves in and Escape closes", async () => {

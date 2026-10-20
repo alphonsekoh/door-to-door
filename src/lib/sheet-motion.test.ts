@@ -6,12 +6,16 @@ import {
   type Spring,
   project,
   releaseVelocity,
+  resist,
   rubberband,
+  scrimOpacity,
   toPx,
   settleSpring,
   shouldDismiss,
   spring,
   throwSpring,
+  unresist,
+  unrubberband,
 } from "@/lib/sheet-motion";
 
 describe("project", () => {
@@ -38,6 +42,64 @@ describe("rubberband", () => {
 
   it("never passes the dimension itself, however far it is pulled", () => {
     expect(rubberband(1e9, 600)).toBeLessThan(600);
+  });
+});
+
+describe("unrubberband", () => {
+  it("undoes rubberband, either side of the edge", () => {
+    for (const pulled of [1, 40, 300, 2000]) {
+      expect(unrubberband(rubberband(pulled, 600), 600)).toBeCloseTo(pulled);
+      expect(unrubberband(rubberband(-pulled, 600), 600)).toBeCloseTo(-pulled);
+    }
+  });
+});
+
+describe("resist", () => {
+  it("follows the finger down, and resists only above its resting place", () => {
+    expect(resist(120, 600, false)).toBe(120);
+    expect(resist(-120, 600, false)).toBe(-rubberband(120, 600));
+  });
+
+  it("resists going down too while it holds unsaved work, so it can be tugged but not thrown", () => {
+    const tugged = resist(300, 600, true);
+    expect(tugged).toBe(rubberband(300, 600));
+    expect(tugged).toBeGreaterThan(0);
+    expect(tugged).toBeLessThan(300);
+    expect(resist(-120, 600, true)).toBe(-rubberband(120, 600));
+  });
+
+  it("is undone by unresist, so a drag taking hold mid-spring starts where the sheet is", () => {
+    for (const down of [false, true]) {
+      for (const offset of [-200, -10, 0, 10, 200]) {
+        expect(unresist(resist(offset, 600, down), 600, down)).toBeCloseTo(offset);
+      }
+    }
+  });
+});
+
+describe("scrimOpacity", () => {
+  it("is fully dim at rest and clear with the sheet all the way down", () => {
+    expect(scrimOpacity(0, 600)).toBe(1);
+    expect(scrimOpacity("0%", 600)).toBe(1);
+    expect(scrimOpacity(600, 600)).toBe(0);
+    expect(scrimOpacity("100%", 600)).toBe(0);
+  });
+
+  it("lightens in step with the pull, in px or mid-entrance in percent", () => {
+    expect(scrimOpacity(150, 600)).toBeCloseTo(0.75);
+    expect(scrimOpacity("150px", 600)).toBeCloseTo(0.75);
+    expect(scrimOpacity("25%", 600)).toBeCloseTo(0.75);
+  });
+
+  it("stays fully dim pulled up past rest, and clear past the bottom", () => {
+    expect(scrimOpacity(-40, 600)).toBe(1);
+    expect(scrimOpacity(900, 600)).toBe(0);
+  });
+
+  it("is fully dim at rest before the panel has been measured", () => {
+    expect(scrimOpacity(0, 0)).toBe(1);
+    // Still clear while it waits below the screen to rise.
+    expect(scrimOpacity("100%", 0)).toBe(0);
   });
 });
 

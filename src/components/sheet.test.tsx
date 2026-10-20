@@ -117,6 +117,29 @@ function offset(panel: HTMLElement): number {
   return Number(match[1]);
 }
 
+/* The dimming layer, inside the backdrop button. */
+function scrim(): HTMLElement {
+  const layer = document.querySelector('[data-state="open"] button[aria-label="Close"] > span');
+  if (!(layer instanceof HTMLElement)) throw new Error("no scrim");
+  return layer;
+}
+
+const NOTE = { title: "Discard this note?", detail: "What you typed has not been saved." };
+
+/* A sheet holding typed work, so a stray pull or tap must ask first. */
+async function openHolding(onClose = vi.fn<() => void>()) {
+  render(
+    <Sheet label="Edit" title="Edit" onClose={onClose} discard={NOTE}>
+      <textarea aria-label="Note" defaultValue="Call after six" />
+    </Sheet>,
+  );
+  const panel = screen.getByRole("dialog", { name: "Edit" });
+  const handle = screen.getByText("Edit", { selector: "p" }).closest(".touch-none");
+  if (!(handle instanceof HTMLElement)) throw new Error("no drag handle");
+  await settled(panel);
+  return { panel, handle, onClose };
+}
+
 describe("Sheet", () => {
   it("renders on the body, out of any parent that could offset a fixed overlay", () => {
     render(
@@ -267,6 +290,26 @@ describe("Sheet", () => {
     expect(scrolled.mock.contexts[0]).toBe(screen.getByLabelText("Name"));
   });
 
+  it("lightens its scrim as it is pulled down, and darkens it again as it settles", async () => {
+    const { panel, handle } = await open();
+    expect(Number(scrim().style.opacity)).toBe(1);
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 160 });
+    // 150 px of a 600 px sheet: a quarter of the way to clear.
+    await waitFor(() => {
+      expect(Number(scrim().style.opacity)).toBeCloseTo(0.92, 2);
+    });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 260 });
+    await waitFor(() => {
+      expect(Number(scrim().style.opacity)).toBeCloseTo(0.75, 2);
+    });
+    // Held still, then let go: it goes back.
+    now += 400;
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 260 });
+    await settled(panel);
+    expect(Number(scrim().style.opacity)).toBe(1);
+  });
+
   it("has no drag handle when it asks for a deliberate answer", () => {
     render(
       <Sheet label="Sure?" role="alertdialog" layer="dialog" draggable={false} onClose={vi.fn()}>
@@ -276,6 +319,106 @@ describe("Sheet", () => {
     const dialog = screen.getByRole("alertdialog", { name: "Sure?" });
     expect(dialog.querySelector(".touch-none")).toBeNull();
     expect(dialog.closest(".fixed")).toHaveClass("z-60");
+  });
+});
+
+describe("Sheet holding unsaved work", () => {
+  it("gives under a pull rather than following it, springs back, and asks", async () => {
+    const { panel, handle, onClose } = await openHolding();
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 410 });
+    // 300 px of finger moves it much less: it can be tugged, not thrown.
+    await waitFor(() => {
+      expect(offset(panel)).toBeGreaterThan(0);
+    });
+    expect(offset(panel)).toBeLessThan(300);
+    now += 400;
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 410 });
+
+    expect(onClose).not.toHaveBeenCalled();
+    const ask = await screen.findByRole("alertdialog", { name: "Discard this note?" });
+    expect(ask).toHaveTextContent("What you typed has not been saved.");
+    await settled(panel);
+  });
+
+  it("keeps the work, and the sheet, when the answer is to keep editing", async () => {
+    const user = userEvent.setup();
+    const { onClose } = await openHolding();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    const ask = screen.getByRole("alertdialog", { name: "Discard this note?" });
+    // Focus lands on the way out of the question, not on Discard.
+    expect(within(ask).getByRole("button", { name: "Keep editing" })).toHaveFocus();
+    await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByLabelText("Note")).toHaveValue("Call after six");
+    // Back on the sheet, not on the backdrop that was tapped.
+    expect(screen.getByRole("dialog", { name: "Edit" })).toHaveFocus();
+  });
+
+  it("asks after a flick, and closes once the answer is to discard", async () => {
+    const user = userEvent.setup();
+    const { panel, handle, onClose } = await openHolding();
+    // About 1250 px/s, which would throw an empty sheet away.
+    drag(panel, handle, [130, 150, 170]);
+    expect(onClose).not.toHaveBeenCalled();
+    const ask = await screen.findByRole("alertdialog", { name: "Discard this note?" });
+    await user.click(within(ask).getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("asks before a tap on the backdrop throws the work away", async () => {
+    const user = userEvent.setup();
+    const { onClose } = await openHolding();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("alertdialog", { name: "Discard this note?" })).toBeInTheDocument();
+  });
+
+  it("just settles back from a short pull, with nothing to ask", async () => {
+    const { panel, handle, onClose } = await openHolding();
+    drag(panel, handle, [140, 160, 160, 160], 60);
+    await settled(panel);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("closes at once on Cancel or Escape, which are deliberate answers already", async () => {
+    const user = userEvent.setup();
+    const { onClose } = await openHolding();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("is grabbed where it is while it springs back, without a jump", async () => {
+    realSpring();
+    const { panel, handle } = await openHolding();
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 410 });
+    const pulled = await waitFor(() => offset(panel));
+    now += 400;
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 410 });
+    // Taken again partway back, and moved on by a few px.
+    await waitFor(() => {
+      expect(offset(panel)).toBeLessThan(pulled * 0.8);
+    });
+    const before = offset(panel);
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 111 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const held = offset(panel);
+    // Where it was, give or take the frame it was drawn in: read as a fresh
+    // pull from rest it would leap back to half that.
+    expect(Math.abs(held - before)).toBeLessThan(20);
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 116 });
+    await waitFor(() => {
+      expect(offset(panel)).not.toBe(held);
+    });
+    // A few px of finger moves it a few px, not back to where it was let go.
+    expect(Math.abs(offset(panel) - held)).toBeLessThan(5);
   });
 });
 

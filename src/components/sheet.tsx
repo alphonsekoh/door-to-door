@@ -8,6 +8,7 @@ import {
   useIsPresent,
   useMotionValue,
   useReducedMotion,
+  useTransform,
 } from "motion/react";
 import * as m from "motion/react-m";
 import {
@@ -19,17 +20,20 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import {
   DRAG_THRESHOLD,
   FADE,
   SHEET_SPRING,
   type Sample,
   releaseVelocity,
-  rubberband,
+  resist,
+  scrimOpacity,
   settleSpring,
   shouldDismiss,
   throwSpring,
   toPx,
+  unresist,
 } from "@/lib/sheet-motion";
 import { useModal } from "@/lib/use-modal";
 
@@ -64,14 +68,20 @@ const OVERLAY = {
 } as const;
 
 /* `origin` is where the sheet was when the drag began: px, or mid-entrance
-   the percentage it was rising from, read against the panel as it moves. */
+   the percentage it was rising from, read against the panel as it moves.
+   `samples` follow the finger and `shown` the sheet; they part where it
+   resists. */
 type Gesture = {
   id: number;
   from: number;
   origin: number | string;
   dragging: boolean;
   samples: Sample[];
+  shown: Sample[];
 };
+
+/* What to ask before throwing away work the sheet holds. */
+export type Discard = { title: string; detail: string };
 
 type SheetProps = {
   /* The dialog's accessible name. */
@@ -88,6 +98,11 @@ type SheetProps = {
   /* Drag the handle down to dismiss. Off for confirmations, which should
      take a deliberate answer. */
   draggable?: boolean;
+  /* Set while the sheet holds typed work that is not saved. A drag down then
+     meets resistance and springs back, and it or a tap on the backdrop asks
+     before anything is thrown away, as iOS does. Cancel is a deliberate
+     answer already, so it still closes at once. */
+  discard?: Discard | undefined;
   bodyClassName?: string;
   children: ReactNode;
 };
@@ -102,6 +117,7 @@ export function Sheet({
   role = "dialog",
   initialFocus,
   draggable = true,
+  discard,
   bodyClassName = "",
   children,
 }: SheetProps) {
@@ -113,6 +129,9 @@ export function Sheet({
   const gesture = useRef<Gesture | null>(null);
   /* Where a dismissing drag sends the sheet, and how fast it was going. */
   const [thrown, setThrown] = useState<{ to: number; velocity: number } | null>(null);
+  const [asking, setAsking] = useState<Discard | null>(null);
+  /* The scrim lightens as the sheet is pulled down, and darkens as it rises. */
+  const dim = useTransform(y, (offset) => scrimOpacity(offset, panel.current?.offsetHeight ?? 0));
 
   /* Nothing stops until the touch is known to be a drag: a tap that stopped
      the rise or a settle would leave the sheet resting partway. */
@@ -124,6 +143,7 @@ export function Sheet({
       origin: 0,
       dragging: false,
       samples: [],
+      shown: [],
     };
   }
 
@@ -142,25 +162,49 @@ export function Sheet({
       event.currentTarget.setPointerCapture(event.pointerId);
     }
     const height = event.currentTarget.offsetHeight;
-    const offset = toPx(current.origin, height) + event.clientY - current.from;
-    y.set(offset >= 0 ? offset : -rubberband(-offset, height));
-    current.samples.push({ y: offset, t: performance.now() });
+    const guarded = discard !== undefined;
+    const start = unresist(toPx(current.origin, height), height, guarded);
+    const offset = start + event.clientY - current.from;
+    const shown = resist(offset, height, guarded);
+    y.set(shown);
+    const t = performance.now();
+    current.samples.push({ y: offset, t });
+    current.shown.push({ y: shown, t });
   }
 
   function release(event: ReactPointerEvent<HTMLDivElement>, cancelled: boolean): void {
     const current = gesture.current;
     gesture.current = null;
     if (current?.dragging !== true) return;
-    const velocity = releaseVelocity(current.samples, performance.now());
+    const at = performance.now();
+    const velocity = releaseVelocity(current.samples, at);
     const height = event.currentTarget.offsetHeight;
-    if (!cancelled && shouldDismiss(toPx(y.get(), height), velocity, height)) {
-      // Leaves from here at the finger's speed. Motion's own reading of the
-      // value's speed has lapsed by the time the exit starts, after a render.
-      setThrown({ to: height, velocity });
+    const offset = unresist(toPx(y.get(), height), height, discard !== undefined);
+    if (!cancelled && shouldDismiss(offset, velocity, height)) {
+      if (discard === undefined) {
+        // Leaves from here at the finger's speed. Motion's own reading of the
+        // value's speed has lapsed by the time the exit starts, after a render.
+        setThrown({ to: height, velocity });
+        onClose();
+        return;
+      }
+      // Springs back, and asks over it.
+      setAsking(discard);
+    }
+    // Back at the speed the sheet itself was moving, which a resisted pull
+    // makes slower than the finger.
+    const settle = settleSpring(releaseVelocity(current.shown, at));
+    void animate(y, 0, reduce ? { duration: 0 } : settle);
+  }
+
+  function tapBackdrop(): void {
+    if (discard === undefined) {
       onClose();
       return;
     }
-    void animate(y, 0, reduce ? { duration: 0 } : settleSpring(velocity));
+    // Answered, focus comes back to the sheet, not to the backdrop just tapped.
+    panel.current?.focus();
+    setAsking(discard);
   }
 
   const travel = reduce
@@ -175,7 +219,13 @@ export function Sheet({
         transition: SHEET_SPRING,
       };
 
-  return createPortal(
+  /* With motion, the scrim follows the sheet's travel; reduced, the two
+     cross-fade together instead. */
+  const fade = reduce
+    ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: FADE }
+    : {};
+
+  const sheet = createPortal(
     <LazyMotion features={domAnimation} strict>
       <div
         ref={overlay}
@@ -185,17 +235,21 @@ export function Sheet({
         aria-hidden={present ? undefined : true}
       >
         {/* Tapping the backdrop closes; a plain button, so it is reachable by
-            keyboard and screen reader rather than a click trap. */}
+            keyboard and screen reader rather than a click trap. It takes no
+            press dim: that would lighten the scrim under the finger. */}
         <m.button
           type="button"
           aria-label={backdropLabel}
-          onClick={onClose}
-          className="absolute inset-0 bg-black/40 transition-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={FADE}
-        />
+          onClick={tapBackdrop}
+          className="absolute inset-0 transition-none active:opacity-100"
+          {...fade}
+        >
+          <m.span
+            aria-hidden="true"
+            className="absolute inset-0 bg-black/40 transition-none"
+            style={{ opacity: dim }}
+          />
+        </m.button>
 
         <m.div
           ref={panel}
@@ -259,6 +313,30 @@ export function Sheet({
       </div>
     </LazyMotion>,
     document.body,
+  );
+
+  return (
+    <>
+      {sheet}
+      <SheetPresence>
+        {asking === null ? null : (
+          <ConfirmDialog
+            title={asking.title}
+            detail={asking.detail}
+            confirmLabel="Discard"
+            cancelLabel="Keep editing"
+            busy={false}
+            onConfirm={() => {
+              setAsking(null);
+              onClose();
+            }}
+            onCancel={() => {
+              setAsking(null);
+            }}
+          />
+        )}
+      </SheetPresence>
+    </>
   );
 }
 
