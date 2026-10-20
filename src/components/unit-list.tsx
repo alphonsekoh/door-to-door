@@ -15,10 +15,10 @@ type Props = {
   rows: Row[];
   /* Records this page is sending right now. */
   inFlight: ReadonlySet<string>;
-  /* Units recorded during the running outing, so tonight's work is legible
+  /* Units recorded during the running session, so tonight's work is legible
      against the block's whole history. Null while the session is unknown. */
   sessionId: string | null;
-  /* The viewer's current team on the running outing, per the server. */
+  /* The viewer's current team in the running session, per the server. */
   teamIds?: readonly string[];
   /* False on the offline shell: amending needs the server (D-33-13). */
   amendable?: boolean;
@@ -130,7 +130,7 @@ export function UnitList({
 
   const visible = filterUnits(rows, query);
   const floors = groupByFloor(visible);
-  /* Progress reports the outing, not the block's whole history: what a member
+  /* Progress reports the session, not the block's whole history: what a member
      wants to know is how far tonight has got. Unsent records count: the
      door was knocked whether or not the server has heard yet. */
   const progress = summariseProgress(sessionId === null ? rows : rows.filter((r) => r.tonight));

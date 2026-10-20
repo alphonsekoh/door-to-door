@@ -4,7 +4,7 @@ import type { SessionHistorySummary } from "@/generated/types.gen";
 import { isSameDay } from "@/lib/history";
 import { formatDay } from "@/lib/dates";
 
-/* An outing spanning midnight, or reopened days later, needs both ends. */
+/* A session spanning midnight, or reopened days later, needs both ends. */
 function dateRange(from: string, to: string): string {
   const start = formatDay(from);
   if (isSameDay(from, to)) {
@@ -14,7 +14,7 @@ function dateRange(from: string, to: string): string {
 }
 
 /*
- * One outing, as the member who worked it experienced it. Every number here is
+ * One session, as the member who worked it experienced it. Every number here is
  * theirs alone - a second member on the same block sees different ones.
  */
 export function SessionHistoryCard({ summary }: { summary: SessionHistorySummary }) {
@@ -38,9 +38,10 @@ export function SessionHistoryCard({ summary }: { summary: SessionHistorySummary
           {names === "" ? "No blocks recorded" : names}
         </p>
 
+        {/* Units this member visited, as the home card counts them: "units"
+            alone read as the size of a block. */}
         <p className="mt-2 text-body">
-          <span className="font-semibold tabular-nums">{householdCount}</span>{" "}
-          {householdCount === 1 ? "unit" : "units"}
+          <span className="font-semibold tabular-nums">{householdCount}</span> visited
           {visitCount > householdCount ? (
             <span className="text-foreground-muted tabular-nums"> · {visitCount} visits</span>
           ) : null}

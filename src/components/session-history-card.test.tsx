@@ -73,10 +73,10 @@ describe("SessionHistoryCard", () => {
     expect(screen.getByText(/5 visits/)).toBeInTheDocument();
   });
 
-  it("uses the singular for a single unit", () => {
+  it("counts the units visited, in words that cannot read as the size of a block", () => {
     render(<SessionHistoryCard summary={summaryFor({ visitCount: 1, householdCount: 1 })} />);
-    expect(screen.getByText(/unit/)).toBeInTheDocument();
-    expect(screen.queryByText(/units/)).not.toBeInTheDocument();
+    expect(screen.getByText("visited", { exact: false })).toHaveTextContent(/^1 visited$/);
+    expect(screen.queryByText(/\bunits?\b/)).not.toBeInTheDocument();
   });
 
   it("says so plainly when no block came back with the outing", () => {

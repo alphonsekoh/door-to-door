@@ -26,9 +26,9 @@ type State =
   | { status: "error"; message: string };
 
 /*
- * "Me" is the outing list, counted from the member's own records only
+ * "Me" is the list of sessions, counted from the member's own records only
  * (D-27-1). "My team" is a flat list of records including those made by teams
- * the member is on now: the outing counts never change with it, so the two
+ * the member is on now: the session counts never change with it, so the two
  * are not mixed on one screen.
  */
 export const HISTORY_SUBTITLE = {

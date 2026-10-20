@@ -8,7 +8,7 @@ import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 
 /* Long enough not to drain a phone, short enough that a block added
- * mid-outing appears without anyone being told to refresh. */
+ * mid-session appears without anyone being told to refresh. */
 const POLL_INTERVAL_MS = 30_000;
 
 type State =
@@ -60,7 +60,7 @@ export function ActiveSessionScreen() {
   }, [load]);
 
   /* Each answer goes into the offline copy; a failure says nothing about
-     the outing, so it changes nothing there. */
+     the session, so it changes nothing there. */
   useEffect(() => {
     if (state.status === "ready") noteOuting(state.data);
     else if (state.status === "none") noteOuting(null);

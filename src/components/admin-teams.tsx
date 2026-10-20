@@ -30,10 +30,10 @@ const BUTTON =
   "min-h-11 rounded-lg border border-border px-3 text-body font-medium disabled:opacity-60";
 
 /*
- * Every team on one outing, for an admin to arrange (D-74-14, D-74-15).
+ * Every team in one session, for an admin to arrange (D-74-14, D-74-15).
  *
  * Follows the server's rules rather than its own: an admin may fix teams on a
- * draft, a running or an ended outing, but no new team can be formed once it
+ * draft, a running or an ended session, but no new team can be formed once it
  * has ended. Online-only like the member card (D-74-19); nothing is queued.
  *
  * `tick` is bumped by the detail screen's own poll, so the panel re-reads
@@ -203,7 +203,7 @@ export function AdminTeams({
 
       {teams.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          No teams on this session.
+          No teams in this session.
         </p>
       ) : (
         <ul className="space-y-2">

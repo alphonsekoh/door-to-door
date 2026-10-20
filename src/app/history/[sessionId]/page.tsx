@@ -10,7 +10,7 @@ export default async function SessionHistoryPage({ params }: PageProps<"/history
     <>
       <PageHeader
         title="Session records"
-        subtitle="What you, or your team, recorded on this session."
+        subtitle="What you, or your team, recorded in this session."
         back={{ href: "/history", label: "History" }}
       />
       {/* useSearchParams (the Me / My team choice) needs a boundary. */}

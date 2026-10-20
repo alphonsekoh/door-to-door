@@ -71,10 +71,10 @@ export function ConsolidatedHistory() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
-  /* Tagged with the outing they belong to; null while unknown (no outing,
+  /* Tagged with the session they belong to; null while unknown (no session,
      still loading, or the list could not be read). */
   const [teamState, setTeamState] = useState<{ outing: string; teams: Team[] } | null>(null);
-  /* Switching outings quickly must not leave the previous outing's teams. */
+  /* Switching sessions quickly must not leave the previous session's teams. */
   const teamsGeneration = useRef(0);
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -128,7 +128,7 @@ export function ConsolidatedHistory() {
     };
   }, [load, loadPickers, search]);
 
-  /* Teams belong to one outing, so they are listed only once one is chosen,
+  /* Teams belong to one session, so they are listed only once one is chosen,
      and a failure just leaves the picker empty. */
   const outing = filters.sessionId;
   useEffect(() => {
@@ -155,7 +155,7 @@ export function ConsolidatedHistory() {
 
   const teams = teamState?.outing === outing ? teamState.teams : [];
 
-  /* A team that is not one of the chosen outing's - deleted, or an edited or
+  /* A team that is not one of the chosen session's - deleted, or an edited or
      old URL - is unknown, and dropped rather than forwarded (D-29-4). */
   const unknownTeam =
     teamState?.outing === outing &&
@@ -167,12 +167,12 @@ export function ConsolidatedHistory() {
       ...parseHistoryFilters(new URLSearchParams(search)),
       teamId: "",
     });
-    // Teams are only known once an outing is chosen, so the outing keeps the query non-empty.
+    // Teams are only known once a session is chosen, so the session keeps the query non-empty.
     router.replace(`/admin/history?${next}`);
   }, [unknownTeam, search, router]);
 
   function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
-    /* A team from the old outing means nothing in the new one. */
+    /* A team from the old session means nothing in the new one. */
     const reset = key === "sessionId" ? { teamId: "" } : {};
     const next = toHistorySearch({ ...filters, ...reset, [key]: value });
     router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);

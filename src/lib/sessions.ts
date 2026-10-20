@@ -1,10 +1,10 @@
 import type { SessionStatus } from "@/generated/types.gen";
 
 /*
- * What an admin may do to an outing, and what to call it.
+ * What an admin may do to a session, and what to call it.
  *
  * Kept out of the components because getting it wrong is how a session ends up
- * unrecoverable: an ended outing must always offer reopen, or a member who is
+ * unrecoverable: an ended session must always offer reopen, or a member who is
  * mid-amendment loses their work.
  */
 

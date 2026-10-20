@@ -9,7 +9,7 @@ const BAR: Record<string, string> = {
 };
 
 /*
- * How an outing went, as a proportional bar plus the numbers.
+ * How a session went, as a proportional bar plus the numbers.
  *
  * The bar is decoration; the counts underneath are the content. Nothing here
  * depends on telling the four colours apart.

@@ -10,7 +10,7 @@ import { SheetPresence } from "@/components/sheet";
 /*
  * Start, end or reopen, with the refusal spelled out.
  *
- * One active outing at a time is a database constraint, so starting a second
+ * One active session at a time is a database constraint, so starting a second
  * one fails at the server. The message it sends back says what to do about it,
  * and this shows that rather than a generic failure.
  */

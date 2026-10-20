@@ -122,10 +122,17 @@ export async function attachBlocks(
 
 export type Transition = "start" | "end" | "reopen";
 
-const TRANSITIONS: Record<Transition, { from: SessionStatus; to: SessionStatus }> = {
-  start: { from: "draft", to: "active" },
-  end: { from: "active", to: "ended" },
-  reopen: { from: "ended", to: "active" },
+const TRANSITIONS: Record<Transition, { from: SessionStatus; to: SessionStatus; done: string }> = {
+  start: { from: "draft", to: "active", done: "started" },
+  end: { from: "active", to: "ended", done: "ended" },
+  reopen: { from: "ended", to: "active", done: "reopened" },
+};
+
+/* Why a refused change cannot happen, as an admin who raced another reads it. */
+const STATE: Record<SessionStatus, string> = {
+  draft: "has not started",
+  active: "is already running",
+  ended: "has already ended",
 };
 
 export async function transitionSession(
@@ -133,13 +140,13 @@ export async function transitionSession(
   id: string,
   transition: Transition,
 ): Promise<SessionRow> {
-  const { from, to } = TRANSITIONS[transition];
+  const { from, to, done } = TRANSITIONS[transition];
   const current = await getSession(db, id);
 
   if (current.status !== from) {
     throw new ConflictError(
       "conflict",
-      `A ${current.status} session cannot be ${transition === "end" ? "ended" : `${transition}ed`}.`,
+      `This session ${STATE[current.status]}, so it cannot be ${done}.`,
     );
   }
 

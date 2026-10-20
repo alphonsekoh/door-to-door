@@ -72,9 +72,9 @@ type Saved = {
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
-  /* The running outing, so a queued record names the one it was saved in. */
+  /* The running session, so a queued record names the one it was saved in. */
   sessionId: string | null;
-  /* Asks the server again which outing is running, for a save made before
+  /* Asks the server again which session is running, for a save made before
      the page learnt it. */
   loadSession: () => Promise<OutingAnswer>;
   /* Called after a save that went straight to the server; a queued save is
@@ -239,8 +239,8 @@ export function RecordVisitForm({
      * cannot take it (no IndexedDB, a full disk) does it go straight to the
      * server, where a failure keeps everything typed (D-25-8).
      *
-     * Never queued without its outing: sent later, it would join whichever
-     * outing is running then, with a new time. Everything typed is kept.
+     * Never queued without its session: sent later, it would join whichever
+     * session is running then, with a new time. Everything typed is kept.
      * The ask is time-limited: in weak signal it stalls rather than fails.
      */
     if (sync.enqueue !== null) {

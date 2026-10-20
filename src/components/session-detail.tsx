@@ -12,7 +12,7 @@ import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/sessions";
 import { SheetPresence } from "@/components/sheet";
 
-/* While an outing runs the numbers move, so they refresh on their own. Long
+/* While a session runs the numbers move, so they refresh on their own. Long
    enough not to drain the phone an admin is watching it on. */
 const POLL_INTERVAL_MS = 30_000;
 
@@ -67,7 +67,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     setAttaching(false);
     /*
      * Said out loud because it is the contingency path: an admin adding a
-     * block mid-outing needs to know members will not see it until they
+     * block mid-session needs to know members will not see it until they
      * refresh, so they can tell them.
      */
     setNotice(
@@ -126,7 +126,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* The outing's own name is the heading, not the word "Session". */}
+      {/* The session's own name is the heading, not the word "Session". */}
       <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
 
       {session.status === "ended" ? (
@@ -146,7 +146,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           href="/admin/records"
           className="block min-h-12 btn-secondary rounded-xl px-4 py-3 text-body font-medium"
         >
-          See every record on this session
+          See every record in this session
         </Link>
       ) : null}
 
@@ -197,8 +197,10 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                     <p className="truncate text-caption text-foreground-muted">
                       {entry.block.street}
                     </p>
+                    {/* Units visited in this session, as the home card counts
+                        them: "units" alone read as the size of the block. */}
                     <p className="mt-1 text-caption text-foreground-muted tabular-nums">
-                      {entry.householdCount} {entry.householdCount === 1 ? "unit" : "units"}
+                      {entry.householdCount} visited
                       {entry.visitCount > entry.householdCount
                         ? `, ${String(entry.visitCount)} visits`
                         : ""}

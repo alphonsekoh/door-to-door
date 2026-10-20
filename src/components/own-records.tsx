@@ -20,7 +20,7 @@ export const TEAM_VIEW_NOTE =
 /*
  * A member's records as rows: the row opens the unit's timeline, and Amend
  * opens the sheet where the server will allow it. Members can only amend on a
- * running outing, so Amend is not offered on an ended one.
+ * running session, so Amend is not offered on an ended one.
  */
 export function OwnRecords({
   entries,

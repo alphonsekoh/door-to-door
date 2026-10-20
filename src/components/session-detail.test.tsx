@@ -78,7 +78,8 @@ describe("SessionDetail", () => {
     expect(await screen.findByText("June outing")).toBeInTheDocument();
     expect(screen.getByText("Running now")).toBeInTheDocument();
     expect(screen.getByText("Blk 123")).toBeInTheDocument();
-    expect(screen.getByText("3 units, 4 visits")).toBeInTheDocument();
+    // Units visited in this session, never read as the size of the block.
+    expect(screen.getByText("3 visited, 4 visits")).toBeInTheDocument();
   });
 
   it("names the members working a block right now", async () => {
@@ -105,7 +106,7 @@ describe("SessionDetail", () => {
 
     expect(await screen.findByText("1 visit recorded across 1 block.")).toBeInTheDocument();
     // Every unit had one knock, so a visit count would only repeat the unit count.
-    expect(screen.getByText("1 unit")).toBeInTheDocument();
+    expect(screen.getByText("1 visited")).toBeInTheDocument();
   });
 
   it("calls a member working a block with no name on record Someone", async () => {

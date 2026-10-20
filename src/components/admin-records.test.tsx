@@ -238,7 +238,7 @@ describe("AdminRecords", () => {
     serve([]);
     const { unmount } = render(<AdminRecords />);
     expect(
-      await screen.findByText(/Nothing has been recorded on this session yet/),
+      await screen.findByText(/Nothing has been recorded in this session yet/),
     ).toBeInTheDocument();
     unmount();
 

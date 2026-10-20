@@ -113,7 +113,7 @@ export function AdminSessions() {
 
                 {/*
                   The action sits on the row, not behind the detail screen.
-                  Reopening an outing ended by mistake has to be two taps from
+                  Reopening a session ended by mistake has to be two taps from
                   here, because a member mid-amendment is locked out until it is.
                 */}
                 {availableActions(session.status).map((spec) => (

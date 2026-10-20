@@ -5,7 +5,7 @@ import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 
 /*
- * Creates the outing as a draft. Blocks are attached afterwards on the detail
+ * Creates the session as a draft. Blocks are attached afterwards on the detail
  * screen, so the admin is not asked to decide everything before the thing
  * exists - and so a half-filled form cannot be lost.
  */

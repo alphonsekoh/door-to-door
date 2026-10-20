@@ -217,10 +217,10 @@ describe("SessionRecords", () => {
     });
   });
 
-  it("says there is nothing of the member's on this outing when nothing is filtered", async () => {
+  it("says there is nothing of the member's in this session when nothing is filtered", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
-    expect(await screen.findByText("You recorded nothing on this session.")).toBeInTheDocument();
+    expect(await screen.findByText("You recorded nothing in this session.")).toBeInTheDocument();
     expect(screen.queryByText(/matches those filters/)).not.toBeInTheDocument();
   });
 
@@ -229,7 +229,7 @@ describe("SessionRecords", () => {
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
     expect(
-      await screen.findByText("Neither you nor your team recorded anything on this session."),
+      await screen.findByText("Neither you nor your team recorded anything in this session."),
     ).toBeInTheDocument();
   });
 
@@ -296,7 +296,7 @@ describe("Me or My team", () => {
     searchParams.value = new URLSearchParams("view=everyone");
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
-    await screen.findByText("You recorded nothing on this session.");
+    await screen.findByText("You recorded nothing in this session.");
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("includeTeam"));
   });
 

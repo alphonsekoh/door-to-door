@@ -89,7 +89,7 @@ export function AdminRecords() {
       });
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) {
-        // No outing is running: an ordinary state, not a failure.
+        // No session is running: an ordinary state, not a failure.
         setState({ status: "none" });
         return;
       }
@@ -126,7 +126,7 @@ export function AdminRecords() {
   }, [load, loadMembers, search]);
 
   /*
-   * A team id that is not one of this outing's teams - the outing changed, the
+   * A team id that is not one of this session's teams - the session changed, the
    * team was deleted, or the URL was edited - is unknown, and unknown values
    * are dropped rather than forwarded (D-29-4). Kept, it would filter to
    * nothing while the picker claimed "Any team".
@@ -318,7 +318,7 @@ export function AdminRecords() {
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
           {entries.length === 0 && !hasServerFilter(filters)
-            ? "Nothing has been recorded on this session yet."
+            ? "Nothing has been recorded in this session yet."
             : "Nothing here matches those filters."}
         </p>
       ) : (

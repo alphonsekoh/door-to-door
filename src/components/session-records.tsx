@@ -171,8 +171,8 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
           {blockId !== "" || interestLevel !== ""
             ? "Nothing here matches those filters."
             : scope === "team"
-              ? "Neither you nor your team recorded anything on this session."
-              : "You recorded nothing on this session."}
+              ? "Neither you nor your team recorded anything in this session."
+              : "You recorded nothing in this session."}
         </p>
       ) : (
         <OwnRecords
