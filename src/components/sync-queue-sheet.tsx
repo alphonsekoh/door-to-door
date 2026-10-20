@@ -5,8 +5,14 @@ import { useSyncQueue } from "@/components/sync-provider";
 import { canRetry } from "@/lib/sync/classify";
 import { isCorrupt } from "@/lib/sync/record";
 import { QUEUE_NOTE, blockReason, queueTitle, recordReason, stateLabel } from "@/lib/sync/sync-ui";
-import { Sheet, SheetActions } from "@/components/sheet";
+import { Sheet, SheetActions, SheetPresence } from "@/components/sheet";
 import { formatDayTime } from "@/lib/dates";
+
+/* The sheet with its way out, as the one piece the sync bar loads when it
+   is first tapped. */
+export function SyncQueuePresence({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return <SheetPresence>{open ? <SyncQueueSheet onClose={onClose} /> : null}</SheetPresence>;
+}
 
 /*
  * Every record of this member's not yet on the server, and the one thing

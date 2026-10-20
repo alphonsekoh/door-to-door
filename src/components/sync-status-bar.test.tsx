@@ -111,13 +111,17 @@ describe("SyncStatusBar", () => {
 
     await user.click(screen.getByRole("button", { name: /1 waiting to send/ }));
     // Titled as the bar was: waiting, not "not sent", until something is stuck.
-    const sheet = screen.getByRole("dialog", { name: "Waiting to send" });
+    const sheet = await screen.findByRole("dialog", { name: "Waiting to send" });
     expect(within(sheet).getByText("#05-01")).toBeInTheDocument();
 
     await user.click(within(sheet).getByRole("button", { name: "Close" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
+
+    // And again: the sheet stays loaded once it has been.
+    await user.click(screen.getByRole("button", { name: /1 waiting to send/ }));
+    expect(screen.getByRole("dialog", { name: "Waiting to send" })).toBeInTheDocument();
   });
 });
 

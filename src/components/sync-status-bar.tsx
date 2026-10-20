@@ -1,13 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { SyncQueueSheet } from "@/components/sync-queue-sheet";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSyncQueue } from "@/components/sync-provider";
+import { type SyncQueueView, loadSyncQueue } from "@/components/sync-queue-loader";
 import { useShellState } from "@/lib/offline/shell-state";
 import { barSummary, quietText } from "@/lib/sync/sync-ui";
+import { whenIdle } from "@/lib/when-idle";
 import { isPublicPath } from "@/server/auth/routes";
-import { SheetPresence } from "@/components/sheet";
 
 /*
  * Always in view while anything of this member's is unsent, so nobody
@@ -26,7 +26,7 @@ import { SheetPresence } from "@/components/sheet";
  * every page load. Becoming sticky moves nothing: the row is already there.
  */
 const ROW =
-  "-mx-4 mb-3 flex h-11 w-[calc(100%+2rem)] items-center justify-between gap-3 bg-surface-muted px-4 text-left text-body";
+  "-mx-4 mb-3 flex h-11 w-[calc(100%+--spacing(8))] items-center justify-between gap-3 bg-surface-muted px-4 text-left text-body";
 
 /* Over the page once scrolled: a fade beneath it rather than a hard rule. */
 const PINNED = "scroll-edge sticky top-[var(--banner-top,0px)] z-20";
@@ -35,10 +35,53 @@ export function SyncStatusBar() {
   const { records, justSaved, enqueue } = useSyncQueue();
   const pathname = usePathname();
   const shell = useShellState();
-  const [open, setOpen] = useState(false);
   /* The offline shell shows it once someone is recording, wherever its
      address happens to be. */
-  if (shell.active ? shell.ownerId === null : isPublicPath(pathname)) return null;
+  const hidden = shell.active ? shell.ownerId === null : isPublicPath(pathname);
+  const [Queue, setQueue] = useState<SyncQueueView | null>(null);
+  const [open, setOpen] = useState(false);
+  /* A tap found the list could not be fetched; cleared once it can be. */
+  const [unavailable, setUnavailable] = useState(false);
+  const loading = useRef<Promise<boolean> | null>(null);
+
+  /* A failed fetch is forgotten, so the next attempt goes back out for it:
+     never a cached failure, and never an error that takes the page down. */
+  const load = useCallback((): Promise<boolean> => {
+    loading.current ??= loadSyncQueue().then(
+      (view) => {
+        setQueue(() => view);
+        setUnavailable(false);
+        return true;
+      },
+      () => {
+        loading.current = null;
+        return false;
+      },
+    );
+    return loading.current;
+  }, []);
+
+  /*
+   * Fetched as soon as the page is idle, while it most likely still has
+   * signal, rather than on the first tap, which comes when it most likely
+   * has none. A worker that controls the page would serve the chunk offline,
+   * but one is not always in charge: not on the first visit after it
+   * installs, nor once Safari has cleared it.
+   */
+  useEffect(() => {
+    if (hidden || Queue !== null) return;
+    const retry = () => {
+      void load();
+    };
+    const cancel = whenIdle(retry);
+    window.addEventListener("online", retry);
+    return () => {
+      cancel();
+      window.removeEventListener("online", retry);
+    };
+  }, [hidden, Queue, load]);
+
+  if (hidden) return null;
   /* Empty while there is no queue to speak for: still loading, or none on
      this browser, where the form saves straight to the server. */
   const summary = enqueue === null ? null : barSummary(records, justSaved);
@@ -55,23 +98,29 @@ export function SyncStatusBar() {
         <button
           type="button"
           onClick={() => {
-            setOpen(true);
+            if (Queue !== null) {
+              setOpen(true);
+              return;
+            }
+            void load().then((loaded) => {
+              if (loaded) setOpen(true);
+              else setUnavailable(true);
+            });
           }}
           className={`${ROW} ${PINNED}`}
         >
           <span className="truncate font-medium">{summary.text}</span>
-          <span className="shrink-0 text-primary">View</span>
+          <span className="shrink-0 text-primary">{unavailable ? "Try again" : "View"}</span>
         </button>
       )}
-      <SheetPresence>
-        {open ? (
-          <SyncQueueSheet
-            onClose={() => {
-              setOpen(false);
-            }}
-          />
-        ) : null}
-      </SheetPresence>
+      {Queue === null ? null : (
+        <Queue
+          open={open}
+          onClose={() => {
+            setOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }
