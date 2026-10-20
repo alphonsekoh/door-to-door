@@ -34,6 +34,7 @@ import {
   type HistoryFilters,
 } from "@/lib/history-filters";
 import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 100;
 /* An export walks the whole filtered set a page at a time. The cap stops a
@@ -472,7 +473,7 @@ export function ConsolidatedHistory() {
                     className="flex min-h-11 min-w-0 flex-col justify-center"
                   >
                     <span className="block text-body font-semibold tabular-nums">
-                      Blk {block.name}, {household.unitNumber}
+                      Blk {block.name}, <UnitNumber value={household.unitNumber} />
                     </span>
                     {household.name === null ? null : (
                       <span className="block truncate text-caption text-foreground-muted">
@@ -494,10 +495,10 @@ export function ConsolidatedHistory() {
                         onClick={() => {
                           setAmending(entry);
                         }}
-                        className="flex min-h-11 w-full items-center gap-3 press-row py-1 text-left"
+                        className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 press-row py-1 text-left"
                       >
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-caption text-foreground-muted">
+                        <span className="min-w-0 flex-[1_1_12ch]">
+                          <span className="block text-caption break-words text-foreground-muted">
                             {formatDay(entry.visit.createdAt)} · {entry.session.title}
                           </span>
                           <VisitByline visit={entry.visit} prefix="By " />

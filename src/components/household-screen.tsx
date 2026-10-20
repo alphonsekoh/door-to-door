@@ -8,6 +8,7 @@ import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 type State =
   | { status: "loading" }
@@ -92,14 +93,18 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
     <div className="space-y-4">
       <div>
         {back}
-        <div className="flex items-start justify-between gap-3">
-          <h1 className="text-heading font-semibold tabular-nums">{household.unitNumber}</h1>
+        {/* At large text Add follow-up drops under the unit rather than push
+            past the edge, and the unit number never breaks at its hyphen. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <h1 className="text-heading font-semibold tabular-nums">
+            <UnitNumber value={household.unitNumber} />
+          </h1>
           <button
             type="button"
             onClick={() => {
               setAdding(true);
             }}
-            className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
+            className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
           >
             Add follow-up
           </button>

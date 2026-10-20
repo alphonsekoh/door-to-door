@@ -12,7 +12,6 @@ import {
   mayEditFollowUp,
   sortOutstanding,
   startOfToday,
-  unitLabel,
 } from "@/lib/follow-ups";
 
 /* Local-time constructors throughout, so these hold in any time zone. */
@@ -142,12 +141,6 @@ describe("buildTimeline", () => {
 
   it("is empty for a unit with nothing on record", () => {
     expect(buildTimeline([], [])).toEqual([]);
-  });
-});
-
-describe("unitLabel", () => {
-  it("names the block and the unit", () => {
-    expect(unitLabel(note())).toBe("Blk 123 · #05-123");
   });
 });
 

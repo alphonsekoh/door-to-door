@@ -9,6 +9,7 @@ import type { QueuedVisit } from "@/lib/sync/types";
 import type { UnitRow as Row } from "@/lib/sync/unit-overlay";
 import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
 import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 type Props = {
   /* The server's units with this phone's unsent records laid over them. */
@@ -37,6 +38,11 @@ function PendingChip({ pending, sending }: { pending: QueuedVisit | null; sendin
   );
 }
 
+/* A unit's row. At large text its chips drop under the unit rather than
+   squeeze the text beside them to a column too narrow for its words. */
+const ROW = "flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2";
+const ROW_TEXT = "min-w-0 flex-[1_1_12ch]";
+
 function ServerRow({
   row,
   entry,
@@ -50,14 +56,15 @@ function ServerRow({
   onSelect: (() => void) | null;
 }) {
   const { household, latestVisit, outstandingFollowUps } = entry;
-  const line =
-    "flex min-h-14 w-full items-center gap-3 border-b border-border px-4 py-2 text-left last:border-b-0";
+  const line = `${ROW} border-b border-border text-left last:border-b-0`;
 
   const content = (
     <>
-      <span className="min-w-0 flex-1">
+      <span className={ROW_TEXT}>
         <span className="flex items-center gap-2">
-          <span className="text-body font-semibold tabular-nums">{household.unitNumber}</span>
+          <span className="text-body font-semibold tabular-nums">
+            <UnitNumber value={household.unitNumber} />
+          </span>
           {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
         </span>
         {household.name === null ? null : (
@@ -99,10 +106,12 @@ function ServerRow({
  */
 function QueuedRow({ row, sending }: { row: Row; sending: boolean }) {
   return (
-    <li className="flex min-h-14 w-full items-center gap-3 border-b border-dashed border-border px-4 py-2 last:border-b-0">
-      <span className="min-w-0 flex-1">
+    <li className={`${ROW} border-b border-dashed border-border last:border-b-0`}>
+      <span className={ROW_TEXT}>
         <span className="flex items-center gap-2">
-          <span className="text-body font-semibold tabular-nums">{row.household.unitNumber}</span>
+          <span className="text-body font-semibold tabular-nums">
+            <UnitNumber value={row.household.unitNumber} />
+          </span>
           {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
         </span>
         {row.household.name === null ? null : (

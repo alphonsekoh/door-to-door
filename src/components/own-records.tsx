@@ -12,6 +12,7 @@ import { vouchedTeamIds } from "@/lib/team-view";
 import { useRole } from "@/lib/use-role";
 import { formatDay } from "@/lib/dates";
 import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 /* What a team view adds, and its one limit (D-74-1). */
 export const TEAM_VIEW_NOTE =
@@ -48,13 +49,15 @@ export function OwnRecords({
               key={visit.id}
               className="flex items-center gap-2 border-b border-border pr-3 last:border-b-0"
             >
+              {/* At large text the chip drops under the unit rather than
+                  squeeze it beside Amend. */}
               <Link
                 href={`/households/${household.id}`}
-                className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2 pl-4"
+                className="flex min-h-14 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-2 pl-4"
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
-                    {household.unitNumber}
+                    <UnitNumber value={household.unitNumber} />
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
                     Blk {block.name}

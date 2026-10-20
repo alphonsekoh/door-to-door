@@ -27,9 +27,12 @@ export function SessionHistoryCard({ summary }: { summary: SessionHistorySummary
         href={`/history/${session.id}`}
         className="block press rounded-xl border border-border bg-surface p-4"
       >
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 text-title font-semibold">{session.title}</span>
-          <span className="shrink-0 text-caption text-foreground-muted">
+        {/* At large text the dates drop under the title. */}
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <span className="min-w-0 flex-[1_1_12ch] text-title font-semibold break-words">
+            {session.title}
+          </span>
+          <span className="text-caption text-foreground-muted">
             {dateRange(summary.firstRecordedAt, summary.lastRecordedAt)}
           </span>
         </div>

@@ -101,9 +101,13 @@ export function AdminSessions() {
         <ul className="space-y-2">
           {state.sessions.map((session) => (
             <li key={session.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-start justify-between gap-3">
-                <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-1">
-                  <span className="block text-title font-semibold">{session.title}</span>
+              {/* At large text the action drops under the title rather than
+                  squeeze it to a sliver that paints over the button. */}
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-[1_1_12ch]">
+                  <span className="block text-title font-semibold break-words">
+                    {session.title}
+                  </span>
                   <span
                     className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
                   >

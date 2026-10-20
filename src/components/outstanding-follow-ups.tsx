@@ -5,7 +5,8 @@ import { useState } from "react";
 import { OverdueBadge, followUpTone } from "@/components/follow-up-item";
 import type { FollowUp } from "@/generated/types.gen";
 import { formatDay } from "@/lib/dates";
-import { isOverdue, sortOutstanding, unitLabel } from "@/lib/follow-ups";
+import { isOverdue, sortOutstanding } from "@/lib/follow-ups";
+import { FollowUpDoor } from "@/components/unit-number";
 
 /*
  * The notes this member left themselves, at the top of their history.
@@ -40,7 +41,9 @@ export function OutstandingFollowUps({ notes }: { notes: FollowUp[] }) {
               className={`block rounded-lg border p-3 ${followUpTone(note, now)}`}
             >
               <span className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-body font-semibold tabular-nums">{unitLabel(note)}</span>
+                <span className="text-body font-semibold tabular-nums">
+                  <FollowUpDoor note={note} />
+                </span>
                 {isOverdue(note, now) ? <OverdueBadge /> : null}
               </span>
               <span className="block text-body break-words">{note.note}</span>

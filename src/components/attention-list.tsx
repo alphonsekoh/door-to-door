@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { InterestChip } from "@/components/interest-chip";
 import type { HouseholdAttention, HouseholdAttentionList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 50;
 
@@ -101,7 +102,7 @@ export function AttentionList() {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-body font-semibold tabular-nums">
-                    Blk {row.block.name}, {row.household.unitNumber}
+                    Blk {row.block.name}, <UnitNumber value={row.household.unitNumber} />
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
                     {row.household.name ?? "Nobody named yet"} · last visited{" "}

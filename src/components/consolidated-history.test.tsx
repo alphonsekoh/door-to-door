@@ -5,6 +5,12 @@ import { ConsolidatedHistory } from "@/components/consolidated-history";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 
+/* A door's label, drawn in pieces so its unit number never breaks: the
+   innermost element holding the whole of it. */
+const door = (label: string) => (_: string, element: Element | null) =>
+  element?.textContent === label &&
+  ![...element.children].some((child) => child.textContent === label);
+
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
@@ -91,7 +97,7 @@ function entry(
 /* The outing picker holds the same titles as the rows, so assertions about a
    door are scoped to that door's card. */
 async function card(unit: string): Promise<HTMLElement> {
-  const heading = await screen.findByText(unit);
+  const heading = await screen.findByText(door(unit));
   const row = heading.closest("li");
   if (!row) throw new Error(`no card for ${unit}`);
   return row;
@@ -211,7 +217,7 @@ describe("ConsolidatedHistory", () => {
     const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
     expect(replace).toHaveBeenCalledWith("/admin/history?religion=hindu");
@@ -226,7 +232,7 @@ describe("ConsolidatedHistory", () => {
     const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
     expect(replace).toHaveBeenLastCalledWith("/admin/history?blockId=b1");
@@ -290,7 +296,7 @@ describe("ConsolidatedHistory", () => {
     searchParams.value = new URLSearchParams("religion=hindu");
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(replace).toHaveBeenCalledWith("/admin/history");
@@ -301,15 +307,15 @@ describe("ConsolidatedHistory", () => {
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
 
-    expect(await screen.findByText("Blk 123, #05-124")).toBeInTheDocument();
-    expect(screen.queryByText("Blk 123, #05-123")).not.toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
   });
 
   it("appends the next page rather than replacing it", async () => {
     const user = userEvent.setup();
     serve([entry("h1")], 2);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
@@ -322,8 +328,8 @@ describe("ConsolidatedHistory", () => {
     });
     await user.click(screen.getByRole("button", { name: /Show more/ }));
 
-    expect(await screen.findByText("Blk 123, #05-124")).toBeInTheDocument();
-    expect(screen.getByText("Blk 123, #05-123")).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.getByText(door("Blk 123, #05-123"))).toBeInTheDocument();
   });
 
   it("exports the whole filtered set, not the page on screen", async () => {
@@ -352,7 +358,7 @@ describe("ConsolidatedHistory", () => {
     });
 
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-0");
+    await screen.findByText(door("Blk 123, #05-0"));
 
     requested = [];
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
@@ -369,7 +375,7 @@ describe("ConsolidatedHistory", () => {
     searchParams.value = new URLSearchParams("q=124");
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-124");
+    await screen.findByText(door("Blk 123, #05-124"));
 
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
 
@@ -390,7 +396,7 @@ describe("ConsolidatedHistory", () => {
       });
     });
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
     expect(await screen.findByText(/Narrow the filters to get the rest/)).toBeInTheDocument();
@@ -400,7 +406,7 @@ describe("ConsolidatedHistory", () => {
     const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     apiFetch.mockRejectedValue(new Error("Could not reach the server."));
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
@@ -435,7 +441,7 @@ describe("ConsolidatedHistory", () => {
     const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     const row = await card("Blk 123, #05-123");
     await user.click(within(row).getByRole("button"));
@@ -454,7 +460,7 @@ describe("ConsolidatedHistory", () => {
     });
     render(<ConsolidatedHistory />);
 
-    expect(await screen.findByText("Blk 123, #05-123")).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
   });
 
   it("offers a retry when the records fail to load", async () => {
@@ -466,7 +472,7 @@ describe("ConsolidatedHistory", () => {
 
     serve([entry("h1")]);
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Blk 123, #05-123")).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
   });
 
   it("copes with a non-Error failure", async () => {
@@ -708,7 +714,7 @@ describe("teams", () => {
     const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     apiFetch.mockRejectedValue("boom");
     await user.click(screen.getByRole("button", { name: "Export CSV" }));

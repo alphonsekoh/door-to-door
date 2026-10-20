@@ -8,6 +8,7 @@ import { amendRoute, describeAmendFailure } from "@/lib/amend";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
 import { Sheet, SheetActions } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
   { value: "buddhist", label: "Buddhist" },
@@ -136,7 +137,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
   return (
     <Sheet
       label={`Amend ${entry.household.unitNumber}`}
-      title={entry.household.unitNumber}
+      title={<UnitNumber value={entry.household.unitNumber} />}
       onClose={onClose}
       discard={discard}
     >

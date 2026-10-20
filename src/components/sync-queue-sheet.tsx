@@ -7,6 +7,7 @@ import { isCorrupt } from "@/lib/sync/record";
 import { QUEUE_NOTE, blockReason, queueTitle, recordReason, stateLabel } from "@/lib/sync/sync-ui";
 import { Sheet, SheetActions, SheetPresence } from "@/components/sheet";
 import { formatDayTime } from "@/lib/dates";
+import { UnitNumber } from "@/components/unit-number";
 
 /* The sheet with its way out, as the one piece the sync bar loads when it
    is first tapped. */
@@ -55,7 +56,7 @@ export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
                   ) : (
                     <span className="flex items-center gap-2">
                       <span className="text-body font-semibold tabular-nums">
-                        {record.item.unitNumber}
+                        <UnitNumber value={record.item.unitNumber} />
                       </span>
                       <InterestChip level={record.item.interestLevel} />
                     </span>

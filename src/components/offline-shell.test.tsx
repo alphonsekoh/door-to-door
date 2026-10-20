@@ -12,6 +12,12 @@ import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import type { SignedIn } from "@/lib/sync/signed-in";
 import type { SendOutcome, SyncQueue } from "@/lib/sync/types";
 
+/* Text drawn in pieces, as a status is around its unit number: the
+   innermost element holding the whole of it. */
+const pieced = (label: string) => (_: string, element: Element | null) =>
+  element?.textContent === label &&
+  ![...element.children].some((child) => child.textContent === label);
+
 const { usePathname, useRole, apiFetch } = vi.hoisted(() => ({
   usePathname: vi.fn(() => "/blocks/b1"),
   /* Offline the session cannot be fetched, so nobody is signed in. */
@@ -235,7 +241,7 @@ describe("OfflineShell, recording", () => {
     await u.click(screen.getByRole("radio", { name: "High" }));
     await u.click(screen.getByRole("button", { name: "Save and next" }));
 
-    expect(await screen.findByText("Saved #05-02 on this phone.")).toBeInTheDocument();
+    expect(await screen.findByText(pieced("Saved #05-02 on this phone."))).toBeInTheDocument();
     const [saved] = await queue.listAll();
     expect(saved?.ownerId).toBe(ALICE.id);
     expect(saved?.item).toMatchObject({

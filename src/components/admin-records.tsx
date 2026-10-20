@@ -28,6 +28,7 @@ import {
   type RecordFilters,
 } from "@/lib/record-filters";
 import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 30_000;
@@ -186,14 +187,18 @@ export function AdminRecords() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-body font-medium">{session.session.title}</p>
+      {/* At large text the button drops under the title rather than push
+          the screen sideways. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+        <p className="min-w-0 flex-[1_1_12ch] text-body font-medium break-words">
+          {session.session.title}
+        </p>
         <button
           type="button"
           onClick={() => {
             setRecording(true);
           }}
-          className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+          className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium"
         >
           Record for a member
         </button>
@@ -334,7 +339,7 @@ export function AdminRecords() {
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-body font-semibold tabular-nums">
-                    {entry.household.unitNumber}
+                    <UnitNumber value={entry.household.unitNumber} />
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
                     Blk {entry.block.name}

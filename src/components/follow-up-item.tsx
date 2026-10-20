@@ -11,11 +11,11 @@ import {
   doneByline,
   isOverdue,
   mayEditFollowUp,
-  unitLabel,
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
 import { formatDay } from "@/lib/dates";
+import { FollowUpDoor } from "@/components/unit-number";
 
 /* Words as well as colour: colour alone is lost in sunlight and to some eyes. */
 export function OverdueBadge() {
@@ -59,7 +59,7 @@ export function FollowUpItem({
               href={`/households/${note.householdId}`}
               className="inline-flex min-h-11 items-center text-body font-semibold btn-text tabular-nums"
             >
-              {unitLabel(note)}
+              <FollowUpDoor note={note} />
             </Link>
           ) : (
             <span />

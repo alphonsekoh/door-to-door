@@ -25,7 +25,7 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
           {back === undefined ? null : <BackLink {...back} />}
         </div>
         <div className="min-w-0 text-center">
-          <h1 className="text-title font-semibold text-balance">{title}</h1>
+          <h1 className="text-title font-semibold text-balance break-words">{title}</h1>
           {subtitle ? (
             <p className="truncate text-caption text-foreground-muted">{subtitle}</p>
           ) : null}
@@ -36,7 +36,9 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
   return (
     <header className="mb-5">
       {back === undefined ? null : <BackLink {...back} />}
-      <h1 className="text-heading font-semibold text-balance">{title}</h1>
+      {/* A session's title is whatever an admin typed: a long word breaks
+          rather than push the screen sideways at large text. */}
+      <h1 className="text-heading font-semibold text-balance break-words">{title}</h1>
       {subtitle ? <p className="mt-1 text-body text-foreground-muted">{subtitle}</p> : null}
     </header>
   );

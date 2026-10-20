@@ -63,14 +63,15 @@ export function SessionActionButton({
         className={`${spec.destructive ? "btn-danger-outline" : primary ? "btn-primary" : "btn-secondary"} ${
           primary
             ? "min-h-14 w-full rounded-xl text-title font-semibold"
-            : "min-h-11 shrink-0 rounded-lg px-3 text-body font-medium"
+            : "min-h-11 rounded-lg px-3 text-body font-medium"
         }`}
       >
         {busy && !confirming ? "Working…" : spec.label}
       </button>
 
+      {/* A row of its own when the button sits beside a title. */}
       {failure === null ? null : (
-        <p role="alert" className="mt-2 notice-danger">
+        <p role="alert" className="mt-2 basis-full notice-danger">
           {failure}
         </p>
       )}

@@ -76,10 +76,6 @@ export function buildTimeline(
   return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
-export function unitLabel(note: Pick<FollowUp, "blockName" | "unitNumber">): string {
-  return `Blk ${note.blockName} · ${note.unitNumber}`;
-}
-
 /* Affordance only: the server decides (D-16-2). Resolving is open to anyone. */
 export function mayEditFollowUp(
   note: Pick<FollowUp, "author">,

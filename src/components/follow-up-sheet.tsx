@@ -13,6 +13,7 @@ import {
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
 import { Sheet, SheetActions, SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 export type FollowUpSheetMode =
   | { kind: "create"; householdId: string; visitId: string | null; unitNumber: string }
@@ -63,7 +64,7 @@ export function FollowUpSheet({
   const sending = useRef(false);
 
   const length = text.trim().length;
-  const title = mode.kind === "create" ? `Follow-up for ${mode.unitNumber}` : "Edit follow-up";
+  const label = mode.kind === "create" ? `Follow-up for ${mode.unitNumber}` : "Edit follow-up";
   /* Asked before a flick or a stray tap loses what was typed at the door. An
      edit asks about the changes: "this note" would read as deleting it. */
   const discard =
@@ -124,7 +125,20 @@ export function FollowUpSheet({
 
   return (
     <>
-      <Sheet label={title} title={title} onClose={onClose} discard={discard}>
+      <Sheet
+        label={label}
+        title={
+          mode.kind === "create" ? (
+            <>
+              Follow-up for <UnitNumber value={mode.unitNumber} />
+            </>
+          ) : (
+            label
+          )
+        }
+        onClose={onClose}
+        discard={discard}
+      >
         {failure === null ? null : (
           <p role="alert" className="mt-3 notice-danger">
             {failure}

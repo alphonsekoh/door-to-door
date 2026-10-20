@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { UnitNumber } from "@/components/unit-number";
 import { DockedActions } from "@/components/docked-actions";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
@@ -86,13 +87,14 @@ type Props = {
 
 /* The status line for a save that went into the queue. */
 function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sending: boolean) {
-  if (sending) return `Sending ${unitNumber}…`;
+  const unit = <UnitNumber value={unitNumber} />;
+  if (sending) return <>Sending {unit}…</>;
   /* One line at phone width, so the form below does not move when this
      changes; the bar above says what happens next. */
   if (record?.state === "held" || record?.state === "quarantined") {
-    return `Saved ${unitNumber} on this phone. Not sent.`;
+    return <>Saved {unit} on this phone. Not sent.</>;
   }
-  return `Saved ${unitNumber} on this phone.`;
+  return <>Saved {unit} on this phone.</>;
 }
 
 const OUTING_UNKNOWN =
@@ -292,11 +294,13 @@ export function RecordVisitForm({
   const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
   const householdId = saved?.householdId ?? queued?.serverVisit?.householdId ?? null;
   const status =
-    saved === null
-      ? null
-      : householdId !== null
-        ? `Saved ${saved.unitNumber}.${saved.noted ? " Follow-up added." : ""}`
-        : queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId));
+    saved === null ? null : householdId !== null ? (
+      <>
+        Saved <UnitNumber value={saved.unitNumber} />.{saved.noted ? " Follow-up added." : ""}
+      </>
+    ) : (
+      queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
+    );
 
   return (
     <form
