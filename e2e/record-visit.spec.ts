@@ -55,9 +55,19 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
   /* Named for the block, so the member can see where the next Save lands. */
   await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
 
+  /* As it first paints, unscrolled, the form clears the pinned Save: a
+     header two rows taller once put Add details under it on an iPhone. */
+  const details = memberPage.getByRole("button", { name: "Add details" });
+  const clear = await details.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return top !== null && element.contains(top);
+  });
+  expect(clear, "the Save bar covers Add details").toBe(true);
+
   /* With the details open the Save bar is pinned, and docks on the nav edge
      to edge: a strip between them once showed the form scrolling through. */
-  await memberPage.getByRole("button", { name: "Add details" }).click();
+  await details.click();
   const bar = memberPage.locator('[data-dock="nav"]');
   await expect(bar).toHaveAttribute("data-docked", "");
   const nav = memberPage.getByRole("navigation", { name: "Primary" });
@@ -78,7 +88,7 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
      only once the visit has been accepted. */
   await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-08");
 
-  await memberPage.getByRole("tab", { name: /^Units/ }).click();
+  await memberPage.getByRole("tab", { name: /^All units/ }).click();
   await memberPage.getByLabel("Search this block").fill(UNIT);
 
   const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
@@ -96,14 +106,16 @@ test("what the member recorded is on their own history", async ({ memberPage }) 
   await expect(outing).toBeVisible();
   await outing.click();
 
-  await expect(memberPage.getByRole("heading", { level: 1, name: "Outing records" })).toBeVisible();
+  await expect(
+    memberPage.getByRole("heading", { level: 1, name: "Session records" }),
+  ).toBeVisible();
   await expect(memberPage.getByRole("link", { name: new RegExp(UNIT) })).toBeVisible();
 });
 
 test("an amendment sticks, and the sheet's save is reachable", async ({ memberPage }) => {
   await memberPage.goto("/");
   await memberPage.getByRole("link", { name: /Blk 123/ }).click();
-  await memberPage.getByRole("tab", { name: /^Units/ }).click();
+  await memberPage.getByRole("tab", { name: /^All units/ }).click();
   await memberPage.getByLabel("Search this block").fill(UNIT);
   await memberPage.getByRole("button", { name: new RegExp(UNIT) }).click();
 
@@ -124,7 +136,7 @@ test("an amendment sticks, and the sheet's save is reachable", async ({ memberPa
 test("the amend sheet works from the keyboard alone", async ({ memberPage }) => {
   await memberPage.goto("/");
   await memberPage.getByRole("link", { name: /Blk 123/ }).click();
-  await memberPage.getByRole("tab", { name: /^Units/ }).click();
+  await memberPage.getByRole("tab", { name: /^All units/ }).click();
   await memberPage.getByLabel("Search this block").fill(UNIT);
 
   const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
@@ -195,24 +207,44 @@ test.describe("the phone's display settings", () => {
     await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
   }
 
-  /* Every computed transform of the open sheet's panel, frame by frame,
-     from just before it is opened. */
-  async function sampleSheet(page: Page, open: () => Promise<void>): Promise<string[]> {
+  type Frame = { transform: string; opacity: number; scrim: number };
+
+  /* The open sheet's panel and scrim, frame by frame, from just before it
+     is opened. */
+  async function sampleSheet(page: Page, open: () => Promise<void>): Promise<Frame[]> {
     await page.evaluate(() => {
-      const seen: string[] = [];
+      const seen: Frame[] = [];
       Reflect.set(window, "__sheetFrames", seen);
       const frame = () => {
         const panel = document.querySelector('[data-state="open"] [role="dialog"]');
-        if (panel !== null) seen.push(getComputedStyle(panel).transform);
+        const scrim = panel?.previousElementSibling;
+        if (panel && scrim) {
+          seen.push({
+            transform: getComputedStyle(panel).transform,
+            opacity: Number(getComputedStyle(panel).opacity),
+            scrim: Number(getComputedStyle(scrim).opacity),
+          });
+        }
         if (seen.length < 30) requestAnimationFrame(frame);
       };
       requestAnimationFrame(frame);
     });
     await open();
     await expect
-      .poll(() => page.evaluate(() => (Reflect.get(window, "__sheetFrames") as string[]).length))
+      .poll(() => page.evaluate(() => (Reflect.get(window, "__sheetFrames") as Frame[]).length))
       .toBeGreaterThanOrEqual(30);
-    return page.evaluate(() => Reflect.get(window, "__sheetFrames") as string[]);
+    return page.evaluate(() => Reflect.get(window, "__sheetFrames") as Frame[]);
+  }
+
+  /* Once shown, never back to transparent: a CSS transition on either once
+     replayed the fade from nothing as Motion finished, a one-frame blink. */
+  function fadesInOnce(frames: Frame[]): boolean {
+    return frames.every(
+      (frame, i) =>
+        i === 0 ||
+        (frame.opacity >= (frames[i - 1]?.opacity ?? 0) &&
+          frame.scrim >= (frames[i - 1]?.scrim ?? 0)),
+    );
   }
 
   test("a press shows the moment a finger lands, before anything is sent", async ({
@@ -233,19 +265,27 @@ test.describe("the phone's display settings", () => {
     memberPage,
   }) => {
     await openBlock(memberPage);
-    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByRole("tab", { name: /^All units/ }).click();
     await memberPage.getByLabel("Search this block").fill(UNIT);
     const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
 
     const moving = await sampleSheet(memberPage, () => row.click());
-    expect(moving.some((transform) => transform !== "none")).toBe(true);
+    expect(moving.some((frame) => frame.transform !== "none")).toBe(true);
+    expect(fadesInOnce(moving), "the scrim faded in twice").toBe(true);
     await memberPage.keyboard.press("Escape");
     // Gone from the page, not only from the accessibility tree.
     await expect(memberPage.locator('[data-state="closed"]')).toHaveCount(0);
 
     await memberPage.emulateMedia({ reducedMotion: "reduce" });
     const still = await sampleSheet(memberPage, () => row.click());
-    expect(still.every((transform) => transform === "none")).toBe(true);
+    expect(still.every((frame) => frame.transform === "none")).toBe(true);
+    expect(fadesInOnce(still), "the sheet blinked out as its fade ended").toBe(true);
+    // The reduced-motion rule gives everything a 0.01ms transition; Motion's
+    // layers must not have one.
+    const panel = memberPage.getByRole("dialog");
+    await expect
+      .poll(() => panel.evaluate((element) => getComputedStyle(element).transitionProperty))
+      .toBe("none");
   });
 
   test("more contrast gives fields a firmer edge and the nav a solid face", async ({
@@ -280,73 +320,124 @@ test.describe("the phone's display settings", () => {
       .toBe("none");
   });
 
-  test("at twice the text size the recording screen reflows rather than overlaps", async ({
-    memberPage,
-  }) => {
-    await openBlock(memberPage);
-    await memberPage.evaluate(() => {
-      document.documentElement.style.fontSize = "200%";
-    });
+  /*
+   * Twice the base, and the largest iOS accessibility size (53px), which the
+   * app holds at twice the base: past that a title was crushed to nothing
+   * and a sheet's Save sat under its header.
+   */
+  for (const size of ["200%", "53px"]) {
+    test(`at ${size} text the recording screen reflows rather than overlaps`, async ({
+      memberPage,
+    }) => {
+      await openBlock(memberPage);
+      await memberPage.evaluate((fontSize) => {
+        document.documentElement.style.fontSize = fontSize;
+      }, size);
 
-    // Interest levels wrap onto rows; no label spills out of its button.
-    const levels = memberPage.getByRole("radio");
-    const boxes = await levels.evaluateAll((buttons) =>
-      buttons.map((button) => {
-        const box = button.getBoundingClientRect();
-        return {
-          top: box.top,
-          bottom: box.bottom,
-          left: box.left,
-          right: box.right,
-          fits: button.scrollWidth <= button.clientWidth,
-        };
-      }),
-    );
-    expect(boxes.every((box) => box.fits)).toBe(true);
-    for (const [i, a] of boxes.entries()) {
-      for (const b of boxes.slice(i + 1)) {
-        const apart =
-          a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
-        expect(apart, "two interest buttons overlap").toBe(true);
+      // The title keeps room for itself beside the way back.
+      const title = memberPage.getByRole("heading", { level: 1, name: "Blk 123" });
+      const titleFits = await title.evaluate(
+        (element) => element.clientWidth > 0 && element.scrollWidth <= element.clientWidth,
+      );
+      expect(titleFits, "the title is squeezed").toBe(true);
+
+      // Interest levels wrap onto rows; no label spills out of its button.
+      const levels = memberPage.getByRole("radio");
+      const boxes = await levels.evaluateAll((buttons) =>
+        buttons.map((button) => {
+          const box = button.getBoundingClientRect();
+          return {
+            top: box.top,
+            bottom: box.bottom,
+            left: box.left,
+            right: box.right,
+            fits: button.scrollWidth <= button.clientWidth,
+          };
+        }),
+      );
+      expect(boxes.every((box) => box.fits)).toBe(true);
+      for (const [i, a] of boxes.entries()) {
+        for (const b of boxes.slice(i + 1)) {
+          const apart =
+            a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+          expect(apart, "two interest buttons overlap").toBe(true);
+        }
       }
-    }
 
-    // Nav labels never wrap; where there is no room they are left to screen readers.
-    const nav = memberPage.getByRole("navigation", { name: "Primary" });
-    const wrapped = await nav.locator("li a span").evaluateAll((labels) =>
-      labels.some((label) => {
-        const box = label.getBoundingClientRect();
-        const line = Number.parseFloat(getComputedStyle(label).lineHeight);
-        return box.height > line * 1.5;
-      }),
-    );
-    expect(wrapped).toBe(false);
-    await expect(nav.getByRole("link", { name: "Follow-ups" })).toBeAttached();
+      // Nav labels never wrap; where there is no room they are left to screen readers.
+      const nav = memberPage.getByRole("navigation", { name: "Primary" });
+      const wrapped = await nav.locator("li a span").evaluateAll((labels) =>
+        labels.some((label) => {
+          const box = label.getBoundingClientRect();
+          const line = Number.parseFloat(getComputedStyle(label).lineHeight);
+          return box.height > line * 1.5;
+        }),
+      );
+      expect(wrapped).toBe(false);
+      await expect(nav.getByRole("link", { name: "Follow-ups" })).toBeAttached();
 
-    /* From the top of the screen, before any scroll, Save clears the nav.
-       Held inside the form, which starts low at this size, it could not
-       rise that far and sat half under the nav. */
+      /* From the top of the screen, before any scroll, Save clears the nav.
+         Held inside the form, which starts low at this size, it could not
+         rise that far and sat half under the nav. */
+      await memberPage.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      const save = memberPage.getByRole("button", { name: "Save and next" });
+      await expect
+        .poll(async () => {
+          const [saveBox, navBox] = await Promise.all([save.boundingBox(), nav.boundingBox()]);
+          return (saveBox?.y ?? Infinity) + (saveBox?.height ?? 0) - (navBox?.y ?? 0);
+        })
+        .toBeLessThanOrEqual(1);
+      const covered = await save.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return top === null || !element.contains(top);
+      });
+      expect(covered, "the nav covers Save").toBe(false);
+
+      const overflow = await memberPage.evaluate(
+        () => document.documentElement.scrollWidth - window.innerWidth,
+      );
+      expect(overflow).toBeLessThanOrEqual(0);
+
+      // A sheet's Save stays clear of its own header, and of the nav.
+      await memberPage.getByRole("tab", { name: /^All units/ }).click();
+      await memberPage.getByLabel("Search this block").fill(UNIT);
+      await memberPage.getByRole("button", { name: new RegExp(UNIT) }).click();
+      const sheet = memberPage.getByRole("dialog", { name: `Amend ${UNIT}` });
+      await expectTappable(sheet.getByRole("button", { name: "Save changes" }));
+    });
+  }
+
+  test("at the smallest text size nothing shrinks below the base", async ({ memberPage }) => {
+    await openBlock(memberPage);
+    // iOS's xSmall text size, which a root font of -apple-system-body follows.
     await memberPage.evaluate(() => {
-      window.scrollTo(0, 0);
+      document.documentElement.style.fontSize = "14px";
     });
-    const save = memberPage.getByRole("button", { name: "Save and next" });
-    await expect
-      .poll(async () => {
-        const [saveBox, navBox] = await Promise.all([save.boundingBox(), nav.boundingBox()]);
-        return (saveBox?.y ?? Infinity) + (saveBox?.height ?? 0) - (navBox?.y ?? 0);
-      })
-      .toBeLessThanOrEqual(1);
-    const covered = await save.evaluate((element) => {
-      const box = element.getBoundingClientRect();
-      const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
-      return top === null || !element.contains(top);
-    });
-    expect(covered, "the nav covers Save").toBe(false);
 
-    const overflow = await memberPage.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow).toBeLessThanOrEqual(0);
+    // 16px in a field, or iOS zooms the page when it takes focus.
+    await expect
+      .poll(() =>
+        memberPage.getByLabel("Unit number").evaluate((field) => getComputedStyle(field).fontSize),
+      )
+      .toBe("16px");
+    // And still 44px for every control a thumb aims for.
+    const targets = [
+      memberPage.getByRole("link", { name: "Back to Session" }),
+      memberPage.getByRole("tab", { name: "Record" }),
+      memberPage.getByRole("tab", { name: /^All units/ }),
+      memberPage.getByRole("button", { name: "Add details" }),
+      memberPage.getByRole("radio", { name: "Low" }),
+      memberPage.getByRole("button", { name: "Save and next" }),
+    ];
+    for (const target of targets) {
+      const box = await target.boundingBox();
+      expect(box?.height ?? 0).toBeGreaterThanOrEqual(44);
+    }
+    const nav = await memberPage.getByRole("navigation", { name: "Primary" }).boundingBox();
+    expect(nav?.height ?? 0).toBeGreaterThanOrEqual(64);
   });
 });
 
@@ -383,7 +474,7 @@ test.describe("a save that cannot be queued", () => {
 
     /* Not the route announcer, which is also an alert. */
     const alert = memberPage.getByRole("alert").filter({ hasText: "not saved yet" });
-    await expect(alert).toContainText("Could not load the outing");
+    await expect(alert).toContainText("Could not load the session");
     await expect(alert).toBeInViewport({ ratio: 1 });
     await expect(save).toBeInViewport();
     await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-19");
@@ -397,7 +488,7 @@ test.describe("a save that cannot be queued", () => {
       }),
     );
     await save.click();
-    await expect(alert).toContainText("No outing is running");
+    await expect(alert).toContainText("No session is running");
     await expect(alert).toBeInViewport({ ratio: 1 });
   });
 });
@@ -407,6 +498,32 @@ test.describe("without signal", () => {
      WebKit, and after the reload the worker is in charge. The queue is what
      is under test here, not the worker. */
   test.use({ serviceWorkers: "block" });
+
+  /* Fetched once the page is idle, not on the tap: a worker that controls
+     the page would serve it offline, but none does on the first visit after
+     it installs, nor once Safari has cleared it. */
+  test("the list of what is waiting opens without signal, with no worker to serve it", async ({
+    memberPage,
+  }) => {
+    const UNSENT = "#21-23";
+    await memberPage.goto("/", { waitUntil: "networkidle" });
+    await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    await memberPage.context().setOffline(true);
+
+    await memberPage.getByLabel("Unit number").fill(UNSENT);
+    await memberPage.getByRole("radio", { name: "High" }).click();
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+    await expect(memberPage.getByRole("status")).toContainText(`Saved ${UNSENT} on this phone`);
+
+    await memberPage.getByRole("button", { name: /1 waiting to send/ }).click();
+    const sheet = memberPage.getByRole("dialog", { name: "Waiting to send" });
+    await expect(sheet).toContainText(UNSENT);
+    await sheet.getByRole("button", { name: "Close" }).last().click();
+    // Still the recording screen, mid-evening, not an error page.
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("#21-24");
+    await memberPage.context().setOffline(false);
+  });
 
   test("a visit saved without signal waits on the phone, survives a reload and sends later", async ({
     memberPage,
@@ -451,7 +568,7 @@ test.describe("without signal", () => {
     const filled = await bar.boundingBox();
     expect(filled?.height).toBe(slot?.height);
 
-    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByRole("tab", { name: /^All units/ }).click();
     await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
     const pending = memberPage.getByRole("listitem").filter({ hasText: OFFLINE_UNIT });
     await expect(pending).toContainText("Not sent");
@@ -459,7 +576,7 @@ test.describe("without signal", () => {
     await memberPage.unroute("**/api/auth/session");
     await memberPage.reload();
     await expect(bar).toBeVisible();
-    await memberPage.getByRole("tab", { name: /^Units/ }).click();
+    await memberPage.getByRole("tab", { name: /^All units/ }).click();
     await memberPage.getByLabel("Search this block").fill(OFFLINE_UNIT);
     await expect(pending).toContainText("Not sent");
 

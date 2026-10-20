@@ -128,6 +128,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
         subtitle={here === undefined ? "One unit at a time." : here.street}
         back={{ href: "/", label: "Session" }}
+        inline
       />
 
       {error === null ? null : (

@@ -70,7 +70,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
   return (
     <div
       ref={overlay}
-      className="fixed inset-0 z-70 overflow-y-auto bg-background pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+      className="fixed inset-0 z-70 overflow-y-auto bg-background pt-[max(--spacing(6),env(safe-area-inset-top))] pb-[max(--spacing(6),env(safe-area-inset-bottom))]"
     >
       <div
         ref={panel}

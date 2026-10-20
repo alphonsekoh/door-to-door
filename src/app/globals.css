@@ -28,9 +28,18 @@
   /* Amber is too light to read as small text on white; this one is 4.5:1. */
   --app-interest-medium-text: oklch(0.5 0.11 75);
 
+  /* 1rem, the reader's text size, held between the 16px base and twice it.
+     Type, spacing and the nav are all multiples of it, so layouts scale with
+     the text. The floor keeps body text at 16px, so iOS does not zoom on
+     input focus, and a min-h-11 control at 44px at the smallest iOS
+     settings. The ceiling is the largest size the E2E suite proves the
+     screens at; past it a title was crushed to nothing and a sheet's Save
+     sat under its header. */
+  --reader-rem: clamp(16px, 1rem, 32px);
+
   /* The bottom nav's height. The offline shell, which has no nav, sets it to
      0 on <html>, so the Save bar sits on the bottom edge there. */
-  --nav-height: 4rem;
+  --nav-height: calc(var(--reader-rem) * 4);
 
   /* Chrome material: tint, the lit top edge and the grain over the blur. */
   --material-tint: var(--app-surface);
@@ -107,18 +116,21 @@
      optical sizes and tracking tables, and costs no download in a dead spot. */
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-  /* Mobile-first type scale. Body sits at 16px so iOS does not zoom on input focus.
-     Tracking is per size: tighter as type grows, a touch open on captions. */
-  --text-caption: 0.75rem;
-  --text-caption--line-height: 1rem;
+  /* Spacing and the type scale follow --reader-rem, not a bare rem. */
+  --spacing: calc(var(--reader-rem) / 4);
+
+  /* Mobile-first type scale. Tracking is per size: tighter as type grows, a
+     touch open on captions. */
+  --text-caption: calc(var(--reader-rem) * 0.75);
+  --text-caption--line-height: var(--reader-rem);
   --text-caption--letter-spacing: 0.01em;
-  --text-body: 1rem;
-  --text-body--line-height: 1.5rem;
-  --text-title: 1.125rem;
-  --text-title--line-height: 1.625rem;
+  --text-body: var(--reader-rem);
+  --text-body--line-height: calc(var(--reader-rem) * 1.5);
+  --text-title: calc(var(--reader-rem) * 1.125);
+  --text-title--line-height: calc(var(--reader-rem) * 1.625);
   --text-title--letter-spacing: -0.01em;
-  --text-heading: 1.375rem;
-  --text-heading--line-height: 1.875rem;
+  --text-heading: calc(var(--reader-rem) * 1.375);
+  --text-heading--line-height: calc(var(--reader-rem) * 1.875);
   --text-heading--letter-spacing: -0.02em;
 }
 
@@ -130,7 +142,7 @@
 }
 
 @utility pt-banner {
-  padding-top: calc(1rem + var(--banner-top, 0px));
+  padding-top: calc(var(--reader-rem) + var(--banner-top, 0px));
 }
 
 /* Sits just above the fixed bottom nav, clearing the home indicator too. */
@@ -332,6 +344,22 @@
   }
 }
 
+/*
+ * Dynamic Type: on an iPhone the root size follows the reader's text-size
+ * setting, 17px at the default, and --reader-rem follows it within its
+ * bounds. Only there: desktop Safari, and the WebKit the E2E suite runs,
+ * resolve the same keyword to 13px. -webkit-touch-callout exists only in
+ * iOS WebKit; the coarse pointer keeps out anything else that ever adopts it.
+ */
+@supports (-webkit-touch-callout: none) {
+  @media (pointer: coarse) {
+    html {
+      font: -apple-system-body;
+      line-height: 1.5;
+    }
+  }
+}
+
 html {
   -webkit-text-size-adjust: 100%;
   /* On the root scroller too: Chrome on Android hangs pull-to-refresh there,
@@ -342,6 +370,8 @@ html {
 body {
   background-color: var(--app-bg);
   color: var(--app-fg);
+  /* Text with no size of its own inherits the bounded size, not the root's. */
+  font-size: var(--reader-rem);
   /* Field use is one-handed and often in motion; overscroll bounce makes taps miss. */
   overscroll-behavior-y: none;
 }

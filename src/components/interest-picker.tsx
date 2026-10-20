@@ -34,7 +34,7 @@ export function InterestPicker({ value, onChange, describedBy }: Props) {
       role="radiogroup"
       aria-label="Interest level"
       aria-describedby={describedBy}
-      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,6rem),1fr))] gap-2"
+      className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,--spacing(24)),1fr))] gap-2"
     >
       {OPTIONS.map((option) => {
         const selected = value === option.value;

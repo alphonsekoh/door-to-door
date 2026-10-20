@@ -38,7 +38,9 @@ export function BackLink({ href, label, retrace = false }: Back) {
       >
         <path d="M15 5l-7 7 7 7" />
       </svg>
-      <span>{label}</span>
+      {/* Only inside a narrow container (an inline PageHeader): the
+          accessible name above still says where it goes. */}
+      <span className="@max-[6.5rem]:sr-only">{label}</span>
     </Link>
   );
 }

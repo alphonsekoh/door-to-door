@@ -58,7 +58,7 @@ export function UpdatePrompt({ hasUnsynced, reload = reloadPage }: Props) {
     <div
       ref={bannerRef}
       role="status"
-      className="fixed inset-x-0 top-0 z-30 border-b border-border bg-surface px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+      className="fixed inset-x-0 top-0 z-30 border-b border-border bg-surface px-4 py-3 pt-[max(--spacing(3),env(safe-area-inset-top))]"
     >
       <div className="mx-auto flex max-w-screen-sm items-center gap-3">
         <p className="flex-1 text-body">
