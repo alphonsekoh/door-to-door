@@ -35,9 +35,10 @@ workflow and offline model documented; ADR-style notes for contested decisions.
   Next-internal. _Why:_ the acceptance bar is "no doc references code that doesn't exist".
 - **D-38-7 · CLAUDE.md now describes what was built:** `@serwist/turbopack` (D-32-2),
   email + password on JWT (D-13-1), the real E2E suite on Chromium and WebKit (D-32-18),
-  "outing" vs "session" and teammate amends (D-74-22), visits "never overwritten by a later
-  visit" (an amend corrects the same visit), Configuration rules (D-75-1, D-75-17), and
-  `format:check` in the pre-done commands. _Why:_ stale guidance is worse than none.
+  ~~"outing" vs "session" and~~ teammate amends (D-74-22), visits "never overwritten by a
+  later visit" (an amend corrects the same visit), Configuration rules (D-75-1, D-75-17),
+  and `format:check` in the pre-done commands. _Why:_ stale guidance is worse than none.
+  _The "outing" clause is superseded by D-111-7:_ the UI says "session" too.
 - **D-38-8 · The migration rule is split:** **[CI]** for snapshot drift (CI reruns
   `db:generate` and checks `drizzle/`), **[convention]** for no hand-written or hand-edited
   SQL. Refines D-08-1. _Why:_ the CI check never reads the `.sql` files, so calling the

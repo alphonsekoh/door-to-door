@@ -525,3 +525,104 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** measured in PR #110;
   [Vitest, globalSetup](https://vitest.dev/config/#globalsetup)
 - **Used by:** D-109-1, D-109-4
+
+### R-60 · iOS Safari shows `:active` only when a touch listener exists (unverified on a device)
+
+- **Finding:** By default Safari on iOS applies the `:active` state only when a
+  `touchstart` handler is registered on the element or an ancestor. Without one, CSS press
+  states show on Android and never on an iPhone. One passive, empty `touchstart` listener
+  on `document` turns them on and changes nothing about scrolling or taps. Playwright's
+  WebKit applies `:active` on mouse down regardless, so the E2E cannot prove this; it is a
+  manual check on a real iPhone.
+- **Source:** [MDN, `:active`](https://developer.mozilla.org/en-US/docs/Web/CSS/:active);
+  #111 device audit
+- **Used by:** D-111-11
+
+### R-61 · Motion drops the starting velocity of a spring defined by duration or bounce
+
+- **Finding:** In Motion 14.3.1, a spring given `duration`, `bounce` or `visualDuration`,
+  and none of `stiffness`, `damping` or `mass`, is "time-defined". Its `velocity` is then
+  replaced by 0, because "velocity from interrupted animations causes massive oscillation
+  on small-range animations". A spring given physical `stiffness` and `damping` keeps its
+  velocity. So a release velocity handed to a duration-based spring is lost: the sheet
+  stalls under the finger, then sets off from rest. Apple's damping ratio ζ and response
+  T convert as k = (2π/T)² and c = 2ζ√k, with mass 1.
+- **Source:** `node_modules/motion-dom/dist/es/animation/generators/spring.mjs`
+  (motion-dom 14.3.1), lines 158-177 (`getSpringOptions`, `isTimeDefined`) and 226 and
+  240 (`inheritVelocity`); #111
+- **Used by:** D-111-16
+
+### R-62 · `font: -apple-system-body` and the iOS-only guard, per engine (measured)
+
+- **Finding:** Probed with Playwright 1.62.1 on macOS:
+
+  | Engine and profile | `(pointer: coarse)` | `-webkit-touch-callout` | `font: -apple-system-body` |
+  | ------------------ | ------------------- | ----------------------- | -------------------------- |
+  | WebKit, iPhone 13  | matches             | unsupported             | 13px                       |
+  | Chromium, Pixel 5  | matches             | unsupported             | ignored (16px)             |
+
+  So `@supports (-webkit-touch-callout: none)` is what keeps desktop Safari and the E2E's
+  WebKit out. `pointer: coarse` alone would shrink the WebKit run to 13px. On iOS the
+  keyword follows the text-size setting. Body sizes are 14, 15, 16, 17 (the default), 19,
+  21 and 23px, then 28, 33, 40, 47 and 53px at the accessibility sizes. Not yet seen on a
+  real iPhone.
+
+- **Source:** measured 2026-10-19 in the #111 worktree;
+  [MDN, `-webkit-touch-callout`](https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-touch-callout);
+  [Apple HIG, Typography](https://developer.apple.com/design/human-interface-guidelines/typography)
+- **Used by:** D-111-8, D-111-24
+
+### R-63 · What a fixed or sticky box is positioned against
+
+- **Finding:**
+  - A `position: fixed` element is positioned against its nearest ancestor that has a
+    `transform`, `filter` or `backdrop-filter`, not against the viewport.
+  - A fixed overlay keeps any margin that a `space-y-*` parent gives it. Because of this,
+    the End confirm's scrim stopped 20px short of the bottom on both engines.
+  - A sticky element is confined to its containing block. A Save bar that is sticky inside
+    a form starting low on the page cannot rise to the line above the nav.
+  - On iOS Safari, `vh` is the large viewport, while `dvh` follows the visible area.
+- **Source:** [CSS Transforms 1](https://www.w3.org/TR/css-transforms-1/);
+  [Filter Effects 2](https://drafts.fxtf.org/filter-effects-2/);
+  [CSS Positioned Layout 3](https://www.w3.org/TR/css-position-3/);
+  [CSS Values 4, viewport-relative lengths](https://www.w3.org/TR/css-values-4/); #111 device
+  audit
+- **Used by:** D-111-13, D-111-20, D-111-31
+
+### R-64 · What Motion costs the phone (measured)
+
+- **Finding:** `LazyMotion` with `domAnimation` and `m` components loads animation, exit
+  and gestures, but not layout or drag (`domMax`).
+  - In the production build of the #111 branch, the one chunk holding Motion is 36.9 kB
+    gzip (102.6 kB raw). That is about 9% of the 418 kB gzip of all client chunks.
+  - Motion's own estimate for this feature set, quoted in PR #112, is about 29 kB.
+  - The bundler follows static imports. A single static import under the root layout put
+    Motion on every page, sign-in included. A dynamic `import()` gives it a chunk of its
+    own.
+  - The worker precaches every `.next/static` script, so the chunk downloads once per app
+    version.
+- **Source:** measured 2026-10-19 (`.next/static/chunks`, build of the #111 working tree);
+  [Motion, reduce bundle size](https://motion.dev/docs/react-reduce-bundle-size)
+- **Used by:** D-111-2, D-111-15
+
+### R-65 · What Playwright can emulate of the display settings
+
+- **Finding:** Playwright 1.62.1 `emulateMedia` covers `reducedMotion` and `contrast` on
+  both Chromium and WebKit; the suite's tests for both pass on each engine. Reduced transparency can be
+  emulated only on Chromium, through CDP `Emulation.setEmulatedMedia`; WebKit cannot
+  emulate it. Playwright's WebKit reports the computed `backdrop-filter` but draws no blur
+  in screenshots. Safari's blur, grain and transparency fallback need a real device.
+- **Source:** measured in PR #112 (`e2e/record-visit.spec.ts`, "the phone's display
+  settings") and the #111 device audit;
+  [Playwright, `page.emulateMedia`](https://playwright.dev/docs/api/class-page#page-emulate-media)
+- **Used by:** D-111-19, D-111-32
+
+### R-66 · Next 16: feedback while a link's route loads
+
+- **Finding:** Called inside a `<Link>`, `useLinkStatus()` from `next/link` returns
+  `pending` while that link's navigation is in progress. A route's `loading.tsx` lets the
+  navigation commit at once, showing that file's UI. With neither, a tap on a dynamic route
+  that is not prefetched shows nothing until the server answers.
+- **Source:** `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
+  (Next 16.3.3)
+- **Used by:** D-111-12

@@ -1,6 +1,6 @@
 # #105 · Create the first admin on a fresh production database
 
-- **Status:** In review (PR #108)
+- **Status:** Done (PR #108)
 - **Phase:** 7 - Hardening
 - **Depends on:** #31, #38, #75
 

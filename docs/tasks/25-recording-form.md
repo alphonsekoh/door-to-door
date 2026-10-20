@@ -16,6 +16,8 @@ The screen used at a door.
 - **D-25-3 · Known history and outstanding follow-ups show before knocking.** A failed
   lookup never blocks recording.
 - **D-25-4 · Save is pinned above the bottom nav.** _Why:_ history pushed it below the fold.
+  _Refined by D-111-20:_ `DockedActions`, glass only while pinned and meeting the nav edge
+  to edge; `DockHost` holds it at the end of the block screen and the offline shell.
 - **D-25-5 · After saving, the next unit is suggested** (`#12-07` → `#12-08`), or
   nothing when the numbering is unrecognised.
 - **D-25-6 · Optional fields send `null`, never `""`.** Relies on D-10-3.

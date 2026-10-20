@@ -73,7 +73,10 @@ Owner decisions are marked **(owner)**.
   opens a sheet (`z-50`) with each record's state, a fixed reason, Retry and Retry all.
   A record saved on this page does not count until its first send ends; the form's
   `role="status"` line says "Saved". _Why:_ the bar appearing mid-form would move the
-  form under a thumb; saving with signal must not flash it.
+  form under a thumb; saving with signal must not flash it. _Refined by D-111-21:_ the row
+  is still held from first paint, but pinned only while something is unsent; quiet, it
+  scrolls away, and a scroll-edge fade replaces its bottom rule. The sheet is a chunk of
+  its own, fetched when the page is idle (D-111-15).
 - **D-33-13 · Amends and on-behalf recording stay online-only.** Units known only to
   the queue are not tappable. _Why:_ amending needs the server's row; D-74-19.
 - **D-33-14 · Update prompt waits only for the member's records still being sent
@@ -153,13 +156,15 @@ Owner decisions are marked **(owner)**.
   _Why:_ the bar is always on screen, so no scroll offsets or reduced-motion handling;
   at the top of a long form it could be off screen. Trade-off: a two-line message makes
   the bar taller until the next attempt. Focus stays where the disabled button dropped
-  it (see known limits).
+  it (see known limits). _Extended by D-111-26:_ the same slot says why a Save was
+  refused for validation.
 - **D-33-30 · Only a `404` means "no outing running".** Refines D-33-25: asking for the
   outing answers running (with id), none, or unknown; a network error, `5xx` or the 4 s
   timeout is unknown. None says "No outing is running"; unknown keeps "Could not load
   the outing … Check your signal". Neither queues, both keep what was typed. _Why:_ the
   member needs to know whether to find signal or ask an admin; D-10-7 makes `404` the
-  empty state.
+  empty state. _Wording refined by D-111-7:_ "No session is running", "Could not load
+  the session …".
 
 ## Relies on
 

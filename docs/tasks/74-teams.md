@@ -184,6 +184,7 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   and recording's auto-join (D-74-13) needs no extra client code. The card offers Pair
   up, rename, add member and leave. Members get no delete (D-74-18: a team with visits
   cannot be deleted anyway). _Why:_ the server is the only truth about who is joined.
+  _Wording refined by D-111-7:_ "Join this session".
 - **D-74-37 · The card reads identity from `GET /users/me`, never the JWT.** Relies on
   D-74-7 and D-83-3.
 - **D-74-38 · Pair up needs a chosen partner** (the button reads "Choose a teammate"),
@@ -226,7 +227,8 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   `max-h-[85dvh]`, so the on-screen keyboard can never leave the focused field under the
   sticky Create button. _Why:_ same class of bug as D-30-7. Proven by an E2E
   `elementFromPoint` measurement on both browsers, with the keyboard emulated by
-  shrinking the viewport (R-37).
+  shrinking the viewport (R-37). _Refined by D-111-31:_ the shared `Sheet` now caps every
+  sheet at `85dvh` and scrolls a focused field into view (`scroll-pb-24`).
 - **D-74-48 · E2E `e2e/teams.spec.ts`.** Two members join, Alice forms a team with Ben,
   Ben sees it after Refresh, Ben leaves. Adds `PARTNER_STATE` (Ben) to the fixtures, ends
   the outing after each test, uses `expect.poll` for layout and exact locators
@@ -271,12 +273,13 @@ invisible to B until it syncs cannot run until the queue (#33) exists.
   earlier records"), not outing cards. _Why:_ `/history/mine/sessions` lists only outings
   the member recorded in, and its counts stay own (D-27-1); the screen says so.
   Outstanding follow-ups show in both views. The outing page heading is now "Outing
-  records".
+  records". _Wording refined by D-111-7:_ "Session records".
 - **D-74-57 · Empty-state wording.** "Nothing here matches those filters." only when a
   server filter is set, or the client search hides loaded rows; otherwise each screen
   says nothing was recorded (on `/history/[id]`: "You recorded nothing on this outing." or
   "Neither you nor your team recorded anything on this outing."). _Why:_ an empty filtered
-  page says nothing about whether anything was recorded.
+  page says nothing about whether anything was recorded. _Wording refined by D-111-7:_
+  "on this session".
 - **D-74-58 · Admin team filter.** UUID-validated on read; on all-records offered and
   kept only once an outing is chosen and cleared when the outing changes; DROPPED from the
   URL once the loaded team list lacks it, kept if the list cannot be read. _Why:_ D-29-4;
