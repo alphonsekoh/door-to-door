@@ -13,6 +13,9 @@ export type Back = {
 };
 
 export function BackLink({ href, label, retrace = false }: Back) {
+  /* At least 44px each way, the touch minimum, and no more than its content
+     needs past that: in a narrow header it is the chevron alone, and every
+     pixel it does not take is the title's. */
   return (
     <Link
       href={href}
@@ -23,7 +26,7 @@ export function BackLink({ href, label, retrace = false }: Back) {
           window.history.back();
         }
       }}
-      className="-ml-1 inline-flex min-h-11 items-center gap-1 pr-2 text-body font-medium btn-text"
+      className="-ml-1 inline-flex min-h-11 min-w-[44px] items-center gap-1 pr-2 text-body font-medium btn-text"
     >
       <svg
         viewBox="0 0 24 24"

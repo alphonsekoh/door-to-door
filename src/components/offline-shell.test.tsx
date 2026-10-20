@@ -329,7 +329,7 @@ describe("OfflineShell, recording", () => {
 });
 
 describe("the reconnect row", () => {
-  it("is there, one line high, in every state", async () => {
+  it("is there, one line high, in every state, and never cut short", async () => {
     let finish: (copy: LocalCopy | null) => void = () => undefined;
     mount({
       load: () =>
@@ -338,8 +338,10 @@ describe("the reconnect row", () => {
         }),
     });
     const row = reconnectRow();
-    expect(row).toHaveClass("h-12");
+    expect(row).toHaveClass("min-h-12");
     expect(row).toHaveTextContent("Offline. Records save on this phone.");
+    // At large text it wraps: it is what says the records are safe.
+    expect(screen.getByText("Offline. Records save on this phone.")).not.toHaveClass("truncate");
 
     await act(async () => {
       finish(savedCopy());

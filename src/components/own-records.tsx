@@ -47,13 +47,15 @@ export function OwnRecords({
           return (
             <li
               key={visit.id}
-              className="flex items-center gap-2 border-b border-border pr-3 last:border-b-0"
+              className="flex flex-wrap items-center gap-x-2 border-b border-border pr-3 last:border-b-0"
             >
-              {/* At large text the chip drops under the unit rather than
-                  squeeze it beside Amend. */}
+              {/* At large text Amend drops under the record, and the chip
+                  under the unit, rather than squeeze the record to a sliver
+                  that Amend is drawn over. The record's 12ch is past its
+                  own padding. */}
               <Link
                 href={`/households/${household.id}`}
-                className="flex min-h-14 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 py-2 pl-4"
+                className="flex min-h-14 min-w-0 flex-[1_1_calc(12ch+--spacing(4))] flex-wrap items-center gap-x-3 gap-y-1 py-2 pl-4"
               >
                 <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
@@ -84,7 +86,7 @@ export function OwnRecords({
                   onClick={() => {
                     setAmending(entry);
                   }}
-                  className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+                  className="my-1.5 ml-auto min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
                 >
                   Amend
                 </button>

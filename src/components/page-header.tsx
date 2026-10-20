@@ -17,8 +17,10 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
     return (
       /* The empty right column only centres the title: when the row is
          short of room it gives way first, so the title is never squeezed
-         to nothing between two fixed columns. */
-      <header className="mb-3 grid min-h-11 grid-cols-[minmax(--spacing(11),1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-x-2">
+         to nothing between two fixed columns. The way back keeps the room
+         its chevron needs, or 44px, and no more: held at twice that at the
+         largest text, it wrapped "Record a visit" onto a second line. */
+      <header className="mb-3 grid min-h-11 grid-cols-[minmax(max(44px,--spacing(7)),1fr)_minmax(0,auto)_minmax(0,1fr)] items-center gap-x-2">
         {/* A container, so the back label gives way to the chevron alone
             when large text leaves the title too little room. */}
         <div className="@container min-w-0">

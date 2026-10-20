@@ -11,9 +11,9 @@ import { isPublicPath } from "@/server/auth/routes";
 
 /*
  * Always in view while anything of this member's is unsent, so nobody
- * pockets the phone believing the evening is saved: sticky under any banner
- * and beneath every sheet (z-20). A button, not a live status: the recording
- * form owns that role for "Saved" (D-33-12).
+ * pockets the phone believing the evening is saved: pinned under any banner
+ * and beneath every sheet. A button, not a live status: the recording form
+ * owns that role for "Saved" (D-33-12).
  *
  * Quiet ("All visits sent"), it scrolls away with the page: at large text
  * sizes a bar pinned for good news took a fifth of the screen from the form.
@@ -24,12 +24,18 @@ import { isPublicPath } from "@/server/auth/routes";
  * push the form down under a thumb already on its way to an interest level;
  * turning up once the session and the queue have loaded would do the same to
  * every page load. Becoming sticky moves nothing: the row is already there.
+ *
+ * Large text on a phone is the exception (globals.css). There the quiet row
+ * is not held, so the recording form's unit number is in view as the screen
+ * opens, and the count is set at caption size so it stays whole; beside a
+ * docked Save it is pinned only while the three leave half the screen. The
+ * count wraps rather than being cut short.
  */
 const ROW =
-  "-mx-4 mb-3 flex h-11 w-[calc(100%+--spacing(8))] items-center justify-between gap-3 bg-surface-muted px-4 text-left text-body";
+  "-mx-4 flex w-[calc(100%+--spacing(8))] items-center gap-x-3 bg-surface-muted px-4 text-left";
 
 /* Over the page once scrolled: a fade beneath it rather than a hard rule. */
-const PINNED = "scroll-edge sticky top-[var(--banner-top,0px)] z-20";
+const PINNED = "scroll-edge sync-pinned";
 
 export function SyncStatusBar() {
   const { records, justSaved, enqueue } = useSyncQueue();
@@ -89,7 +95,7 @@ export function SyncStatusBar() {
   return (
     <>
       {summary === null ? (
-        <p className={`${ROW} text-foreground-muted`}>
+        <p className={`${ROW} held-row text-body text-foreground-muted`}>
           {enqueue === null ? null : (
             <span className="truncate">{quietText(records, justSaved)}</span>
           )}
@@ -107,10 +113,12 @@ export function SyncStatusBar() {
               else setUnavailable(true);
             });
           }}
-          className={`${ROW} ${PINNED}`}
+          className={`${ROW} ${PINNED} mb-3 control-compact flex-wrap py-1`}
         >
-          <span className="truncate font-medium">{summary.text}</span>
-          <span className="shrink-0 text-primary">{unavailable ? "Try again" : "View"}</span>
+          <span className="min-w-0 flex-[1_1_12ch] font-medium">{summary.text}</span>
+          <span className="ml-auto shrink-0 text-primary">
+            {unavailable ? "Try again" : "View"}
+          </span>
         </button>
       )}
       {Queue === null ? null : (

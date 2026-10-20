@@ -122,15 +122,30 @@ test("Save is on the first paint, above the nav, before any script has run", asy
     await page.goto(`/blocks/${SEED_BLOCK}`);
     const save = page.getByRole("button", { name: "Save and next" });
     await expect(save).toBeVisible();
-    const [saveBox, navBox] = await Promise.all([
+    const bar = page.locator('[data-dock="nav"]');
+    const [saveBox, navBox, barBox, unitBox] = await Promise.all([
       save.boundingBox(),
       page.getByRole("navigation", { name: "Primary" }).boundingBox(),
+      bar.boundingBox(),
+      page.getByLabel("Unit number").boundingBox(),
     ]);
     expect(saveBox, `Save at ${size}`).not.toBeNull();
     expect(
       (saveBox?.y ?? 0) + (saveBox?.height ?? 0),
       `Save runs under the nav at ${size}`,
     ).toBeLessThanOrEqual((navBox?.y ?? 0) + 0.5);
+    /* And the first thing to fill in is not under it. */
+    expect(unitBox, `the unit number at ${size}`).not.toBeNull();
+    expect(
+      (unitBox?.y ?? 0) + (unitBox?.height ?? 0),
+      `the Save bar covers the unit number at ${size}`,
+    ).toBeLessThanOrEqual((barBox?.y ?? 0) + 0.5);
+    /* Glass where it is pinned, as the live bar will be; clear where it
+       rests at the end of the form. */
+    const glass = await bar
+      .locator(".dock-glass")
+      .evaluate((layer) => getComputedStyle(layer).opacity);
+    expect(glass, `the Save bar's surface at ${size}`).toBe(size === "32px" ? "1" : "0");
     await context.close();
   }
 });

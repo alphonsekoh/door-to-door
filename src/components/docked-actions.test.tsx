@@ -153,6 +153,40 @@ describe("DockedActions", () => {
     container.remove();
   });
 
+  it("gives the stand-in its glass in CSS, read from its marker, as no script is there to watch", async () => {
+    stubObserver();
+    const screenWithSave = (
+      <DockHost className="space-y-5" standIn={<button type="button">Save</button>}>
+        <DockedActions>
+          <button type="submit">Save</button>
+        </DockedActions>
+      </DockHost>
+    );
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(screenWithSave);
+    document.body.append(container);
+    try {
+      const standIn = within(container).getByRole("button", { name: "Save" }).parentElement;
+      // The timeline is named on the marker and seen across the host.
+      expect(container.firstElementChild).toHaveClass("dock-scope");
+      expect(standIn?.nextElementSibling).toHaveClass("dock-marker");
+      const glass = standIn?.querySelector(".dock-glass");
+      expect(glass).toHaveClass("material-chrome");
+      expect(glass).toHaveAttribute("aria-hidden", "true");
+
+      const root = await act(() => hydrateRoot(container, screenWithSave));
+      // The live bar is told by its observer instead.
+      const live = within(container).getByRole("button", { name: "Save" }).parentElement;
+      expect(live?.querySelector(".dock-glass")).toBeNull();
+      expect(live?.nextElementSibling).not.toHaveClass("dock-marker");
+      act(() => {
+        root.unmount();
+      });
+    } finally {
+      container.remove();
+    }
+  });
+
   it("with no stand-in, is drawn in its form until the host has mounted", () => {
     const html = renderToString(
       <DockHost className="space-y-5">

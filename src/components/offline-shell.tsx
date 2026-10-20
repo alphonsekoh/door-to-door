@@ -161,12 +161,17 @@ export function OfflineShell({
 
   return (
     <DockHost className="space-y-5">
-      {/* Held one line high in every state, so nothing moves when it changes. */}
+      {/*
+        Held one line high, so nothing moves when it changes. It is what tells
+        a member in a dead stairwell their records are safe, so it is never
+        cut short: at large text it wraps, and Continue drops under it, and
+        then the row may change height.
+      */}
       <div
         aria-live="polite"
-        className="flex h-12 items-center justify-between gap-3 rounded-lg border border-border bg-surface-muted px-3 text-body"
+        className="flex min-h-12 flex-wrap items-center gap-x-3 rounded-lg border border-border bg-surface-muted px-3 text-body"
       >
-        <span className="truncate">
+        <span className="min-w-0 flex-[1_1_12ch]">
           {reachable ? "Back online." : "Offline. Records save on this phone."}
         </span>
         {reachable ? (
@@ -177,7 +182,7 @@ export function OfflineShell({
                 navigate(returnTarget());
               });
             }}
-            className="min-h-11 shrink-0 font-medium btn-text"
+            className="ml-auto min-h-11 shrink-0 font-medium btn-text"
           >
             Continue
           </button>

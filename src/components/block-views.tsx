@@ -45,9 +45,10 @@ export function BlockViews({
       {/*
         Two views, one tap apart. The list must not push the recording form
         down the page: at a door the form is the whole job, and the list is
-        what you check between floors.
+        what you check between floors. On a short screen they are compact,
+        so the form's unit number is in view as the screen opens.
       */}
-      <div role="tablist" aria-label="Block views" className="flex gap-2">
+      <div role="tablist" aria-label="Block views" className="space-under-tabs flex gap-2">
         <button
           type="button"
           role="tab"
@@ -57,7 +58,7 @@ export function BlockViews({
           onClick={() => {
             setTab("record");
           }}
-          className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+          className={`control-compact flex-1 press rounded-lg border font-medium ${
             tab === "record"
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border-strong"
@@ -74,7 +75,7 @@ export function BlockViews({
           onClick={() => {
             setTab("units");
           }}
-          className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+          className={`control-compact flex-1 press rounded-lg border font-medium ${
             tab === "units"
               ? "border-primary bg-primary text-primary-foreground"
               : "border-border-strong"

@@ -41,6 +41,29 @@
      0 on <html>, so the Save bar sits on the bottom edge there. */
   --nav-height: calc(var(--reader-rem) * 4);
 
+  /*
+   * Large text on a phone. CSS has no condition on the screen's height
+   * measured in the reader's text size, and a script would answer only after
+   * the first paint, so these are lengths scaled far past any screen:
+   * positive when the condition holds, negative when it does not. Against
+   * them, clamp(small, calc(full - var(--short-by)), full) is one bound or
+   * the other.
+   *
+   * --short-by: the screen is under 26.5 reader-rems tall above the home
+   * indicator (an iPhone 13 in Safari past about 25px of text). Below that
+   * the recording form's unit number sits under the docked Save if all that
+   * is above it keeps its full size.
+   *
+   * --crowded-by: the nav, a docked Save (5 reader-rems) and a compact sync
+   * row (1.5) would together cover more than half the screen. The offline
+   * shell's nav is 0 tall.
+   */
+  --short-by: calc((var(--reader-rem) * 26.5 + env(safe-area-inset-bottom) - 100svh) * 1000);
+  --crowded-by: calc(
+    (2 * (var(--nav-height) + env(safe-area-inset-bottom) + var(--reader-rem) * 6.5) - 100svh) *
+      1000
+  );
+
   /* Chrome material: tint, the lit top edge and the grain over the blur. */
   --material-tint: var(--app-surface);
   --material-edge: oklch(1 0 0 / 0.7);
@@ -158,8 +181,111 @@
   top: calc(var(--nav-height) + env(safe-area-inset-bottom));
 }
 
+/*
+ * The docked bar's stand-in, drawn before any script has run
+ * (docked-actions.tsx), is glass while it is pinned, as the live bar is once
+ * its observer has looked. Read in CSS from the marker after it, as a view
+ * timeline: until the marker has come into view the bar is held above the
+ * nav. Where scroll-driven animations are unsupported it stays clear.
+ */
+@utility dock-scope {
+  timeline-scope: --dock;
+}
+
+@utility dock-marker {
+  view-timeline-name: --dock;
+}
+
+@utility dock-glass {
+  opacity: 0;
+  @supports (animation-timeline: view()) {
+    animation: dock-glass linear both;
+    animation-timeline: --dock;
+    animation-range: cover 0% cover 1px;
+    /* Scroll-linked, not timed: the reduced-motion rule must not cut it. */
+    animation-duration: auto !important;
+  }
+}
+
+@keyframes dock-glass {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @utility inset-safe-bottom {
   padding-bottom: env(safe-area-inset-bottom);
+}
+
+/*
+ * A control that keeps its target but gives up its padding on a short
+ * screen (--short-by): caption text in a control at least 44px tall, in
+ * place of body text in a min-h-11 one. iOS stops a segmented control's
+ * text growing for the same reason.
+ */
+@utility control-compact {
+  font-size: clamp(
+    calc(var(--reader-rem) * 0.75),
+    calc(var(--reader-rem) - var(--short-by)),
+    var(--reader-rem)
+  );
+  line-height: clamp(
+    var(--reader-rem),
+    calc(var(--reader-rem) * 1.5 - var(--short-by)),
+    calc(var(--reader-rem) * 1.5)
+  );
+  min-height: clamp(
+    max(44px, calc(var(--reader-rem) * 1.5)),
+    calc(var(--reader-rem) * 2.75 - var(--short-by)),
+    calc(var(--reader-rem) * 2.75)
+  );
+}
+
+/* The space under the block's tabs: mb-5, or mb-2 on a short screen. */
+@utility space-under-tabs {
+  margin-bottom: clamp(
+    calc(var(--reader-rem) * 0.5),
+    calc(var(--reader-rem) * 1.25 - var(--short-by)),
+    calc(var(--reader-rem) * 1.25)
+  );
+}
+
+/* A row held one line high (h-11, mb-3) for what may fill it later, given
+   up on a short screen, where the height is worth more to the form below.
+   A screen reader still reads what is in it. */
+@utility held-row {
+  height: clamp(
+    0px,
+    calc(var(--reader-rem) * 2.75 - var(--short-by)),
+    calc(var(--reader-rem) * 2.75)
+  );
+  margin-bottom: clamp(
+    0px,
+    calc(var(--reader-rem) * 0.75 - var(--short-by)),
+    calc(var(--reader-rem) * 0.75)
+  );
+  overflow: hidden;
+}
+
+/*
+ * The sync bar, pinned under any banner and beneath every sheet. On a
+ * screen with a Save docked on the nav it stays in the page where the three
+ * would cover more than half the screen (--crowded-by): a sticky top that
+ * far above the screen never sticks, and the fade under it goes too.
+ */
+@utility sync-pinned {
+  position: sticky;
+  top: var(--banner-top, 0px);
+  z-index: 20;
+  body:has([data-dock]) & {
+    top: clamp(-100000px, calc(var(--banner-top, 0px) - var(--crowded-by)), var(--banner-top, 0px));
+    &::after {
+      height: clamp(0px, calc(0.5rem - var(--crowded-by)), 0.5rem);
+    }
+  }
 }
 
 /*

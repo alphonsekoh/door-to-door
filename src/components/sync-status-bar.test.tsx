@@ -62,8 +62,8 @@ describe("SyncStatusBar", () => {
     expect(screen.queryByRole("button")).toBeNull();
     const row = screen.getByRole("paragraph");
     expect(row).toBeEmptyDOMElement();
-    expect(row).toHaveClass("h-11");
-    expect(row).not.toHaveClass("sticky");
+    expect(row).toHaveClass("held-row");
+    expect(row).not.toHaveClass("sync-pinned");
   });
 
   it("is not on a public page, where nobody is signed in", () => {
@@ -79,9 +79,9 @@ describe("SyncStatusBar", () => {
     expect(screen.queryByRole("button")).toBeNull();
     // Same row as the button it turns into, so nothing below it moves.
     const row = screen.getByText("All visits sent").parentElement;
-    expect(row).toHaveClass("h-11");
+    expect(row).toHaveClass("held-row");
     // Good news is not pinned: at large text it would take the form's room.
-    expect(row).not.toHaveClass("sticky");
+    expect(row).not.toHaveClass("sync-pinned");
   });
 
   it("does not flash while a record just saved is on its first send", () => {
@@ -96,7 +96,9 @@ describe("SyncStatusBar", () => {
     useSyncQueue.mockReturnValue(running({ records: [record("#05-01"), record("#05-02")] }));
     render(<SyncStatusBar />);
     const bar = screen.getByRole("button", { name: /2 waiting to send/ });
-    expect(bar).toHaveClass("sticky", "z-20", "h-11");
+    expect(bar).toHaveClass("sync-pinned", "control-compact");
+    // Wrapped rather than cut short, however large the text.
+    expect(screen.getByText("2 waiting to send")).not.toHaveClass("truncate");
     // Separated by a fade once content scrolls under it, not a hard rule.
     expect(bar).toHaveClass("scroll-edge");
     expect(bar).not.toHaveClass("border-b");

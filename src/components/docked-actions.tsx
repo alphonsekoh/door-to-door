@@ -53,13 +53,19 @@ export function useDockedBarOnScreen(): boolean {
   );
 }
 
-/* The bar itself, and the marker after it that DockedActions watches. */
+/*
+ * The bar itself, and the marker after it that DockedActions watches. The
+ * stand-in has no script to watch with, so its glass is drawn in CSS from
+ * the same marker (globals.css).
+ */
 function Bar({
   docked,
+  standIn = false,
   marker,
   children,
 }: {
   docked: boolean;
+  standIn?: boolean;
   marker?: Ref<HTMLDivElement>;
   children: ReactNode;
 }) {
@@ -70,11 +76,18 @@ function Bar({
       <div
         data-dock="nav"
         data-docked={docked ? "" : undefined}
-        className={`sticky above-nav -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
+        className={`sticky above-nav isolate -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
       >
+        {standIn ? (
+          <div aria-hidden="true" className="material-chrome absolute inset-0 -z-10 dock-glass" />
+        ) : null}
         {children}
       </div>
-      <div ref={marker} aria-hidden="true" className="below-by-nav h-0" />
+      <div
+        ref={marker}
+        aria-hidden="true"
+        className={`below-by-nav h-0 ${standIn ? "dock-marker" : ""}`}
+      />
     </>
   );
 }
@@ -113,11 +126,15 @@ export function DockHost({
     return drawsStandIn ? STAND_IN : HERE;
   }, [host, drawsStandIn]);
   return (
-    <div ref={setHost}>
+    <div ref={setHost} className="dock-scope">
       <div className={className}>
         <Dock value={target}>{children}</Dock>
       </div>
-      {target.at === "stand-in" ? <Bar docked={false}>{standIn}</Bar> : null}
+      {target.at === "stand-in" ? (
+        <Bar docked={false} standIn>
+          {standIn}
+        </Bar>
+      ) : null}
     </div>
   );
 }
