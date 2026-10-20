@@ -510,15 +510,26 @@ export function RecordVisitForm({
           </p>
         )}
         {/* Named, since a DockHost moves the bar out of the form. */}
-        <button
-          type="submit"
-          form={formId}
-          disabled={saving}
-          className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-        >
-          {saving ? "Saving…" : "Save and next"}
-        </button>
+        <SaveAndNext form={formId} saving={saving} />
       </DockedActions>
     </form>
+  );
+}
+
+/*
+ * The form's Save. With no form named it is the stand-in the block screen
+ * draws before the page is live: a tap then does nothing, where the
+ * browser's own submit would reload the page and lose the unit typed.
+ */
+export function SaveAndNext({ form, saving = false }: { form?: string; saving?: boolean }) {
+  return (
+    <button
+      type={form === undefined ? "button" : "submit"}
+      form={form}
+      disabled={saving}
+      className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+    >
+      {saving ? "Saving…" : "Save and next"}
+    </button>
   );
 }

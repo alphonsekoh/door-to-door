@@ -1,13 +1,54 @@
 "use client";
 
-import { createContext, use, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  use,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { createPortal } from "react-dom";
 
 /*
- * Where a screen's docked bar is put. Null outside any host, and inside one
- * until it has mounted: the bar is then drawn where it is written.
+ * Where a screen's docked bar is drawn: where it is written (outside any
+ * host), nowhere while its host draws a stand-in for it (until the host has
+ * mounted), or at the end of the host.
  */
-const Dock = createContext<HTMLElement | null>(null);
+type Target = { at: "here" } | { at: "stand-in" } | { at: "host"; element: HTMLElement };
+
+const HERE: Target = { at: "here" };
+const STAND_IN: Target = { at: "stand-in" };
+
+const Dock = createContext<Target>(HERE);
+
+/* The bar itself, and the marker after it that DockedActions watches. */
+function Bar({
+  docked,
+  marker,
+  children,
+}: {
+  docked: boolean;
+  marker?: Ref<HTMLDivElement>;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {/* mt-4 collapses with a margin above it; mb-0: a margin below would
+          hold the pinned bar off the nav. */}
+      <div
+        data-dock="nav"
+        data-docked={docked ? "" : undefined}
+        className={`sticky above-nav -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
+      >
+        {children}
+      </div>
+      <div ref={marker} aria-hidden="true" className="below-by-nav h-0" />
+    </>
+  );
+}
 
 /*
  * Holds a screen's docked bar at the end of the whole screen rather than of
@@ -17,16 +58,37 @@ const Dock = createContext<HTMLElement | null>(null);
  * nav, with Save partly under it until the member scrolled. The host starts
  * at the top of the screen, so the bar can always reach that line.
  *
+ * A portal needs the host's element, so the bar only gets there once the
+ * host has mounted. Until then, which includes the server's HTML, the host
+ * draws `standIn` in the same place: the bar as it first looks. Drawn in its
+ * form instead, the first paint at large text had Save mostly under the
+ * nav, and it jumped up once the page was live.
+ *
  * The screen's content sits in its own box so the bar is the only thing
  * added to the host after it, and stays last.
  */
-export function DockHost({ className, children }: { className: string; children: ReactNode }) {
+export function DockHost({
+  className,
+  standIn,
+  children,
+}: {
+  className: string;
+  /* Omitted where nothing is docked on the first paint. */
+  standIn?: ReactNode;
+  children: ReactNode;
+}) {
   const [host, setHost] = useState<HTMLDivElement | null>(null);
+  const drawsStandIn = standIn !== undefined;
+  const target = useMemo<Target>(() => {
+    if (host !== null) return { at: "host", element: host };
+    return drawsStandIn ? STAND_IN : HERE;
+  }, [host, drawsStandIn]);
   return (
     <div ref={setHost}>
       <div className={className}>
-        <Dock value={host}>{children}</Dock>
+        <Dock value={target}>{children}</Dock>
       </div>
+      {target.at === "stand-in" ? <Bar docked={false}>{standIn}</Bar> : null}
     </div>
   );
 }
@@ -44,15 +106,14 @@ export function DockHost({ className, children }: { className: string; children:
  * above the nav. Being CSS, it follows the nav when the text size changes or
  * the phone turns, with nothing to re-measure.
  *
- * Inside a DockHost the bar is moved out of its form once the host has
- * mounted, so a submit button in it names the form with `form=`. Until then,
- * which includes the server's HTML, it is drawn where it is written: Save is
- * on the first paint, not only after hydration.
+ * Inside a DockHost the bar is moved out of its form, so a submit button in
+ * it names the form with `form=`.
  */
 export function DockedActions({ children }: { children: ReactNode }) {
-  const host = use(Dock);
+  const target = use(Dock);
   const marker = useRef<HTMLDivElement>(null);
   const [docked, setDocked] = useState(false);
+  const host = target.at === "host" ? target.element : null;
 
   useEffect(() => {
     const markerElement = marker.current;
@@ -73,19 +134,11 @@ export function DockedActions({ children }: { children: ReactNode }) {
     };
   }, [host]);
 
-  const dock = (
-    <>
-      {/* mt-4 collapses with a margin above it; mb-0: a margin below would
-          hold the pinned bar off the nav. */}
-      <div
-        data-dock="nav"
-        data-docked={docked ? "" : undefined}
-        className={`sticky above-nav -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
-      >
-        {children}
-      </div>
-      <div ref={marker} aria-hidden="true" className="below-by-nav h-0" />
-    </>
+  if (target.at === "stand-in") return null;
+  const bar = (
+    <Bar docked={docked} marker={marker}>
+      {children}
+    </Bar>
   );
-  return host === null ? dock : createPortal(dock, host);
+  return host === null ? bar : createPortal(bar, host);
 }

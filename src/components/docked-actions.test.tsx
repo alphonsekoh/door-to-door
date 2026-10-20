@@ -111,10 +111,10 @@ describe("DockedActions", () => {
     expect(bar()).not.toHaveClass("material-chrome");
   });
 
-  it("is in the server's HTML, so Save is on the first paint, and hydrates before it moves", async () => {
+  it("is drawn by its host on the first paint, where it will dock, and hydrates before it moves", async () => {
     stubObserver();
     const screenWithSave = (
-      <DockHost className="space-y-5">
+      <DockHost className="space-y-5" standIn={<button type="button">Save</button>}>
         <form id="visit" aria-label="Visit">
           <input aria-label="Unit" />
           <DockedActions>
@@ -128,18 +128,22 @@ describe("DockedActions", () => {
     const container = document.createElement("div");
     container.innerHTML = renderToString(screenWithSave);
     document.body.append(container);
-    // Drawn in its form until the host is known.
-    const form = within(container).getByRole("form", { name: "Visit" });
-    expect(form).toContainElement(within(container).getByRole("button", { name: "Save" }));
+    // In the server's HTML: the stand-in, at the end of the screen, not in
+    // the form, so it can rise to the nav before any script has run.
+    const standIn = within(container).getByRole("button", { name: "Save" });
+    expect(within(container).getByRole("form", { name: "Visit" })).not.toContainElement(standIn);
+    expect(standIn).not.toHaveAttribute("form");
+    expect(standIn.closest("[data-dock]")?.nextElementSibling?.nextElementSibling).toBeNull();
 
     const mismatch = vi.fn();
     const root = await act(() =>
       hydrateRoot(container, screenWithSave, { onRecoverableError: mismatch }),
     );
     expect(mismatch).not.toHaveBeenCalled();
-    // Then out to the end of the screen, the one Save there is.
+    // Then the form's own bar takes its place: one Save, the live one.
     const saves = within(container).getAllByRole("button", { name: "Save" });
     expect(saves).toHaveLength(1);
+    expect(saves[0]).toHaveAttribute("form", "visit");
     expect(within(container).getByRole("form", { name: "Visit" })).not.toContainElement(
       saves[0] ?? null,
     );
@@ -147,6 +151,23 @@ describe("DockedActions", () => {
       root.unmount();
     });
     container.remove();
+  });
+
+  it("with no stand-in, is drawn in its form until the host has mounted", () => {
+    const html = renderToString(
+      <DockHost className="space-y-5">
+        <form id="visit" aria-label="Visit">
+          <DockedActions>
+            <button type="submit">Save</button>
+          </DockedActions>
+        </form>
+      </DockHost>,
+    );
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    expect(within(container).getByRole("form", { name: "Visit" })).toContainElement(
+      within(container).getByRole("button", { name: "Save" }),
+    );
   });
 
   it("in a host, sits at the end of the whole screen, out of its form, and still submits it", async () => {

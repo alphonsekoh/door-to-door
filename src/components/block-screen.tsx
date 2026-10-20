@@ -5,6 +5,7 @@ import { BlockViews } from "@/components/block-views";
 import { DockHost } from "@/components/docked-actions";
 import { useLocalCopyWriter } from "@/components/local-copy-writer";
 import { PageHeader } from "@/components/page-header";
+import { SaveAndNext } from "@/components/record-visit-form";
 import { useSyncQueue } from "@/components/sync-provider";
 import type {
   ActiveSession,
@@ -122,8 +123,10 @@ export function BlockScreen({ blockId }: { blockId: string }) {
      the next Save lands. Generic only until the session has answered. */
   const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
 
+  /* The form's Save is docked at the end of the screen, so it is drawn
+     there on the first paint too, before the form can move it. */
   return (
-    <DockHost className="space-y-5">
+    <DockHost className="space-y-5" standIn={<SaveAndNext />}>
       <PageHeader
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
         subtitle={here === undefined ? "One unit at a time." : here.street}

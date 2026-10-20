@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -157,6 +158,22 @@ describe("BlockScreen", () => {
 
     expect(await screen.findByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100");
+  });
+
+  it("has Save where it docks in the server's HTML, then hands it to the form", async () => {
+    serve(list([]));
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
+    const first = within(container).getByRole("button", { name: "Save and next" });
+    // At the end of the screen, where it can rise to the nav at any text
+    // size; and, with no script yet to save, a tap must not reload the page.
+    expect(container.querySelector("form")).not.toContainElement(first);
+    expect(first).toHaveAttribute("type", "button");
+
+    render(<BlockScreen blockId="b1" />);
+    const save = await screen.findByRole("button", { name: "Save and next" });
+    expect(save).toHaveAttribute("type", "submit");
+    expect(save).toHaveAttribute("form", document.querySelector("form")?.id);
   });
 
   it("opens on the recording form, not the list", async () => {

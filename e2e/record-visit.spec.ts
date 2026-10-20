@@ -98,18 +98,41 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
   await expect(row).toContainText("tonight");
 });
 
-test("Save is on the first paint, before any script has run", async ({ browser }) => {
-  /* The docked bar moves to the end of the screen once the page is live.
-     Until then it must be drawn where it is written: on a slow first load
-     the server's HTML is all there is. */
-  const context = await browser.newContext({
-    storageState: MEMBER_STATE,
-    javaScriptEnabled: false,
-  });
-  const page = await context.newPage();
-  await page.goto(`/blocks/${SEED_BLOCK}`);
-  await expect(page.getByRole("button", { name: "Save and next" })).toBeVisible();
-  await context.close();
+test("Save is on the first paint, above the nav, before any script has run", async ({
+  browser,
+}) => {
+  /* On a slow first load the server's HTML is all there is, so Save must be
+     drawn there, and where it will dock: drawn inside the form, at the
+     largest text it sat mostly under the nav until the page went live. */
+  for (const size of ["16px", "32px"]) {
+    const context = await browser.newContext({
+      storageState: MEMBER_STATE,
+      javaScriptEnabled: false,
+    });
+    const page = await context.newPage();
+    // With scripts off, the text size goes into the HTML itself.
+    await page.route(`**/blocks/${SEED_BLOCK}`, async (route) => {
+      const response = await route.fetch();
+      const html = await response.text();
+      await route.fulfill({
+        response,
+        body: html.replace("<html", `<html style="font-size: ${size}"`),
+      });
+    });
+    await page.goto(`/blocks/${SEED_BLOCK}`);
+    const save = page.getByRole("button", { name: "Save and next" });
+    await expect(save).toBeVisible();
+    const [saveBox, navBox] = await Promise.all([
+      save.boundingBox(),
+      page.getByRole("navigation", { name: "Primary" }).boundingBox(),
+    ]);
+    expect(saveBox, `Save at ${size}`).not.toBeNull();
+    expect(
+      (saveBox?.y ?? 0) + (saveBox?.height ?? 0),
+      `Save runs under the nav at ${size}`,
+    ).toBeLessThanOrEqual((navBox?.y ?? 0) + 0.5);
+    await context.close();
+  }
 });
 
 test("what the member recorded is on their own history", async ({ memberPage }) => {
