@@ -87,6 +87,29 @@ async function rising(panel: HTMLElement) {
   });
 }
 
+/*
+ * The fastest the panel moves between two drawn frames over the next `ms`,
+ * in px/s. A spring that sets off from rest starts slow, so a fast first
+ * frame is the finger's speed handed on.
+ */
+async function topSpeed(panel: HTMLElement, ms: number): Promise<number> {
+  const frames: { at: number; y: number }[] = [];
+  const observer = new MutationObserver(() => {
+    const match = /translateY\((-?[\d.]+)px\)/.exec(panel.style.transform);
+    if (match !== null) frames.push({ at: performance.now(), y: Number(match[1]) });
+  });
+  observer.observe(panel, { attributes: true, attributeFilter: ["style"] });
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  observer.disconnect();
+  let top = 0;
+  for (const [index, frame] of frames.entries()) {
+    const before = frames[index - 1];
+    if (before === undefined || frame.at - before.at < 5) continue;
+    top = Math.max(top, (Math.abs(frame.y - before.y) / (frame.at - before.at)) * 1000);
+  }
+  return top;
+}
+
 /* The panel's offset in px while it is dragged. */
 function offset(panel: HTMLElement): number {
   const match = /translateY\((-?[\d.]+)px\)/.exec(panel.style.transform);
@@ -141,6 +164,21 @@ describe("Sheet", () => {
   it("settles back from a short, slow drag", async () => {
     const { panel, handle, onClose } = await open();
     drag(panel, handle, [140, 160, 160, 160], 60);
+    expect(onClose).not.toHaveBeenCalled();
+    await settled(panel);
+  });
+
+  it("settles back when the finger stops before it lets go", async () => {
+    const { panel, handle, onClose } = await open();
+    // A quarter of the way down at about 330 px/s, which would carry it past
+    // the line, then held still: a still finger sends no moves at all.
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    for (const y of [127, 143, 160, 177, 193, 210, 227, 243, 260]) {
+      now += 50;
+      fireEvent.pointerMove(panel, { pointerId: 1, clientY: y });
+    }
+    now += 150;
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 260 });
     expect(onClose).not.toHaveBeenCalled();
     await settled(panel);
   });
@@ -313,6 +351,59 @@ describe("Sheet leaving", () => {
       },
       { timeout: 3000 },
     );
+  });
+
+  it("leaves at the speed it was thrown, not stalling and setting off from rest", async () => {
+    realSpring();
+    const user = userEvent.setup();
+    render(<Host onClose={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    const panel = screen.getByRole("dialog", { name: "Edit" });
+    await waitFor(
+      () => {
+        expect(panel.style.transform).toBe("none");
+      },
+      { timeout: 3000 },
+    );
+    const handle = screen.getByText("Edit", { selector: "p" }).closest(".touch-none");
+    if (!(handle instanceof HTMLElement)) throw new Error("no drag handle");
+
+    // Down 240 px, then 160 px more in 16 ms, about 10 000 px/s.
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    for (const [y, step] of [
+      [130, 100],
+      [350, 100],
+      [510, 16],
+    ] as const) {
+      now += step;
+      fireEvent.pointerMove(panel, { pointerId: 1, clientY: y });
+    }
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 510 });
+    // From rest, 200 px short of the bottom, this spring is never faster
+    // than about 1100 px/s.
+    expect(await topSpeed(panel, 150)).toBeGreaterThan(3000);
+  });
+
+  it("settles back at the speed it was thrown up", async () => {
+    realSpring();
+    const { panel, handle } = rendered();
+    await waitFor(
+      () => {
+        expect(panel.style.transform).toBe("none");
+      },
+      { timeout: 3000 },
+    );
+    fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
+    now += 100;
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 330 });
+    now += 100;
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 340 });
+    // Down 230 px, then 160 px back up in 16 ms.
+    now += 16;
+    fireEvent.pointerMove(panel, { pointerId: 1, clientY: 180 });
+    fireEvent.pointerUp(panel, { pointerId: 1, clientY: 180 });
+    // From rest, 70 px down, this spring is never faster than about 450 px/s.
+    expect(await topSpeed(panel, 150)).toBeGreaterThan(3000);
   });
 
   it("opens fresh when reopened while the last one is still leaving", async () => {

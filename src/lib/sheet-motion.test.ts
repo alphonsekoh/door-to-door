@@ -3,12 +3,15 @@ import {
   DECELERATION,
   FLICK_VELOCITY,
   SHEET_SPRING,
+  type Spring,
   project,
   releaseVelocity,
   rubberband,
   toPx,
   settleSpring,
   shouldDismiss,
+  spring,
+  throwSpring,
 } from "@/lib/sheet-motion";
 
 describe("project", () => {
@@ -52,38 +55,73 @@ describe("toPx", () => {
 
 describe("releaseVelocity", () => {
   it("is zero with nothing, or one sample, to go on", () => {
-    expect(releaseVelocity([])).toBe(0);
-    expect(releaseVelocity([{ y: 40, t: 1000 }])).toBe(0);
+    expect(releaseVelocity([], 1000)).toBe(0);
+    expect(releaseVelocity([{ y: 40, t: 1000 }], 1000)).toBe(0);
+    expect(releaseVelocity([{ y: 40, t: 1000 }], 1050)).toBe(0);
   });
 
   it("measures px/s over the last moments of the drag", () => {
     expect(
-      releaseVelocity([
-        { y: 0, t: 1000 },
-        { y: 20, t: 1050 },
-        { y: 50, t: 1100 },
-      ]),
+      releaseVelocity(
+        [
+          { y: 0, t: 1000 },
+          { y: 20, t: 1050 },
+          { y: 50, t: 1100 },
+        ],
+        1100,
+      ),
     ).toBe(500);
   });
 
   it("ignores how fast the drag was earlier on", () => {
     // A fast start then a pause: only the pause counts at release.
     expect(
-      releaseVelocity([
-        { y: 0, t: 0 },
-        { y: 300, t: 50 },
-        { y: 300, t: 400 },
-        { y: 300, t: 450 },
-      ]),
+      releaseVelocity(
+        [
+          { y: 0, t: 0 },
+          { y: 300, t: 50 },
+          { y: 300, t: 400 },
+          { y: 300, t: 450 },
+        ],
+        450,
+      ),
     ).toBe(0);
+  });
+
+  it("is zero for a finger held still before it lifts, which sends no moves", () => {
+    // 330 px/s, then 150 ms at rest with nothing reported.
+    const moving = [
+      { y: 100, t: 0 },
+      { y: 117, t: 50 },
+      { y: 133, t: 100 },
+      { y: 150, t: 150 },
+    ];
+    expect(releaseVelocity(moving, 150)).toBe(330);
+    expect(releaseVelocity(moving, 300)).toBe(0);
+  });
+
+  it("slows with a pause that falls inside the window", () => {
+    // 50 px in the 50 ms before a 50 ms hold: half the speed it moved at.
+    expect(
+      releaseVelocity(
+        [
+          { y: 0, t: 0 },
+          { y: 50, t: 50 },
+        ],
+        100,
+      ),
+    ).toBe(500);
   });
 
   it("is negative for a drag back up", () => {
     expect(
-      releaseVelocity([
-        { y: 100, t: 0 },
-        { y: 60, t: 80 },
-      ]),
+      releaseVelocity(
+        [
+          { y: 100, t: 0 },
+          { y: 60, t: 80 },
+        ],
+        80,
+      ),
     ).toBe(-500);
   });
 });
@@ -112,12 +150,34 @@ describe("shouldDismiss", () => {
 });
 
 describe("springs", () => {
-  it("opens and closes critically damped", () => {
-    expect(SHEET_SPRING.bounce).toBe(0);
+  const ratio = (s: Spring) => s.damping / (2 * Math.sqrt(s.stiffness * s.mass));
+  const response = (s: Spring) => (2 * Math.PI) / Math.sqrt(s.stiffness / s.mass);
+
+  it("is built from a damping ratio and a response, in seconds", () => {
+    const built = spring(0.8, 0.3, 120);
+    expect(ratio(built)).toBeCloseTo(0.8);
+    expect(response(built)).toBeCloseTo(0.3);
+    expect(built.velocity).toBe(120);
+    // Physical terms only: Motion drops the velocity of a spring given a
+    // duration or a bounce.
+    expect(built).not.toHaveProperty("duration");
+    expect(built).not.toHaveProperty("visualDuration");
+    expect(built).not.toHaveProperty("bounce");
+  });
+
+  it("opens and closes critically damped, from rest", () => {
+    expect(ratio(SHEET_SPRING)).toBeCloseTo(1);
+    expect(SHEET_SPRING.velocity).toBe(0);
+  });
+
+  it("throws a sheet away at the finger's speed, without a bounce", () => {
+    expect(throwSpring(2400)).toEqual({ ...SHEET_SPRING, velocity: 2400 });
   });
 
   it("carries the finger's velocity back to rest, with a bounce only after a throw", () => {
-    expect(settleSpring(200)).toMatchObject({ bounce: 0, velocity: 200 });
-    expect(settleSpring(-FLICK_VELOCITY)).toMatchObject({ bounce: 0.15, velocity: -500 });
+    expect(ratio(settleSpring(200))).toBeCloseTo(1);
+    expect(settleSpring(200).velocity).toBe(200);
+    expect(ratio(settleSpring(-FLICK_VELOCITY))).toBeLessThan(1);
+    expect(settleSpring(-FLICK_VELOCITY).velocity).toBe(-500);
   });
 });

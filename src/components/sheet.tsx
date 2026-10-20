@@ -28,6 +28,7 @@ import {
   rubberband,
   settleSpring,
   shouldDismiss,
+  throwSpring,
   toPx,
 } from "@/lib/sheet-motion";
 import { useModal } from "@/lib/use-modal";
@@ -46,6 +47,14 @@ import { useModal } from "@/lib/use-modal";
  * leaving copy is inert and hidden from assistive tech, so a second tap or
  * Escape cannot close it twice and nothing announces a dialog that has gone.
  * Without the wrapper it simply disappears.
+ */
+
+/*
+ * The scrim and the panel are moved by Motion alone, so both are
+ * `transition-none`. Given a CSS transition (a button's press fade, or the
+ * reduced-motion rule's 0.01ms on everything), WebKit replays the fade from
+ * transparent as Motion hands the finished value back to the page: a
+ * one-frame blink, or the scrim fading in twice.
  */
 
 /* Literal per layer: overlay-layers.test.ts reads these from the source. */
@@ -102,6 +111,8 @@ export function Sheet({
   /* Px while dragged; the percentage it rises from while it opens. */
   const y = useMotionValue<number | string>(0);
   const gesture = useRef<Gesture | null>(null);
+  /* Where a dismissing drag sends the sheet, and how fast it was going. */
+  const [thrown, setThrown] = useState<{ to: number; velocity: number } | null>(null);
 
   /* Nothing stops until the touch is known to be a drag: a tap that stopped
      the rise or a settle would leave the sheet resting partway. */
@@ -140,10 +151,12 @@ export function Sheet({
     const current = gesture.current;
     gesture.current = null;
     if (current?.dragging !== true) return;
-    const velocity = releaseVelocity(current.samples);
+    const velocity = releaseVelocity(current.samples, performance.now());
     const height = event.currentTarget.offsetHeight;
     if (!cancelled && shouldDismiss(toPx(y.get(), height), velocity, height)) {
-      // The exit spring starts from here, at the finger's speed.
+      // Leaves from here at the finger's speed. Motion's own reading of the
+      // value's speed has lapsed by the time the exit starts, after a render.
+      setThrown({ to: height, velocity });
       onClose();
       return;
     }
@@ -152,7 +165,15 @@ export function Sheet({
 
   const travel = reduce
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 }, transition: FADE }
-    : { initial: { y: "100%" }, animate: { y: 0 }, exit: { y: "100%" }, transition: SHEET_SPRING };
+    : {
+        initial: { y: "100%" },
+        animate: { y: 0 },
+        exit:
+          thrown === null
+            ? { y: "100%" }
+            : { y: thrown.to, transition: throwSpring(thrown.velocity) },
+        transition: SHEET_SPRING,
+      };
 
   return createPortal(
     <LazyMotion features={domAnimation} strict>
@@ -169,7 +190,7 @@ export function Sheet({
           type="button"
           aria-label={backdropLabel}
           onClick={onClose}
-          className="absolute inset-0 bg-black/40"
+          className="absolute inset-0 bg-black/40 transition-none"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -191,7 +212,7 @@ export function Sheet({
           }}
           style={{ y }}
           {...travel}
-          className="relative flex max-h-[85dvh] flex-col rounded-t-2xl border-t border-border bg-background shadow-[0_-0.5rem_2rem_rgb(0_0_0/0.18)] focus:outline-none"
+          className="relative flex max-h-[85dvh] flex-col rounded-t-2xl border-t border-border bg-background shadow-[0_-0.5rem_2rem_rgb(0_0_0/0.18)] transition-none focus:outline-none"
         >
           {draggable || title !== undefined ? (
             <div
@@ -204,13 +225,17 @@ export function Sheet({
                   className="mx-auto my-2 h-1.5 w-10 rounded-full bg-border-strong/60"
                 />
               ) : null}
+              {/* At large text Cancel drops under the title rather than
+                  squeeze it to a letter a line. */}
               {title === undefined ? null : (
-                <div className="flex items-baseline justify-between gap-3">
-                  <p className="min-w-0 text-title font-semibold break-words">{title}</p>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+                  <p className="min-w-0 flex-[1_1_8ch] text-title font-semibold break-words">
+                    {title}
+                  </p>
                   <button
                     type="button"
                     onClick={onClose}
-                    className="min-h-11 shrink-0 text-body btn-text"
+                    className="ml-auto min-h-11 shrink-0 text-body btn-text"
                   >
                     {closeLabel}
                   </button>

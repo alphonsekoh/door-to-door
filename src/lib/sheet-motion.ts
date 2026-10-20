@@ -43,19 +43,18 @@ export function toPx(value: number | string, height: number): number {
 
 export type Sample = { y: number; t: number };
 
-/* px/s over the last few samples; zero once the finger has come to rest. */
-export function releaseVelocity(samples: readonly Sample[]): number {
+/*
+ * px/s over the last moments before the finger lifted at `at`. A finger held
+ * still sends no moves, so the window is measured back from the release
+ * rather than from the last move: a drag that stopped before it was let go
+ * was let go at rest, however fast it moved earlier.
+ */
+export function releaseVelocity(samples: readonly Sample[], at: number): number {
   const last = samples.at(-1);
-  if (last === undefined) return 0;
-  let first = last;
-  for (const sample of samples) {
-    if (last.t - sample.t <= VELOCITY_WINDOW_MS) {
-      first = sample;
-      break;
-    }
-  }
-  const elapsed = last.t - first.t;
-  return elapsed === 0 ? 0 : ((last.y - first.y) / elapsed) * 1000;
+  const first = samples.find((sample) => at - sample.t <= VELOCITY_WINDOW_MS);
+  if (last === undefined || first === undefined) return 0;
+  const elapsed = at - first.t;
+  return elapsed <= 0 ? 0 : ((last.y - first.y) / elapsed) * 1000;
 }
 
 /*
@@ -69,25 +68,44 @@ export function shouldDismiss(offset: number, velocity: number, height: number):
   return offset + project(velocity) > height * DISMISS_FRACTION;
 }
 
+/*
+ * Springs in Motion's physical terms. Motion drops the starting velocity of a
+ * spring given by duration or bounce, so every spring here is built from
+ * Apple's two numbers instead: the damping ratio (1 settles without
+ * overshoot) and the response, the time in seconds of one undamped swing.
+ */
 export type Spring = {
   type: "spring";
-  bounce: number;
-  visualDuration: number;
-  velocity?: number;
+  stiffness: number;
+  damping: number;
+  mass: 1;
+  velocity: number;
 };
 
-/* Opening, closing and anything not thrown: no overshoot. */
-export const SHEET_SPRING: Spring = { type: "spring", bounce: 0, visualDuration: 0.35 };
+export function spring(dampingRatio: number, response: number, velocity = 0): Spring {
+  const stiffness = ((2 * Math.PI) / response) ** 2;
+  return {
+    type: "spring",
+    stiffness,
+    damping: 2 * dampingRatio * Math.sqrt(stiffness),
+    mass: 1,
+    velocity,
+  };
+}
+
+/* Opening, and closing from rest: no overshoot. */
+export const SHEET_SPRING: Spring = spring(1, 0.42);
+
+/* Away after a drag let go far or fast enough, at the finger's speed, so
+   the sheet does not stall under it and then set off from rest. */
+export function throwSpring(velocity: number): Spring {
+  return spring(1, 0.42, velocity);
+}
 
 /* Back to rest after a drag, carrying the finger's velocity. Only a throw
    earns a bounce. */
 export function settleSpring(velocity: number): Spring {
-  return {
-    type: "spring",
-    bounce: Math.abs(velocity) >= FLICK_VELOCITY ? 0.15 : 0,
-    visualDuration: 0.3,
-    velocity,
-  };
+  return spring(Math.abs(velocity) >= FLICK_VELOCITY ? 0.85 : 1, 0.36, velocity);
 }
 
 /* Reduced motion: a short cross-fade instead of travel. */

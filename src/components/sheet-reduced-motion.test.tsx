@@ -30,6 +30,10 @@ describe("Sheet with reduced motion", () => {
     await waitFor(() => {
       expect(panel.style.opacity).toBe("1");
     });
+    // The reduced-motion rule gives everything a 0.01ms transition, which
+    // WebKit used to replay the fade with from transparent as it finished.
+    expect(panel).toHaveClass("transition-none");
+    expect(screen.getByRole("button", { name: "Close" })).toHaveClass("transition-none");
   });
 
   it("still follows a drag, and settles back when let go short", async () => {
