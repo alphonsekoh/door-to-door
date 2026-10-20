@@ -156,9 +156,9 @@ export function AdminRecords() {
   if (state.status === "none") {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
-        <p className="text-body font-medium">No outing is running.</p>
+        <p className="text-body font-medium">No session is running.</p>
         <p className="mt-1 text-body text-foreground-muted">
-          Start one from Outings, then the records will appear here as members knock.
+          Start one from Sessions, then the records will appear here as members knock.
         </p>
       </div>
     );
@@ -318,7 +318,7 @@ export function AdminRecords() {
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
           {entries.length === 0 && !hasServerFilter(filters)
-            ? "Nothing has been recorded on this outing yet."
+            ? "Nothing has been recorded on this session yet."
             : "Nothing here matches those filters."}
         </p>
       ) : (

@@ -98,7 +98,7 @@ type Late = { resolve: (value: unknown) => void; reject: (error: unknown) => voi
 
 async function openUnit(unitNumber: string): Promise<void> {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("tab", { name: "Units (1)" }));
+  await user.click(await screen.findByRole("tab", { name: "All units (1)" }));
   await user.click(screen.getByRole("button", { name: new RegExp(unitNumber) }));
 }
 
@@ -155,7 +155,7 @@ describe("BlockScreen", () => {
     serve(list(["#05-123", "#05-124"]));
     render(<BlockScreen blockId="b1" />);
 
-    expect(await screen.findByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
+    expect(await screen.findByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100");
   });
 
@@ -172,9 +172,9 @@ describe("BlockScreen", () => {
     const user = userEvent.setup();
     serve(list(["#05-123"]));
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
 
-    await user.click(screen.getByRole("tab", { name: "Units (1)" }));
+    await user.click(screen.getByRole("tab", { name: "All units (1)" }));
     expect(screen.getByLabelText("Search this block")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save and next" })).not.toBeInTheDocument();
 
@@ -205,9 +205,9 @@ describe("BlockScreen", () => {
         : Promise.resolve(list(["#05-123"])),
     );
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
 
-    await user.click(screen.getByRole("tab", { name: "Units (1)" }));
+    await user.click(screen.getByRole("tab", { name: "All units (1)" }));
     expect(screen.getByText("#05-123")).toBeInTheDocument();
     expect(screen.queryByText("tonight")).not.toBeInTheDocument();
   });
@@ -216,7 +216,7 @@ describe("BlockScreen", () => {
     const user = userEvent.setup();
     serve(list(["#05-123"]));
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
 
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith("/sessions/active")) return Promise.resolve(active);
@@ -229,7 +229,7 @@ describe("BlockScreen", () => {
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     });
   });
 
@@ -237,9 +237,9 @@ describe("BlockScreen", () => {
     const user = userEvent.setup();
     serve(list(["#05-123"]));
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
 
-    await user.click(screen.getByRole("tab", { name: "Units (1)" }));
+    await user.click(screen.getByRole("tab", { name: "All units (1)" }));
     await user.click(screen.getByRole("button", { name: /#05-123/ }));
     await user.click(screen.getByRole("radio", { name: "High" }));
 
@@ -251,7 +251,7 @@ describe("BlockScreen", () => {
     await user.click(screen.getByRole("button", { name: "Save changes" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     });
   });
 
@@ -259,7 +259,7 @@ describe("BlockScreen", () => {
     const user = userEvent.setup();
     serve(list(["#05-123"]));
     render(<BlockScreen blockId="b1" />);
-    await user.click(await screen.findByRole("tab", { name: "Units (1)" }));
+    await user.click(await screen.findByRole("tab", { name: "All units (1)" }));
     expect(screen.getByText("By Ben Lim")).toBeInTheDocument();
   });
 
@@ -317,7 +317,7 @@ describe("BlockScreen", () => {
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
     });
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
     expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/teams");
 
     useRole.mockReturnValue({ ...loading, userId: "u1", isLoading: false, isSignedIn: true });
@@ -413,7 +413,7 @@ describe("BlockScreen", () => {
       const user = userEvent.setup();
       render(<BlockScreen blockId="b1" />);
 
-      await user.click(await screen.findByRole("tab", { name: "Units (2)" }));
+      await user.click(await screen.findByRole("tab", { name: "All units (2)" }));
       expect(screen.getByText("#05-124").closest("li")).toHaveTextContent("Not sent");
     });
 
@@ -422,17 +422,17 @@ describe("BlockScreen", () => {
       [
         "the server says no outing is running",
         () => Promise.reject(new ApiRequestError(404, undefined)),
-        "No outing is running, so this visit is not saved yet.",
+        "No session is running, so this visit is not saved yet.",
       ],
       [
         "the outing cannot be loaded",
         () => Promise.reject(new TypeError("Failed to fetch")),
-        "Could not load the outing, so this visit is not saved yet. Check your signal",
+        "Could not load the session, so this visit is not saved yet. Check your signal",
       ],
       [
         "the server fails",
         () => Promise.reject(new ApiRequestError(500, undefined)),
-        "Could not load the outing, so this visit is not saved yet. Check your signal",
+        "Could not load the session, so this visit is not saved yet. Check your signal",
       ],
     ])("refuses to queue a save when %s", async (_, outing, message) => {
       const enqueue = vi.fn();
@@ -442,7 +442,7 @@ describe("BlockScreen", () => {
       );
       const user = userEvent.setup();
       render(<BlockScreen blockId="b1" />);
-      await screen.findByRole("tab", { name: "Units (0)" });
+      await screen.findByRole("tab", { name: "All units (0)" });
 
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
       await user.click(screen.getByRole("radio", { name: "Low" }));
@@ -457,7 +457,7 @@ describe("BlockScreen", () => {
       useSyncQueue.mockImplementation(() => queue);
       serve(list(["#05-123"]));
       const view = render(<BlockScreen blockId="b1" />);
-      await screen.findByRole("tab", { name: "Units (2)" });
+      await screen.findByRole("tab", { name: "All units (2)" });
       const households = () =>
         apiFetch.mock.calls.filter(([path]) => String(path).startsWith("/households")).length;
       expect(households()).toBe(1);
@@ -473,7 +473,7 @@ describe("BlockScreen", () => {
       await waitFor(() => {
         expect(households()).toBe(2);
       });
-      expect(screen.getByRole("tab", { name: "Units (2)" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     });
   });
 });
@@ -499,7 +499,7 @@ describe("the offline copy", () => {
         : Promise.resolve(path.endsWith("/teams") ? { data: [] } : units),
     );
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
     expect(noteBlock).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -516,7 +516,7 @@ describe("the offline copy", () => {
         : Promise.resolve(list(["#05-123"])),
     );
     render(<BlockScreen blockId="b1" />);
-    await screen.findByRole("tab", { name: "Units (1)" });
+    await screen.findByRole("tab", { name: "All units (1)" });
     expect(noteBlock).not.toHaveBeenCalled();
   });
 

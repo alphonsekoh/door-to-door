@@ -141,7 +141,7 @@ describe("OwnHistoryScreen", () => {
     render(<OwnHistoryScreen />);
 
     expect(await screen.findByText("Nothing recorded yet.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /earlier outings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /earlier sessions/ })).not.toBeInTheDocument();
   });
 
   it("appends the next page rather than replacing what is shown", async () => {
@@ -155,7 +155,7 @@ describe("OwnHistoryScreen", () => {
         ? Promise.resolve(notePage([]))
         : Promise.resolve(sessionPage([summary("s2", "March outing")], 2)),
     );
-    await user.click(screen.getByRole("button", { name: "Show earlier outings" }));
+    await user.click(screen.getByRole("button", { name: "Show earlier sessions" }));
 
     expect(await screen.findByText("March outing")).toBeInTheDocument();
     expect(screen.getByText("June outing")).toBeInTheDocument();
@@ -167,7 +167,7 @@ describe("OwnHistoryScreen", () => {
     render(<OwnHistoryScreen />);
     await screen.findByText("June outing");
 
-    await user.click(screen.getByRole("button", { name: "Show earlier outings" }));
+    await user.click(screen.getByRole("button", { name: "Show earlier sessions" }));
     expect(apiFetch).toHaveBeenCalledWith("/history/mine/sessions?limit=20&offset=1");
   });
 
@@ -176,7 +176,7 @@ describe("OwnHistoryScreen", () => {
     render(<OwnHistoryScreen />);
     await screen.findByText("June outing");
 
-    expect(screen.queryByRole("button", { name: /earlier outings/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /earlier sessions/ })).not.toBeInTheDocument();
   });
 
   it("offers a retry when the history fails to load", async () => {
@@ -310,7 +310,7 @@ describe("Me or My team", () => {
     expect(screen.getByText(/June outing ·/)).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith("/history/mine?limit=20&offset=0&includeTeam=true");
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("/history/mine/sessions"));
-    expect(screen.getByText(/Your outing list counts only your own records/)).toBeInTheDocument();
+    expect(screen.getByText(/Your session list counts only your own records/)).toBeInTheDocument();
   });
 
   it("lets a teammate's record be amended from the list", async () => {
@@ -447,7 +447,7 @@ describe("Me or My team", () => {
 
     searchParams.value = new URLSearchParams();
     render(<OwnHistoryScreen />);
-    expect(await screen.findByText("Outings you have worked, newest first.")).toBeInTheDocument();
+    expect(await screen.findByText("Sessions you have worked, newest first.")).toBeInTheDocument();
   });
 
   it("keeps the member's outstanding follow-ups in the team view", async () => {

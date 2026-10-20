@@ -62,7 +62,7 @@ const notActive = (message: string) => new ConflictError("session_not_active", m
 /* Members see only the live outing; admins see any. */
 function assertReadable(actor: Actor, session: SessionInfo): void {
   if (actor.role !== "admin" && session.status !== "active") {
-    throw new ForbiddenError("Only an admin can see an outing that is not active.");
+    throw new ForbiddenError("Only an admin can see a session that is not active.");
   }
 }
 
@@ -76,7 +76,7 @@ export async function joinSession(
     session.status === "active" || (session.status === "draft" && actor.role === "admin");
   if (!joinable) {
     throw notActive(
-      session.status === "ended" ? "That outing has ended." : "That outing has not started yet.",
+      session.status === "ended" ? "That session has ended." : "That session has not started yet.",
     );
   }
 
@@ -202,10 +202,10 @@ export async function createTeam(
 ): Promise<TeamRow> {
   const session = await loadSession(db, sessionId);
   if (session.status === "ended") {
-    throw notActive("That outing has ended.");
+    throw notActive("That session has ended.");
   }
   if (session.status === "draft" && actor.role !== "admin") {
-    throw notActive("That outing has not started yet.");
+    throw notActive("That session has not started yet.");
   }
   const name = validName(input.name);
 
@@ -265,8 +265,8 @@ async function assertPlaceable(
     throw new ConflictError(
       "conflict",
       taken.some((row) => row.userId === actor.id)
-        ? "You are already on a team in this outing."
-        : "One or more of those people are already on a team in this outing.",
+        ? "You are already on a team in this session."
+        : "One or more of those people are already on a team in this session.",
     );
   }
 
@@ -286,7 +286,7 @@ async function assertPlaceable(
     if (joined.length !== others.length) {
       throw new ConflictError(
         "conflict",
-        "One or more of those people have not joined this outing.",
+        "One or more of those people have not joined this session.",
       );
     }
   }
@@ -314,7 +314,7 @@ function rethrowTeamConflict(error: unknown): never {
     isConstraintViolation(error, ONE_TEAM_PER_OUTING) ||
     isConstraintViolation(error, TEAM_MEMBER_PK)
   ) {
-    throw new ConflictError("conflict", "Someone is already on a team in this outing.");
+    throw new ConflictError("conflict", "Someone is already on a team in this session.");
   }
   throw error;
 }
@@ -347,7 +347,7 @@ async function loadTeamFor(db: Database, actor: Actor, teamId: string): Promise<
       throw new ForbiddenError("You are not on that team.");
     }
     if (team.status !== "active") {
-      throw notActive("That outing is not active, so its teams can no longer be changed.");
+      throw notActive("That session is not active, so its teams can no longer be changed.");
     }
   }
   return team;

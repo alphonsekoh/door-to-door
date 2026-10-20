@@ -248,7 +248,7 @@ describe("the queue against the real server", () => {
     expect(held).toHaveLength(50);
     for (const record of held) {
       expect(record.lastError?.code).toBe("session_not_active");
-      expect(recordReason(record)).toBe("The outing has ended. Sends if an admin reopens it.");
+      expect(recordReason(record)).toBe("The session has ended. Sends if an admin reopens it.");
     }
 
     await pool.query(

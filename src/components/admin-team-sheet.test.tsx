@@ -86,7 +86,7 @@ describe("AdminTeamSheet", () => {
   it("says when nobody is free to place", () => {
     sheet({ mode: "add", candidates: [] });
     expect(
-      screen.getByText("Everyone active is already on a team in this outing."),
+      screen.getByText("Everyone active is already on a team in this session."),
     ).toBeInTheDocument();
   });
 

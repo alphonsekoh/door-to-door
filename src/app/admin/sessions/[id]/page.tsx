@@ -1,7 +1,7 @@
 import { SessionDetail } from "@/components/session-detail";
 import { requireAdminPage } from "@/server/auth/pages";
 
-export const metadata = { title: "Outing" };
+export const metadata = { title: "Session" };
 
 /* The heading is the outing's title, which SessionDetail loads. */
 export default async function AdminSessionPage({ params }: PageProps<"/admin/sessions/[id]">) {

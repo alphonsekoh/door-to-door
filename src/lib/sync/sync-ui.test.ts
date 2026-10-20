@@ -59,7 +59,7 @@ describe("recordReason", () => {
       recordReason(record({ state: "quarantined", lastError: { code: "internal_error" } })),
     ).toBe("Could not send after several tries.");
     expect(recordReason(record({ state: "held", lastError: { code: "session_not_active" } }))).toBe(
-      "The outing has ended. Sends if an admin reopens it.",
+      "The session has ended. Sends if an admin reopens it.",
     );
     for (const code of ["conflict", "not_found", "unknown"]) {
       expect(recordReason(record({ state: "held", lastError: { code } }))).toBe(

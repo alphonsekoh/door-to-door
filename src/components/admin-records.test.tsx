@@ -238,7 +238,7 @@ describe("AdminRecords", () => {
     serve([]);
     const { unmount } = render(<AdminRecords />);
     expect(
-      await screen.findByText(/Nothing has been recorded on this outing yet/),
+      await screen.findByText(/Nothing has been recorded on this session yet/),
     ).toBeInTheDocument();
     unmount();
 
@@ -266,7 +266,7 @@ describe("AdminRecords", () => {
     );
     render(<AdminRecords />);
 
-    expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
+    expect(await screen.findByText("No session is running.")).toBeInTheDocument();
   });
 
   it("still lists records when the member picker cannot be loaded", async () => {

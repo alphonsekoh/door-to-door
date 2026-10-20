@@ -88,7 +88,7 @@ export function ActiveSessionScreen() {
   if (state.status === "none") {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
-        <p className="text-body font-medium">No outing is running.</p>
+        <p className="text-body font-medium">No session is running.</p>
         <p className="mt-1 text-body text-foreground-muted">
           An admin starts a session before you can record visits.
         </p>
@@ -118,7 +118,7 @@ export function ActiveSessionScreen() {
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">No blocks yet.</p>
           <p className="mt-1 text-body text-foreground-muted">
-            An admin can add blocks while the outing is running — refresh to see them.
+            An admin can add blocks while the session is running — refresh to see them.
           </p>
         </div>
       ) : (

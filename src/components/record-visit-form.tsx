@@ -96,8 +96,8 @@ function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sendi
 }
 
 const OUTING_UNKNOWN =
-  "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
-const NO_OUTING = "No outing is running, so this visit is not saved yet.";
+  "Could not load the session, so this visit is not saved yet. Check your signal and try again.";
+const NO_OUTING = "No session is running, so this visit is not saved yet.";
 
 export function RecordVisitForm({
   blockId,

@@ -53,15 +53,15 @@ async function noSideScroll(page: Page): Promise<void> {
 test("two members join, pair up, and one leaves", async ({ memberPage, partnerPage }) => {
   for (const page of [memberPage, partnerPage]) {
     await page.goto("/");
-    const join = page.getByRole("button", { name: "Join this outing" });
+    const join = page.getByRole("button", { name: "Join this session" });
     await expectTappable(join);
     await join.click();
-    await expect(page.getByText("You've joined this outing")).toBeVisible();
+    await expect(page.getByText("You've joined this session")).toBeVisible();
     await expect(join).toHaveCount(0);
   }
 
   await memberPage.reload();
-  await expect(memberPage.getByText("You've joined this outing")).toBeVisible();
+  await expect(memberPage.getByText("You've joined this session")).toBeVisible();
 
   await memberPage.getByRole("button", { name: "Pair up", exact: true }).click();
   const sheet = memberPage.getByRole("dialog", { name: "Pair up" });
@@ -179,7 +179,7 @@ test("a teammate sees who recorded a unit, and the team's records", async ({
   await partnerPage.setViewportSize({ width, height: 780 });
   await partnerPage.goto("/");
   await partnerPage.getByRole("link", { name: /Blk 123/ }).click();
-  await partnerPage.getByRole("tab", { name: /^Units/ }).click();
+  await partnerPage.getByRole("tab", { name: /^All units/ }).click();
   await partnerPage.getByLabel("Search this block").fill(TEAM_UNIT);
   const row = partnerPage.getByRole("button", { name: new RegExp(TEAM_UNIT) });
   await expect(row).toContainText(`By ${BYLINE}`);

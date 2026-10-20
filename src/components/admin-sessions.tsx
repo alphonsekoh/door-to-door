@@ -33,7 +33,7 @@ export function AdminSessions() {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the outings.",
+        message: error instanceof Error ? error.message : "Could not load the sessions.",
       });
     }
   }, []);
@@ -92,7 +92,7 @@ export function AdminSessions() {
 
       {state.sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
-          <p className="text-body font-medium">No outings yet.</p>
+          <p className="text-body font-medium">No sessions yet.</p>
           <p className="mt-1 text-body text-foreground-muted">
             Create one, attach the blocks, then start it when everyone is ready.
           </p>

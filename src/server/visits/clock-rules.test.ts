@@ -43,7 +43,7 @@ describe("assertNotBeforeOuting", () => {
     }).not.toThrow();
     expect(() => {
       assertNotBeforeOuting(at(-3_600_000), now, clock);
-    }).toThrow(/about 60 minutes before its outing began/);
+    }).toThrow(/about 60 minutes before its session began/);
   });
 });
 

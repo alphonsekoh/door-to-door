@@ -20,16 +20,16 @@ export type ActionSpec = {
 };
 
 const SPECS: Record<SessionStatus, ActionSpec[]> = {
-  draft: [{ action: "start", label: "Start outing", confirm: null, destructive: false }],
+  draft: [{ action: "start", label: "Start session", confirm: null, destructive: false }],
   active: [
     {
       action: "end",
-      label: "End outing",
+      label: "End session",
       confirm: "Members will not be able to record or amend until it is reopened.",
       destructive: true,
     },
   ],
-  ended: [{ action: "reopen", label: "Reopen outing", confirm: null, destructive: false }],
+  ended: [{ action: "reopen", label: "Reopen session", confirm: null, destructive: false }],
 };
 
 export function availableActions(status: SessionStatus): ActionSpec[] {

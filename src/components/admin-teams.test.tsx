@@ -112,7 +112,7 @@ describe("listing", () => {
   it("says so when the outing has no teams, and when a team is empty", async () => {
     world.teams = [];
     const { unmount } = render(<AdminTeams sessionId="s1" status="draft" tick={0} />);
-    expect(await screen.findByText("No teams on this outing.")).toBeInTheDocument();
+    expect(await screen.findByText("No teams on this session.")).toBeInTheDocument();
     unmount();
 
     world.teams = [team("t1", "Leftovers", [])];

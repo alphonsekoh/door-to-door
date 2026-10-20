@@ -286,7 +286,7 @@ export function ConsolidatedHistory() {
 
           <div>
             <label htmlFor="history-session" className="sr-only">
-              Filter by outing
+              Filter by session
             </label>
             <select
               id="history-session"
@@ -296,7 +296,7 @@ export function ConsolidatedHistory() {
               }}
               className="h-12 min-h-12 field"
             >
-              <option value="">All outings</option>
+              <option value="">All sessions</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.title}

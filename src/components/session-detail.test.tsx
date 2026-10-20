@@ -119,7 +119,7 @@ describe("SessionDetail", () => {
   it("offers reopen on an ended outing", async () => {
     serve("ended", []);
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByRole("button", { name: "Reopen outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Reopen session" })).toBeInTheDocument();
   });
 
   it("warns that a block with no attachment leaves members with nowhere to record", async () => {
@@ -271,19 +271,19 @@ describe("SessionDetail", () => {
   it("copes with a non-Error load failure", async () => {
     apiFetch.mockRejectedValue("boom");
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this outing.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this session.");
   });
 
   it("reflects a lifecycle change without a manual refresh", async () => {
     const user = userEvent.setup();
     serve("ended", []);
     render(<SessionDetail sessionId="s1" />);
-    await screen.findByRole("button", { name: "Reopen outing" });
+    await screen.findByRole("button", { name: "Reopen session" });
 
     apiFetch.mockImplementation((path: string) =>
       path.endsWith("/blocks") ? Promise.resolve([]) : Promise.resolve(session("active")),
     );
-    await user.click(screen.getByRole("button", { name: "Reopen outing" }));
+    await user.click(screen.getByRole("button", { name: "Reopen session" }));
 
     expect(await screen.findByText("Running now")).toBeInTheDocument();
   });

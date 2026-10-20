@@ -35,7 +35,7 @@ test.describe("signing in", () => {
 
   test("a member is refused the admin screens by URL as well as by nav", async ({ memberPage }) => {
     await memberPage.goto("/admin/sessions");
-    await expect(memberPage.getByRole("heading", { level: 1, name: "Outings" })).toBeHidden();
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Sessions" })).toBeHidden();
   });
 
   test("a wrong password is refused, and says so", async ({ page }) => {

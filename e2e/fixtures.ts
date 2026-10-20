@@ -87,7 +87,7 @@ export async function ensureActiveSession(api: APIRequestContext): Promise<strin
 
 async function startFreshSession(api: APIRequestContext): Promise<string> {
   const created = await api.post("/api/sessions", {
-    data: { title: `E2E outing ${new Date().toISOString()}` },
+    data: { title: `E2E session ${new Date().toISOString()}` },
   });
   const { id } = (await created.json()) as { id: string };
   await api.post(`/api/sessions/${id}/start`);

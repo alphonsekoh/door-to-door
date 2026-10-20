@@ -29,9 +29,9 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
 
         <span className="shrink-0 text-right">
           <span className="block text-title font-semibold tabular-nums">{householdCount}</span>
-          <span className="block text-caption text-foreground-muted">
-            {householdCount === 1 ? "unit" : "units"}
-          </span>
+          {/* This session's units, not the block's: "units" alone read as
+              the size of the block. */}
+          <span className="block text-caption text-foreground-muted">visited tonight</span>
           {visitCount > householdCount ? (
             <span className="block text-caption text-foreground-muted tabular-nums">
               {visitCount} visits

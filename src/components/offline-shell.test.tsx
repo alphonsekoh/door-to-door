@@ -160,7 +160,7 @@ describe("OfflineShell, before anyone continues", () => {
     const { view, openQueue } = mount({ load });
     expect(
       await screen.findByText(
-        "Nothing is saved on this phone to record with. Connect and open your outing first.",
+        "Nothing is saved on this phone to record with. Connect and open your session first.",
       ),
     ).toBeInTheDocument();
     const form = view.container.querySelector("form");
@@ -265,7 +265,7 @@ describe("OfflineShell, recording", () => {
     await openBlock("123");
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
 
-    await user().click(screen.getByRole("tab", { name: /Units/ }));
+    await user().click(screen.getByRole("tab", { name: /All units/ }));
     expect(screen.getByText("#07-02")).toBeInTheDocument();
     expect(screen.queryByText("#07-01")).not.toBeInTheDocument();
   });
@@ -291,7 +291,7 @@ describe("OfflineShell, recording", () => {
     };
     mount({ queue: createMemoryQueue([sent]) });
     await openBlock("123");
-    await user().click(await screen.findByRole("tab", { name: "Units (2)" }));
+    await user().click(await screen.findByRole("tab", { name: "All units (2)" }));
 
     expect(screen.getByText("Mrs Lim")).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();

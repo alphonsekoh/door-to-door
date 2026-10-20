@@ -242,13 +242,13 @@ test.describe("the worker in charge", () => {
     // No reload happened: the page's own state survived.
     expect(await page.evaluate(() => Reflect.get(window, "__stillHere") === true)).toBe(true);
     // Sent, and still listed: the shell cannot re-read the server's units.
-    await page.getByRole("tab", { name: /Units/ }).click();
+    await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
     await expect(page.getByText("Sent", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: /^Blk / })).toBeVisible();
-    await page.getByRole("tab", { name: /Units/ }).click();
+    await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
   });
 

@@ -57,7 +57,7 @@ describe("no active session", () => {
     // A quiet evening is a normal state, not a failure.
     apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
     render(<ActiveSessionScreen />);
-    expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
+    expect(await screen.findByText("No session is running.")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
@@ -83,7 +83,8 @@ describe("with blocks", () => {
     apiFetch.mockResolvedValue(session([block("123", { householdCount: 6, visitCount: 8 })]));
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("6")).toBeInTheDocument();
-    expect(screen.getByText("units")).toBeInTheDocument();
+    // This session's units, not the block's size.
+    expect(screen.getByText("visited tonight")).toBeInTheDocument();
     // Visits only shown when they exceed units, or it is noise.
     expect(screen.getByText("8 visits")).toBeInTheDocument();
   });
@@ -116,10 +117,11 @@ describe("with blocks", () => {
     expect(await screen.findByText("Someone here now")).toBeInTheDocument();
   });
 
-  it("uses the singular for one unit", async () => {
+  it("says the same for one unit, with no plural to get wrong", async () => {
     apiFetch.mockResolvedValue(session([block("123", { householdCount: 1, visitCount: 1 })]));
     render(<ActiveSessionScreen />);
-    expect(await screen.findByText("unit")).toBeInTheDocument();
+    expect(await screen.findByText("1")).toBeInTheDocument();
+    expect(screen.getByText("visited tonight")).toBeInTheDocument();
   });
 });
 
@@ -128,7 +130,7 @@ describe("a session with no blocks yet", () => {
     apiFetch.mockResolvedValue(session([]));
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("No blocks yet.")).toBeInTheDocument();
-    expect(screen.getByText(/add blocks while the outing is running/)).toBeInTheDocument();
+    expect(screen.getByText(/add blocks while the session is running/)).toBeInTheDocument();
   });
 });
 
@@ -150,7 +152,7 @@ describe("the team card", () => {
   it("is absent when no outing is running", async () => {
     apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
     render(<ActiveSessionScreen />);
-    await screen.findByText("No outing is running.");
+    await screen.findByText("No session is running.");
     expect(screen.queryByText(/team card/)).not.toBeInTheDocument();
   });
 });
@@ -229,7 +231,7 @@ describe("the offline copy", () => {
   it("is told no outing is running on a 404", async () => {
     apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
     render(<ActiveSessionScreen />);
-    await screen.findByText("No outing is running.");
+    await screen.findByText("No session is running.");
     expect(noteOuting).toHaveBeenCalledWith(null);
   });
 

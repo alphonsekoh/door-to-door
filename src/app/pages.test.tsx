@@ -71,7 +71,7 @@ describe("session screen", () => {
     render(<SessionPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Active session" })).toBeInTheDocument();
     // No session is running in this test, which is a normal state.
-    expect(await screen.findByText("No outing is running.")).toBeInTheDocument();
+    expect(await screen.findByText("No session is running.")).toBeInTheDocument();
   });
 });
 
@@ -91,7 +91,7 @@ describe("history screens", () => {
         searchParams: Promise.resolve({}),
       }),
     );
-    expect(screen.getByRole("heading", { level: 1, name: "Outing records" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Session records" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe("admin screens", () => {
   it("guards the outing list before rendering it", async () => {
     render(await AdminSessionsPage());
     expect(requireAdminPage).toHaveBeenCalled();
-    expect(screen.getByRole("heading", { level: 1, name: "Outings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Sessions" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     // The overdue card failing must not stand in for the outing list's own state.
     expect(await screen.findByText("Could not check for overdue follow-ups.")).toBeInTheDocument();
@@ -174,7 +174,7 @@ describe("admin screens", () => {
       }),
     );
     expect(requireAdminPage).toHaveBeenCalled();
-    expect(screen.getByRole("heading", { level: 1, name: "Outing" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Session" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });

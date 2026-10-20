@@ -11,8 +11,8 @@ export default async function AdminRecordsPage() {
     <>
       <PageHeader
         title="Records"
-        subtitle="Everything recorded on the running outing."
-        back={{ href: "/admin/sessions", label: "Outings" }}
+        subtitle="Everything recorded on the running session."
+        back={{ href: "/admin/sessions", label: "Sessions" }}
       />
       {/* useSearchParams needs a boundary, or the whole route opts out of
           static rendering at build time. */}

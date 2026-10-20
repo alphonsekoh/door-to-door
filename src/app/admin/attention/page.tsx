@@ -11,7 +11,7 @@ export default async function AdminAttentionPage() {
       <PageHeader
         title="Needs a return visit"
         subtitle="Doors that showed interest and have nobody going back."
-        back={{ href: "/admin/sessions", label: "Outings" }}
+        back={{ href: "/admin/sessions", label: "Sessions" }}
       />
       <AttentionList />
     </>

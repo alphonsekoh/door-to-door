@@ -196,7 +196,7 @@ export function OfflineShell({
       {phase.kind === "none" ? (
         <>
           <p className="text-body">
-            Nothing is saved on this phone to record with. Connect and open your outing first.
+            Nothing is saved on this phone to record with. Connect and open your session first.
           </p>
           <form action="/" method="get">
             <button

@@ -16,7 +16,7 @@ import { SheetPresence } from "@/components/sheet";
    enough not to drain the phone an admin is watching it on. */
 const POLL_INTERVAL_MS = 30_000;
 
-const BACK = { href: "/admin/sessions", label: "Outings" };
+const BACK = { href: "/admin/sessions", label: "Sessions" };
 
 type State =
   | { status: "loading" }
@@ -42,7 +42,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load this outing.",
+        message: error instanceof Error ? error.message : "Could not load this session.",
       });
     }
   }, [sessionId]);
@@ -97,7 +97,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   if (state.status === "loading") {
     return (
       <>
-        <PageHeader title="Outing" back={BACK} />
+        <PageHeader title="Session" back={BACK} />
         <p className="text-body text-foreground-muted">Loading…</p>
       </>
     );
@@ -106,7 +106,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   if (state.status === "error") {
     return (
       <>
-        <PageHeader title="Outing" back={BACK} />
+        <PageHeader title="Session" back={BACK} />
         <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
           <p className="text-body">{state.message}</p>
           <button
@@ -126,7 +126,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-5">
-      {/* The outing's own name is the heading, not the word "Outing". */}
+      {/* The outing's own name is the heading, not the word "Session". */}
       <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
 
       {session.status === "ended" ? (
@@ -146,7 +146,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           href="/admin/records"
           className="block min-h-12 btn-secondary rounded-xl px-4 py-3 text-body font-medium"
         >
-          See every record on this outing
+          See every record on this session
         </Link>
       ) : null}
 

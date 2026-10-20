@@ -141,7 +141,7 @@ describe("historyToCsv", () => {
       ],
     };
     const [header, row] = historyToCsv([entry({ team })]).split("\r\n");
-    expect(header).toContain("Recorded by,Team,Teammates,Outing");
+    expect(header).toContain("Recorded by,Team,Teammates,Session");
     expect(row).toContain("Alice,North pair,Ben Lim; Someone,March outing");
   });
 

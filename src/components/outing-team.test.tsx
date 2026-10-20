@@ -73,32 +73,32 @@ function firstWrite(): Sent {
 describe("joining the outing", () => {
   it("offers Join until the caller is a participant", async () => {
     render(<OutingTeam sessionId="s1" tick={0} />);
-    expect(await screen.findByRole("button", { name: "Join this outing" })).toBeEnabled();
-    expect(screen.queryByText("You've joined this outing")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Join this session" })).toBeEnabled();
+    expect(screen.queryByText("You've joined this session")).not.toBeInTheDocument();
   });
 
   it("shows 'You've joined' once joined, and not the button", async () => {
     world.participants = [participant("me", "Ann Tan")];
     render(<OutingTeam sessionId="s1" tick={0} />);
-    expect(await screen.findByText("You've joined this outing")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Join this outing" })).not.toBeInTheDocument();
+    expect(await screen.findByText("You've joined this session")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Join this session" })).not.toBeInTheDocument();
   });
 
   it("posts the join and then reads the participants again", async () => {
     render(<OutingTeam sessionId="s1" tick={0} />);
-    const button = await screen.findByRole("button", { name: "Join this outing" });
+    const button = await screen.findByRole("button", { name: "Join this session" });
     writes = () => {
       world.participants = [participant("me", "Ann Tan")];
       return participant("me", "Ann Tan");
     };
     await userEvent.click(button);
-    expect(await screen.findByText("You've joined this outing")).toBeInTheDocument();
+    expect(await screen.findByText("You've joined this session")).toBeInTheDocument();
     expect(writesTo()[0]?.[0]).toBe("/sessions/s1/join");
   });
 
   it("explains a refusal because the outing ended", async () => {
     render(<OutingTeam sessionId="s1" tick={0} />);
-    const button = await screen.findByRole("button", { name: "Join this outing" });
+    const button = await screen.findByRole("button", { name: "Join this session" });
     apiFetch.mockImplementationOnce(() =>
       Promise.reject(
         new ApiRequestError(409, { error: { code: "session_not_active", message: "x" } } as never),
@@ -106,7 +106,7 @@ describe("joining the outing", () => {
     );
     await userEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveTextContent(/not running/);
-    expect(screen.getByRole("button", { name: "Join this outing" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Join this session" })).toBeInTheDocument();
   });
 });
 
@@ -461,7 +461,7 @@ describe("offline", () => {
   it("disables Join and Pair up", async () => {
     useOnline.mockReturnValue(false);
     render(<OutingTeam sessionId="s1" tick={0} />);
-    expect(await screen.findByRole("button", { name: "Join this outing" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Join this session" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Pair up" })).toBeDisabled();
   });
 
@@ -534,7 +534,7 @@ describe("loading", () => {
       Promise.resolve(path === "/users/me" ? ME : { data: [] }),
     );
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByRole("button", { name: "Join this outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Join this session" })).toBeInTheDocument();
   });
 
   it("treats an unreachable first read as offline", async () => {
@@ -546,13 +546,13 @@ describe("loading", () => {
   it("keeps the last good card when a refresh fails", async () => {
     world.participants = [participant("me", "Ann Tan")];
     const view = render(<OutingTeam sessionId="s1" tick={0} />);
-    await screen.findByText("You've joined this outing");
+    await screen.findByText("You've joined this session");
     apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     view.rerender(<OutingTeam sessionId="s1" tick={1} />);
     await waitFor(() => {
       expect(screen.getByText("Connect to change your team")).toBeInTheDocument();
     });
-    expect(screen.getByText("You've joined this outing")).toBeInTheDocument();
+    expect(screen.getByText("You've joined this session")).toBeInTheDocument();
   });
 });
 
@@ -561,7 +561,7 @@ describe("coming back online", () => {
     useOnline.mockReturnValue(false);
     world.participants = [participant("me", "Ann Tan")];
     const view = render(<OutingTeam sessionId="s1" tick={0} />);
-    await screen.findByText("You've joined this outing");
+    await screen.findByText("You've joined this session");
     world.participants = [participant("me", "Ann Tan", "t1"), participant("ben", "Ben Lim", "t1")];
     world.teams = [team("Ben & Ann")];
 
@@ -573,7 +573,7 @@ describe("coming back online", () => {
   it("keeps the card visible and disabled when the poll finds the sign-in gone", async () => {
     world.participants = [participant("me", "Ann Tan")];
     const view = render(<OutingTeam sessionId="s1" tick={0} />);
-    await screen.findByText("You've joined this outing");
+    await screen.findByText("You've joined this session");
     apiFetch.mockRejectedValue(
       new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } } as never),
     );
@@ -616,13 +616,13 @@ describe("refreshing", () => {
       expect(calls).toBe(1);
     });
     view.rerender(<OutingTeam sessionId="s1" tick={1} />);
-    await screen.findByText("You've joined this outing");
+    await screen.findByText("You've joined this session");
 
     await act(async () => {
       releaseFirst({ ...ME, name: "STALE" });
       await Promise.resolve();
     });
-    expect(screen.getByText("You've joined this outing")).toBeInTheDocument();
+    expect(screen.getByText("You've joined this session")).toBeInTheDocument();
   });
 
   it("ignores a slow failure that arrives after a newer read succeeded", async () => {
@@ -644,13 +644,13 @@ describe("refreshing", () => {
       expect(calls).toBe(1);
     });
     view.rerender(<OutingTeam sessionId="s1" tick={1} />);
-    await screen.findByRole("button", { name: "Join this outing" });
+    await screen.findByRole("button", { name: "Join this session" });
 
     await act(async () => {
       failFirst(new TypeError("Failed to fetch"));
       await Promise.resolve();
     });
-    expect(screen.getByRole("button", { name: "Join this outing" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Join this session" })).toBeEnabled();
     expect(screen.queryByText("Connect to change your team")).not.toBeInTheDocument();
   });
 

@@ -197,13 +197,13 @@ export function AdminTeams({
 
       {status === "ended" ? (
         <p className="text-body text-foreground-muted">
-          This outing has ended, so no new team can be formed. Existing teams can still be fixed.
+          This session has ended, so no new team can be formed. Existing teams can still be fixed.
         </p>
       ) : null}
 
       {teams.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          No teams on this outing.
+          No teams on this session.
         </p>
       ) : (
         <ul className="space-y-2">

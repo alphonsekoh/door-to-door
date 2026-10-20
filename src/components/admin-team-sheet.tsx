@@ -127,7 +127,7 @@ export function AdminTeamSheet({
       {showPicker ? (
         candidates.length === 0 ? (
           <p className="mt-3 text-body text-foreground-muted">
-            Everyone active is already on a team in this outing.
+            Everyone active is already on a team in this session.
           </p>
         ) : (
           <ul

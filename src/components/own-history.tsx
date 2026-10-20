@@ -32,7 +32,7 @@ type State =
  * are not mixed on one screen.
  */
 export const HISTORY_SUBTITLE = {
-  me: "Outings you have worked, newest first.",
+  me: "Sessions you have worked, newest first.",
   team: "Records by you and the teams you are on now, newest first.",
 } as const;
 
@@ -141,7 +141,7 @@ function OwnOutings() {
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">Nothing recorded yet.</p>
           <p className="mt-1 text-body text-foreground-muted">
-            Once you knock on your first door, the outing will appear here with what you found.
+            Once you knock on your first door, the session will appear here with what you found.
           </p>
         </div>
       ) : (
@@ -164,7 +164,7 @@ function OwnOutings() {
               }}
               className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
             >
-              {loadingMore ? "Loading…" : "Show earlier outings"}
+              {loadingMore ? "Loading…" : "Show earlier sessions"}
             </button>
           ) : null}
         </>

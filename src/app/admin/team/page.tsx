@@ -11,7 +11,7 @@ export default async function AdminTeamPage() {
       <PageHeader
         title="Team"
         subtitle="Who can sign in, and what they can do."
-        back={{ href: "/admin/sessions", label: "Outings" }}
+        back={{ href: "/admin/sessions", label: "Sessions" }}
       />
       <MemberList />
     </>

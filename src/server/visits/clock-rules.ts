@@ -31,7 +31,7 @@ export function assertNotBeforeOuting(instant: Date, startedAt: Date, clock: Clo
   const violation = checkNotBefore(instant, startedAt, clock);
   if (violation) {
     throw new ClockSkewError(
-      `This record is dated about ${String(approximateMinutes(violation.differenceMs))} minutes before its outing began. Check the phone's clock.`,
+      `This record is dated about ${String(approximateMinutes(violation.differenceMs))} minutes before its session began. Check the phone's clock.`,
     );
   }
 }

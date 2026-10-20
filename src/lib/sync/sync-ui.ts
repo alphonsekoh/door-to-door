@@ -39,7 +39,7 @@ export function recordReason(record: QueuedVisit): string | null {
       return "Could not send after several tries.";
     case "held":
       return code === "session_not_active"
-        ? "The outing has ended. Sends if an admin reopens it."
+        ? "The session has ended. Sends if an admin reopens it."
         : REFUSED;
     case "queued":
       /* The second refusal in a row: restamping did not help. */

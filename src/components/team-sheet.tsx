@@ -115,7 +115,7 @@ export function TeamSheet({
       {showPicker ? (
         candidates.length === 0 ? (
           <p className="mt-3 text-body text-foreground-muted">
-            No one is free to add. Your partner needs to open the app and tap Join this outing
+            No one is free to add. Your partner needs to open the app and tap Join this session
             first, and cannot already be on a team.
           </p>
         ) : (

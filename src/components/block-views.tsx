@@ -80,7 +80,7 @@ export function BlockViews({
               : "border-border-strong"
           }`}
         >
-          Units ({rows.length})
+          All units ({rows.length})
         </button>
       </div>
 

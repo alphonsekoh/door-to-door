@@ -148,7 +148,7 @@ async function applyItem(
     ) {
       throw new ConflictError(
         "conflict",
-        "A saved visit cannot be moved to another unit or outing.",
+        "A saved visit cannot be moved to another unit or session.",
       );
     }
     if (incomingUpdatedAt < stored.updatedAt) {
@@ -313,7 +313,7 @@ async function persist(
       if (locked.householdId !== household.id || locked.sessionId !== sessionId) {
         throw new ConflictError(
           "conflict",
-          "A saved visit cannot be moved to another unit or outing.",
+          "A saved visit cannot be moved to another unit or session.",
         );
       }
       if (!(await canAmend(tx, { id: memberId, role: "member" }, locked))) {

@@ -17,7 +17,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
 
   async function save(): Promise<void> {
     if (title.trim() === "") {
-      setFailure("Give the outing a name.");
+      setFailure("Give the session a name.");
       return;
     }
 
@@ -32,7 +32,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       setOpen(false);
       onCreated(session);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not create the outing.");
+      setFailure(error instanceof Error ? error.message : "Could not create the session.");
     } finally {
       setSaving(false);
     }
@@ -47,7 +47,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
         }}
         className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
       >
-        New outing
+        New session
       </button>
     );
   }
@@ -68,7 +68,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       )}
 
       <label htmlFor="session-title" className="mb-1 block text-body font-medium">
-        Name this outing
+        Name this session
       </label>
       <input
         id="session-title"

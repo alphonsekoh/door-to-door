@@ -76,7 +76,7 @@ const DRAFT = "00000000-0000-4000-8002-000000000003";
 export const seedSessions: readonly SeedSession[] = [
   {
     id: MARCH,
-    title: "Ang Mo Kio · March outing",
+    title: "Ang Mo Kio · March session",
     status: "ended",
     startedAt: at("2026-03-14T10:00:00Z"),
     endedAt: at("2026-03-14T14:30:00Z"),
@@ -84,7 +84,7 @@ export const seedSessions: readonly SeedSession[] = [
   },
   {
     id: JUNE,
-    title: "Ang Mo Kio · June outing",
+    title: "Ang Mo Kio · June session",
     status: "ended",
     startedAt: at("2026-06-20T10:00:00Z"),
     endedAt: at("2026-06-20T15:00:00Z"),
@@ -94,7 +94,7 @@ export const seedSessions: readonly SeedSession[] = [
     // Ready for an admin to start, so the start flow is demonstrable on a
     // fresh install without creating anything first.
     id: DRAFT,
-    title: "Bedok · upcoming outing",
+    title: "Bedok · upcoming session",
     status: "draft",
     startedAt: null,
     endedAt: null,

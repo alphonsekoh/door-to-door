@@ -54,7 +54,7 @@ export function TeamRecords() {
 
   const note = (
     <p className="text-caption text-foreground-muted">
-      Your outing list counts only your own records. {TEAM_VIEW_NOTE}
+      Your session list counts only your own records. {TEAM_VIEW_NOTE}
     </p>
   );
 

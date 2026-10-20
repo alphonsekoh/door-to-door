@@ -216,7 +216,7 @@ describe("ConsolidatedHistory", () => {
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
     expect(replace).toHaveBeenCalledWith("/admin/history?religion=hindu");
 
-    await user.selectOptions(screen.getByLabelText("Filter by outing"), "s1");
+    await user.selectOptions(screen.getByLabelText("Filter by session"), "s1");
     expect(replace).toHaveBeenCalledWith("/admin/history?sessionId=s1");
   });
 
@@ -534,7 +534,7 @@ describe("teams", () => {
     render(<ConsolidatedHistory />);
     await card("Blk 123, #05-123");
 
-    await user.selectOptions(screen.getByLabelText("Filter by outing"), "");
+    await user.selectOptions(screen.getByLabelText("Filter by session"), "");
     expect(replace).toHaveBeenCalledWith("/admin/history");
   });
 

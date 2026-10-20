@@ -188,7 +188,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       className="space-y-3 rounded-xl border border-border bg-surface p-4"
     >
       {joined ? (
-        <p className="text-body font-medium">You&apos;ve joined this outing</p>
+        <p className="text-body font-medium">You&apos;ve joined this session</p>
       ) : (
         <div>
           <button
@@ -197,7 +197,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
             onClick={() => void join()}
             className="min-h-12 w-full btn-primary rounded-xl text-body font-semibold"
           >
-            Join this outing
+            Join this session
           </button>
         </div>
       )}

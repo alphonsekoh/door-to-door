@@ -1047,7 +1047,7 @@ describe("saving into the offline queue", () => {
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Could not load the outing, so this visit is not saved yet.",
+      "Could not load the session, so this visit is not saved yet.",
     );
     expect(queue.enqueue).not.toHaveBeenCalled();
     expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
@@ -1073,7 +1073,7 @@ describe("saving into the offline queue", () => {
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("No outing is running, so this visit is not saved yet.");
+    expect(alert).toHaveTextContent("No session is running, so this visit is not saved yet.");
     expect(alert).not.toHaveTextContent("signal");
     expect(queue.enqueue).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
@@ -1133,7 +1133,7 @@ describe("saving into the offline queue", () => {
     }
 
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Could not load the outing, so this visit is not saved yet.",
+      "Could not load the session, so this visit is not saved yet.",
     );
     expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
