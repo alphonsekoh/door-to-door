@@ -320,8 +320,8 @@ function Recording({
         </ul>
       ) : (
         <>
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-title font-semibold">Blk {picked.block.name}</p>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+            <p className="text-title font-semibold whitespace-nowrap">Blk {picked.block.name}</p>
             <button
               type="button"
               onClick={onAllBlocks}

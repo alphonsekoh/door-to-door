@@ -335,9 +335,11 @@ export function AdminRecords() {
                 onClick={() => {
                   setAmending(entry);
                 }}
-                className="flex min-h-14 w-full items-center gap-3 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
+                className="flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
               >
-                <span className="min-w-0 flex-1">
+                {/* At large text the chip drops under the unit rather than cut
+                    its block and name to a few letters. */}
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
                     <UnitNumber value={entry.household.unitNumber} />
                   </span>

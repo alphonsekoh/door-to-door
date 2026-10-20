@@ -48,9 +48,11 @@ export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
             return (
               <li
                 key={record.id}
-                className="flex items-center gap-3 border-b border-border px-4 py-2 last:border-b-0"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-2 last:border-b-0"
               >
-                <span className="min-w-0 flex-1">
+                {/* At large text Retry drops under the record rather than
+                    squeeze what it says to a few words a line. */}
+                <span className="min-w-0 flex-[1_1_12ch]">
                   {isCorrupt(record) ? (
                     <span className="block text-body font-semibold">Unreadable record</span>
                   ) : (
@@ -73,7 +75,7 @@ export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
                       retry(record.id);
                     }}
                     aria-label={`Retry ${record.item.unitNumber}`}
-                    className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+                    className="ml-auto min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
                   >
                     Retry
                   </button>

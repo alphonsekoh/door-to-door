@@ -104,8 +104,11 @@ export function MemberList() {
           const deactivated = user.deactivatedAt !== null;
           return (
             <li key={user.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0">
+              {/* At large text the role drops under the name rather than cut
+                  the name and email to a few letters, which made two people
+                  called Tan hard to tell apart. */}
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block truncate text-body font-semibold">
                     {user.name ?? user.email}
                     {isSelf ? <span className="text-foreground-muted"> (you)</span> : null}
@@ -139,14 +142,16 @@ export function MemberList() {
                   You cannot change your own role or deactivate yourself.
                 </p>
               ) : (
-                <div className="mt-3 flex gap-2">
+                /* Side by side while both labels fit on a line; at large text
+                   they stack rather than wrap a word a line. */
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() =>
                       void change(user, { role: user.role === "admin" ? "member" : "admin" })
                     }
-                    className="min-h-11 flex-1 btn-secondary rounded-lg text-body font-medium"
+                    className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                   >
                     {user.role === "admin" ? "Make a member" : "Make an admin"}
                   </button>
@@ -156,7 +161,7 @@ export function MemberList() {
                       type="button"
                       disabled={busy}
                       onClick={() => void change(user, { deactivated: false })}
-                      className="min-h-11 flex-1 btn-secondary rounded-lg text-body font-medium"
+                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                     >
                       Reactivate
                     </button>
@@ -167,7 +172,7 @@ export function MemberList() {
                       onClick={() => {
                         setDeactivating(user);
                       }}
-                      className="min-h-11 flex-1 btn-secondary rounded-lg text-body font-medium"
+                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                     >
                       Deactivate
                     </button>

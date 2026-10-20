@@ -130,12 +130,12 @@ export function TeamSheet({
                     onClick={() => {
                       setPartnerId(user.id);
                     }}
-                    className="flex min-h-14 w-full items-center justify-between gap-3 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
+                    className="flex min-h-14 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
                   >
-                    <span className="min-w-0 text-body font-medium break-words">
+                    <span className="min-w-0 flex-[1_1_12ch] text-body font-medium break-words">
                       {displayName(user.name)}
                     </span>
-                    <span className="shrink-0 text-body font-medium text-primary">
+                    <span className="ml-auto shrink-0 text-body font-medium text-primary">
                       {picked ? "Selected" : "Select"}
                     </span>
                   </button>

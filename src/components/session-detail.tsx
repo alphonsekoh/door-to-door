@@ -160,7 +160,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       ))}
 
       <div>
-        <div className="mb-2 flex items-baseline justify-between gap-3">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
           <h2 className="text-title font-semibold">Blocks</h2>
           <button
             type="button"
@@ -191,9 +191,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                 key={entry.block.id}
                 className="rounded-xl border border-border bg-surface px-4 py-3"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-body font-semibold">Blk {entry.block.name}</p>
+                {/* At large text Remove drops under the block rather than
+                    squeeze its street and counts to a few letters. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-[1_1_12ch]">
+                    <p className="text-body font-semibold whitespace-nowrap">
+                      Blk {entry.block.name}
+                    </p>
                     <p className="truncate text-caption text-foreground-muted">
                       {entry.block.street}
                     </p>

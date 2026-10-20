@@ -13,12 +13,14 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
 
   return (
     <li>
+      {/* At large text the count drops under the block rather than squeeze
+          its street and who is here to a few letters. */}
       <Link
         href={`/blocks/${block.id}`}
-        className="relative flex min-h-16 press items-center justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+        className="relative flex min-h-16 press flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-xl border border-border bg-surface px-4 py-3"
       >
-        <span className="min-w-0">
-          <span className="block text-title font-semibold">Blk {block.name}</span>
+        <span className="min-w-0 flex-[1_1_12ch]">
+          <span className="block text-title font-semibold whitespace-nowrap">Blk {block.name}</span>
           <span className="block truncate text-caption text-foreground-muted">{block.street}</span>
           {names.length > 0 ? (
             <span className="mt-1 block truncate text-caption text-foreground-muted">
@@ -27,7 +29,7 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
           ) : null}
         </span>
 
-        <span className="shrink-0 text-right">
+        <span className="ml-auto shrink-0 text-right">
           <span className="block text-title font-semibold tabular-nums">{householdCount}</span>
           {/* This session's units, not the block's: "units" alone read as
               the size of the block. */}

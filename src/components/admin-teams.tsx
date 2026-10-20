@@ -178,7 +178,7 @@ export function AdminTeams({
 
   return (
     <section aria-label="Teams" className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
         <h2 className="text-title font-semibold">Teams</h2>
         {status === "ended" ? null : (
           <button
@@ -219,8 +219,13 @@ export function AdminTeams({
               ) : (
                 <ul className="space-y-1">
                   {team.members.map((member) => (
-                    <li key={member.id} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 text-body break-words">
+                    // At large text Remove drops under the name rather than
+                    // set it a word a line.
+                    <li
+                      key={member.id}
+                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                    >
+                      <span className="min-w-0 flex-[1_1_12ch] text-body break-words">
                         {displayName(member.name)}
                         {member.id === userId ? " (you)" : ""}
                       </span>
@@ -232,7 +237,7 @@ export function AdminTeams({
                           setActionFailure(null);
                           setConfirm({ kind: "remove", team, member });
                         }}
-                        className={`shrink-0 ${BUTTON}`}
+                        className={`ml-auto shrink-0 ${BUTTON}`}
                       >
                         Remove
                       </button>

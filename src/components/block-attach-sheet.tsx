@@ -134,6 +134,8 @@ export function BlockAttachSheet({
             const picked = chosen.includes(block.id);
             return (
               <li key={block.id}>
+                {/* At large text Select drops under the block rather than cut
+                    its street to a few letters. */}
                 <button
                   type="button"
                   aria-pressed={picked}
@@ -142,15 +144,15 @@ export function BlockAttachSheet({
                       picked ? current.filter((id) => id !== block.id) : [...current, block.id],
                     );
                   }}
-                  className="flex min-h-14 w-full items-center justify-between gap-3 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
+                  className="flex min-h-14 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
                 >
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-[1_1_12ch]">
                     <span className="block text-body font-semibold">Blk {block.name}</span>
                     <span className="block truncate text-caption text-foreground-muted">
                       {block.street}
                     </span>
                   </span>
-                  <span className="shrink-0 text-body font-medium text-primary">
+                  <span className="ml-auto shrink-0 text-body font-medium text-primary">
                     {picked ? "Selected" : "Select"}
                   </span>
                 </button>

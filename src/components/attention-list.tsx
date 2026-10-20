@@ -96,11 +96,13 @@ export function AttentionList() {
         <ul className="overflow-hidden rounded-xl border border-border bg-surface">
           {state.rows.map((row) => (
             <li key={row.household.id}>
+              {/* At large text the chip drops under the door rather than cut
+                  who lives there to a few letters. */}
               <Link
                 href={`/households/${row.household.id}`}
-                className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 last:border-b-0"
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
                     Blk {row.block.name}, <UnitNumber value={row.household.unitNumber} />
                   </span>
