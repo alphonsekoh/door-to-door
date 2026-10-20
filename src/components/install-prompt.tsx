@@ -156,9 +156,11 @@ export function InstallPrompt() {
         };
 
   /* In the page it is drawn no wider than floating, so it is never shorter
-     there: a banner just past the limit cannot flip back and forth. */
+     there: a banner just past the limit cannot flip back and forth. A
+     section, not an aside: in the page it sits inside main, and an aside
+     there is a complementary landmark nested in the main one. */
   return (
-    <aside
+    <section
       ref={bannerRef}
       aria-label="Install the app"
       data-floating={floating ? "" : undefined}
@@ -196,6 +198,6 @@ export function InstallPrompt() {
           </button>
         </div>
       </div>
-    </aside>
+    </section>
   );
 }

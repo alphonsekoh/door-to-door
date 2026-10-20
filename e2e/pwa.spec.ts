@@ -448,7 +448,7 @@ test.describe("the install banner", () => {
     memberPage,
     adminApi,
   }) => {
-    const banner = memberPage.getByRole("complementary", { name: "Install the app" });
+    const banner = memberPage.getByRole("region", { name: "Install the app" });
 
     await memberPage.goto("/history");
     await expect(memberPage.getByRole("heading", { level: 1 })).toBeVisible();
@@ -467,7 +467,7 @@ test.describe("the install banner", () => {
         () =>
           memberPage.evaluate(() => {
             window.scrollTo(0, document.body.scrollHeight);
-            const banner = document.querySelector('aside[aria-label="Install the app"]');
+            const banner = document.querySelector('section[aria-label="Install the app"]');
             // The banner is rendered in main too, so it is not the last item.
             const items = [...(document.querySelector("main")?.children ?? [])].filter(
               (item) => item !== banner,
@@ -485,7 +485,7 @@ test.describe("the install banner", () => {
     // content's bottom padding must clear the nav and the whole banner.
     const room = await memberPage.evaluate(() => {
       const main = document.querySelector("main");
-      const banner = document.querySelector('aside[aria-label="Install the app"]');
+      const banner = document.querySelector('section[aria-label="Install the app"]');
       const nav = document.querySelector("nav[aria-label=Primary]");
       return main && banner && nav
         ? parseFloat(getComputedStyle(main).paddingBottom) -
@@ -513,7 +513,7 @@ test.describe("the install banner", () => {
     await memberPage.getByRole("link", { name: /Blk 123/ }).click();
     await expect(memberPage.getByRole("button", { name: "Save and next" })).toBeVisible();
     await offerInstall(memberPage);
-    await expect(memberPage.getByRole("complementary", { name: "Install the app" })).toBeHidden();
+    await expect(memberPage.getByRole("region", { name: "Install the app" })).toBeHidden();
     await endActiveSession(adminApi);
   });
 });

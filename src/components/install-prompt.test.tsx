@@ -37,7 +37,7 @@ function installEvent(outcome: "accepted" | "dismissed" = "accepted") {
   return { event, prompt };
 }
 
-const banner = () => screen.queryByRole("complementary", { name: "Install the app" });
+const banner = () => screen.queryByRole("region", { name: "Install the app" });
 
 beforeEach(() => {
   localStorage.clear();
