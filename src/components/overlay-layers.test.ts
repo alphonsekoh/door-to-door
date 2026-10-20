@@ -88,7 +88,9 @@ describe("overlay stacking", () => {
     // A banner above a sheet would cover its Save button; above the nav it
     // would hide the tabs. Neither is a full-screen overlay, so the pattern
     // above does not see them.
-    const banner = /className="fixed [^"]*\bz-(\d+)/;
+    // The class itself, wherever it is written: the install banner picks
+    // between floating and sitting in the page.
+    const banner = /"fixed [^"]*\bz-(\d+)/;
     const sheetLayers = sources()
       .flatMap(({ text }) => [...text.matchAll(OVERLAY)].map((match) => Number(match[1])))
       .sort((a, b) => a - b);

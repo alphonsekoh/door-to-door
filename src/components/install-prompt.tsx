@@ -1,11 +1,13 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useDockedBarOnScreen } from "@/components/docked-actions";
 import { useReservedSpace } from "@/components/use-reserved-space";
 import { classifyBrowser, INSTALL_GUIDES, installPathFor } from "@/lib/install-environment";
 import type { InstallPath } from "@/lib/install-environment";
 import {
+  bannerFloats,
   deriveInstallState,
   isRecordingRoute,
   isStandalone,
@@ -48,6 +50,9 @@ function readEnvironment(): Environment {
  * that only exists after signing in would miss it. It only draws once the
  * member is signed in, never on a public route, and never on the block screens
  * where the recording form's Save button sits just above the nav.
+ *
+ * It floats above the nav only while that covers little (bannerFloats);
+ * otherwise it is the last thing in the page, so it is rendered inside main.
  */
 export function InstallPrompt() {
   const pathname = usePathname();
@@ -99,7 +104,29 @@ export function InstallPrompt() {
       })
     : null;
   const visible = state?.kind === "available" || state?.kind === "manual";
-  useReservedSpace("--banner-bottom", bannerRef, visible);
+  const docked = useDockedBarOnScreen();
+  const [size, setSize] = useState<{ height: number; screen: number } | null>(null);
+  /* Unmeasured, it floats: the layout effect below measures before paint. */
+  const floating = size === null ? !docked : bannerFloats({ ...size, docked });
+  useReservedSpace("--banner-bottom", bannerRef, visible && floating);
+
+  /* Measured before paint, and again as the text size or the screen
+     changes: the first frame must not float a banner that is too tall. */
+  useLayoutEffect(() => {
+    const element = bannerRef.current;
+    if (!visible || element === null) return;
+    const measure = () => {
+      setSize({ height: element.offsetHeight, screen: window.innerHeight });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer?.disconnect();
+    };
+  }, [visible]);
 
   if (!state || (state.kind !== "available" && state.kind !== "manual")) return null;
 
@@ -128,35 +155,46 @@ export function InstallPrompt() {
           steps: "Add it to your home screen to open it like an app.",
         };
 
+  /* In the page it is drawn no wider than floating, so it is never shorter
+     there: a banner just past the limit cannot flip back and forth. */
   return (
     <aside
       ref={bannerRef}
       aria-label="Install the app"
-      className="fixed inset-x-0 above-nav z-30 border-t border-border bg-surface px-4 py-3"
+      data-floating={floating ? "" : undefined}
+      className={
+        floating
+          ? "fixed inset-x-0 above-nav z-30 border-t border-border bg-surface px-4 py-3"
+          : "mt-6 rounded-xl border border-border bg-surface px-4 py-3"
+      }
     >
-      <div className="mx-auto flex max-w-screen-sm items-center gap-3">
-        <div className="flex-1">
+      {/* At large text the buttons drop under the words rather than squeeze
+          them to a column a word or two wide. */}
+      <div className="mx-auto flex max-w-screen-sm flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="min-w-0 flex-[1_1_12ch]">
           <p className="text-body font-semibold">{copy.title}</p>
           <p className="text-caption text-foreground-muted">{copy.steps}</p>
         </div>
-        {state.kind === "available" ? (
+        <div className="ml-auto flex gap-3">
+          {state.kind === "available" ? (
+            <button
+              type="button"
+              onClick={() => {
+                void install();
+              }}
+              className="min-h-11 btn-primary rounded-lg px-4 text-body font-semibold"
+            >
+              Install
+            </button>
+          ) : null}
           <button
             type="button"
-            onClick={() => {
-              void install();
-            }}
-            className="min-h-11 btn-primary rounded-lg px-4 text-body font-semibold"
+            onClick={dismiss}
+            className="min-h-11 rounded-lg px-3 text-body text-foreground-muted"
           >
-            Install
+            {state.kind === "manual" ? "Got it" : "Not now"}
           </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={dismiss}
-          className="min-h-11 rounded-lg px-3 text-body text-foreground-muted"
-        >
-          {state.kind === "manual" ? "Got it" : "Not now"}
-        </button>
+        </div>
       </div>
     </aside>
   );

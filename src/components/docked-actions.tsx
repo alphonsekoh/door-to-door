@@ -4,9 +4,11 @@ import {
   createContext,
   use,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
   type Ref,
 } from "react";
@@ -23,6 +25,33 @@ const HERE: Target = { at: "here" };
 const STAND_IN: Target = { at: "stand-in" };
 
 const Dock = createContext<Target>(HERE);
+
+/*
+ * How many docked bars are on screen. The install banner reads it: floating
+ * above the nav, it would sit on top of a pinned Save.
+ */
+let barsOnScreen = 0;
+const watchers = new Set<() => void>();
+
+function subscribe(watcher: () => void): () => void {
+  watchers.add(watcher);
+  return () => {
+    watchers.delete(watcher);
+  };
+}
+
+function countBar(change: 1 | -1): void {
+  barsOnScreen += change;
+  for (const watcher of watchers) watcher();
+}
+
+export function useDockedBarOnScreen(): boolean {
+  return useSyncExternalStore(
+    subscribe,
+    () => barsOnScreen > 0,
+    () => false,
+  );
+}
 
 /* The bar itself, and the marker after it that DockedActions watches. */
 function Bar({
@@ -114,6 +143,14 @@ export function DockedActions({ children }: { children: ReactNode }) {
   const marker = useRef<HTMLDivElement>(null);
   const [docked, setDocked] = useState(false);
   const host = target.at === "host" ? target.element : null;
+
+  /* Before paint, so a banner never floats over this bar for a frame. */
+  useLayoutEffect(() => {
+    countBar(1);
+    return () => {
+      countBar(-1);
+    };
+  }, []);
 
   useEffect(() => {
     const markerElement = marker.current;

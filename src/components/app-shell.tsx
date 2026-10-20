@@ -23,8 +23,10 @@ export function AppShell({ children }: AppShellProps) {
           <main className="mx-auto w-full max-w-screen-sm px-4 pt-banner pb-nav">
             <SyncStatusBar />
             {children}
+            {/* Inside main: an install banner too tall to float, or on a
+                screen with a docked Save, is the last thing in the page. */}
+            <PwaPrompts />
           </main>
-          <PwaPrompts />
           <BottomNav />
         </SyncProvider>
       </AccountGate>

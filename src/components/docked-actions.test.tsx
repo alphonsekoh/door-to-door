@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DockHost, DockedActions } from "@/components/docked-actions";
+import { DockHost, DockedActions, useDockedBarOnScreen } from "@/components/docked-actions";
 import userEvent from "@testing-library/user-event";
 
 type Callback = (entries: Partial<IntersectionObserverEntry>[]) => void;
@@ -168,6 +168,26 @@ describe("DockedActions", () => {
     expect(within(container).getByRole("form", { name: "Visit" })).toContainElement(
       within(container).getByRole("button", { name: "Save" }),
     );
+  });
+
+  it("tells the rest of the screen while a bar is docked", () => {
+    stubObserver();
+    const seen: boolean[] = [];
+    function Watcher() {
+      seen.push(useDockedBarOnScreen());
+      return null;
+    }
+    const { rerender } = render(
+      <>
+        <Watcher />
+        <DockedActions>
+          <button type="button">Save</button>
+        </DockedActions>
+      </>,
+    );
+    expect(seen.at(-1)).toBe(true);
+    rerender(<Watcher />);
+    expect(seen.at(-1)).toBe(false);
   });
 
   it("in a host, sits at the end of the whole screen, out of its form, and still submits it", async () => {
