@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminTeamSheet, type AdminTeamSubmit } from "@/components/admin-team-sheet";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { SessionStatus, Team, TeamList, User, UserSummary } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
@@ -18,7 +17,7 @@ import {
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
 import { loadAllUsers } from "@/lib/users";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 type Loaded = { teams: Team[]; users: User[] };
 

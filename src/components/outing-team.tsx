@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TeamSheet, type TeamSheetSubmit } from "@/components/team-sheet";
 import type { Participant, ParticipantList, Team, TeamList, User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -18,7 +17,7 @@ import {
 } from "@/lib/team-ui";
 import { useOnline } from "@/lib/use-online";
 import { loadCurrentUser } from "@/lib/users";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 type Loaded = { me: User; participants: Participant[]; teams: Team[] };
 

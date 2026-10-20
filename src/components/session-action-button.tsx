@@ -1,11 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import type { ActionSpec } from "@/lib/sessions";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 /*
  * Start, end or reopen, with the refusal spelled out.

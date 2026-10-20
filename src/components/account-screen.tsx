@@ -3,7 +3,6 @@
 import { DockedActions } from "@/components/docked-actions";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { accountStore } from "@/lib/account-state";
@@ -12,7 +11,7 @@ import { signOutAndForget } from "@/lib/sign-out";
 import { hasUnsyncedItems } from "@/lib/sw-update";
 import { useRole } from "@/lib/use-role";
 import { loadCurrentUser } from "@/lib/users";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
 

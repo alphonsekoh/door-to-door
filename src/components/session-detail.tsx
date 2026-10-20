@@ -4,13 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminTeams } from "@/components/admin-teams";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { SessionActionButton } from "@/components/session-action-button";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/sessions";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 /* While a session runs the numbers move, so they refresh on their own. Long
    enough not to drain the phone an admin is watching it on. */

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { DockHost } from "@/components/docked-actions";
 import { ReloadWhenOnline } from "@/components/reload-when-online";
 import { useSyncQueue } from "@/components/sync-provider";
@@ -13,7 +12,7 @@ import { shellState } from "@/lib/offline/shell-state";
 import { type SignedIn, fetchSignedIn } from "@/lib/sync/signed-in";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { savedOnPhoneText } from "@/lib/sync/sync-ui";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 /*
  * What a reload in a dead zone opens (#77): the service worker's navigation

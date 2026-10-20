@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import {
@@ -12,7 +11,7 @@ import {
   instantToDueDay,
 } from "@/lib/follow-ups";
 import { useOnline } from "@/lib/use-online";
-import { Sheet, SheetActions, SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, Sheet, SheetActions, SheetPresence } from "@/components/sheet";
 import { UnitNumber } from "@/components/unit-number";
 
 export type FollowUpSheetMode =

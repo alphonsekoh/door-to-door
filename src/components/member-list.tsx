@@ -2,12 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AddMemberForm } from "@/components/add-member-form";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
 import { formatDay } from "@/lib/dates";
-import { SheetPresence } from "@/components/sheet";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 const PAGE_SIZE = 100;
 

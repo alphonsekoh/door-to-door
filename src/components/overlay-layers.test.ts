@@ -48,7 +48,6 @@ describe("overlay stacking", () => {
       "admin-team-sheet.tsx",
       "amend-visit-sheet.tsx",
       "block-attach-sheet.tsx",
-      "confirm-dialog.tsx",
       "follow-up-sheet.tsx",
       "record-on-behalf-form.tsx",
       "sync-queue-sheet.tsx",
@@ -81,7 +80,8 @@ describe("overlay stacking", () => {
     const layerOf = (name: string) =>
       Number(new RegExp(`${name}: "fixed inset-0 z-(\\d+)`).exec(sheet)?.[1]);
     expect(layerOf("dialog")).toBeGreaterThan(layerOf("sheet"));
-    expect(readFileSync(join(DIR, "confirm-dialog.tsx"), "utf8")).toContain('layer="dialog"');
+    // ConfirmDialog lives beside Sheet, so the two never import each other.
+    expect(sheet).toMatch(/export function ConfirmDialog\b[\s\S]*?<Sheet\b[^>]*?layer="dialog"/);
   });
 
   it("keeps the install and update banners beneath the nav and every sheet", () => {
