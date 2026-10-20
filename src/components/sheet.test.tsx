@@ -295,11 +295,12 @@ describe("Sheet", () => {
     expect(Number(scrim().style.opacity)).toBe(1);
     fireEvent.pointerDown(handle, { pointerId: 1, isPrimary: true, clientY: 100 });
     fireEvent.pointerMove(panel, { pointerId: 1, clientY: 160 });
-    // 150 px of a 600 px sheet: a quarter of the way to clear.
+    // 50 px of a 600 px sheet, once the 10 px that start a drag are taken.
     await waitFor(() => {
       expect(Number(scrim().style.opacity)).toBeCloseTo(0.92, 2);
     });
     fireEvent.pointerMove(panel, { pointerId: 1, clientY: 260 });
+    // 150 px of a 600 px sheet: a quarter of the way to clear.
     await waitFor(() => {
       expect(Number(scrim().style.opacity)).toBeCloseTo(0.75, 2);
     });
