@@ -5,6 +5,7 @@ import {
   type Page,
   type PlaywrightWorkerArgs,
 } from "@playwright/test";
+import { execFile } from "node:child_process";
 import { ADMIN_STATE, MEMBER_STATE, PARTNER_STATE, SEED_BLOCK } from "./accounts";
 
 /*
@@ -35,9 +36,28 @@ type Fixtures = {
   /* Admin's cookies, for setting state up over the API rather than by driving
      six screens to reach the one under test. */
   adminApi: APIRequestContext;
+  stallDiag: undefined;
 };
 
 export const test = base.extend<Fixtures>({
+  // Scratch only: dump what WebKit is doing when a test runs far past normal.
+  stallDiag: [
+    // eslint-disable-next-line no-empty-pattern
+    async ({}, use, testInfo) => {
+      const timers = [18_000, 24_000].map((ms) =>
+        setTimeout(() => {
+          const label = `${testInfo.project.name} ${testInfo.titlePath.join(" > ")} @${String(ms)}ms`;
+          console.log(`STALL-DIAG start: ${label}`);
+          execFile("bash", ["scratch/dump.sh", label], { maxBuffer: 1e8 }, (error, stdout) => {
+            console.log(`STALL-DIAG done: ${label} -> ${stdout.trim()} ${String(error ?? "")}`);
+          });
+        }, ms),
+      );
+      await use(undefined);
+      for (const timer of timers) clearTimeout(timer);
+    },
+    { auto: true },
+  ],
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: ADMIN_STATE });
     const page = await context.newPage();

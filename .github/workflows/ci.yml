@@ -1,122 +1,26 @@
 name: CI
 
+# Scratch branch only (draft PR, never merged): bisects the WebKit stall seen
+# on PR #112 by running the E2E suite once per candidate revert, several times.
 on:
-  push:
-    branches: [main]
   pull_request:
-
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
 
 env:
   NODE_VERSION: "24"
 
 jobs:
-  static:
-    name: Lint, types and format
+  stall:
+    name: ${{ matrix.variant }} ${{ matrix.rep }}
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - run: npm ci
-
-      - name: Lint
-        run: npm run lint
-
-      # Runs `next typegen` first: LayoutProps and PageProps are generated into
-      # .next/types, which does not exist on a fresh checkout.
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Format check
-        run: npm run format:check
-
-      # openapi.yaml is the source of truth for types, Zod validators and the
-      # frontend client (#11), so it is linted like source code.
-      - name: Lint the OpenAPI contract
-        run: npm run spec:lint
-
-      # Types and Zod validators are generated from openapi.yaml. A spec change
-      # without regenerating, or a hand-edited generated file, would let the
-      # contract and the code enforcing it drift apart.
-      - name: Generated API code matches the contract
-        run: |
-          npm run generate:api
-          if [ -n "$(git status --porcelain -- src/generated)" ]; then
-            echo "::error::Generated API code is stale. Run 'npm run generate:api' and commit the result."
-            git status --short -- src/generated
-            git diff -- src/generated | head -60
-            exit 1
-          fi
-
-      # Migrations are generated from the schema; a hand-edited migration or a
-      # schema change without one would silently diverge from the database.
-      - name: Migrations match the schema
-        run: |
-          npm run db:generate
-          # --porcelain, not "git diff": a new migration is an untracked file,
-          # which git diff would not report.
-          if [ -n "$(git status --porcelain -- drizzle)" ]; then
-            echo "::error::Schema and migrations are out of sync. Run 'npm run db:generate' and commit the result."
-            git status --short -- drizzle
-            exit 1
-          fi
-
-  test:
-    name: Tests and coverage
-    runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: door_to_door_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      # The harness alone takes a full URL; the app reads config.yaml instead.
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/door_to_door_test
-
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - run: npm ci
-
-      # Runs unit, component and integration projects, then enforces the
-      # per-glob thresholds. Fails the build if any threshold is missed.
-      - name: Test with coverage
-        run: npm run test:coverage
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: coverage
-          path: coverage/
-          retention-days: 7
-
-  e2e:
-    name: End-to-end smoke
-    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [base, nobalance, nobreak, nolargetext, noscrim]
+        rep: [1, 2]
+        include:
+          - variant: base
+            rep: 3
 
     services:
       postgres:
@@ -134,9 +38,6 @@ jobs:
           --health-retries 10
 
     env:
-      # global-setup creates the database itself, so the server here only has
-      # to exist. The app is started by Playwright's webServer, which writes
-      # its own config file and passes the credentials as environment.
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/door_to_door_e2e
       AUTH_SECRET: e2e-secret-not-used-anywhere-else
 
@@ -150,55 +51,31 @@ jobs:
 
       - run: npm ci
 
-      # Only the engines the suite actually uses: Chromium for Android, WebKit
-      # for every browser on iOS. Firefox is not run.
       - name: Install the browsers
         run: npx playwright install --with-deps chromium webkit
+
+      - name: Install gdb
+        run: sudo apt-get install -y gdb
+
+      - name: Apply the variant
+        run: bash scratch/variant.sh ${{ matrix.variant }}
 
       - name: Flows that must never break
         run: npm run test:e2e
 
-      - name: Upload the report
-        if: failure()
+      - name: Show the stall dumps
+        if: always()
+        run: |
+          ls -la stall-diag 2>/dev/null || echo "no dumps"
+          for f in stall-diag/*; do [ -f "$f" ] && head -c 60000 "$f"; done || true
+
+      - name: Upload
+        if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: playwright-report
+          name: diag-${{ matrix.variant }}-${{ matrix.rep }}
           path: |
+            stall-diag/
             playwright-report/
             test-results/
           retention-days: 7
-
-  build:
-    name: Production build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - run: npm ci
-
-      - name: Cache Next.js build
-        uses: actions/cache@v5
-        with:
-          path: .next/cache
-          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**') }}
-          restore-keys: |
-            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
-            next-${{ runner.os }}-
-
-      # Decoys, so the postbuild check has something to catch: a trace only
-      # copies files that exist. The config is deliberately invalid, so a build
-      # that read it would still fail - it must need no config and no
-      # database (D-13-4).
-      - name: Plant a decoy config.yaml and .env
-        run: |
-          echo "decoy: the build must neither read nor copy this file" > config.yaml
-          echo "STANDALONE_DECOY=must-not-reach-the-standalone-output" > .env
-
-      # postbuild prunes the .env Next copies into .next/standalone/ and fails
-      # if a settings file or secret is left there (#106).
-      - run: npm run build
