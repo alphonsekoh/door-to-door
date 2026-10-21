@@ -467,10 +467,13 @@ export function ConsolidatedHistory() {
             const { household, block } = group;
             return (
               <li key={group.key} className="rounded-xl border border-border bg-surface p-4">
-                <div className="flex items-baseline justify-between gap-3">
+                {/* The count drops under, on the right, once the door would
+                    have under 12ch: squeezed, the name was cut to a few
+                    letters at the largest text. */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                   <Link
                     href={`/households/${household.id}`}
-                    className="flex min-h-11 min-w-0 flex-col justify-center"
+                    className="flex min-h-11 min-w-0 flex-[1_1_12ch] flex-col justify-center"
                   >
                     <span className="block text-body font-semibold tabular-nums">
                       Blk {block.name}, <UnitNumber value={household.unitNumber} />
@@ -481,7 +484,7 @@ export function ConsolidatedHistory() {
                       </span>
                     )}
                   </Link>
-                  <span className="shrink-0 text-caption text-foreground-muted">
+                  <span className="ml-auto shrink-0 text-caption text-foreground-muted">
                     {group.entries.length} {group.entries.length === 1 ? "visit" : "visits"}
                   </span>
                 </div>
