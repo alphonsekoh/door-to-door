@@ -93,24 +93,24 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done; D-22-2 partly superseded (#96)                                                          |
 | 23  | [History API](23-history-api.md)                        | Done                                                                                          |
 | 24  | [Active session screen](24-active-session-screen.md)    | Done; D-24-3 wording refined (#111)                                                           |
-| 25  | [Recording form](25-recording-form.md)                  | Done; D-25-4 refined (#111)                                                                   |
+| 25  | [Recording form](25-recording-form.md)                  | Done; D-25-4, D-25-5 refined (#111)                                                           |
 | 26  | [Block unit list](26-unit-list.md)                      | Done                                                                                          |
 | 27  | [Own history](27-own-history.md)                        | Done                                                                                          |
 | 28  | [Admin sessions](28-admin-sessions.md)                  | Done                                                                                          |
 | 29  | [Admin records](29-admin-records.md)                    | Done                                                                                          |
 | 30  | [Consolidated history](30-consolidated-history.md)      | Done                                                                                          |
 | 31  | [Member management](31-member-management.md)            | Done                                                                                          |
-| 32  | [PWA and service worker](32-pwa.md)                     | Done; D-32-6 refined (#99), D-32-17 superseded (#100); D-32-13, D-32-20 refined (#111)        |
+| 32  | [PWA and service worker](32-pwa.md)                     | Done; D-32-6 refined (#99), D-32-17 superseded (#100); D-32-13/20/21 refined (#111)           |
 | 33  | [Offline queue and sync engine](33-offline-queue.md)    | Done; D-33-22 refined (#100), D-33-8 refined (#101); D-33-12, D-33-29, D-33-30 refined (#111) |
 | 34  | [Offline sync tests](34-offline-tests.md)               | Done (PR #101)                                                                                |
 | 35  | [Follow-up notes UI](35-follow-up-ui.md)                | Done                                                                                          |
 | 36  | [Coverage gaps](36-coverage-gaps.md)                    | Done (PR #103)                                                                                |
 | 37  | [E2E smoke](37-e2e.md)                                  | Done; D-37-3 partly superseded (#93)                                                          |
 | 38  | [Documentation pass](38-docs-pass.md)                   | Done (PR #104); D-38-5 refined (#106); D-38-7 partly superseded (#111)                        |
-| 74  | [Teams and own name](74-teams.md)                       | Done; D-74-47 refined, D-74-36/56/57 wording (#111)                                           |
+| 74  | [Teams and own name](74-teams.md)                       | Done; D-74-47 refined, D-74-9 extended, D-74-36/56/57 wording (#111)                          |
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                                                                          |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                                                                          |
-| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); D-77-11 refined (#106)                                                        |
+| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); D-77-11 refined (#106); D-77-11, D-77-12, D-77-15 refined (#111)              |
 | 83  | [Per-request auth](83-per-request-auth.md)              | Done                                                                                          |
 | 85  | [Account gone message](85-account-gone-message.md)      | Done                                                                                          |
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                                                                          |
@@ -120,4 +120,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 105 | [Create first admin](105-create-admin.md)               | Done (PR #108)                                                                                |
 | 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                                                                |
 | 109 | [Private test config](109-private-test-config.md)       | Done (PR #110)                                                                                |
-| 111 | [Apple design pass](111-apple-design.md)                | In review (PR #112); D-111-50, D-111-52 await the owner (conflict with D-33-12)               |
+| 111 | [Apple design pass](111-apple-design.md)                | In review (PR #112); D-111-50, D-111-52 rejected by the owner (D-33-12 kept)                  |

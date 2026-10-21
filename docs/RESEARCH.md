@@ -697,7 +697,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
 - **Source:** measured in PR #112, fix round 6 (`e2e/large-text.spec.ts`,
   `e2e/record-visit.spec.ts`); CI run 39405474323
-- **Used by:** D-111-49, D-111-50, D-111-52
+- **Used by:** D-111-49, D-111-50 and D-111-52 (both rejected, D-111-61)
 
 ### R-72 · A view timeline can style an element by whether another is in view
 
@@ -735,4 +735,41 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   accessibility sizes, a long press on an item shows it enlarged in the large content
   viewer instead. Not checked on a device.
 - **Source:** [Apple, `UILargeContentViewerInteraction`](https://developer.apple.com/documentation/uikit/uilargecontentviewerinteraction)
-- **Used by:** #111 open question 2
+- **Used by:** D-111-60
+
+### R-75 · A container query's `rem` is the root's font size
+
+- **Finding:** Relative units in a container query condition are evaluated against the
+  query container's computed values, and `rem` there is still the root element's font
+  size: the reader's text size (D-111-24). Resetting `--reader-rem` on an element does
+  not change it, so a nav drawn at the 16px base needs a px threshold for its labels.
+- **Source:** [CSS Containment 3, the `@container` rule](https://drafts.csswg.org/css-contain-3/#container-rule);
+  seen in PR #112, fix round 8
+- **Used by:** D-111-60
+
+### R-76 · What the chrome leaves once it stops growing (measured)
+
+- **Finding:** With the chrome at the 16px base, the nav is 64px, the docked Save bar
+  80px and the sync row 44px at every text size. On the iPhone 13 profile at 32px with
+  records waiting, pinned chrome is 28% of the screen. From 16 to 32px on both profiles,
+  with and without records waiting, the unit field is uncovered as the recording screen
+  and the offline shell's form open.
+- **Source:** measured in PR #112, fix round 8 (`e2e/large-text.spec.ts`); passed on CI's
+  Linux Chromium and WebKit in run 39582214648
+- **Used by:** D-111-60, D-111-61
+
+### R-77 · Easing a `filter` crashes WPE WebKit on CI's Linux runners (measured)
+
+- **Finding:** The WPE WebKit that Playwright runs on Linux segfaulted on its compositor
+  thread (`ThreadedCompositor`, always `libWPEWebKit-2.0.so.1.10.2 + 0x5fd556a`) when a
+  press's `filter` eased back. Writing the core dump took 20 to 100 s, during which the
+  page neither painted nor exited, so tests timed out wherever they were; it looked like
+  a stall. Full runs that eased a filter crashed in 15 of 15, including commits back to
+  the first, and with the glass or the scroll-driven edges removed; runs without it, in
+  0 of 8 (main, the head without the filter transition or without press transitions, and
+  dedd6ee three times). Earlier green runs had their crashes land between tests. macOS
+  WebKit, which composites through Core Animation as iOS Safari does, never reproduced
+  it, so this is no evidence of a crash on an iPhone.
+- **Source:** measured in PR #112, fix round 9, on scratch PR #114 (core dumps from
+  `coredumpctl` after each CI run); CI run 39582214648 on dedd6ee
+- **Used by:** D-111-67, D-111-68

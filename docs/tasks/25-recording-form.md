@@ -20,7 +20,8 @@ The screen used at a door.
   to edge; `DockHost` holds it at the end of the block screen and the offline shell.
   _Refined by D-111-40:_ Save is in the first paint, where it docks.
 - **D-25-5 · After saving, the next unit is suggested** (`#12-07` → `#12-08`), or
-  nothing when the numbering is unrecognised.
+  nothing when the numbering is unrecognised. _Refined by D-111-69:_ the Saved line and
+  the suggested unit are then scrolled into view, clear of the pinned chrome.
 - **D-25-6 · Optional fields send `null`, never `""`.** Relies on D-10-3.
 - **D-25-7 · Visit ids are UUIDv7 generated on the client.** Implements D-07-3.
 - **D-25-8 · A failed save keeps everything typed.**

@@ -49,7 +49,8 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 - **D-74-9 · Sign-out clears the block cache before signing out; a failed clear never
   blocks sign-out.** It warns first if `hasUnsyncedItems()` is true (made real by D-33-15).
   _Why:_ the cookie is what protects the account, and clearing first leaves a cache
-  rather than a list if the request dies halfway. Completes D-32-7.
+  rather than a list if the request dies halfway. Completes D-32-7. _Extended by
+  D-111-68:_ a clear that has not settled in 1.5 s counts as failed.
 - **D-74-10 · Sign-out calls `signOut({ redirect: false })` then
   `window.location.assign("/sign-in")`.** _Why:_ Auth.js builds the returned URL from the
   request host and changed origin under `HOSTNAME=127.0.0.1`; a full navigation also

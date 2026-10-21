@@ -62,9 +62,12 @@ Owner decisions are marked **(owner)**.
   recording. Refines D-33-22: the `online` reload stays only in the no-copy and gate
   states (_refined by D-106-8:_ and while the copy loads); flushing relies on the queue's own triggers (D-33-19). _Why:_ never navigate
   under someone mid-form, never offer a full load into a dead zone, and
-  `navigator.onLine` lies with one bar.
+  `navigator.onLine` lies with one bar. _Refined by D-111-53 and D-111-63:_ the row wraps
+  whole, Continue drops under it, and it is compact on a short screen.
 - **D-77-12 · Blocks are in-page state; the bottom nav is hidden and `--nav-height` is
   0 on the shell.** _Why:_ every offline navigation reloads cold and drops the form.
+  _Refined by D-111-63:_ an open block is the shell's inline title, with an in-page way
+  back to the blocks.
 - **D-77-13 · Shell units cannot be tapped, and a record sent after its block's copy
   stays listed, marked "Sent".** Decided by `syncedAt`, not `enqueuedAt`. _Why:_ D-33-13;
   the shell cannot re-read the server, and a record queued before a re-read but sent
@@ -74,7 +77,8 @@ Owner decisions are marked **(owner)**.
   cold reload. _Research:_ R-48.
 - **D-77-15 · "N records are saved on this phone" counts every unsent record of the
   owner, held and quarantined included.** Same set as D-33-15, not D-33-14. _Why:_ all of
-  them exist only on this phone.
+  them exist only on this phone. _Refined by D-111-63:_ it shows with the block list; under
+  an open block the sync bar counts.
 - **D-77-16 · The offline E2E dispatches `online` by hand, and the second member signs
   in to `/account`.** _Why:_ Playwright fires no `online` for a document loaded offline
   (R-47); the outing screen would write the second member's own copy over the first's

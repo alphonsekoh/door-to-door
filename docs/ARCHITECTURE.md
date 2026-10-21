@@ -205,8 +205,7 @@ Google SSO (#14) is not built.
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
-- Overlay layers: sync status bar `z-20` (sticky while something is unsent, except beside
-  a docked Save when the chrome would pass half the screen: D-111-52, proposed), banners
+- Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
   `z-30`, bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`.
   Guarded by `overlay-layers.test.ts`, which reads the sheet and dialog layers from
   `src/components/sheet.tsx`.
@@ -229,26 +228,32 @@ Google SSO (#14) is not built.
   one-off colours or blur (D-111-5):
   - Colour tokens (`--app-*`) in light and dark, with stronger edges and text under
     `prefers-contrast: more`.
-  - `--reader-rem`, the text size: 16 to 32px, following iOS Dynamic Type. Spacing, the
-    type scale and `--nav-height` are multiples of it.
+  - `--reader-rem`, the text size: 16 to 32px, following iOS Dynamic Type. Spacing and
+    the type scale are multiples of it.
+  - `chrome-size` holds the nav, the docked Save bar and the sync row at the 16px base
+    (`--chrome-rem`) at every text size; `--nav-height` is 64px. `bleed-x` lines them up
+    with the page's margin (`--page-gutter`), and `scroll-clear-chrome` scrolls clear of
+    them.
   - Control utilities: `btn-*`, `field`, `notice-*`.
   - Press feedback: `press`, `press-row` and the base layer. `PressFeedback` in
-    `AppShell` makes iOS honour `:active`.
+    `AppShell` makes iOS honour `:active`. No `filter` is ever transitioned
+    (`src/app/filter-transitions.test.ts`).
   - `material-chrome`, the grainy glass, solid under reduced transparency or more
     contrast.
   - `scroll-edge`.
-  - Short-screen switches: `--short-by` and `--crowded-by`, read through `clamp()` by
-    `control-compact`, `space-under-tabs`, `held-row` and `sync-pinned`, so they hold on
-    the first paint.
+  - The short-screen switch: `--short-by`, read through `clamp()` by `control-compact`
+    and `space-under-tabs`, so it holds on the first paint.
 
-  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24 and D-111-48.
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60 and
+  D-111-67.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
   draws a `standIn` there until it mounts, so Save is in the server's HTML (D-111-20,
   D-111-40). Unit numbers are shown through `UnitNumber`, which never splits them
   (D-111-36).
-- Child screens pass `back` to `PageHeader`. A retracing `BackLink` uses
+- Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
+  the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28). Every
   date goes through `src/lib/dates.ts` (D-111-29).
 - The bottom nav does not render on public routes (its prefetches poisoned the
@@ -302,7 +307,8 @@ Google SSO (#14) is not built.
   while it is at most a quarter of the screen and no docked Save is on screen; otherwise
   it is a card at the end of the page (D-111-46).
 - Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local
-  copy (D-77-6).
+  copy (D-77-6). The block-list clear gives up after 1.5 s and never blocks either
+  (D-111-68).
 
 ## Offline
 

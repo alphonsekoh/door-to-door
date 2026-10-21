@@ -76,7 +76,8 @@ Owner decisions are marked **(owner)**.
   form under a thumb; saving with signal must not flash it. _Refined by D-111-21:_ the row
   is still held from first paint, but pinned only while something is unsent; quiet, it
   scrolls away, and a scroll-edge fade replaces its bottom rule. The sheet is a chunk of
-  its own, fetched when the page is idle (D-111-15).
+  its own, fetched when the page is idle (D-111-15). _Kept by D-111-61 (owner):_ held at
+  every text size and pinned while anything is unsent, drawn at the 16px base.
 - **D-33-13 · Amends and on-behalf recording stay online-only.** Units known only to
   the queue are not tappable. _Why:_ amending needs the server's row; D-74-19.
 - **D-33-14 · Update prompt waits only for the member's records still being sent

@@ -85,7 +85,8 @@ Make the app installable and the shell load with no network.
   `ResizeObserver`.
 - **D-32-21 · A failed cache clear on sign-in never blocks it.** Extends D-32-7, mirrors
   D-74-9. _Why:_ the session is already set, and a rejection left the button disabled
-  with no message.
+  with no message. _Extended by D-111-68:_ a clear that has not settled in 1.5 s counts
+  as failed.
 
 ## Relies on
 
