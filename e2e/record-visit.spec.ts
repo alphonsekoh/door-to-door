@@ -1,6 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
 import { MEMBER_STATE, SEED_BLOCK } from "./accounts";
-import { adminRequest, endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
+import {
+  adminRequest,
+  endActiveSession,
+  ensureActiveSession,
+  expect,
+  test,
+  untilLive,
+} from "./fixtures";
 
 /*
  * Flow 2: a member records a unit and finds it again.
@@ -402,7 +409,7 @@ test.describe("the phone's display settings", () => {
     memberPage,
   }) => {
     // Opened at the default size, then the text made larger, as from
-    // Control Centre: the nav doubles in height under a bar already shown.
+    // Control Centre: the form doubles in height under a bar already shown.
     await openBlock(memberPage);
     await memberPage.evaluate(() => {
       document.documentElement.style.fontSize = "32px";
@@ -410,7 +417,7 @@ test.describe("the phone's display settings", () => {
     await memberPage.getByRole("button", { name: "Add details" }).click();
     const bar = memberPage.locator('[data-dock="nav"]');
     // A little of the form still runs on under the bar: it is held on the
-    // nav, so it is glass. Measured against the old nav it read as resting.
+    // nav, so it is glass.
     await memberPage.evaluate(() => {
       window.scrollTo(0, document.documentElement.scrollHeight - window.innerHeight - 32);
     });
@@ -587,6 +594,7 @@ test.describe("a save that cannot be queued", () => {
       route.abort("internetdisconnected"),
     );
     await memberPage.goto(block ?? "/");
+    await untilLive(memberPage);
 
     await memberPage.getByLabel("Unit number").fill("#21-19");
     await memberPage.getByRole("radio", { name: "Medium" }).click();

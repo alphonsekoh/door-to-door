@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK } from "./accounts";
-import { ensureActiveSession, expect, test } from "./fixtures";
+import { ensureActiveSession, expect, test, untilLive } from "./fixtures";
 
 /*
  * Every screen at the largest text the app draws: 32px, twice the base
@@ -212,45 +212,59 @@ function layoutFaults(page: Page): Promise<string[]> {
       }
     }
 
-    /*
-     * Chrome that stays put - the nav, a pinned Save, a floating banner -
-     * leaves the page at least half the screen. Only checked with no sheet
-     * open: a sheet is meant to cover the page.
-     */
-    if (root === document.body) {
-      const height = window.innerHeight;
-      const spans: [number, number][] = [];
-      for (const element of document.body.querySelectorAll("*")) {
-        const style = getComputedStyle(element);
-        if (style.position !== "fixed" && style.position !== "sticky") continue;
-        if (!drawn(element)) continue;
-        const box = element.getBoundingClientRect();
-        if (style.position === "sticky") {
-          const top = style.top === "auto" ? null : parseFloat(style.top);
-          const bottom = style.bottom === "auto" ? null : parseFloat(style.bottom);
-          const stuck =
-            (top !== null && Math.abs(box.top - top) < 1) ||
-            (bottom !== null && Math.abs(box.bottom - (height - bottom)) < 1);
-          if (!stuck) continue;
-        }
-        spans.push([Math.max(0, box.top), Math.min(height, box.bottom)]);
-      }
-      spans.sort((a, b) => a[0] - b[0]);
-      let covered = 0;
-      let reach = 0;
-      for (const [top, bottom] of spans) {
-        const from = Math.max(top, reach);
-        if (bottom > from) covered += bottom - from;
-        reach = Math.max(reach, bottom);
-      }
-      if (covered > height / 2) {
-        faults.push(
-          `chrome that stays put covers ${String(Math.round((covered / height) * 100))}% of the screen`,
-        );
-      }
-    }
     return [...new Set(faults)];
   });
+}
+
+/*
+ * How much of the screen chrome that stays put covers - the nav, a pinned
+ * Save or sync bar, a floating banner - as a share of its height. None with
+ * a sheet open: a sheet is meant to cover the page.
+ */
+function chromeShare(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const open = document.querySelector(
+      '[data-state="open"] > [role="dialog"], [data-state="open"] > [role="alertdialog"]',
+    );
+    if (open !== null) return 0;
+    const height = window.innerHeight;
+    const spans: [number, number][] = [];
+    for (const element of document.body.querySelectorAll("*")) {
+      const style = getComputedStyle(element);
+      if (style.position !== "fixed" && style.position !== "sticky") continue;
+      if (element.closest('[aria-hidden="true"]') !== null) continue;
+      const box = element.getBoundingClientRect();
+      if (box.width < 2 || box.height < 2 || style.visibility === "hidden") continue;
+      if (style.position === "sticky") {
+        const top = style.top === "auto" ? null : parseFloat(style.top);
+        const bottom = style.bottom === "auto" ? null : parseFloat(style.bottom);
+        const stuck =
+          (top !== null && Math.abs(box.top - top) < 1) ||
+          (bottom !== null && Math.abs(box.bottom - (height - bottom)) < 1);
+        if (!stuck) continue;
+      }
+      spans.push([Math.max(0, box.top), Math.min(height, box.bottom)]);
+    }
+    spans.sort((a, b) => a[0] - b[0]);
+    let covered = 0;
+    let reach = 0;
+    for (const [top, bottom] of spans) {
+      const from = Math.max(top, reach);
+      if (bottom > from) covered += bottom - from;
+      reach = Math.max(reach, bottom);
+    }
+    return covered / height;
+  });
+}
+
+/* Everything wrong on screen, the chrome's share included. */
+async function screenFaults(page: Page): Promise<string[]> {
+  const faults = await layoutFaults(page);
+  const share = await chromeShare(page);
+  if (share > 0.5) {
+    faults.push(`chrome that stays put covers ${String(Math.round(share * 100))}% of the screen`);
+  }
+  return faults;
 }
 
 /* In view and what a tap there lands on: inside its box is not enough when
@@ -315,7 +329,7 @@ async function expectWhole(target: Locator, what: string): Promise<void> {
 
 async function expectFits(page: Page, screen: string, ready: Locator): Promise<void> {
   await expect(ready).toBeVisible();
-  await expect.poll(() => layoutFaults(page), { message: screen }).toEqual([]);
+  await expect.poll(() => screenFaults(page), { message: screen }).toEqual([]);
   await expectTappable(ready, `the first thing to tap on ${screen}`);
 }
 
@@ -436,23 +450,97 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
   await expectFits(page, "Team", page.getByRole("button", { name: "Make an admin" }).first());
 });
 
+/* From the default to the cap: the iOS sizes past Large (21px, 23px), and
+   either side of where each phone turns compact (about 25px on an iPhone
+   13, 27px on a Pixel 5). */
+const SIZES = [
+  "16px",
+  "18px",
+  "20px",
+  "21px",
+  "23px",
+  "25px",
+  "26px",
+  "27px",
+  "28px",
+  "30px",
+  "32px",
+];
+
+type ChromeBoxes = {
+  nav: number | null;
+  bar: number | null;
+  row: number | null;
+  labels: { label: string; whole: boolean }[];
+};
+
+/* The heights of the chrome that stays put - the nav, the docked Save bar
+   and the sync row - and whether each nav label is drawn whole in its tab,
+   which is at least 44px tall. */
+function chromeBoxes(page: Page): Promise<ChromeBoxes> {
+  return page.evaluate(() => {
+    const height = (element: Element | null) =>
+      element === null ? null : Math.round(element.getBoundingClientRect().height);
+    const nav = document.querySelector('nav[aria-label="Primary"]');
+    const labels = [...(nav?.querySelectorAll("li a") ?? [])].map((link) => {
+      const tab = link.getBoundingClientRect();
+      const label = link.querySelector("span")?.getBoundingClientRect();
+      const whole =
+        label !== undefined &&
+        label.width > 1 &&
+        label.left >= tab.left - 0.5 &&
+        label.right <= tab.right + 0.5 &&
+        tab.height >= 44;
+      return { label: link.textContent.trim(), whole };
+    });
+    return {
+      nav: height(nav),
+      bar: height(document.querySelector('[data-dock="nav"]')),
+      row: height(document.querySelector("main > :first-child")),
+      labels,
+    };
+  });
+}
+
+/*
+ * A recording form as it opens, at every size: its unit number in view and
+ * uncovered without a scroll, and the chrome that stays put leaving half
+ * the screen. That chrome keeps the size it has at the 16px base, as an
+ * iPhone's tab bar and toolbars do, with every nav label whole.
+ */
+async function expectFormOpensInView(
+  page: Page,
+  what: string,
+  also: (size: string) => Promise<void> = () => Promise.resolve(),
+): Promise<void> {
+  const unit = page.getByLabel("Unit number");
+  await atSize(page, "16px");
+  const base = await chromeBoxes(page);
+  expect(
+    base.labels.every((label) => label.whole),
+    `the nav's labels ${what}`,
+  ).toBe(true);
+  for (const size of SIZES) {
+    await atSize(page, size);
+    expect(await page.evaluate(() => window.scrollY), `${what}, opened scrolled`).toBe(0);
+    await expectInView(unit, `the unit number ${what} at ${size}`);
+    expect(await chromeShare(page), `the chrome ${what} at ${size}`).toBeLessThanOrEqual(0.5);
+    expect(await chromeBoxes(page), `the chrome's size ${what} at ${size}`).toEqual(base);
+    await also(size);
+  }
+}
+
 test("the recording screen opens with its unit number in view, at every text size", async ({
   memberPage: page,
 }) => {
   await page.goto(`/blocks/${SEED_BLOCK}`);
   await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
-  const unit = page.getByLabel("Unit number");
   const back = page.getByRole("link", { name: "Back to Session" });
-  /* From the default to the cap, through the sizes either side of where
-     the screen turns compact on each phone. */
-  for (const size of ["16px", "20px", "23px", "25px", "26px", "27px", "28px", "30px", "32px"]) {
-    await atSize(page, size);
-    expect(await page.evaluate(() => window.scrollY), "the screen opened scrolled").toBe(0);
-    await expectInView(unit, `the unit number at ${size}`);
+  await expectFormOpensInView(page, "with nothing waiting", async (size) => {
     const box = await back.boundingBox();
     expect(box?.width, `the way back at ${size}`).toBeGreaterThanOrEqual(44);
     expect(box?.height, `the way back at ${size}`).toBeGreaterThanOrEqual(44);
-  }
+  });
 });
 
 /* The blocks the phone has kept for recording offline. */
@@ -478,11 +566,12 @@ test.describe("without signal", () => {
   /* page.route cannot reach a request the service worker makes. */
   test.use({ serviceWorkers: "block" });
 
-  test("with records waiting, the count stays whole and the chrome leaves half the screen", async ({
+  test("with records waiting, the recording screen opens with its unit number in view, under the pinned count", async ({
     memberPage: page,
   }) => {
     await page.route("**/api/visits/sync", (route) => route.abort("internetdisconnected"));
     await page.goto(`/blocks/${SEED_BLOCK}`);
+    await untilLive(page);
     for (const unit of ["#88-01", "#88-02"]) {
       await page.getByLabel("Unit number").fill(unit);
       await page.getByRole("radio", { name: "High" }).click();
@@ -492,18 +581,68 @@ test.describe("without signal", () => {
     const bar = page.getByRole("button", { name: /2 waiting to send/ });
     await expect(bar).toBeVisible();
 
-    /* Scrolled to the end first, so whatever is pinned is pinned. */
+    /* Opened again with them waiting, as the next block is. */
+    await page.goto(`/blocks/${SEED_BLOCK}`);
+    await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    await expect(bar).toBeVisible();
+    await expectFormOpensInView(page, "with records waiting", async (size) => {
+      await expectWhole(bar.getByText("2 waiting to send"), `the count at ${size}`);
+    });
+
+    /* Scrolled to the end: the count stays pinned at the top while anything
+       is unsent (D-33-12), and with the rest leaves half the screen. */
     const scrolled = async (screen: string) => {
       await atCap(page);
       await page.evaluate(() => {
         window.scrollTo(0, document.body.scrollHeight);
       });
-      await expect.poll(() => layoutFaults(page), { message: screen }).toEqual([]);
+      await expect.poll(() => screenFaults(page), { message: screen }).toEqual([]);
       await expectWhole(bar.getByText("2 waiting to send"), `the count on ${screen}`);
     };
     await scrolled("recording, with records waiting");
+    expect(
+      await page.evaluate(() => window.scrollY),
+      "the form is long enough to scroll",
+    ).toBeGreaterThan(0);
+    expect(Math.abs((await bar.boundingBox())?.y ?? 99), "the count pinned on top").toBeLessThan(1);
     await page.goto("/");
     await scrolled("Session, with records waiting");
+  });
+
+  test("the offline shell's recording form opens with its unit number in view, at every text size", async ({
+    memberPage: page,
+  }) => {
+    /* Home keeps the session on the phone, and the block screen its block. */
+    await page.goto("/");
+    await page.getByRole("link", { name: /Blk 123/ }).click();
+    await expect.poll(() => blocksOnPhone(page)).toContain(SEED_BLOCK);
+
+    /* As after a cold reload in a dead spot. */
+    await page.route("**/api/**", (route) => route.abort("internetdisconnected"));
+    await page.goto("/offline");
+    await page.getByRole("button", { name: /^Continue as / }).click();
+    const open = async () => {
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await page.getByRole("button", { name: /^Blk 123/ }).click();
+      await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    };
+    await open();
+    await expectFormOpensInView(page, "offline");
+
+    /* Then with records waiting: two saved here, and the block opened again. */
+    await atSize(page, "16px");
+    for (const unit of ["#89-01", "#89-02"]) {
+      await page.getByLabel("Unit number").fill(unit);
+      await page.getByRole("radio", { name: "High" }).click();
+      await page.getByRole("button", { name: "Save and next" }).click();
+      await expect(page.getByRole("status")).toContainText(`Saved ${unit} on this phone`);
+    }
+    await page.getByRole("button", { name: "All blocks" }).click();
+    await open();
+    await expect(page.getByRole("button", { name: /2 waiting to send/ })).toBeVisible();
+    await expectFormOpensInView(page, "offline, with records waiting");
   });
 
   test("the offline shell's line about the records is never cut short", async ({
