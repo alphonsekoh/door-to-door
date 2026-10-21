@@ -15,4 +15,4 @@ if [ "$1" != base ] && [ -z "$(git status --porcelain -- src e2e)" ]; then
   echo "variant $1 changed nothing"
   exit 1
 fi
-git diff HEAD -- src e2e | head -40
+git diff --stat HEAD -- src e2e

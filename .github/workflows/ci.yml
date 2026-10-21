@@ -16,11 +16,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [base, nobalance, nobreak, nolargetext, noscrim]
+        variant: [nolargetext]
         rep: [1, 2]
-        include:
-          - variant: base
-            rep: 3
 
     services:
       postgres:
