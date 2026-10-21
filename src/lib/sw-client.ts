@@ -1,46 +1,36 @@
 import { API_CACHE_NAME, SW_MESSAGES } from "@/lib/sw-cache-rules";
 
-/* How long sign-in or sign-out waits for the worker to say it has cleared.
-   A worker from a build before it answered never does, but still clears. */
-export const CLEAR_ANSWER_MS = 1500;
+/* The longest sign-in or sign-out waits for the cache to be cleared. */
+export const CLEAR_WITHIN_MS = 1500;
 
 /*
  * Forgets cached API answers. Called on sign-in and on sign-out so a second
- * member on a shared phone never reads the first one's data.
+ * member on a shared phone never reads the first one's data. The page deletes
+ * the cache itself, and waits for that, so it is gone before the next screen
+ * loads; the worker is told as well.
  *
- * One side deletes the cache, never both at once. With a worker active it is
- * asked, and woken to answer if asleep; the page waits for the answer, for a
- * while at most, and leaves the cache alone. On WebKit the page deleting it
- * at the same time as the worker, or while a first worker was installing,
- * could leave a promise that never settled, and sign-in then never left its
- * page. A worker never yet active has cached nothing, so while one installs
- * there is nothing to delete. With no worker at all, the page deletes it.
+ * Bounded as a whole, the browser's own calls included: a clear that never
+ * settles must not hold a member on "Signing in…" any more than a failed one
+ * may (D-32-21).
  */
-export async function clearServiceWorkerCaches(answerWithin = CLEAR_ANSWER_MS): Promise<void> {
-  const registration =
-    "serviceWorker" in navigator ? await navigator.serviceWorker.getRegistration() : undefined;
-  if (registration?.active) {
-    await askToClear(registration.active, answerWithin);
-    return;
+export async function clearServiceWorkerCaches(within = CLEAR_WITHIN_MS): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, within);
+  });
+  try {
+    await Promise.race([clear(), deadline]);
+  } finally {
+    clearTimeout(timer);
   }
-  if (registration !== undefined && (registration.installing ?? registration.waiting) !== null) {
-    return;
+}
+
+async function clear(): Promise<void> {
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.getRegistration();
+    registration?.active?.postMessage({ type: SW_MESSAGES.clearCaches });
   }
   if ("caches" in globalThis) {
     await caches.delete(API_CACHE_NAME);
   }
-}
-
-function askToClear(worker: ServiceWorker, within: number): Promise<void> {
-  return new Promise((resolve) => {
-    const channel = new MessageChannel();
-    const answered = () => {
-      clearTimeout(timer);
-      channel.port1.close();
-      resolve();
-    };
-    const timer = setTimeout(answered, within);
-    channel.port1.onmessage = answered;
-    worker.postMessage({ type: SW_MESSAGES.clearCaches }, [channel.port2]);
-  });
 }

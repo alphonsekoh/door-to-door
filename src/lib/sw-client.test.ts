@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clearServiceWorkerCaches } from "@/lib/sw-client";
+import { CLEAR_WITHIN_MS, clearServiceWorkerCaches } from "@/lib/sw-client";
 import { API_CACHE_NAME } from "@/lib/sw-cache-rules";
 
 afterEach(() => {
@@ -7,79 +7,42 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-type Worker = { postMessage: (data: unknown, transfer: MessagePort[]) => void };
-type Registration = { active: Worker | null; installing: object | null; waiting: object | null };
+const never = () => new Promise<never>(() => undefined);
 
-function withRegistration(registration: Partial<Registration> | undefined) {
-  const remove = vi.fn(() => Promise.resolve(true));
-  vi.stubGlobal("navigator", {
-    serviceWorker: {
-      getRegistration: () =>
-        Promise.resolve(
-          registration === undefined
-            ? undefined
-            : { active: null, installing: null, waiting: null, ...registration },
-        ),
-    },
+/* Whether the clear has finished, checked without letting any time pass. */
+function watch(clearing: Promise<void>): () => boolean {
+  let settled = false;
+  void clearing.then(() => {
+    settled = true;
   });
-  vi.stubGlobal("caches", { delete: remove });
-  return remove;
+  return () => settled;
 }
 
 describe("clearServiceWorkerCaches", () => {
-  it("asks an active worker and waits for its answer, leaving the cache to it", async () => {
-    const asked: unknown[] = [];
-    let answer: () => void = () => undefined;
-    const remove = withRegistration({
-      active: {
-        postMessage: (data, [port]) => {
-          asked.push(data);
-          answer = () => port?.postMessage("CLEAR_CACHES");
-        },
-      },
-    });
-    let settled = false;
-    const clearing = clearServiceWorkerCaches(60_000).then(() => {
-      settled = true;
-    });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(asked).toEqual([{ type: "CLEAR_CACHES" }]);
-    expect(settled).toBe(false);
-
-    // The worker answers once it has deleted the cache.
-    answer();
-    await clearing;
-    // Never both at once: on WebKit that could leave sign-in waiting for good.
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("goes on without an answer from a worker that never gives one", async () => {
-    vi.useFakeTimers();
+  it("tells the worker and deletes the API cache itself", async () => {
     const postMessage = vi.fn();
-    const remove = withRegistration({ active: { postMessage } });
+    const remove = vi.fn(() => Promise.resolve(true));
+    vi.stubGlobal("navigator", {
+      serviceWorker: { getRegistration: () => Promise.resolve({ active: { postMessage } }) },
+    });
+    vi.stubGlobal("caches", { delete: remove });
 
-    const clearing = clearServiceWorkerCaches(1500);
-    await vi.advanceTimersByTimeAsync(1500);
-    await expect(clearing).resolves.toBeUndefined();
-    expect(postMessage).toHaveBeenCalledOnce();
-    expect(remove).not.toHaveBeenCalled();
-  });
-
-  it("leaves the cache alone while a first worker installs, as it has cached nothing", async () => {
-    const remove = withRegistration({ installing: {} });
     await clearServiceWorkerCaches();
-    expect(remove).not.toHaveBeenCalled();
-  });
 
-  it("deletes the cache itself when no worker is registered", async () => {
-    const remove = withRegistration(undefined);
-    await clearServiceWorkerCaches();
+    expect(postMessage).toHaveBeenCalledWith({ type: "CLEAR_CACHES" });
     expect(remove).toHaveBeenCalledWith(API_CACHE_NAME);
   });
 
-  it("deletes the cache itself when the registration has no worker left", async () => {
-    const remove = withRegistration({});
-    await clearServiceWorkerCaches();
+  it("still deletes the cache when no worker is registered, or none is active", async () => {
+    const remove = vi.fn(() => Promise.resolve(true));
+    vi.stubGlobal("caches", { delete: remove });
+    for (const registration of [undefined, { active: null }]) {
+      vi.stubGlobal("navigator", {
+        serviceWorker: { getRegistration: () => Promise.resolve(registration) },
+      });
+      await clearServiceWorkerCaches();
+    }
+    expect(remove).toHaveBeenCalledTimes(2);
     expect(remove).toHaveBeenCalledWith(API_CACHE_NAME);
   });
 
@@ -89,5 +52,50 @@ describe("clearServiceWorkerCaches", () => {
     delete (globalThis as { caches?: unknown }).caches;
 
     await expect(clearServiceWorkerCaches()).resolves.toBeUndefined();
+  });
+
+  it("finishes as soon as the cache is gone, not at the deadline", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", {
+      serviceWorker: { getRegistration: () => Promise.resolve(undefined) },
+    });
+    vi.stubGlobal("caches", { delete: () => Promise.resolve(true) });
+
+    const done = watch(clearServiceWorkerCaches());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(done()).toBe(true);
+  });
+
+  it("goes on when the browser never says which worker is registered", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", { serviceWorker: { getRegistration: never } });
+    vi.stubGlobal("caches", { delete: vi.fn(() => Promise.resolve(true)) });
+
+    const done = watch(clearServiceWorkerCaches());
+    await vi.advanceTimersByTimeAsync(CLEAR_WITHIN_MS - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
+  });
+
+  it("goes on when deleting the cache never finishes", async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal("navigator", {
+      serviceWorker: { getRegistration: () => Promise.resolve(undefined) },
+    });
+    vi.stubGlobal("caches", { delete: never });
+
+    const done = watch(clearServiceWorkerCaches(500));
+    await vi.advanceTimersByTimeAsync(499);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
+  });
+
+  it("passes a failure on, for the caller to go on without", async () => {
+    vi.stubGlobal("navigator", {});
+    vi.stubGlobal("caches", { delete: () => Promise.reject(new Error("storage is gone")) });
+
+    await expect(clearServiceWorkerCaches()).rejects.toThrow("storage is gone");
   });
 });

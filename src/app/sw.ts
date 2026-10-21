@@ -64,14 +64,7 @@ const serwist = new Serwist({
 
 self.addEventListener("message", (event) => {
   if (messageType(event.data) === SW_MESSAGES.clearCaches) {
-    /* Answered once done, failed or not: the page waits for this rather than
-       deleting the same cache itself at the same moment (sw-client). */
-    const [answer] = event.ports;
-    event.waitUntil(
-      caches.delete(API_CACHE_NAME).finally(() => {
-        answer?.postMessage(SW_MESSAGES.clearCaches);
-      }),
-    );
+    event.waitUntil(caches.delete(API_CACHE_NAME));
   }
 });
 
