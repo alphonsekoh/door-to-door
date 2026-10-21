@@ -665,3 +665,74 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [Apple, `presentationControllerDidAttemptToDismiss(_:)`](<https://developer.apple.com/documentation/uikit/uiadaptivepresentationcontrollerdelegate/presentationcontrollerdidattempttodismiss(_:)>);
   [WWDC19, Modernizing Your UI for iOS 13](https://developer.apple.com/videos/play/wwdc2019/224/)
 - **Used by:** D-111-42
+
+### R-70 · A media query cannot see the reader's text size; a scaled `clamp()` can
+
+- **Finding:** Relative units in a media query resolve against the initial font size
+  (the browser's, usually 16px), never against declarations on the page. So
+  `@media (max-height: 26.5rem)` ignores the `html { font: -apple-system-body }` that
+  carries the iOS text size (D-111-24). A length that is the condition's margin times
+  1000 is far past any screen, positive or negative. Subtracted inside
+  `clamp(small, calc(full - var(--x)), full)`, it gives one bound or the other. That is
+  resolved on the first paint and again when the root font size changes. With the
+  E2E profiles' heights, the 26.5 reader-rem limit falls at about 25px of text on the
+  iPhone 13 (664px) and 27px on the Pixel 5 (727px).
+- **Source:** [Media Queries 4, units](https://www.w3.org/TR/mediaqueries-4/#units);
+  measured in PR #112 (`e2e/large-text.spec.ts`)
+- **Used by:** D-111-48
+
+### R-71 · What the chrome leaves at 32px (measured)
+
+- **Finding:** At 32px the nav is 128px (4 reader-rems) and the docked Save bar 160px
+  (5 reader-rems). On the iPhone 13 profile (390×664) they cover 43%, leaving 44px under
+  half the screen, less than one 48px line of 32px text. On the Pixel 5 (393×727), a
+  compact sync bar brings the chrome to 46%. Measured locally on macOS with Playwright
+  1.62.1 after fix round 6:
+  - with nothing waiting, the unit field ends 16px above the Save bar on the iPhone 13
+    and 79px above it on the Pixel 5;
+  - with records waiting, 56px of the field's 96px is under Save on the iPhone 13.
+
+  Not yet confirmed in CI: at 2f17288, CI's Linux WebKit found the field covered at
+  32px, with scripts off (its bottom at 408px, the bar's top at 376px) and live.
+
+- **Source:** measured in PR #112, fix round 6 (`e2e/large-text.spec.ts`,
+  `e2e/record-visit.spec.ts`); CI run 39405474323
+- **Used by:** D-111-49, D-111-50, D-111-52
+
+### R-72 · A view timeline can style an element by whether another is in view
+
+- **Finding:** `view-timeline-name` on one element, with `timeline-scope` on a common
+  ancestor, lets a sibling run an animation along that element's visibility
+  (`animation-timeline`). With `animation-range: cover 0% cover 1px` and
+  `fill-mode: both`, the first keyframe holds until the element enters the viewport.
+  No script is needed, so it works on the server's HTML. Where
+  `@supports (animation-timeline: view())` fails, nothing applies. The animation follows
+  scrolling, so a reduced-motion rule that shortens `animation-duration` must not reach
+  it. Both Playwright engines draw it. The builder gives iOS 26 as the first iOS with
+  scroll-driven animations; that is not checked on a device.
+- **Source:** [MDN, `animation-timeline`](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline);
+  [MDN, `timeline-scope`](https://developer.mozilla.org/en-US/docs/Web/CSS/timeline-scope);
+  measured in PR #112 (`e2e/record-visit.spec.ts`, scripts off at 16px and 32px)
+- **Used by:** D-111-55
+
+### R-73 · React 19 replays a tap made before hydration
+
+- **Finding:** In react-dom 19.2.8, a discrete event (click, input, change, keydown and
+  others in `discreteReplayableEvents`) that reaches a part of the tree not yet hydrated
+  makes React hydrate it at once and then dispatch the event. An event fired before
+  React has attached its listeners is not seen. In the verifier's hydration probe,
+  typing a unit before the block screen was live left the field empty afterwards in 7 of
+  8 runs. On WebKit an interest pick and a Save tap made before it was live were both
+  kept: the pick held, and Save answered "Not saved. Enter the unit number."
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
+  `discreteReplayableEvents` and the dispatch path that reads it; measured in PR #112
+  (the verifier's hydration probe, fix round 5)
+- **Used by:** D-111-40
+
+### R-74 · iOS bars do not grow with Dynamic Type
+
+- **Finding:** UIKit's tab bars and toolbars keep their size at every text size. At the
+  accessibility sizes, a long press on an item shows it enlarged in the large content
+  viewer instead. Not checked on a device.
+- **Source:** [Apple, `UILargeContentViewerInteraction`](https://developer.apple.com/documentation/uikit/uilargecontentviewerinteraction)
+- **Used by:** #111 open question 2

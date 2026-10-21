@@ -120,4 +120,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 105 | [Create first admin](105-create-admin.md)               | Done (PR #108)                                                                                |
 | 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                                                                |
 | 109 | [Private test config](109-private-test-config.md)       | Done (PR #110)                                                                                |
-| 111 | [Apple design pass](111-apple-design.md)                | In review (PR #112)                                                                           |
+| 111 | [Apple design pass](111-apple-design.md)                | In review (PR #112); D-111-50, D-111-52 await the owner (conflict with D-33-12)               |

@@ -205,11 +205,12 @@ Google SSO (#14) is not built.
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
-- Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
+- Overlay layers: sync status bar `z-20` (sticky while something is unsent, except beside
+  a docked Save when the chrome would pass half the screen: D-111-52, proposed), banners
   `z-30`, bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`.
   Guarded by `overlay-layers.test.ts`, which reads the sheet and dialog layers from
   `src/components/sheet.tsx`.
-- Every sheet and `ConfirmDialog` is built on `Sheet` (`src/components/sheet.tsx`),
+- Every sheet and `ConfirmDialog` is built on `Sheet`, both in `src/components/sheet.tsx`,
   portalled to `<body>` and made modal by `useModal` (`src/lib/use-modal.ts`). Focus moves
   in, Tab is trapped, Escape closes the top layer only, the page behind is `inert` and
   unscrollable, and focus goes back to the trigger (D-90-2 to D-90-9). A blocking modal
@@ -236,8 +237,11 @@ Google SSO (#14) is not built.
   - `material-chrome`, the grainy glass, solid under reduced transparency or more
     contrast.
   - `scroll-edge`.
+  - Short-screen switches: `--short-by` and `--crowded-by`, read through `clamp()` by
+    `control-compact`, `space-under-tabs`, `held-row` and `sync-pinned`, so they hold on
+    the first paint.
 
-  See D-111-10, D-111-11, D-111-19, D-111-22 and D-111-24.
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24 and D-111-48.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and

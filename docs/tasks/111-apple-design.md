@@ -94,7 +94,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   `RecordOnBehalfForm` puts its `<form>` inside the panel. Supersedes D-90-1's "no wrapper
   component" clause; refines D-90-10. _Why:_ motion, drag and the portal live in one
   place. Before, an overlay inside a `space-y-*` parent took its margin, and the End
-  confirm stopped 20px short of the bottom. _Research:_ R-63.
+  confirm stopped 20px short of the bottom. _Research:_ R-63. _Refined by D-111-57:_
+  `ConfirmDialog` lives in `sheet.tsx`.
 - **D-111-14 · A closing sheet hands everything back as its exit starts.** In
   `useModal(onClose, initialFocus, active)`, when `active` turns false, focus returns,
   `inert` lifts and scrolling unlocks at once. The leaving copy is `inert` and
@@ -169,7 +170,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   visits sent"), it scrolls away with the page. A scroll-edge fade replaces its
   `border-b`; it is a scroll-driven animation, so where that is unsupported there is no
   edge. Refines D-33-12. _Why:_ at 200% text, the sync bar, Save bar and nav left 40% of
-  an iPhone 13's screen for the form, and good news need not stay pinned.
+  an iPhone 13's screen for the form, and good news need not stay pinned. _Contested by
+  D-111-50 and D-111-52 (proposed, see [Open questions](#open-questions))._
 - **D-111-22 · The display settings are honoured through media queries, in both
   schemes.** Under `prefers-contrast: more`:
   - `--app-border`, `--app-border-strong` and `--app-fg-muted` darken (they lighten in
@@ -195,7 +197,7 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
 
   Implements D-111-8. _Why:_ the `@supports` check is what keeps desktop Safari and
   Playwright's WebKit out. `pointer: coarse` alone matches both test engines.
-  _Research:_ R-62.
+  _Research:_ R-62. _Refined by D-111-48:_ a short screen switches layout in CSS.
 
 - **D-111-25 · Large text reflows instead of overlapping.**
   - The interest picker wraps onto rows (an auto-fit grid).
@@ -207,7 +209,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
 
   _Why:_ at 200%, "Medium" overlapped "High", and "Follow-ups" wrapped and pushed its
   icon out of line. _Refined by D-111-35 and D-111-36:_ the 12ch rule covers every row,
-  and unit numbers never split.
+  and unit numbers never split. _Refined by D-111-54:_ the back column is 44px or the
+  chevron, whichever is more.
 
 - **D-111-26 · A refused Save says why, beside Save.** It uses one line in D-33-29's
   `role="alert"` slot ("Not saved. Choose an interest level."). Field errors clear as
@@ -232,7 +235,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   the link retraces. A retracing link goes back in history only after a client-side push
   from a signed-in screen (`src/lib/screen-trail.ts`); otherwise it goes to its `href`.
   _Why:_ an installed iOS app has no back button, and `history.length` cannot tell an
-  in-app screen from sign-in or another site.
+  in-app screen from sign-in or another site. _Refined by D-111-54:_ the back link is at
+  least 44×44.
 
 - **D-111-29 · There is one date format, from `src/lib/dates.ts`.** It is en-GB, day
   first: "3 Mar 2026" and "19 Oct 2026 at 3:38 pm", in the phone's own time zone. It
@@ -279,7 +283,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   not fit. Page titles break a long word, and "Blk N" never breaks between its words.
   Refines D-111-25. _Why:_ at 28 to 32px the Sessions list squeezed titles to 2 to 20px
   over their End button, "Record for a member" pushed Records 280px sideways, and block
-  cards set "Blk" over "123". _Research:_ R-67.
+  cards set "Blk" over "123". _Research:_ R-67. _Refined by D-111-51:_ it reaches the
+  sync bar's count and a session's own records.
 - **D-111-36 · A unit number is never split.** `UnitNumber`
   (`src/components/unit-number.tsx`), a no-wrap wrapper, is the one place this is done,
   wherever a unit number shows; `FollowUpDoor` replaces `unitLabel`. Non-breaking hyphens
@@ -292,6 +297,8 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   a line, chrome over half the screen, and a first control a tap would not reach.
   Refines D-111-32; layout only, so within D-37-6. _Why:_ jsdom lays nothing out, and no
   spec opened every screen at the cap; each fault in D-111-35 passed the existing suite.
+  _Refined by D-111-59:_ it also checks every size up to the cap, records waiting and the
+  offline shell.
 - **D-111-38 · Every per-session unit count reads "N visited".** The admin session
   detail's block card and the history card now match the home card; `admin-session.png`
   and `history.png` were retaken (D-38-14). Refines D-111-7. _Why:_ "N units" read as
@@ -306,13 +313,17 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
 - **D-111-40 · The docked Save is in the first paint.** Until it mounts, which includes
   the server's HTML, `DockHost` draws a `standIn` at its own end, where the bar docks;
   the form's bar then replaces it with no hydration mismatch. The block screen's stand-in
-  is `SaveAndNext` naming no form, so a tap before hydration does nothing. The offline
-  shell has none, as its form appears only after mount. Pinned is read from a marker held
-  down by `below-by-nav`, the bar's own CSS offset, not by an offset measured at mount.
-  Refines D-111-20, and so D-25-4. _Why:_ at 32px the first paint put Save under the nav,
-  and it jumped about 98px on hydration; a native submit would reload the page and lose
-  the typed unit; a measured offset went stale when the text size changed or the phone
-  turned. _Research:_ R-67, R-68.
+  is `SaveAndNext` naming no form, so ~~a tap before hydration does nothing~~ it cannot
+  submit natively. The offline shell has none, as its form appears only after mount.
+  Pinned is read from a marker held down by `below-by-nav`, the bar's own CSS offset, not
+  by an offset measured at mount. Refines D-111-20, and so D-25-4. _Why:_ at 32px the
+  first paint put Save under the nav, and it jumped about 98px on hydration; a native
+  submit would reload the page ~~and lose the typed unit~~; a measured offset went stale
+  when the text size changed or the phone turned. _Research:_ R-67, R-68, R-73.
+  _Corrected:_ React 19 replays a tap made before hydration once the page is live. What
+  can be lost is text typed before hydration: the controlled unit input usually comes
+  back empty. That predates this PR and is not caused by the stand-in. _Refined by
+  D-111-55:_ the stand-in is glass while pinned.
 - **D-111-41 · The scrim follows the sheet.** Its opacity comes from the sheet's offset
   (`scrimOpacity`): it lightens as the sheet is pulled and darkens as it rises or
   settles. Under reduced motion it cross-fades with the panel on open and close, and
@@ -350,10 +361,81 @@ relayed them on 2026-10-20, and they are in the PR #112 body, not on the issue t
   whenever it resizes, and is no wider in the page than floating, so it cannot flip at
   the limit. Refines D-32-13; D-32-12 is unchanged. _Why:_ at 32px on the iPhone profile
   it was 273px of a 664px screen, so with the nav it covered 60% of each screen, and on
-  Account it covered the pinned Save. _Research:_ R-67.
+  Account it covered the pinned Save. _Research:_ R-67. _Refined by D-111-58:_ a named
+  section, not an aside.
 - **D-111-47 · `useReservedSpace` also re-measures on a `ResizeObserver`.** Refines
   D-32-20. _Why:_ a text-size change resizes a banner with no `resize` event.
   _Research:_ R-67.
+
+Fix round 6 (D-111-48 to D-111-59). D-111-50 and D-111-52 are **proposed**: they conflict
+with D-33-12 and D-111-21 and wait for the owner ([Open questions](#open-questions)).
+
+- **D-111-48 · Large text on a phone is a short screen, switched in CSS.** A screen
+  under 26.5 reader-rems tall above the home indicator is short (`--short-by`): an iPhone
+  13 past about 25px of text, a Pixel 5 past about 27px. `--crowded-by` holds when the
+  nav, a docked Save and a compact sync row would cover over half the screen. Each switch
+  (`control-compact`, `space-under-tabs`, `held-row`, `sync-pinned`) is a `clamp()`
+  against one of them, so it is right on the first paint and follows a text-size change.
+  A phone turned sideways in the browser is short at any text size. Refines D-111-24.
+  _Why:_ a media query measures in the browser's initial font size, not the reader's, and
+  a script answers only after the first paint. _Research:_ R-70.
+- **D-111-49 · On a short screen the block's tabs give their height to the form.** They
+  take caption text in a control at least 44px tall, so "All units (N)" stays one line,
+  with `mb-2` under them instead of `mb-5`. Save is not moved. _Why:_ at 28 to 32px the
+  unit field opened under the docked Save. _Research:_ R-71.
+- **D-111-50 · Proposed: on a short screen the quiet sync row is not held.** "All visits
+  sent" takes no height (`held-row`), though a screen reader still reads it, so the
+  waiting bar's arrival pushes the form down. Conflicts with D-33-12 and D-111-21.
+  _Why:_ the held row was part of what put the unit field under Save. _Research:_ R-71.
+- **D-111-51 · The 12ch rule reaches the sync bar's count and a session's own records.**
+  The count wraps instead of being cut short, with View to its right, and is caption size
+  on a short screen. In Session records and My team, Amend drops under the record.
+  Refines D-111-35. _Why:_ at the cap the bar read "2 waiting to se…" and Amend was drawn
+  over "#12-1234A". A shorter label ("3 to send") was rejected: wrapping already keeps the
+  count whole, and the label matches the sheet's title (D-111-30).
+- **D-111-52 · Proposed: beside a docked Save, the waiting bar is pinned only while the
+  chrome leaves half the screen.** That is the nav, the Save bar and the sync bar
+  (`--crowded-by`). Otherwise the bar stays at the top of the page and scrolls with it.
+  At 32px a Pixel 5 keeps it pinned and an iPhone 13 does not. Conflicts with D-33-12 and
+  D-111-21. _Why:_ at 32px on an iPhone 13 the nav and Save bar leave 44px under half the
+  screen, less than one line of 32px text, so a pinned bar and D-111-37's half-screen
+  limit cannot both hold. _Research:_ R-71.
+- **D-111-53 · The offline shell's status line wraps, and Continue drops under it.** It
+  is never cut short and Continue keeps to the right. The row is at least one line high;
+  past about 26px it can grow by a line when signal returns. Refines D-77-11's row; its
+  one-line hold was a code comment, not a decision. _Why:_ "Offline. Records save on this
+  phone." tells a member in a dead stairwell their records are safe. Reserving the
+  wrapped height was rejected: it needs a hidden second copy of the text, which breaks
+  the tests that find the row by its text.
+- **D-111-54 · The way back is 44px or the chevron's width, whichever is more.** The
+  back link is at least 44×44, and the inline header's first column is no longer held at
+  2.75 reader-rems. Refines D-111-25 and D-111-28. _Why:_ at 32px that column was 88px
+  and wrapped "Record a visit" onto two lines before the session loaded; at 20px the link
+  was 35px wide.
+- **D-111-55 · The stand-in Save bar is glass while pinned, before any script runs.** A
+  view timeline on its marker (`dock-scope`, `dock-marker`, `dock-glass`) shows the glass
+  until the marker scrolls into view. Where scroll-driven animations are unsupported it
+  stays clear until the page is live. The live bar keeps its observer. Refines D-111-40.
+  _Why:_ the stand-in was clear where the bar that replaces it is glass. _Research:_ R-72.
+- **D-111-56 · A nav tab can stand for a wider section than the screen it opens.**
+  `NavItem.section`: the Admin tab opens Sessions and is current on every `/admin`
+  screen. _Why:_ on Team, Records, All records and Needs a return visit, no tab was
+  current.
+- **D-111-57 · `ConfirmDialog` lives in `sheet.tsx`; `confirm-dialog.tsx` is gone.**
+  `src/import-cycles.test.ts` fails on any import cycle in `src`. Refines D-111-13.
+  _Why:_ the discard question (D-111-42) made the two files import each other, which
+  worked only because each used the other inside render. A second copy of the
+  confirmation for that question was rejected, as the two would drift.
+- **D-111-58 · The install banner is a named `section`, not an `aside`.** Refines
+  D-111-46. _Why:_ in the page it sits inside `main`, where an `aside` is a complementary
+  landmark nested in the main one.
+- **D-111-59 · `large-text.spec.ts` also checks what a member sees first, at every
+  size.** The recording screen unscrolled at 16 to 32px (the unit field uncovered, the
+  back link 44×44); records waiting; the offline shell, offline and back online; and a
+  running session's own record at a wide unit. The records-waiting test scrolls first,
+  since a sticky bar that has not stuck is not seen as chrome, and text cut by
+  `overflow: hidden` counts as cut. Refines D-111-37. _Why:_ each fault this round fixed
+  had passed the earlier sweep.
 
 ## Audit
 
@@ -414,6 +496,8 @@ take something away, and specific nav labels.
 | D-32-13                                      | Refined: the install banner floats only while it covers little                  | D-111-46           |
 | D-32-20                                      | Refined: also re-measures on a `ResizeObserver`                                 | D-111-47           |
 | D-33-12                                      | Refined: pinned only while something is unsent; a fade replaces its rule        | D-111-21           |
+| D-33-12                                      | Contested: not held, and not always pinned, on a short screen (proposed)        | D-111-50, D-111-52 |
+| D-77-11                                      | Refined: the reconnect row wraps, and Continue drops under it                   | D-111-53           |
 | D-33-29                                      | Extended: the same slot explains a refused Save                                 | D-111-26           |
 | D-38-7                                       | "Outing" clause superseded                                                      | D-111-7            |
 | D-24-3, D-33-30, D-74-36, D-74-56, D-74-57   | Quoted wording now says "session"                                               | D-111-7            |
@@ -448,12 +532,16 @@ take something away, and specific nav labels.
   - a slow first load of a block screen at AX1: Save is above the nav from the first
     frame and does not jump;
   - a text-size change from Control Centre with a long form open: the docked Save turns
-    to glass when it pins.
+    to glass when it pins;
+  - at AX1 and above: a block's unit field is above Save as the screen opens, the tabs
+    are on one line, and with records waiting the count is whole;
+  - at AX1 and above, the offline shell's line wraps whole, with Continue under it;
+  - on a slow load on iOS 26 or later, the stand-in Save bar is frosted while pinned.
 
 ## Relies on
 
 D-01-2, D-25-4, D-28-2, D-28-3, D-30-7, D-30-8, D-32-12, D-32-13, D-32-20, D-33-2,
-D-33-12, D-33-20, D-33-29, D-37-6, D-38-14, D-74-47, D-74-62, D-77-12, D-77-14, D-85-4,
+D-33-12, D-33-20, D-33-29, D-37-6, D-38-14, D-74-47, D-74-62, D-77-11, D-77-12, D-77-14, D-85-4,
 D-85-11, D-85-12, D-90-2 to D-90-6.
 
 ## Known limits
@@ -463,7 +551,33 @@ D-85-11, D-85-12, D-90-2 to D-90-6.
 - Where scroll-driven animations are unsupported, sticky chrome shows no edge at all.
 - Text larger than 32px is held at 32px (D-111-24, kept by D-111-34).
 - A sheet that is sliding away cannot be caught (D-111-45).
+- With records waiting, at 30 to 32px on the iPhone 13 profile, the unit field is partly
+  under Save as the screen opens: 56px of its 96px at 32px, with its label and top in
+  view. A Pixel 5 fits. See the second open question (R-71).
+- The offline shell's recording form at 32px opens with the unit field under Save. Only
+  the block's recording screen was in scope.
+- On the iPhone 13 profile at 25px, with records waiting and the install banner
+  floating, the chrome reaches 48% of the screen, just inside D-111-37's limit.
+- A phone turned sideways in the browser takes the short-screen layout at any text size
+  (D-111-48). The E2E covers portrait only.
 
 ## Open questions
 
-None. Motion's download and the 32px ceiling were answered as D-111-33 and D-111-34.
+Motion's download and the 32px ceiling were answered as D-111-33 and D-111-34.
+
+1. **D-111-50 and D-111-52 against D-33-12 and D-111-21.** D-33-12 holds the sync row
+   "on every signed-in page from first paint", because "the bar appearing mid-form would
+   move the form under a thumb", and pins it while anything is unsent. D-111-21 keeps
+   that: "its row is still held one line high from the first paint". If D-111-50 also
+   stands, the first offline save on a short screen pushes the form down by the bar's
+   height as the thumb moves on. If D-111-52 also stands, on an iPhone 13 at 30 to 32px
+   "N waiting to send" scrolls out of view on the recording screen. Keeping D-33-12
+   unchanged instead leaves the unit field under Save at large text, and D-111-37's
+   half-screen limit fails at the cap. D-111-1 allows reworking D-33-12 only where its
+   intent is kept, so this needs the owner. Options: accept both (they then supersede
+   D-33-12 on a short screen), keep D-33-12 and relax D-111-37 for the waiting bar, or
+   answer question 2.
+2. **Should the nav and the docked Save stop growing with the text?** iOS bars keep
+   their size and show the large content viewer instead (R-74). Capping them would fit
+   the unit field with records waiting on an iPhone 13, and could leave room to keep the
+   waiting bar pinned at the cap. Round 6 was told not to move Save.
