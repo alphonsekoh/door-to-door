@@ -16,8 +16,9 @@ case "$1" in
     cp "$keep/fixtures.ts" e2e/fixtures.ts
     git log --oneline -1
     ;;
-  noglass)
-    sed -i '/^  -webkit-backdrop-filter: blur(24px) saturate(180%);$/d; /^  backdrop-filter: blur(24px) saturate(180%);$/d' src/app/globals.css
+  nofilter | notransition | noglass | noscrolltl)
+    python3 scratch/edit.py "$1"
+    git diff -- src/app/globals.css
     ;;
   *) echo "unknown variant $1"; exit 1 ;;
 esac

@@ -17,18 +17,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { variant: base, rep: 1 }
-          - { variant: base, rep: 2 }
-          - { variant: "sha:300c186", rep: 1 }
-          - { variant: "sha:300c186", rep: 2 }
-          - { variant: "sha:300c186", rep: 3 }
-          - { variant: "sha:9e08528", rep: 1 }
-          - { variant: "sha:9e08528", rep: 2 }
-          - { variant: "sha:d6711af", rep: 1 }
-          - { variant: "sha:d6711af", rep: 2 }
-          - { variant: "sha:a8a42a5", rep: 1 }
-          - { variant: "sha:a8a42a5", rep: 2 }
-          - { variant: "sha:2271d72", rep: 1 }
+          - { variant: nofilter, rep: 1 }
+          - { variant: nofilter, rep: 2 }
+          - { variant: notransition, rep: 1 }
+          - { variant: notransition, rep: 2 }
+          - { variant: noglass, rep: 1 }
+          - { variant: noglass, rep: 2 }
+          - { variant: noscrolltl, rep: 1 }
+          - { variant: noscrolltl, rep: 2 }
 
     services:
       postgres:
@@ -68,7 +64,9 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
 
       - name: Install gdb
-        run: sudo apt-get install -y gdb
+        run: |
+          sudo apt-get install -y gdb
+          lscpu | grep -E "Model name" || true
 
       - name: Flows that must never break
         run: npm run test:e2e
