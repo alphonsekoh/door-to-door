@@ -17,14 +17,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { variant: nofilter, rep: 1 }
-          - { variant: nofilter, rep: 2 }
-          - { variant: notransition, rep: 1 }
-          - { variant: notransition, rep: 2 }
-          - { variant: noglass, rep: 1 }
-          - { variant: noglass, rep: 2 }
-          - { variant: noscrolltl, rep: 1 }
-          - { variant: noscrolltl, rep: 2 }
+          - { variant: "sha:dedd6ee", rep: 1 }
+          - { variant: "sha:dedd6ee", rep: 2 }
+          - { variant: "sha:dedd6ee", rep: 3 }
 
     services:
       postgres:
