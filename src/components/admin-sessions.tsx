@@ -73,16 +73,18 @@ export function AdminSessions() {
         Team
       </Link>
 
-      <div className="flex gap-2">
+      {/* Side by side while each has 12ch, and stacked past that: squeezed,
+          "All records" was set a word a line at the largest text. */}
+      <div className="flex flex-wrap gap-2">
         <Link
           href="/admin/attention"
-          className="flex min-h-12 flex-1 btn-secondary items-center justify-center rounded-xl text-body font-medium"
+          className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
         >
           Needs a return visit
         </Link>
         <Link
           href="/admin/history"
-          className="flex min-h-12 flex-1 btn-secondary items-center justify-center rounded-xl text-body font-medium"
+          className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
         >
           All records
         </Link>
