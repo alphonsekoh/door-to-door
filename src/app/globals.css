@@ -179,6 +179,16 @@
   bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
 }
 
+/* Scrolled to clear of what stays put: the sync row pinned on top (44px,
+   and its 12px margin) under any banner, and the docked Save bar (80px) on
+   the nav. All three are drawn at the base size, whatever the text size. */
+@utility scroll-clear-chrome {
+  scroll-margin-top: calc(var(--banner-top, 0px) + var(--chrome-rem) * 3.5);
+  scroll-margin-bottom: calc(
+    var(--nav-height) + env(safe-area-inset-bottom) + var(--chrome-rem) * 5
+  );
+}
+
 /* Pushed down by the same distance, so something placed just after a bar
    held above the nav sits on the bottom of the screen when that bar is
    pinned (docked-actions.tsx). */

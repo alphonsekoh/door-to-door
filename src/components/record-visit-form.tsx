@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { UnitNumber } from "@/components/unit-number";
 import { DockedActions } from "@/components/docked-actions";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
@@ -131,6 +131,19 @@ export function RecordVisitForm({
   const [noting, setNoting] = useState(false);
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
+  const top = useRef<HTMLDivElement>(null);
+  const savedId = saved?.visitId ?? null;
+
+  /*
+   * At large text the member scrolls down to the interest level before
+   * Save, and the Saved line and the next unit, already filled in, were left
+   * above the screen: a second tap then recorded that unit unseen. Each save
+   * brings them back into view, clear of the pinned chrome, before it is
+   * painted. Where they are already in view, nothing moves.
+   */
+  useLayoutEffect(() => {
+    if (savedId !== null) top.current?.scrollIntoView({ block: "nearest" });
+  }, [savedId]);
 
   /*
    * Look up what is already known as soon as the unit matches one recorded
@@ -312,56 +325,58 @@ export function RecordVisitForm({
       noValidate
       className="space-y-4"
     >
-      {status === null ? null : (
-        <div
-          role="status"
-          className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
-        >
-          <span className="break-words">{status}</span>
-          {householdId === null || saved?.noted !== false ? null : (
-            <button
-              type="button"
-              onClick={() => {
-                setNoting(true);
-              }}
-              className="min-h-11 font-medium btn-text"
-            >
-              Add follow-up
-            </button>
+      <div ref={top} className="scroll-clear-chrome space-y-4">
+        {status === null ? null : (
+          <div
+            role="status"
+            className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          >
+            <span className="break-words">{status}</span>
+            {householdId === null || saved?.noted !== false ? null : (
+              <button
+                type="button"
+                onClick={() => {
+                  setNoting(true);
+                }}
+                className="min-h-11 font-medium btn-text"
+              >
+                Add follow-up
+              </button>
+            )}
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+            Unit number
+          </label>
+          <input
+            id="unitNumber"
+            value={unitNumber}
+            onChange={(event) => {
+              setUnitNumber(event.target.value);
+              setSaved(null);
+              // Cleared the moment it is fixed, so no red lingers while typing.
+              if (event.target.value.trim() !== "") clearError("unitNumber");
+            }}
+            onBlur={() => {
+              if (unitNumber.trim() === "") {
+                setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+              }
+            }}
+            inputMode="text"
+            autoComplete="off"
+            placeholder="#05-123"
+            aria-invalid={errors.unitNumber !== undefined}
+            aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
+            className="min-h-12 field"
+          />
+          {errors.unitNumber === undefined ? null : (
+            <p id="unit-error" className="mt-1 field-error">
+              {errors.unitNumber}
+            </p>
           )}
         </div>
-      )}
-
-      <div>
-        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
-          Unit number
-        </label>
-        <input
-          id="unitNumber"
-          value={unitNumber}
-          onChange={(event) => {
-            setUnitNumber(event.target.value);
-            setSaved(null);
-            // Cleared the moment it is fixed, so no red lingers while typing.
-            if (event.target.value.trim() !== "") clearError("unitNumber");
-          }}
-          onBlur={() => {
-            if (unitNumber.trim() === "") {
-              setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
-            }
-          }}
-          inputMode="text"
-          autoComplete="off"
-          placeholder="#05-123"
-          aria-invalid={errors.unitNumber !== undefined}
-          aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
-          className="min-h-12 field"
-        />
-        {errors.unitNumber === undefined ? null : (
-          <p id="unit-error" className="mt-1 field-error">
-            {errors.unitNumber}
-          </p>
-        )}
       </div>
 
       {history === null ? null : (

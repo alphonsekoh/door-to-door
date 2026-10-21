@@ -609,6 +609,51 @@ test.describe("without signal", () => {
     await scrolled("Session, with records waiting");
   });
 
+  /*
+   * At large text High is below Save, so the member scrolls down to it. The
+   * Saved line and the next unit, already filled in, were then left above
+   * the screen, and a second tap recorded that unit unseen. After a save
+   * both are back in view, under the pinned count. At the base size, where
+   * nothing was scrolled, nothing moves.
+   */
+  test("after Save and next, the Saved line and the next unit are in view", async ({
+    memberPage: page,
+  }) => {
+    await page.route("**/api/visits/sync", (route) => route.abort("internetdisconnected"));
+    await page.goto(`/blocks/${SEED_BLOCK}`);
+    await untilLive(page);
+    const unit = page.getByLabel("Unit number");
+    const high = page.getByRole("radio", { name: "High" });
+    const status = page.getByRole("status");
+    const save = async (number: string) => {
+      await page.getByRole("button", { name: "Save and next" }).click();
+      await expect(status).toContainText(`Saved ${number} on this phone`);
+    };
+
+    await atSize(page, "16px");
+    await unit.fill("#86-01");
+    await high.click();
+    const before = await page.evaluate(() => window.scrollY);
+    await save("#86-01");
+    expect(await page.evaluate(() => window.scrollY), "the base size, after a save").toBe(before);
+
+    for (const [size, number] of [
+      ["28px", "#86-02"],
+      [CAP, "#86-03"],
+    ] as const) {
+      await atSize(page, size);
+      await unit.fill(number);
+      /* As a thumb does: scrolled to mid-screen, then tapped. */
+      await high.evaluate((element) => {
+        element.scrollIntoView({ block: "center" });
+      });
+      await high.click();
+      await save(number);
+      await expectInView(status, `the Saved line after a save at ${size}`);
+      await expectInView(unit, `the next unit after a save at ${size}`);
+    }
+  });
+
   test("the offline shell's recording form opens with its unit number in view, at every text size", async ({
     memberPage: page,
   }) => {

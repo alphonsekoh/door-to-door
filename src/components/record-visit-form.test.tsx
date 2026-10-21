@@ -255,6 +255,50 @@ describe("moving along a corridor", () => {
     });
   });
 
+  it("brings the Saved line and the next unit back into view after each save, and only then", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    const save = screen.getByRole("button", { name: "Save and next" });
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    // Refused: the reason is beside Save, where the member is looking.
+    await user.click(save);
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose an interest level");
+    expect(scrolled).not.toHaveBeenCalled();
+
+    apiFetch
+      .mockResolvedValueOnce({ id: "v1", householdId: "h1" })
+      .mockResolvedValueOnce({ id: "v2", householdId: "h2" });
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(save);
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Saved #05-123.");
+    });
+    expect(scrolled).toHaveBeenCalledOnce();
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+    const brought = scrolled.mock.contexts[0] as HTMLElement;
+    expect(brought).toContainElement(screen.getByRole("status"));
+    expect(brought).toContainElement(screen.getByLabelText("Unit number"));
+    expect(brought).toHaveClass("scroll-clear-chrome");
+
+    // The next door, already filled in.
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save);
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("Saved #05-124.");
+    });
+    expect(scrolled).toHaveBeenCalledTimes(2);
+    scrolled.mockRestore();
+  });
+
   it("leaves the field empty when the unit has no obvious successor", async () => {
     const user = userEvent.setup();
     render(
