@@ -16,8 +16,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        variant: [nolargetext]
-        rep: [1, 2]
+        include:
+          - { variant: base, rep: 1 }
+          - { variant: base, rep: 2 }
+          - { variant: "sha:300c186", rep: 1 }
+          - { variant: "sha:300c186", rep: 2 }
+          - { variant: "sha:300c186", rep: 3 }
+          - { variant: "sha:9e08528", rep: 1 }
+          - { variant: "sha:9e08528", rep: 2 }
+          - { variant: "sha:d6711af", rep: 1 }
+          - { variant: "sha:d6711af", rep: 2 }
+          - { variant: "sha:a8a42a5", rep: 1 }
+          - { variant: "sha:a8a42a5", rep: 2 }
+          - { variant: "sha:2271d72", rep: 1 }
 
     services:
       postgres:
@@ -40,6 +51,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply the variant
+        run: bash scratch/variant.sh "${{ matrix.variant }}"
 
       - uses: actions/setup-node@v5
         with:
@@ -54,11 +70,16 @@ jobs:
       - name: Install gdb
         run: sudo apt-get install -y gdb
 
-      - name: Apply the variant
-        run: bash scratch/variant.sh ${{ matrix.variant }}
-
       - name: Flows that must never break
         run: npm run test:e2e
+        env:
+          DEBUG: pw:browser
+
+      - name: Core dumps
+        if: always()
+        run: |
+          sudo coredumpctl list --no-pager || echo "no core dumps"
+          sudo coredumpctl info --no-pager 2>&1 | head -1500 || true
 
       - name: Show the stall dumps
         if: always()
@@ -70,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: diag-${{ matrix.variant }}-${{ matrix.rep }}
+          name: diag-${{ strategy.job-index }}
           path: |
             stall-diag/
             playwright-report/
