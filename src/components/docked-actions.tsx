@@ -72,11 +72,12 @@ function Bar({
   return (
     <>
       {/* mt-4 collapses with a margin above it; mb-0: a margin below would
-          hold the pinned bar off the nav. */}
+          hold the pinned bar off the nav. At the 16px base whatever the text
+          size, as the nav it docks on is, with Save in line with the page. */}
       <div
         data-dock="nav"
         data-docked={docked ? "" : undefined}
-        className={`sticky above-nav isolate -mx-4 mt-4 mb-0 px-4 py-3 ${docked ? "material-chrome" : ""}`}
+        className={`sticky above-nav isolate bleed-x mt-4 mb-0 py-3 chrome-size ${docked ? "material-chrome" : ""}`}
       >
         {standIn ? (
           <div aria-hidden="true" className="material-chrome absolute inset-0 -z-10 dock-glass" />

@@ -32,13 +32,16 @@ export function BottomNav() {
    * edge to edge with nothing showing through between. When one is docked
    * the two read as one slab and the nav drops its own lit edge.
    *
-   * Labels never wrap. Where a tab is too narrow for its label in the
-   * current text size, the label is kept for screen readers only.
+   * Drawn at the 16px base whatever the text size, as an iPhone's tab bar
+   * is: grown with the text, it took a fifth of the screen at the largest.
+   * Labels never wrap. Where a tab is too narrow for its label, on a narrow
+   * phone, the label is kept for screen readers only (in px, as a container
+   * query's rem is the reader's).
    */
   return (
     <nav
       aria-label="Primary"
-      className="material-chrome fixed inset-x-0 bottom-0 z-40 inset-safe-bottom [body:has([data-docked])_&]:shadow-none"
+      className="material-chrome fixed inset-x-0 bottom-0 z-40 inset-safe-bottom chrome-size [body:has([data-docked])_&]:shadow-none"
     >
       <ul className="mx-auto flex h-(--nav-height) max-w-screen-sm">
         {items.map((item) => {
@@ -53,7 +56,7 @@ export function BottomNav() {
                 }`}
               >
                 <NavIcon name={item.href} />
-                <span className="whitespace-nowrap @max-[4.25rem]:sr-only">{item.label}</span>
+                <span className="whitespace-nowrap @max-[68px]:sr-only">{item.label}</span>
               </Link>
             </li>
           );

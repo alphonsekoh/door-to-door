@@ -25,14 +25,13 @@ import { isPublicPath } from "@/server/auth/routes";
  * turning up once the session and the queue have loaded would do the same to
  * every page load. Becoming sticky moves nothing: the row is already there.
  *
- * Large text on a phone is the exception (globals.css). There the quiet row
- * is not held, so the recording form's unit number is in view as the screen
- * opens, and the count is set at caption size so it stays whole; beside a
- * docked Save it is pinned only while the three leave half the screen. The
- * count wraps rather than being cut short.
+ * Both are chrome, drawn at the 16px base whatever the text size, as the nav
+ * and the docked Save are: so the held row and the bar are one height at
+ * every size, and the count fits whole on one line. Should it ever not, it
+ * wraps rather than being cut short.
  */
 const ROW =
-  "-mx-4 flex w-[calc(100%+--spacing(8))] items-center gap-x-3 bg-surface-muted px-4 text-left";
+  "chrome-size bleed-x mb-3 flex min-h-11 items-center gap-x-3 bg-surface-muted text-left";
 
 /* Over the page once scrolled: a fade beneath it rather than a hard rule. */
 const PINNED = "scroll-edge sync-pinned";
@@ -95,7 +94,7 @@ export function SyncStatusBar() {
   return (
     <>
       {summary === null ? (
-        <p className={`${ROW} held-row text-body text-foreground-muted`}>
+        <p className={`${ROW} text-body text-foreground-muted`}>
           {enqueue === null ? null : (
             <span className="truncate">{quietText(records, justSaved)}</span>
           )}
@@ -113,7 +112,7 @@ export function SyncStatusBar() {
               else setUnavailable(true);
             });
           }}
-          className={`${ROW} ${PINNED} mb-3 control-compact flex-wrap py-1`}
+          className={`${ROW} ${PINNED} flex-wrap py-1 text-body`}
         >
           <span className="min-w-0 flex-[1_1_12ch] font-medium">{summary.text}</span>
           <span className="ml-auto shrink-0 text-primary">
