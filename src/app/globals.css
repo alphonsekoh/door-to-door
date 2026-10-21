@@ -474,8 +474,11 @@
     touch-action: manipulation;
   }
 
+  /* Not filter: a press's brightness comes back at once. Easing it back
+     crashed the compositor thread of WPE WebKit, the Linux WebKit the E2E
+     suite runs, in nearly every CI run, mostly on a tap that moves on. */
   :where(a[href], button, summary, [role="button"]) {
-    transition-property: opacity, transform, filter;
+    transition-property: opacity, transform;
     transition-duration: var(--press-release);
     transition-timing-function: var(--ease-out-soft);
   }
