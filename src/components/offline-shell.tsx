@@ -3,10 +3,17 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
 import { DockHost } from "@/components/docked-actions";
+import { PageHeader } from "@/components/page-header";
 import { ReloadWhenOnline } from "@/components/reload-when-online";
 import { useSyncQueue } from "@/components/sync-provider";
 import { goTo } from "@/lib/navigate";
-import { type LocalCopy, type UsableCopy, offlineRows, usableCopy } from "@/lib/offline/local-copy";
+import {
+  type LocalBlock,
+  type LocalCopy,
+  type UsableCopy,
+  offlineRows,
+  usableCopy,
+} from "@/lib/offline/local-copy";
 import { loadLocalCopy } from "@/lib/offline/local-copy-store";
 import { shellState } from "@/lib/offline/shell-state";
 import { type SignedIn, fetchSignedIn } from "@/lib/sync/signed-in";
@@ -159,17 +166,48 @@ export function OfflineShell({
     else run();
   };
 
+  const picked =
+    phase.kind === "recording"
+      ? phase.copy.blocks.find((entry) => entry.block.id === blockId)
+      : undefined;
+
   return (
     <DockHost className="space-y-5">
       {/*
-        Held one line high, so nothing moves when it changes. It is what tells
-        a member in a dead stairwell their records are safe, so it is never
-        cut short: at large text it wraps, and Continue drops under it, and
-        then the row may change height.
+        Once a block is open it is the title, inline with the way back to the
+        blocks, as the online recording screen is: with the page's own title
+        and a row for the block above it, the unit number opened under Save
+        at large text.
+      */}
+      {picked === undefined ? (
+        <PageHeader title="Offline" />
+      ) : (
+        <PageHeader
+          title={`Blk ${picked.block.name}`}
+          subtitle={picked.block.street}
+          back={{
+            label: "All blocks",
+            onBack: () => {
+              unlessDirty(() => {
+                setBlockId(null);
+              });
+            },
+          }}
+          inline
+        />
+      )}
+
+      {/*
+        Held one line high, as high as Continue, so nothing moves when it
+        turns up. It is what tells a member in a dead stairwell their records
+        are safe, so it is never cut short: at large text it wraps, and
+        Continue drops under it, and then the row may change height. Its edge
+        is a ring, not a border, so the two are one height. Compact on a
+        short screen, so the form is still in view under it.
       */}
       <div
         aria-live="polite"
-        className="flex min-h-12 flex-wrap items-center gap-x-3 rounded-lg border border-border bg-surface-muted px-3 text-body"
+        className="flex control-compact flex-wrap items-center gap-x-3 rounded-lg bg-surface-muted px-3 ring-1 ring-border ring-inset"
       >
         <span className="min-w-0 flex-[1_1_12ch]">
           {reachable ? "Back online." : "Offline. Records save on this phone."}
@@ -182,7 +220,7 @@ export function OfflineShell({
                 navigate(returnTarget());
               });
             }}
-            className="ml-auto min-h-11 shrink-0 font-medium btn-text"
+            className="ml-auto control-compact shrink-0 font-medium btn-text"
           >
             Continue
           </button>
@@ -234,15 +272,10 @@ export function OfflineShell({
       {phase.kind === "recording" ? (
         <Recording
           copy={phase.copy}
-          blockId={blockId}
+          picked={picked}
           records={sync.records}
           queueOpen={sync.enqueue !== null}
           onPick={setBlockId}
-          onAllBlocks={() => {
-            unlessDirty(() => {
-              setBlockId(null);
-            });
-          }}
           onDirtyChange={setDirty}
         />
       ) : null}
@@ -270,28 +303,43 @@ export function OfflineShell({
 
 function Recording({
   copy,
-  blockId,
+  picked,
   records,
   queueOpen,
   onPick,
-  onAllBlocks,
   onDirtyChange,
 }: {
   copy: UsableCopy;
-  blockId: string | null;
+  picked: LocalBlock | undefined;
   records: ReturnType<typeof useSyncQueue>["records"];
   queueOpen: boolean;
   onPick: (id: string) => void;
-  onAllBlocks: () => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const picked = copy.blocks.find((entry) => entry.block.id === blockId);
   const outingId = copy.outing.id;
   /* The copy's outing is the only one this page can know about. */
   const loadSession = useCallback(
     (): Promise<OutingAnswer> => Promise.resolve({ kind: "running", id: outingId }),
     [outingId],
   );
+
+  /* A block open is the form alone, under its own title (above); the sync
+     bar counts what is waiting meanwhile. */
+  if (picked !== undefined) {
+    return (
+      <BlockViews
+        blockId={picked.block.id}
+        known={picked.households}
+        rows={offlineRows(picked, records, outingId)}
+        sessionId={outingId}
+        loadSession={loadSession}
+        onRecorded={() => undefined}
+        teamIds={NO_TEAM}
+        offline
+        onDirtyChange={onDirtyChange}
+      />
+    );
+  }
 
   return (
     <>
@@ -303,50 +351,24 @@ function Recording({
         </p>
       </div>
 
-      {picked === undefined ? (
-        <ul className="space-y-2" aria-label="Blocks saved on this phone">
-          {copy.blocks.map((entry) => (
-            <li key={entry.block.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  onPick(entry.block.id);
-                }}
-                className="flex min-h-16 w-full press flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
-              >
-                <span className="block text-title font-semibold">Blk {entry.block.name}</span>
-                <span className="block truncate text-caption text-foreground-muted">
-                  {entry.block.street}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-            <p className="text-title font-semibold whitespace-nowrap">Blk {picked.block.name}</p>
+      <ul className="space-y-2" aria-label="Blocks saved on this phone">
+        {copy.blocks.map((entry) => (
+          <li key={entry.block.id}>
             <button
               type="button"
-              onClick={onAllBlocks}
-              className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-caption font-medium"
+              onClick={() => {
+                onPick(entry.block.id);
+              }}
+              className="flex min-h-16 w-full press flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
             >
-              All blocks
+              <span className="block text-title font-semibold">Blk {entry.block.name}</span>
+              <span className="block truncate text-caption text-foreground-muted">
+                {entry.block.street}
+              </span>
             </button>
-          </div>
-          <BlockViews
-            blockId={picked.block.id}
-            known={picked.households}
-            rows={offlineRows(picked, records, copy.outing.id)}
-            sessionId={copy.outing.id}
-            loadSession={loadSession}
-            onRecorded={() => undefined}
-            teamIds={NO_TEAM}
-            offline
-            onDirtyChange={onDirtyChange}
-          />
-        </>
-      )}
+          </li>
+        ))}
+      </ul>
     </>
   );
 }

@@ -196,7 +196,10 @@ test.describe("the worker in charge", () => {
     await page.getByRole("button", { name: "Save and next" }).click();
     await expect(page.getByText(`Saved ${unit} on this phone.`)).toBeVisible();
     await expect(page.getByRole("button", { name: /1 waiting to send/ })).toBeVisible();
+    // Counted with the blocks, a tap back: the open block is the form alone.
+    await page.getByRole("button", { name: "All blocks" }).click();
     await expect(page.getByText("1 record is saved on this phone.")).toBeVisible();
+    await page.getByRole("button", { name: /Blk 123/ }).click();
 
     const saved = await page.evaluate(
       (target) =>
@@ -247,6 +250,9 @@ test.describe("the worker in charge", () => {
     await expect(page.getByText("Sent", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Continue", exact: true }).click();
+    // The online block screen, which links back to the session; the shell,
+    // also titled for the block, goes back to its blocks in-page.
+    await expect(page.getByRole("link", { name: "Back to Session" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: /^Blk / })).toBeVisible();
     await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();

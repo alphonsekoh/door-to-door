@@ -1,16 +1,21 @@
-import { type Back, BackLink } from "@/components/back-link";
+import { type Back, type BackAction, BackButton, BackLink } from "@/components/back-link";
 
 type PageHeaderProps = {
   title: string;
   subtitle?: string | undefined;
   /* The screen this one was reached from. An installed iPhone app has no
      browser back button, so a child screen must offer its own way out. */
-  back?: Back | undefined;
+  back?: Back | BackAction | undefined;
   /* One row, as iOS titles a form: the way back, then the title centred
      with the subtitle under it. For a screen whose content has to start
      high, like the recording form above the pinned Save. */
   inline?: boolean;
 };
+
+function WayBack({ back }: { back: Back | BackAction | undefined }) {
+  if (back === undefined) return null;
+  return "onBack" in back ? <BackButton {...back} /> : <BackLink {...back} />;
+}
 
 export function PageHeader({ title, subtitle, back, inline = false }: PageHeaderProps) {
   if (inline) {
@@ -24,7 +29,7 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
         {/* A container, so the back label gives way to the chevron alone
             when large text leaves the title too little room. */}
         <div className="@container min-w-0">
-          {back === undefined ? null : <BackLink {...back} />}
+          <WayBack back={back} />
         </div>
         <div className="min-w-0 text-center">
           <h1 className="text-title font-semibold text-balance break-words">{title}</h1>
@@ -37,7 +42,7 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
   }
   return (
     <header className="mb-5">
-      {back === undefined ? null : <BackLink {...back} />}
+      <WayBack back={back} />
       {/* A session's title is whatever an admin typed: a long word breaks
           rather than push the screen sideways at large text. */}
       <h1 className="text-heading font-semibold text-balance break-words">{title}</h1>

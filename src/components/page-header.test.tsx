@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 import { PageHeader } from "@/components/page-header";
 
 describe("PageHeader", () => {
@@ -51,6 +52,15 @@ describe("PageHeader, inline", () => {
     // The label gives way to the chevron alone where the row is too tight,
     // and the link is still named for where it goes.
     expect(screen.getByText("Session")).toHaveClass("@max-[6.5rem]:sr-only");
+  });
+
+  it("goes back within the page where there is no screen to link to", async () => {
+    const onBack = vi.fn();
+    render(<PageHeader title="Blk 123" back={{ label: "All blocks", onBack }} inline />);
+    // A button, not a link: the offline shell's blocks are in-page state.
+    expect(screen.queryByRole("link")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "All blocks" }));
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   it("holds the title centred without a way back, and no subtitle", () => {

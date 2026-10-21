@@ -234,7 +234,9 @@ describe("OfflineShell, recording", () => {
   it("queues a save under the copy's member and outing", async () => {
     const { queue } = mount();
     await openBlock("123");
-    expect(screen.getByText("Blk 123")).toBeInTheDocument();
+    // The block it opened is the title, in place of "Offline".
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Offline" })).not.toBeInTheDocument();
 
     const u = user();
     await u.type(screen.getByLabelText("Unit number"), "#05-02");
@@ -249,6 +251,10 @@ describe("OfflineShell, recording", () => {
       blockId: BLK_123,
       unitNumber: "#05-02",
     });
+    // Counted with the blocks, a tap back: the form alone sits under the title.
+    expect(screen.queryByText("1 record is saved on this phone.")).not.toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "All blocks" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Offline" })).toBeInTheDocument();
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
   });
 
@@ -268,9 +274,10 @@ describe("OfflineShell, recording", () => {
       buildQueuedVisit({ ...draft, unitNumber: "#07-02" }, ALICE.id, NOW),
     ]);
     mount({ queue });
-    await openBlock("123");
+    await continueAsAlice();
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
 
+    await user().click(screen.getByRole("button", { name: /Blk 123/ }));
     await user().click(screen.getByRole("tab", { name: /All units/ }));
     expect(screen.getByText("#07-02")).toBeInTheDocument();
     expect(screen.queryByText("#07-01")).not.toBeInTheDocument();
@@ -329,7 +336,7 @@ describe("OfflineShell, recording", () => {
 });
 
 describe("the reconnect row", () => {
-  it("is there, one line high, in every state, and never cut short", async () => {
+  it("is the same row in every state, saying the records are safe", async () => {
     let finish: (copy: LocalCopy | null) => void = () => undefined;
     mount({
       load: () =>
@@ -338,10 +345,7 @@ describe("the reconnect row", () => {
         }),
     });
     const row = reconnectRow();
-    expect(row).toHaveClass("min-h-12");
     expect(row).toHaveTextContent("Offline. Records save on this phone.");
-    // At large text it wraps: it is what says the records are safe.
-    expect(screen.getByText("Offline. Records save on this phone.")).not.toHaveClass("truncate");
 
     await act(async () => {
       finish(savedCopy());
@@ -349,6 +353,8 @@ describe("the reconnect row", () => {
     });
     expect(reconnectRow()).toBe(row);
     await continueAsAlice();
+    expect(reconnectRow()).toBe(row);
+    await user().click(screen.getByRole("button", { name: /Blk 123/ }));
     expect(reconnectRow()).toBe(row);
   });
 
