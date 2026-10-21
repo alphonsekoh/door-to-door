@@ -1,3 +1,4 @@
+import { formatDay } from "@/lib/dates";
 import type { FollowUp, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import { displayName } from "@/lib/team-ui";
@@ -75,25 +76,12 @@ export function buildTimeline(
   return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
-export function unitLabel(note: Pick<FollowUp, "blockName" | "unitNumber">): string {
-  return `Blk ${note.blockName} · ${note.unitNumber}`;
-}
-
 /* Affordance only: the server decides (D-16-2). Resolving is open to anyone. */
 export function mayEditFollowUp(
   note: Pick<FollowUp, "author">,
   viewer: { userId: string | undefined; isAdmin: boolean },
 ): boolean {
   return viewer.isAdmin || (viewer.userId !== undefined && note.author.id === viewer.userId);
-}
-
-/* "3 Mar 2026": day first, as dates are written where the app is used. */
-export function formatDay(instant: string): string {
-  return new Date(instant).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
 }
 
 export function addedByline(note: Pick<FollowUp, "author" | "createdAt">): string {

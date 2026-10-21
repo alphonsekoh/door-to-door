@@ -24,12 +24,17 @@ beforeEach(() => {
 });
 
 describe("SessionActionButton", () => {
+  it("keeps the ordinary look for starting and reopening", () => {
+    render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Start session" })).toHaveClass("btn-primary");
+  });
+
   it("starts without asking, since nothing is lost", async () => {
     const onDone = vi.fn();
     apiFetch.mockResolvedValue({ id: "s1" });
     render(<SessionActionButton sessionId="s1" spec={start} onDone={onDone} />);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Start outing" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     await waitFor(() => {
       expect(onDone).toHaveBeenCalled();
     });
@@ -41,17 +46,28 @@ describe("SessionActionButton", () => {
     apiFetch.mockResolvedValue({ id: "s1" });
     render(<SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} />);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Reopen outing" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reopen session" }));
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/reopen", { method: "POST" });
     });
+  });
+
+  it("looks like it takes something away, and its confirm does too", async () => {
+    const user = userEvent.setup();
+    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "End session" });
+    expect(button).toHaveClass("btn-danger-outline");
+    await user.click(button);
+    expect(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+    ).toHaveClass("btn-danger");
   });
 
   it("asks before ending, and does nothing until confirmed", async () => {
     const user = userEvent.setup();
     render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "End outing" }));
+    await user.click(screen.getByRole("button", { name: "End session" }));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
   });
@@ -62,9 +78,9 @@ describe("SessionActionButton", () => {
     apiFetch.mockResolvedValue({ id: "s1" });
     render(<SessionActionButton sessionId="s1" spec={end} onDone={onDone} />);
 
-    await user.click(screen.getByRole("button", { name: "End outing" }));
+    await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(
-      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End outing" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
     );
 
     await waitFor(() => {
@@ -77,7 +93,7 @@ describe("SessionActionButton", () => {
     const user = userEvent.setup();
     render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "End outing" }));
+    await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(screen.getByRole("button", { name: "Keep as it is" }));
 
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -91,7 +107,7 @@ describe("SessionActionButton", () => {
     apiFetch.mockRejectedValue(new Error(clash));
     render(<SessionActionButton sessionId="s2" spec={start} onDone={vi.fn()} />);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Start outing" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(clash);
   });
 
@@ -100,7 +116,7 @@ describe("SessionActionButton", () => {
     apiFetch.mockRejectedValue(new Error("nope"));
     render(<SessionActionButton sessionId="s1" spec={start} onDone={onDone} />);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Start outing" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     await screen.findByRole("alert");
     expect(onDone).not.toHaveBeenCalled();
   });
@@ -109,7 +125,7 @@ describe("SessionActionButton", () => {
     apiFetch.mockRejectedValue("boom");
     render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "Start outing" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
   });
 
@@ -118,9 +134,9 @@ describe("SessionActionButton", () => {
     apiFetch.mockRejectedValue(new Error("nope"));
     render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "End outing" }));
+    await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(
-      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End outing" }),
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
     );
 
     expect(await screen.findByRole("alert")).toHaveTextContent("nope");

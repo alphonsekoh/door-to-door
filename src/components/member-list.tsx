@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { AddMemberForm } from "@/components/add-member-form";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
+import { formatDay } from "@/lib/dates";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 const PAGE_SIZE = 100;
 
@@ -17,7 +18,7 @@ export function lastActiveLabel(lastRecordedAt: string | null): string {
     // Worth spotting: an account that was made and never used.
     return "never recorded";
   }
-  return `last recorded ${new Date(lastRecordedAt).toLocaleDateString()}`;
+  return `last recorded ${formatDay(lastRecordedAt)}`;
 }
 
 export function MemberList() {
@@ -78,7 +79,7 @@ export function MemberList() {
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -91,10 +92,7 @@ export function MemberList() {
       <AddMemberForm onAdded={() => void load()} />
 
       {failure === null ? null : (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {failure}
         </p>
       )}
@@ -105,8 +103,11 @@ export function MemberList() {
           const deactivated = user.deactivatedAt !== null;
           return (
             <li key={user.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-baseline justify-between gap-3">
-                <span className="min-w-0">
+              {/* At large text the role drops under the name rather than cut
+                  the name and email to a few letters, which made two people
+                  called Tan hard to tell apart. */}
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block truncate text-body font-semibold">
                     {user.name ?? user.email}
                     {isSelf ? <span className="text-foreground-muted"> (you)</span> : null}
@@ -140,14 +141,16 @@ export function MemberList() {
                   You cannot change your own role or deactivate yourself.
                 </p>
               ) : (
-                <div className="mt-3 flex gap-2">
+                /* Side by side while both labels fit on a line; at large text
+                   they stack rather than wrap a word a line. */
+                <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() =>
                       void change(user, { role: user.role === "admin" ? "member" : "admin" })
                     }
-                    className="min-h-11 flex-1 rounded-lg border border-border text-body font-medium disabled:opacity-60"
+                    className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                   >
                     {user.role === "admin" ? "Make a member" : "Make an admin"}
                   </button>
@@ -157,7 +160,7 @@ export function MemberList() {
                       type="button"
                       disabled={busy}
                       onClick={() => void change(user, { deactivated: false })}
-                      className="min-h-11 flex-1 rounded-lg border border-border text-body font-medium disabled:opacity-60"
+                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                     >
                       Reactivate
                     </button>
@@ -168,7 +171,7 @@ export function MemberList() {
                       onClick={() => {
                         setDeactivating(user);
                       }}
-                      className="min-h-11 flex-1 rounded-lg border border-border text-body font-medium disabled:opacity-60"
+                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                     >
                       Deactivate
                     </button>
@@ -180,18 +183,20 @@ export function MemberList() {
         })}
       </ul>
 
-      {deactivating === null ? null : (
-        <ConfirmDialog
-          title={`Deactivate ${deactivating.name ?? deactivating.email}?`}
-          detail="They will not be able to sign in. Everything they recorded stays, and stays attributed to them."
-          confirmLabel="Deactivate"
-          busy={busy}
-          onConfirm={() => void change(deactivating, { deactivated: true })}
-          onCancel={() => {
-            setDeactivating(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {deactivating === null ? null : (
+          <ConfirmDialog
+            title={`Deactivate ${deactivating.name ?? deactivating.email}?`}
+            detail="They will not be able to sign in. Everything they recorded stays, and stays attributed to them."
+            confirmLabel="Deactivate"
+            busy={busy}
+            onConfirm={() => void change(deactivating, { deactivated: true })}
+            onCancel={() => {
+              setDeactivating(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

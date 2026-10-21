@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthFailureScreen } from "@/components/auth-failure-screen";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { ConfirmDialog } from "@/components/sheet";
 
 const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
   signOut: vi.fn(),

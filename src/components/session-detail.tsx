@@ -4,15 +4,18 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminTeams } from "@/components/admin-teams";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
-import { ConfirmDialog } from "@/components/confirm-dialog";
+import { PageHeader } from "@/components/page-header";
 import { SessionActionButton } from "@/components/session-action-button";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/sessions";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
-/* While an outing runs the numbers move, so they refresh on their own. Long
+/* While a session runs the numbers move, so they refresh on their own. Long
    enough not to drain the phone an admin is watching it on. */
 const POLL_INTERVAL_MS = 30_000;
+
+const BACK = { href: "/admin/sessions", label: "Sessions" };
 
 type State =
   | { status: "loading" }
@@ -38,7 +41,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load this outing.",
+        message: error instanceof Error ? error.message : "Could not load this session.",
       });
     }
   }, [sessionId]);
@@ -63,7 +66,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     setAttaching(false);
     /*
      * Said out loud because it is the contingency path: an admin adding a
-     * block mid-outing needs to know members will not see it until they
+     * block mid-session needs to know members will not see it until they
      * refresh, so they can tell them.
      */
     setNotice(
@@ -91,21 +94,29 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   }
 
   if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
+    return (
+      <>
+        <PageHeader title="Session" back={BACK} />
+        <p className="text-body text-foreground-muted">Loading…</p>
+      </>
+    );
   }
 
   if (state.status === "error") {
     return (
-      <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
-        <p className="text-body">{state.message}</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
-        >
-          Try again
-        </button>
-      </div>
+      <>
+        <PageHeader title="Session" back={BACK} />
+        <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
+          <p className="text-body">{state.message}</p>
+          <button
+            type="button"
+            onClick={() => void load()}
+            className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
+          >
+            Try again
+          </button>
+        </div>
+      </>
     );
   }
 
@@ -114,10 +125,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-heading font-semibold">{session.title}</p>
-        <p className="text-body text-foreground-muted">{statusLabel(session.status)}</p>
-      </div>
+      {/* The session's own name is the heading, not the word "Session". */}
+      <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
 
       {session.status === "ended" ? (
         <div className="rounded-xl border border-border bg-surface-muted p-4">
@@ -134,9 +143,9 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       {session.status === "active" ? (
         <Link
           href="/admin/records"
-          className="block min-h-12 rounded-xl border border-border px-4 py-3 text-body font-medium"
+          className="block min-h-12 btn-secondary rounded-xl px-4 py-3 text-body font-medium"
         >
-          See every record on this outing
+          See every record in this session
         </Link>
       ) : null}
 
@@ -150,7 +159,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       ))}
 
       <div>
-        <div className="mb-2 flex items-baseline justify-between gap-3">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
           <h2 className="text-title font-semibold">Blocks</h2>
           <button
             type="button"
@@ -158,7 +167,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
               setNotice(null);
               setAttaching(true);
             }}
-            className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+            className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
           >
             Add blocks
           </button>
@@ -181,14 +190,20 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                 key={entry.block.id}
                 className="rounded-xl border border-border bg-surface px-4 py-3"
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-body font-semibold">Blk {entry.block.name}</p>
+                {/* At large text Remove drops under the block rather than
+                    squeeze its street and counts to a few letters. */}
+                <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                  <div className="min-w-0 flex-[1_1_12ch]">
+                    <p className="text-body font-semibold whitespace-nowrap">
+                      Blk {entry.block.name}
+                    </p>
                     <p className="truncate text-caption text-foreground-muted">
                       {entry.block.street}
                     </p>
+                    {/* Units visited in this session, as the home card counts
+                        them: "units" alone read as the size of the block. */}
                     <p className="mt-1 text-caption text-foreground-muted tabular-nums">
-                      {entry.householdCount} {entry.householdCount === 1 ? "unit" : "units"}
+                      {entry.householdCount} visited
                       {entry.visitCount > entry.householdCount
                         ? `, ${String(entry.visitCount)} visits`
                         : ""}
@@ -206,7 +221,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                     onClick={() => {
                       setDetaching(entry);
                     }}
-                    className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+                    className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
                   >
                     Remove
                   </button>
@@ -219,32 +234,36 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />
 
-      {attaching ? (
-        <BlockAttachSheet
-          attachedIds={blocks.map((entry) => entry.block.id)}
-          onAttach={attach}
-          onClose={() => {
-            setAttaching(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {attaching ? (
+          <BlockAttachSheet
+            attachedIds={blocks.map((entry) => entry.block.id)}
+            onAttach={attach}
+            onClose={() => {
+              setAttaching(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
 
-      {detaching === null ? null : (
-        <ConfirmDialog
-          title={`Remove Blk ${detaching.block.name}?`}
-          detail={
-            detaching.visitCount > 0
-              ? `${String(detaching.visitCount)} visits were recorded here. They are kept, but members will not be able to record here again until it is re-attached.`
-              : "Members will no longer see it in the block picker."
-          }
-          confirmLabel="Remove the block"
-          busy={busy}
-          onConfirm={() => void detach(detaching)}
-          onCancel={() => {
-            setDetaching(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {detaching === null ? null : (
+          <ConfirmDialog
+            title={`Remove Blk ${detaching.block.name}?`}
+            detail={
+              detaching.visitCount > 0
+                ? `${String(detaching.visitCount)} visits were recorded here. They are kept, but members will not be able to record here again until it is re-attached.`
+                : "Members will no longer see it in the block picker."
+            }
+            confirmLabel="Remove the block"
+            busy={busy}
+            onConfirm={() => void detach(detaching)}
+            onCancel={() => {
+              setDetaching(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

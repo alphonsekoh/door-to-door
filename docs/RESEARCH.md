@@ -525,3 +525,251 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** measured in PR #110;
   [Vitest, globalSetup](https://vitest.dev/config/#globalsetup)
 - **Used by:** D-109-1, D-109-4
+
+### R-60 · iOS Safari shows `:active` only when a touch listener exists (unverified on a device)
+
+- **Finding:** By default Safari on iOS applies the `:active` state only when a
+  `touchstart` handler is registered on the element or an ancestor. Without one, CSS press
+  states show on Android and never on an iPhone. One passive, empty `touchstart` listener
+  on `document` turns them on and changes nothing about scrolling or taps. Playwright's
+  WebKit applies `:active` on mouse down regardless, so the E2E cannot prove this; it is a
+  manual check on a real iPhone.
+- **Source:** [MDN, `:active`](https://developer.mozilla.org/en-US/docs/Web/CSS/:active);
+  #111 device audit
+- **Used by:** D-111-11
+
+### R-61 · Motion drops the starting velocity of a spring defined by duration or bounce
+
+- **Finding:** In Motion 14.3.1, a spring given `duration`, `bounce` or `visualDuration`,
+  and none of `stiffness`, `damping` or `mass`, is "time-defined". Its `velocity` is then
+  replaced by 0, because "velocity from interrupted animations causes massive oscillation
+  on small-range animations". A spring given physical `stiffness` and `damping` keeps its
+  velocity. So a release velocity handed to a duration-based spring is lost: the sheet
+  stalls under the finger, then sets off from rest. Apple's damping ratio ζ and response
+  T convert as k = (2π/T)² and c = 2ζ√k, with mass 1.
+- **Source:** `node_modules/motion-dom/dist/es/animation/generators/spring.mjs`
+  (motion-dom 14.3.1), lines 158-177 (`getSpringOptions`, `isTimeDefined`) and 226 and
+  240 (`inheritVelocity`); #111
+- **Used by:** D-111-16
+
+### R-62 · `font: -apple-system-body` and the iOS-only guard, per engine (measured)
+
+- **Finding:** Probed with Playwright 1.62.1 on macOS:
+
+  | Engine and profile | `(pointer: coarse)` | `-webkit-touch-callout` | `font: -apple-system-body` |
+  | ------------------ | ------------------- | ----------------------- | -------------------------- |
+  | WebKit, iPhone 13  | matches             | unsupported             | 13px                       |
+  | Chromium, Pixel 5  | matches             | unsupported             | ignored (16px)             |
+
+  So `@supports (-webkit-touch-callout: none)` is what keeps desktop Safari and the E2E's
+  WebKit out. `pointer: coarse` alone would shrink the WebKit run to 13px. On iOS the
+  keyword follows the text-size setting. Body sizes are 14, 15, 16, 17 (the default), 19,
+  21 and 23px, then 28, 33, 40, 47 and 53px at the accessibility sizes. Not yet seen on a
+  real iPhone.
+
+- **Source:** measured 2026-10-19 in the #111 worktree;
+  [MDN, `-webkit-touch-callout`](https://developer.mozilla.org/en-US/docs/Web/CSS/-webkit-touch-callout);
+  [Apple HIG, Typography](https://developer.apple.com/design/human-interface-guidelines/typography)
+- **Used by:** D-111-8, D-111-24
+
+### R-63 · What a fixed or sticky box is positioned against
+
+- **Finding:**
+  - A `position: fixed` element is positioned against its nearest ancestor that has a
+    `transform`, `filter` or `backdrop-filter`, not against the viewport.
+  - A fixed overlay keeps any margin that a `space-y-*` parent gives it. Because of this,
+    the End confirm's scrim stopped 20px short of the bottom on both engines.
+  - A sticky element is confined to its containing block. A Save bar that is sticky inside
+    a form starting low on the page cannot rise to the line above the nav.
+  - On iOS Safari, `vh` is the large viewport, while `dvh` follows the visible area.
+- **Source:** [CSS Transforms 1](https://www.w3.org/TR/css-transforms-1/);
+  [Filter Effects 2](https://drafts.fxtf.org/filter-effects-2/);
+  [CSS Positioned Layout 3](https://www.w3.org/TR/css-position-3/);
+  [CSS Values 4, viewport-relative lengths](https://www.w3.org/TR/css-values-4/); #111 device
+  audit
+- **Used by:** D-111-13, D-111-20, D-111-31
+
+### R-64 · What Motion costs the phone (measured)
+
+- **Finding:** `LazyMotion` with `domAnimation` and `m` components loads animation, exit
+  and gestures, but not layout or drag (`domMax`).
+  - In the production build of the #111 branch, the one chunk holding Motion is 36.9 kB
+    gzip (102.6 kB raw). That is about 9% of the 418 kB gzip of all client chunks.
+  - Motion's own estimate for this feature set, quoted in PR #112, is about 29 kB.
+  - The bundler follows static imports. A single static import under the root layout put
+    Motion on every page, sign-in included. A dynamic `import()` gives it a chunk of its
+    own.
+  - The worker precaches every `.next/static` script, so the chunk downloads once per app
+    version.
+- **Source:** measured 2026-10-19 (`.next/static/chunks`, build of the #111 working tree);
+  [Motion, reduce bundle size](https://motion.dev/docs/react-reduce-bundle-size)
+- **Used by:** D-111-2, D-111-15
+
+### R-65 · What Playwright can emulate of the display settings
+
+- **Finding:** Playwright 1.62.1 `emulateMedia` covers `reducedMotion` and `contrast` on
+  both Chromium and WebKit; the suite's tests for both pass on each engine. Reduced transparency can be
+  emulated only on Chromium, through CDP `Emulation.setEmulatedMedia`; WebKit cannot
+  emulate it. Playwright's WebKit reports the computed `backdrop-filter` but draws no blur
+  in screenshots. Safari's blur, grain and transparency fallback need a real device.
+- **Source:** measured in PR #112 (`e2e/record-visit.spec.ts`, "the phone's display
+  settings") and the #111 device audit;
+  [Playwright, `page.emulateMedia`](https://playwright.dev/docs/api/class-page#page-emulate-media)
+- **Used by:** D-111-19, D-111-32
+
+### R-66 · Next 16: feedback while a link's route loads
+
+- **Finding:** Called inside a `<Link>`, `useLinkStatus()` from `next/link` returns
+  `pending` while that link's navigation is in progress. A route's `loading.tsx` lets the
+  navigation commit at once, showing that file's UI. With neither, a tap on a dynamic route
+  that is not prefetched shows nothing until the server answers.
+- **Source:** `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
+  (Next 16.3.3)
+- **Used by:** D-111-12
+
+### R-67 · Layout at the 32px text cap (measured)
+
+- **Finding:** Before the fixes in PR #112's fourth and fifth rounds, at 32px:
+  - on the iPhone 13 profile the install banner was 273px of a 664px screen (81px at the
+    default), so with the nav it covered 60% of the screen;
+  - the block screen's first paint put Save at 498 to 610px, under a nav starting at
+    536px, and it jumped about 98px up on hydration;
+  - "Record for a member" pushed Records 280px sideways, and the Sessions list squeezed
+    each title to 2 to 20px.
+
+  Changing the root font size, which is how an iOS text-size change reaches the page
+  (D-111-24), resizes elements without resizing the viewport, so no `resize` event fires.
+  Not yet seen on a real iPhone.
+
+- **Source:** measured in PR #112 (`e2e/large-text.spec.ts` and the verifier's device
+  pass); [CSSOM View, resizing viewports](https://drafts.csswg.org/cssom-view/#resizing-viewports)
+- **Used by:** D-111-35, D-111-40, D-111-46, D-111-47
+
+### R-68 · A submit button with no form owner does nothing
+
+- **Finding:** A `type="submit"` button submits only its form owner: the form it is in,
+  or the one its `form` attribute names. With neither, activating it does nothing. Before
+  hydration, a submit button inside a `<form>` makes the browser submit natively, which
+  loads a new page.
+- **Source:** [HTML, the button element](https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element)
+- **Used by:** D-111-40
+
+### R-69 · How iOS guards a sheet with unsaved changes
+
+- **Finding:** UIKit's `isModalInPresentation` stops a sheet being dismissed
+  interactively. The sheet still gives a little under a pull and springs back, and the
+  system then calls `presentationControllerDidAttemptToDismiss(_:)`, where the app asks
+  whether to discard. Apps set it only while there are unsaved changes, as Calendar's New
+  Event sheet does.
+- **Source:** [Apple, `isModalInPresentation`](https://developer.apple.com/documentation/uikit/uiviewcontroller/ismodalinpresentation);
+  [Apple, `presentationControllerDidAttemptToDismiss(_:)`](<https://developer.apple.com/documentation/uikit/uiadaptivepresentationcontrollerdelegate/presentationcontrollerdidattempttodismiss(_:)>);
+  [WWDC19, Modernizing Your UI for iOS 13](https://developer.apple.com/videos/play/wwdc2019/224/)
+- **Used by:** D-111-42
+
+### R-70 · A media query cannot see the reader's text size; a scaled `clamp()` can
+
+- **Finding:** Relative units in a media query resolve against the initial font size
+  (the browser's, usually 16px), never against declarations on the page. So
+  `@media (max-height: 26.5rem)` ignores the `html { font: -apple-system-body }` that
+  carries the iOS text size (D-111-24). A length that is the condition's margin times
+  1000 is far past any screen, positive or negative. Subtracted inside
+  `clamp(small, calc(full - var(--x)), full)`, it gives one bound or the other. That is
+  resolved on the first paint and again when the root font size changes. With the
+  E2E profiles' heights, the 26.5 reader-rem limit falls at about 25px of text on the
+  iPhone 13 (664px) and 27px on the Pixel 5 (727px).
+- **Source:** [Media Queries 4, units](https://www.w3.org/TR/mediaqueries-4/#units);
+  measured in PR #112 (`e2e/large-text.spec.ts`)
+- **Used by:** D-111-48
+
+### R-71 · What the chrome leaves at 32px (measured)
+
+- **Finding:** At 32px the nav is 128px (4 reader-rems) and the docked Save bar 160px
+  (5 reader-rems). On the iPhone 13 profile (390×664) they cover 43%, leaving 44px under
+  half the screen, less than one 48px line of 32px text. On the Pixel 5 (393×727), a
+  compact sync bar brings the chrome to 46%. Measured locally on macOS with Playwright
+  1.62.1 after fix round 6:
+  - with nothing waiting, the unit field ends 16px above the Save bar on the iPhone 13
+    and 79px above it on the Pixel 5;
+  - with records waiting, 56px of the field's 96px is under Save on the iPhone 13.
+
+  Not yet confirmed in CI: at 2f17288, CI's Linux WebKit found the field covered at
+  32px, with scripts off (its bottom at 408px, the bar's top at 376px) and live.
+
+- **Source:** measured in PR #112, fix round 6 (`e2e/large-text.spec.ts`,
+  `e2e/record-visit.spec.ts`); CI run 39405474323
+- **Used by:** D-111-49, D-111-50 and D-111-52 (both rejected, D-111-61)
+
+### R-72 · A view timeline can style an element by whether another is in view
+
+- **Finding:** `view-timeline-name` on one element, with `timeline-scope` on a common
+  ancestor, lets a sibling run an animation along that element's visibility
+  (`animation-timeline`). With `animation-range: cover 0% cover 1px` and
+  `fill-mode: both`, the first keyframe holds until the element enters the viewport.
+  No script is needed, so it works on the server's HTML. Where
+  `@supports (animation-timeline: view())` fails, nothing applies. The animation follows
+  scrolling, so a reduced-motion rule that shortens `animation-duration` must not reach
+  it. Both Playwright engines draw it. The builder gives iOS 26 as the first iOS with
+  scroll-driven animations; that is not checked on a device.
+- **Source:** [MDN, `animation-timeline`](https://developer.mozilla.org/en-US/docs/Web/CSS/animation-timeline);
+  [MDN, `timeline-scope`](https://developer.mozilla.org/en-US/docs/Web/CSS/timeline-scope);
+  measured in PR #112 (`e2e/record-visit.spec.ts`, scripts off at 16px and 32px)
+- **Used by:** D-111-55
+
+### R-73 · React 19 replays a tap made before hydration
+
+- **Finding:** In react-dom 19.2.8, a discrete event (click, input, change, keydown and
+  others in `discreteReplayableEvents`) that reaches a part of the tree not yet hydrated
+  makes React hydrate it at once and then dispatch the event. An event fired before
+  React has attached its listeners is not seen. In the verifier's hydration probe,
+  typing a unit before the block screen was live left the field empty afterwards in 7 of
+  8 runs. On WebKit an interest pick and a Save tap made before it was live were both
+  kept: the pick held, and Save answered "Not saved. Enter the unit number."
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
+  `discreteReplayableEvents` and the dispatch path that reads it; measured in PR #112
+  (the verifier's hydration probe, fix round 5)
+- **Used by:** D-111-40
+
+### R-74 · iOS bars do not grow with Dynamic Type
+
+- **Finding:** UIKit's tab bars and toolbars keep their size at every text size. At the
+  accessibility sizes, a long press on an item shows it enlarged in the large content
+  viewer instead. Not checked on a device.
+- **Source:** [Apple, `UILargeContentViewerInteraction`](https://developer.apple.com/documentation/uikit/uilargecontentviewerinteraction)
+- **Used by:** D-111-60
+
+### R-75 · A container query's `rem` is the root's font size
+
+- **Finding:** Relative units in a container query condition are evaluated against the
+  query container's computed values, and `rem` there is still the root element's font
+  size: the reader's text size (D-111-24). Resetting `--reader-rem` on an element does
+  not change it, so a nav drawn at the 16px base needs a px threshold for its labels.
+- **Source:** [CSS Containment 3, the `@container` rule](https://drafts.csswg.org/css-contain-3/#container-rule);
+  seen in PR #112, fix round 8
+- **Used by:** D-111-60
+
+### R-76 · What the chrome leaves once it stops growing (measured)
+
+- **Finding:** With the chrome at the 16px base, the nav is 64px, the docked Save bar
+  80px and the sync row 44px at every text size. On the iPhone 13 profile at 32px with
+  records waiting, pinned chrome is 28% of the screen. From 16 to 32px on both profiles,
+  with and without records waiting, the unit field is uncovered as the recording screen
+  and the offline shell's form open.
+- **Source:** measured in PR #112, fix round 8 (`e2e/large-text.spec.ts`); passed on CI's
+  Linux Chromium and WebKit in run 39582214648
+- **Used by:** D-111-60, D-111-61
+
+### R-77 · Easing a `filter` crashes WPE WebKit on CI's Linux runners (measured)
+
+- **Finding:** The WPE WebKit that Playwright runs on Linux segfaulted on its compositor
+  thread (`ThreadedCompositor`, always `libWPEWebKit-2.0.so.1.10.2 + 0x5fd556a`) when a
+  press's `filter` eased back. Writing the core dump took 20 to 100 s, during which the
+  page neither painted nor exited, so tests timed out wherever they were; it looked like
+  a stall. Full runs that eased a filter crashed in 15 of 15, including commits back to
+  the first, and with the glass or the scroll-driven edges removed; runs without it, in
+  0 of 8 (main, the head without the filter transition or without press transitions, and
+  dedd6ee three times). Earlier green runs had their crashes land between tests. macOS
+  WebKit, which composites through Core Animation as iOS Safari does, never reproduced
+  it, so this is no evidence of a crash on an iPhone.
+- **Source:** measured in PR #112, fix round 9, on scratch PR #114 (core dumps from
+  `coredumpctl` after each CI run); CI run 39582214648 on dedd6ee
+- **Used by:** D-111-67, D-111-68

@@ -187,7 +187,7 @@ describe("progressLabel", () => {
   });
 
   it("names its scope, because the tab beside it counts something else", () => {
-    // "Units (40)" next to a bare "36 units" reads as a contradiction.
+    // "All units (40)" next to a bare "36 units" reads as a contradiction.
     expect(progressLabel({ units: 4, floors: 1, answered: 1 }, "On this block")).toBe(
       "On this block: 4 units on 1 floor, 1 answered",
     );

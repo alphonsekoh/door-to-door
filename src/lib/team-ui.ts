@@ -114,7 +114,7 @@ export function describeTeamFailure(
   }
   const message = (() => {
     if (error.code === "session_not_active") {
-      return "This outing is not running, so teams can no longer change.";
+      return "This session is not running, so teams can no longer change.";
     }
     switch (error.status) {
       case 400:
@@ -124,7 +124,7 @@ export function describeTeamFailure(
       case 404:
         return "That team or person is no longer there. Refresh to see the latest.";
       case 409:
-        return "Someone is already on a team, or has not joined this outing yet. Refresh to see the latest.";
+        return "Someone is already on a team, or has not joined this session yet. Refresh to see the latest.";
       default:
         return generic.message;
     }
@@ -151,11 +151,11 @@ export function describeAdminTeamFailure(error: unknown, action: AdminTeamAction
       message:
         action === "delete"
           ? "This team has records and cannot be removed; remove its members instead."
-          : "Someone is already on a team in this outing, or is no longer active. Refresh to see the latest.",
+          : "Someone is already on a team in this session, or is no longer active. Refresh to see the latest.",
     };
   }
   if (error.code === "session_not_active") {
-    return { ...base, message: "This outing has ended, so no new team can be formed." };
+    return { ...base, message: "This session has ended, so no new team can be formed." };
   }
   return error.status === 400 || error.status === 404
     ? base

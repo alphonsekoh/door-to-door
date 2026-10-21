@@ -330,7 +330,7 @@ describe("clock rules", () => {
       ]);
       expect(result?.status).toBe("rejected");
       expect(result?.error?.code).toBe("clock_skew");
-      expect(result?.error?.message).toMatch(/before its outing began/);
+      expect(result?.error?.message).toMatch(/before its session began/);
     },
   );
 

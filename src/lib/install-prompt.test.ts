@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DISMISS_KEY,
   DISMISS_SUPPRESSION_MS,
+  FLOAT_LIMIT,
   INSTALLED_KEY,
+  bannerFloats,
   deriveInstallState,
   isRecordingRoute,
   isStandalone,
@@ -87,6 +89,23 @@ describe("isStandalone", () => {
   it("reads Safari's navigator.standalone", () => {
     expect(isStandalone(media(false), true)).toBe(true);
     expect(isStandalone(media(false), false)).toBe(false);
+  });
+});
+
+describe("bannerFloats", () => {
+  it("floats a banner up to a quarter of the screen", () => {
+    expect(FLOAT_LIMIT).toBe(0.25);
+    expect(bannerFloats({ height: 81, screen: 664, docked: false })).toBe(true);
+    expect(bannerFloats({ height: 166, screen: 664, docked: false })).toBe(true);
+  });
+
+  it("puts a taller one in the page, as at the largest text", () => {
+    expect(bannerFloats({ height: 167, screen: 664, docked: false })).toBe(false);
+    expect(bannerFloats({ height: 273, screen: 664, docked: false })).toBe(false);
+  });
+
+  it("never floats over a docked Save, however small", () => {
+    expect(bannerFloats({ height: 81, screen: 664, docked: true })).toBe(false);
   });
 });
 

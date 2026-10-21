@@ -35,6 +35,24 @@ describe("isActiveRoute", () => {
   it("does not match an unrelated path", () => {
     expect(isActiveRoute("/account", prefixed)).toBe(false);
   });
+
+  it("matches every screen in a section wider than the screen the tab opens", () => {
+    const admin = NAV_ITEMS.find((item) => item.label === "Admin");
+    if (admin === undefined) throw new Error("no Admin tab");
+    for (const path of [
+      "/admin/sessions",
+      "/admin/sessions/42",
+      "/admin/team",
+      "/admin/records",
+      "/admin/history",
+      "/admin/attention",
+    ]) {
+      expect(isActiveRoute(path, admin), path).toBe(true);
+    }
+    // Still on the boundary, and still not another tab's screen.
+    expect(isActiveRoute("/administrators", admin)).toBe(false);
+    expect(isActiveRoute("/history", admin)).toBe(false);
+  });
 });
 
 describe("NAV_ITEMS", () => {

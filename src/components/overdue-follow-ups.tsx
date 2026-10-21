@@ -5,7 +5,8 @@ import { useEffect, useState } from "react";
 import { OverdueBadge } from "@/components/follow-up-item";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { startOfToday, unitLabel } from "@/lib/follow-ups";
+import { startOfToday } from "@/lib/follow-ups";
+import { FollowUpDoor } from "@/components/unit-number";
 
 const SHOWN = 5;
 
@@ -50,7 +51,7 @@ export function OverdueFollowUps() {
   return (
     <section
       aria-label="Overdue follow-ups"
-      className="rounded-xl border border-interest-low/60 bg-interest-low/10 p-4"
+      className="rounded-xl border border-danger/60 bg-danger/10 p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-body font-semibold">
@@ -62,7 +63,9 @@ export function OverdueFollowUps() {
         {state.notes.map((note) => (
           <li key={note.id}>
             <Link href={`/households/${note.householdId}`} className="block min-h-11 py-1">
-              <span className="block text-body font-medium tabular-nums">{unitLabel(note)}</span>
+              <span className="block text-body font-medium tabular-nums">
+                <FollowUpDoor note={note} />
+              </span>
               <span className="block text-caption break-words text-foreground-muted">
                 {note.note}
               </span>
@@ -72,7 +75,7 @@ export function OverdueFollowUps() {
       </ul>
       <Link
         href="/follow-ups"
-        className="mt-2 inline-flex min-h-11 items-center text-body font-medium text-primary"
+        className="mt-2 inline-flex min-h-11 items-center text-body font-medium btn-text"
       >
         See all
       </Link>

@@ -419,11 +419,13 @@ describe("acting on a note", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("closes the sheet on Cancel without a request", () => {
+  it("closes the sheet on Cancel without a request", async () => {
     render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
     expect(apiFetch).not.toHaveBeenCalled();
   });
 

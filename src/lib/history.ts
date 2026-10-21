@@ -8,9 +8,9 @@ import type {
 /*
  * Shaping a member's own history for reading.
  *
- * Date formatting stays in the components, where toLocaleDateString gives the
- * member their own locale and zone. What lives here is the arithmetic, which
- * has to be right regardless of where the phone is.
+ * Dates are written by src/lib/dates.ts, in the phone's own zone. What lives
+ * here is the arithmetic, which has to be right regardless of where the phone
+ * is.
  */
 
 export type InterestSegment = { level: InterestLevel; label: string; count: number };

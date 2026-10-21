@@ -9,7 +9,11 @@ export default async function AdminRecordsPage() {
   await requireAdminPage();
   return (
     <>
-      <PageHeader title="Records" subtitle="Everything recorded on the running outing." />
+      <PageHeader
+        title="Records"
+        subtitle="Everything recorded in the running session."
+        back={{ href: "/admin/sessions", label: "Sessions" }}
+      />
       {/* useSearchParams needs a boundary, or the whole route opts out of
           static rendering at build time. */}
       <Suspense fallback={<p className="text-body text-foreground-muted">Loading…</p>}>

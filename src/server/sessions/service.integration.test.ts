@@ -115,12 +115,24 @@ describe("transitions", () => {
   });
 
   it.each([
-    ["starting an active session", "start"],
-    ["starting an ended session", "start"],
-    ["ending a draft", "end"],
-    ["reopening a draft", "reopen"],
-    ["reopening an active session", "reopen"],
-  ] as const)("refuses %s", async (label, transition) => {
+    [
+      "starting an active session",
+      "start",
+      "This session is already running, so it cannot be started.",
+    ],
+    [
+      "starting an ended session",
+      "start",
+      "This session has already ended, so it cannot be started.",
+    ],
+    ["ending a draft", "end", "This session has not started, so it cannot be ended."],
+    ["reopening a draft", "reopen", "This session has not started, so it cannot be reopened."],
+    [
+      "reopening an active session",
+      "reopen",
+      "This session is already running, so it cannot be reopened.",
+    ],
+  ] as const)("refuses %s, and says why", async (label, transition, message) => {
     const session = await draft();
     if (label.includes("active")) {
       await transitionSession(db, session.id, "start");
@@ -129,7 +141,9 @@ describe("transitions", () => {
       await transitionSession(db, session.id, "start");
       await transitionSession(db, session.id, "end");
     }
-    await expect(transitionSession(db, session.id, transition)).rejects.toThrow(ConflictError);
+    const refused = transitionSession(db, session.id, transition);
+    await expect(refused).rejects.toThrow(ConflictError);
+    await expect(refused).rejects.toThrow(message);
   });
 
   it("refuses a transition on a session that does not exist", async () => {

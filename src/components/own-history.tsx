@@ -26,13 +26,13 @@ type State =
   | { status: "error"; message: string };
 
 /*
- * "Me" is the outing list, counted from the member's own records only
+ * "Me" is the list of sessions, counted from the member's own records only
  * (D-27-1). "My team" is a flat list of records including those made by teams
- * the member is on now: the outing counts never change with it, so the two
+ * the member is on now: the session counts never change with it, so the two
  * are not mixed on one screen.
  */
 export const HISTORY_SUBTITLE = {
-  me: "Outings you have worked, newest first.",
+  me: "Sessions you have worked, newest first.",
   team: "Records by you and the teams you are on now, newest first.",
 } as const;
 
@@ -125,7 +125,7 @@ function OwnOutings() {
         <button
           type="button"
           onClick={() => void load(0)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -141,7 +141,7 @@ function OwnOutings() {
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">Nothing recorded yet.</p>
           <p className="mt-1 text-body text-foreground-muted">
-            Once you knock on your first door, the outing will appear here with what you found.
+            Once you knock on your first door, the session will appear here with what you found.
           </p>
         </div>
       ) : (
@@ -162,9 +162,9 @@ function OwnOutings() {
                   setLoadingMore(false);
                 });
               }}
-              className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
+              className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
             >
-              {loadingMore ? "Loading…" : "Show earlier outings"}
+              {loadingMore ? "Loading…" : "Show earlier sessions"}
             </button>
           ) : null}
         </>

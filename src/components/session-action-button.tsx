@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import type { ActionSpec } from "@/lib/sessions";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 /*
  * Start, end or reopen, with the refusal spelled out.
  *
- * One active outing at a time is a database constraint, so starting a second
+ * One active session at a time is a database constraint, so starting a second
  * one fails at the server. The message it sends back says what to do about it,
  * and this shows that rather than a generic failure.
  */
@@ -59,36 +59,37 @@ export function SessionActionButton({
             setConfirming(true);
           }
         }}
-        className={
+        className={`${spec.destructive ? "btn-danger-outline" : primary ? "btn-primary" : "btn-secondary"} ${
           primary
-            ? "min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-            : "min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium disabled:opacity-60"
-        }
+            ? "min-h-14 w-full rounded-xl text-title font-semibold"
+            : "min-h-11 rounded-lg px-3 text-body font-medium"
+        }`}
       >
         {busy && !confirming ? "Working…" : spec.label}
       </button>
 
+      {/* A row of its own when the button sits beside a title. */}
       {failure === null ? null : (
-        <p
-          role="alert"
-          className="mt-2 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="mt-2 basis-full notice-danger">
           {failure}
         </p>
       )}
 
-      {confirming && spec.confirm !== null ? (
-        <ConfirmDialog
-          title={spec.label}
-          detail={spec.confirm}
-          confirmLabel={spec.label}
-          busy={busy}
-          onConfirm={() => void run()}
-          onCancel={() => {
-            setConfirming(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {confirming && spec.confirm !== null ? (
+          <ConfirmDialog
+            tone={spec.destructive ? "destructive" : "default"}
+            title={spec.label}
+            detail={spec.confirm}
+            confirmLabel={spec.label}
+            busy={busy}
+            onConfirm={() => void run()}
+            onCancel={() => {
+              setConfirming(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </>
   );
 }

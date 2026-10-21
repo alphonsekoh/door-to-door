@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history";
 import { loadAllUsers } from "@/lib/users";
+import { formatDay } from "@/lib/dates";
 import {
   groupByHousehold,
   hasHistoryFilter,
@@ -32,6 +33,8 @@ import {
   toHistorySearch,
   type HistoryFilters,
 } from "@/lib/history-filters";
+import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 100;
 /* An export walks the whole filtered set a page at a time. The cap stops a
@@ -69,10 +72,10 @@ export function ConsolidatedHistory() {
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
-  /* Tagged with the outing they belong to; null while unknown (no outing,
+  /* Tagged with the session they belong to; null while unknown (no session,
      still loading, or the list could not be read). */
   const [teamState, setTeamState] = useState<{ outing: string; teams: Team[] } | null>(null);
-  /* Switching outings quickly must not leave the previous outing's teams. */
+  /* Switching sessions quickly must not leave the previous session's teams. */
   const teamsGeneration = useRef(0);
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -126,7 +129,7 @@ export function ConsolidatedHistory() {
     };
   }, [load, loadPickers, search]);
 
-  /* Teams belong to one outing, so they are listed only once one is chosen,
+  /* Teams belong to one session, so they are listed only once one is chosen,
      and a failure just leaves the picker empty. */
   const outing = filters.sessionId;
   useEffect(() => {
@@ -153,7 +156,7 @@ export function ConsolidatedHistory() {
 
   const teams = teamState?.outing === outing ? teamState.teams : [];
 
-  /* A team that is not one of the chosen outing's - deleted, or an edited or
+  /* A team that is not one of the chosen session's - deleted, or an edited or
      old URL - is unknown, and dropped rather than forwarded (D-29-4). */
   const unknownTeam =
     teamState?.outing === outing &&
@@ -165,12 +168,12 @@ export function ConsolidatedHistory() {
       ...parseHistoryFilters(new URLSearchParams(search)),
       teamId: "",
     });
-    // Teams are only known once an outing is chosen, so the outing keeps the query non-empty.
+    // Teams are only known once a session is chosen, so the session keeps the query non-empty.
     router.replace(`/admin/history?${next}`);
   }, [unknownTeam, search, router]);
 
   function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
-    /* A team from the old outing means nothing in the new one. */
+    /* A team from the old session means nothing in the new one. */
     const reset = key === "sessionId" ? { teamId: "" } : {};
     const next = toHistorySearch({ ...filters, ...reset, [key]: value });
     router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
@@ -229,7 +232,7 @@ export function ConsolidatedHistory() {
         <button
           type="button"
           onClick={() => void load(filters, 0)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -256,7 +259,7 @@ export function ConsolidatedHistory() {
               setFilter("q", event.target.value);
             }}
             placeholder="Unit, name or contact"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
         </div>
 
@@ -271,7 +274,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -284,7 +287,7 @@ export function ConsolidatedHistory() {
 
           <div>
             <label htmlFor="history-session" className="sr-only">
-              Filter by outing
+              Filter by session
             </label>
             <select
               id="history-session"
@@ -292,9 +295,9 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("sessionId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
-              <option value="">All outings</option>
+              <option value="">All sessions</option>
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.title}
@@ -314,7 +317,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("teamId", event.target.value);
                 }}
-                className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="h-12 min-h-12 field"
               >
                 <option value="">Any team</option>
                 {teams.map((team) => (
@@ -336,7 +339,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -357,7 +360,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -378,7 +381,7 @@ export function ConsolidatedHistory() {
               onChange={(event) => {
                 setFilter("religion", event.target.value as Religion | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any religion</option>
               {RELIGIONS.map((religion) => (
@@ -403,7 +406,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("from", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="min-h-12 field"
               />
             </div>
             <div>
@@ -417,7 +420,7 @@ export function ConsolidatedHistory() {
                 onChange={(event) => {
                   setFilter("to", event.target.value);
                 }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+                className="min-h-12 field"
               />
             </div>
           </div>
@@ -428,7 +431,7 @@ export function ConsolidatedHistory() {
             type="button"
             disabled={exporting}
             onClick={() => void exportCsv()}
-            className="min-h-11 flex-1 rounded-lg border border-border text-body font-medium disabled:opacity-60"
+            className="min-h-11 flex-1 btn-secondary rounded-lg text-body font-medium"
           >
             {exporting ? "Exporting…" : "Export CSV"}
           </button>
@@ -438,7 +441,7 @@ export function ConsolidatedHistory() {
               onClick={() => {
                 router.replace("/admin/history");
               }}
-              className="min-h-11 rounded-lg px-3 text-body font-medium text-primary"
+              className="min-h-11 rounded-lg px-3 text-body font-medium btn-text"
             >
               Clear filters
             </button>
@@ -464,13 +467,16 @@ export function ConsolidatedHistory() {
             const { household, block } = group;
             return (
               <li key={group.key} className="rounded-xl border border-border bg-surface p-4">
-                <div className="flex items-baseline justify-between gap-3">
+                {/* The count drops under, on the right, once the door would
+                    have under 12ch: squeezed, the name was cut to a few
+                    letters at the largest text. */}
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3">
                   <Link
                     href={`/households/${household.id}`}
-                    className="flex min-h-11 min-w-0 flex-col justify-center"
+                    className="flex min-h-11 min-w-0 flex-[1_1_12ch] flex-col justify-center"
                   >
                     <span className="block text-body font-semibold tabular-nums">
-                      Blk {block.name}, {household.unitNumber}
+                      Blk {block.name}, <UnitNumber value={household.unitNumber} />
                     </span>
                     {household.name === null ? null : (
                       <span className="block truncate text-caption text-foreground-muted">
@@ -478,7 +484,7 @@ export function ConsolidatedHistory() {
                       </span>
                     )}
                   </Link>
-                  <span className="shrink-0 text-caption text-foreground-muted">
+                  <span className="ml-auto shrink-0 text-caption text-foreground-muted">
                     {group.entries.length} {group.entries.length === 1 ? "visit" : "visits"}
                   </span>
                 </div>
@@ -492,12 +498,11 @@ export function ConsolidatedHistory() {
                         onClick={() => {
                           setAmending(entry);
                         }}
-                        className="flex min-h-11 w-full items-center gap-3 py-1 text-left"
+                        className="flex min-h-11 w-full flex-wrap items-center gap-x-3 gap-y-1 press-row py-1 text-left"
                       >
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-caption text-foreground-muted">
-                            {new Date(entry.visit.createdAt).toLocaleDateString()} ·{" "}
-                            {entry.session.title}
+                        <span className="min-w-0 flex-[1_1_12ch]">
+                          <span className="block text-caption break-words text-foreground-muted">
+                            {formatDay(entry.visit.createdAt)} · {entry.session.title}
                           </span>
                           <VisitByline visit={entry.visit} prefix="By " />
                           {entry.visit.description === "" ? null : (
@@ -525,24 +530,26 @@ export function ConsolidatedHistory() {
             setOffset(next);
             void load(filters, next);
           }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium"
+          className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
           Show more ({entries.length} of {total})
         </button>
       ) : null}
 
-      {amending === null ? null : (
-        <AmendVisitSheet
-          entry={asHouseholdSummary(amending)}
-          onClose={() => {
-            setAmending(null);
-          }}
-          onSaved={() => {
-            setAmending(null);
-            void load(filters, 0);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {amending === null ? null : (
+          <AmendVisitSheet
+            entry={asHouseholdSummary(amending)}
+            onClose={() => {
+              setAmending(null);
+            }}
+            onSaved={() => {
+              setAmending(null);
+              void load(filters, 0);
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

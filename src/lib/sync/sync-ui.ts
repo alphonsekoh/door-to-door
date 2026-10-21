@@ -39,7 +39,7 @@ export function recordReason(record: QueuedVisit): string | null {
       return "Could not send after several tries.";
     case "held":
       return code === "session_not_active"
-        ? "The outing has ended. Sends if an admin reopens it."
+        ? "The session has ended. Sends if an admin reopens it."
         : REFUSED;
     case "queued":
       /* The second refusal in a row: restamping did not help. */
@@ -84,6 +84,13 @@ export function barSummary(
   const count = unsent.length;
   const stuck = unsent.some((r) => r.state === "held" || r.state === "quarantined");
   return { count, text: stuck ? `${String(count)} not sent` : `${String(count)} waiting to send` };
+}
+
+/* The sheet's title says what the bar said: "waiting" until something is
+   actually stuck, and only then "not sent". */
+export function queueTitle(records: readonly QueuedVisit[]): string {
+  const stuck = records.some((r) => r.state === "held" || r.state === "quarantined");
+  return stuck ? "Records not sent" : "Waiting to send";
 }
 
 /* What the bar reads when it has nothing to count. A record saved on this

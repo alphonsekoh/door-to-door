@@ -106,10 +106,15 @@ function handleKey(layer: Layer, event: KeyboardEvent): void {
  * keyboard into a field nobody tapped.
  *
  * Pass `null` for `onClose` to make it blocking; that is decided when it opens.
+ *
+ * `active` false lets go while the element is still on screen: a sheet
+ * animating out hands back focus, the page and scrolling as its exit starts,
+ * so nothing waits on the animation. True again takes them back.
  */
 export function useModal<Panel extends HTMLElement = HTMLDivElement>(
   onClose: (() => void) | null,
   initialFocus?: RefObject<HTMLElement | null>,
+  active = true,
 ): { overlay: RefObject<HTMLDivElement | null>; panel: RefObject<Panel | null> } {
   const overlay = useRef<HTMLDivElement>(null);
   const panel = useRef<Panel>(null);
@@ -122,7 +127,7 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
   useEffect(() => {
     const overlayElement = overlay.current;
     const panelElement = panel.current;
-    if (overlayElement === null || panelElement === null) return;
+    if (!active || overlayElement === null || panelElement === null) return;
 
     const trigger = document.activeElement;
     const layer: Layer = {
@@ -161,7 +166,7 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
       }
     };
     // A ref object, so this still runs once per open.
-  }, [initialFocus]);
+  }, [initialFocus, active]);
 
   return { overlay, panel };
 }

@@ -24,8 +24,12 @@ export function useReservedSpace(
     };
     measure();
     window.addEventListener("resize", measure);
+    // The text size can change with no resize, and the banner with it.
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(element);
     return () => {
       window.removeEventListener("resize", measure);
+      observer?.disconnect();
       root.style.removeProperty(variable);
     };
   }, [variable, ref, active]);

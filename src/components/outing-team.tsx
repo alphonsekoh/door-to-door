@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TeamSheet, type TeamSheetSubmit } from "@/components/team-sheet";
 import type { Participant, ParticipantList, Team, TeamList, User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -18,6 +17,7 @@ import {
 } from "@/lib/team-ui";
 import { useOnline } from "@/lib/use-online";
 import { loadCurrentUser } from "@/lib/users";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 type Loaded = { me: User; participants: Participant[]; teams: Team[] };
 
@@ -187,16 +187,16 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       className="space-y-3 rounded-xl border border-border bg-surface p-4"
     >
       {joined ? (
-        <p className="text-body font-medium">You&apos;ve joined this outing</p>
+        <p className="text-body font-medium">You&apos;ve joined this session</p>
       ) : (
         <div>
           <button
             type="button"
             disabled={busy || !canChange}
             onClick={() => void join()}
-            className="min-h-12 w-full rounded-xl bg-primary text-body font-semibold text-primary-foreground disabled:opacity-60"
+            className="min-h-12 w-full btn-primary rounded-xl text-body font-semibold"
           >
-            Join this outing
+            Join this session
           </button>
         </div>
       )}
@@ -270,53 +270,51 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       )}
 
       {authFailed && loadFailure !== null && actionFailure === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {loadFailure}
         </p>
       ) : null}
 
       {actionFailure !== null && sheet === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {actionFailure}
         </p>
       ) : null}
 
       <p className="text-caption text-foreground-muted">{UNSYNCED_LIMIT_NOTE}</p>
 
-      {sheet === null ? null : (
-        <TeamSheet
-          key={sheet.mode}
-          mode={sheet.mode}
-          myName={me.name}
-          initialName={team?.name ?? ""}
-          candidates={candidates}
-          canChange={canChange}
-          onSubmit={(value) => submit(sheet, value)}
-          onClose={() => {
-            setSheet(null);
-            setActionFailure(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {sheet === null ? null : (
+          <TeamSheet
+            key={sheet.mode}
+            mode={sheet.mode}
+            myName={me.name}
+            initialName={team?.name ?? ""}
+            candidates={candidates}
+            canChange={canChange}
+            onSubmit={(value) => submit(sheet, value)}
+            onClose={() => {
+              setSheet(null);
+              setActionFailure(null);
+            }}
+          />
+        )}
+      </SheetPresence>
 
-      {leaving && team ? (
-        <ConfirmDialog
-          title="Leave this team?"
-          detail="Your teammates keep access to what you recorded. You lose access to theirs."
-          confirmLabel="Leave team"
-          busy={busy}
-          onConfirm={() => void leave(team.id)}
-          onCancel={() => {
-            setLeaving(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {leaving && team ? (
+          <ConfirmDialog
+            title="Leave this team?"
+            detail="Your teammates keep access to what you recorded. You lose access to theirs."
+            confirmLabel="Leave team"
+            busy={busy}
+            onConfirm={() => void leave(team.id)}
+            onCancel={() => {
+              setLeaving(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </section>
   );
 }

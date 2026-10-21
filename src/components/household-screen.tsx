@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
+import { BackLink } from "@/components/back-link";
 import { HouseholdHistoryPanel } from "@/components/household-history";
 import { VisitByline } from "@/components/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 type State =
   | { status: "loading" }
@@ -55,18 +58,30 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
     void load();
   };
 
+  /* Reached from history, follow-ups and the admin lists alike, so back goes
+     the way the member came, in every state: a failed load is no trap. */
+  const back = <BackLink href="/follow-ups" label="Back" retrace />;
+
   if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
+    return (
+      <>
+        {back}
+        <p className="text-body text-foreground-muted">Loading…</p>
+      </>
+    );
   }
 
   if (state.status === "error") {
     return (
-      <p
-        role="alert"
-        className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-body"
-      >
-        {state.message}
-      </p>
+      <>
+        {back}
+        <p
+          role="alert"
+          className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-body"
+        >
+          {state.message}
+        </p>
+      </>
     );
   }
 
@@ -77,14 +92,19 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
   return (
     <div className="space-y-4">
       <div>
-        <div className="flex items-start justify-between gap-3">
-          <p className="text-heading font-semibold tabular-nums">{household.unitNumber}</p>
+        {back}
+        {/* At large text Add follow-up drops under the unit rather than push
+            past the edge, and the unit number never breaks at its hyphen. */}
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <h1 className="text-heading font-semibold tabular-nums">
+            <UnitNumber value={household.unitNumber} />
+          </h1>
           <button
             type="button"
             onClick={() => {
               setAdding(true);
             }}
-            className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium text-primary"
+            className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
           >
             Add follow-up
           </button>
@@ -101,23 +121,25 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
 
       <HouseholdHistoryPanel history={state.history} onChanged={reload} anchorVisits />
 
-      {adding ? (
-        <FollowUpSheet
-          mode={{
-            kind: "create",
-            householdId: household.id,
-            visitId: null,
-            unitNumber: household.unitNumber,
-          }}
-          onClose={() => {
-            setAdding(false);
-          }}
-          onSaved={() => {
-            setAdding(false);
-            reload();
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {adding ? (
+          <FollowUpSheet
+            mode={{
+              kind: "create",
+              householdId: household.id,
+              visitId: null,
+              unitNumber: household.unitNumber,
+            }}
+            onClose={() => {
+              setAdding(false);
+            }}
+            onSaved={() => {
+              setAdding(false);
+              reload();
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </div>
   );
 }

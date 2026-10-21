@@ -8,16 +8,18 @@ import type { HouseholdSummary } from "@/generated/types.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
 import type { UnitRow as Row } from "@/lib/sync/unit-overlay";
 import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
+import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 type Props = {
   /* The server's units with this phone's unsent records laid over them. */
   rows: Row[];
   /* Records this page is sending right now. */
   inFlight: ReadonlySet<string>;
-  /* Units recorded during the running outing, so tonight's work is legible
+  /* Units recorded during the running session, so tonight's work is legible
      against the block's whole history. Null while the session is unknown. */
   sessionId: string | null;
-  /* The viewer's current team on the running outing, per the server. */
+  /* The viewer's current team in the running session, per the server. */
   teamIds?: readonly string[];
   /* False on the offline shell: amending needs the server (D-33-13). */
   amendable?: boolean;
@@ -36,6 +38,11 @@ function PendingChip({ pending, sending }: { pending: QueuedVisit | null; sendin
   );
 }
 
+/* A unit's row. At large text its chips drop under the unit rather than
+   squeeze the text beside them to a column too narrow for its words. */
+const ROW = "flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2";
+const ROW_TEXT = "min-w-0 flex-[1_1_12ch]";
+
 function ServerRow({
   row,
   entry,
@@ -49,14 +56,15 @@ function ServerRow({
   onSelect: (() => void) | null;
 }) {
   const { household, latestVisit, outstandingFollowUps } = entry;
-  const line =
-    "flex min-h-14 w-full items-center gap-3 border-b border-border px-4 py-2 text-left last:border-b-0";
+  const line = `${ROW} border-b border-border text-left last:border-b-0`;
 
   const content = (
     <>
-      <span className="min-w-0 flex-1">
+      <span className={ROW_TEXT}>
         <span className="flex items-center gap-2">
-          <span className="text-body font-semibold tabular-nums">{household.unitNumber}</span>
+          <span className="text-body font-semibold tabular-nums">
+            <UnitNumber value={household.unitNumber} />
+          </span>
           {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
         </span>
         {household.name === null ? null : (
@@ -68,7 +76,7 @@ function ServerRow({
           <VisitByline visit={latestVisit} prefix="By " withTeam={false} />
         )}
         {outstandingFollowUps !== undefined && outstandingFollowUps > 0 ? (
-          <span className="block text-caption font-medium text-interest-medium">
+          <span className="block text-caption font-medium text-interest-medium-text">
             {outstandingFollowUps === 1
               ? "1 follow-up outstanding"
               : `${String(outstandingFollowUps)} follow-ups outstanding`}
@@ -85,7 +93,7 @@ function ServerRow({
     <li className={line}>{content}</li>
   ) : (
     <li>
-      <button type="button" onClick={onSelect} className={line}>
+      <button type="button" onClick={onSelect} className={`press-row ${line}`}>
         {content}
       </button>
     </li>
@@ -98,10 +106,12 @@ function ServerRow({
  */
 function QueuedRow({ row, sending }: { row: Row; sending: boolean }) {
   return (
-    <li className="flex min-h-14 w-full items-center gap-3 border-b border-dashed border-border px-4 py-2 last:border-b-0">
-      <span className="min-w-0 flex-1">
+    <li className={`${ROW} border-b border-dashed border-border last:border-b-0`}>
+      <span className={ROW_TEXT}>
         <span className="flex items-center gap-2">
-          <span className="text-body font-semibold tabular-nums">{row.household.unitNumber}</span>
+          <span className="text-body font-semibold tabular-nums">
+            <UnitNumber value={row.household.unitNumber} />
+          </span>
           {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
         </span>
         {row.household.name === null ? null : (
@@ -129,7 +139,7 @@ export function UnitList({
 
   const visible = filterUnits(rows, query);
   const floors = groupByFloor(visible);
-  /* Progress reports the outing, not the block's whole history: what a member
+  /* Progress reports the session, not the block's whole history: what a member
      wants to know is how far tonight has got. Unsent records count: the
      door was knocked whether or not the server has heard yet. */
   const progress = summariseProgress(sessionId === null ? rows : rows.filter((r) => r.tonight));
@@ -152,7 +162,7 @@ export function UnitList({
             setQuery(event.target.value);
           }}
           placeholder="Unit, name or contact"
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
       </div>
 
@@ -195,19 +205,21 @@ export function UnitList({
         ))
       )}
 
-      {selected === null ? null : (
-        <AmendVisitSheet
-          entry={selected}
-          teamIds={teamIds}
-          onClose={() => {
-            setSelected(null);
-          }}
-          onSaved={() => {
-            setSelected(null);
-            onAmended();
-          }}
-        />
-      )}
+      <SheetPresence>
+        {selected === null ? null : (
+          <AmendVisitSheet
+            entry={selected}
+            teamIds={teamIds}
+            onClose={() => {
+              setSelected(null);
+            }}
+            onSaved={() => {
+              setSelected(null);
+              onAmended();
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

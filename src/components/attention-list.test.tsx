@@ -5,6 +5,12 @@ import { AttentionList, daysSince, sinceLabel } from "@/components/attention-lis
 import type { HouseholdAttention, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 
+/* A door's label, drawn in pieces so its unit number never breaks: the
+   innermost element holding the whole of it. */
+const door = (label: string) => (_: string, element: Element | null) =>
+  element?.textContent === label &&
+  ![...element.children].some((child) => child.textContent === label);
+
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
@@ -95,7 +101,7 @@ describe("AttentionList", () => {
     apiFetch.mockResolvedValue(page([row("#05-123", { name: "Mr Tan" })]));
     render(<AttentionList />);
 
-    expect(await screen.findByText("Blk 123, #05-123")).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
     expect(screen.getByText(/Mr Tan/)).toBeInTheDocument();
   });
 
@@ -112,7 +118,7 @@ describe("AttentionList", () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([row("#05-123")]));
     render(<AttentionList />);
-    await screen.findByText("Blk 123, #05-123");
+    await screen.findByText(door("Blk 123, #05-123"));
 
     await user.click(screen.getByRole("button", { name: "Include medium interest" }));
     await waitFor(() => {
@@ -178,7 +184,7 @@ describe("AttentionList", () => {
 
     apiFetch.mockResolvedValue(page([row("#05-123")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Blk 123, #05-123")).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
   });
 
   it("copes with a non-Error failure", async () => {

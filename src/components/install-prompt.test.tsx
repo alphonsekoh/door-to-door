@@ -1,6 +1,7 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DockedActions } from "@/components/docked-actions";
 import { InstallPrompt } from "@/components/install-prompt";
 import { DISMISS_KEY, INSTALLED_KEY } from "@/lib/install-prompt";
 
@@ -36,7 +37,7 @@ function installEvent(outcome: "accepted" | "dismissed" = "accepted") {
   return { event, prompt };
 }
 
-const banner = () => screen.queryByRole("complementary", { name: "Install the app" });
+const banner = () => screen.queryByRole("region", { name: "Install the app" });
 
 beforeEach(() => {
   localStorage.clear();
@@ -273,5 +274,103 @@ describe("InstallPrompt reserved space", () => {
     await user.click(screen.getByRole("button", { name: "Not now" }));
     expect(bottom()).toBe("");
     Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+  });
+});
+
+describe("InstallPrompt floats only while it covers little", () => {
+  const bottom = () => document.documentElement.style.getPropertyValue("--banner-bottom");
+
+  function setHeight(height: number) {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get: () => height,
+    });
+  }
+
+  afterEach(() => {
+    Reflect.deleteProperty(HTMLElement.prototype, "offsetHeight");
+    vi.unstubAllGlobals();
+    window.innerHeight = 768;
+  });
+
+  it("sits at the end of the page once it would cover over a quarter of the screen", async () => {
+    setEnvironment(IOS_SAFARI);
+    window.innerHeight = 664;
+    setHeight(273);
+    render(<InstallPrompt />);
+
+    await screen.findByRole("button", { name: "Got it" });
+    expect(banner()).not.toHaveAttribute("data-floating");
+    expect(banner()).not.toHaveClass("fixed");
+    // In the page it takes its own room, so none is reserved for it.
+    expect(bottom()).toBe("");
+  });
+
+  it("goes into the page as the text grows, and floats again as it shrinks", async () => {
+    const observers: { measure: () => void; watched: Element[] }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        watched: Element[] = [];
+        constructor(measure: () => void) {
+          observers.push({ measure, watched: this.watched });
+        }
+        observe(target: Element) {
+          this.watched.push(target);
+        }
+        disconnect() {
+          // Nothing to release.
+        }
+      },
+    );
+    setEnvironment(IOS_SAFARI);
+    window.innerHeight = 664;
+    setHeight(81);
+    render(<InstallPrompt />);
+    await screen.findByRole("button", { name: "Got it" });
+    expect(banner()).toHaveAttribute("data-floating");
+    expect(bottom()).toBe("81px");
+
+    // The text size changed: no resize, only the banner grew, and the
+    // browser calls back for what watches the banner.
+    setHeight(273);
+    const grown = banner();
+    act(() => {
+      for (const observer of observers) {
+        if (grown !== null && observer.watched.includes(grown)) observer.measure();
+      }
+    });
+    expect(banner()).not.toHaveAttribute("data-floating");
+    expect(bottom()).toBe("");
+
+    setHeight(81);
+    act(() => {
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(banner()).toHaveAttribute("data-floating");
+  });
+
+  it("never floats over a docked Save, and floats again once it is gone", async () => {
+    setEnvironment(IOS_SAFARI);
+    window.innerHeight = 664;
+    setHeight(81);
+    const Screen = ({ save }: { save: boolean }) => (
+      <>
+        {save ? (
+          <DockedActions>
+            <button type="button">Save</button>
+          </DockedActions>
+        ) : null}
+        <InstallPrompt />
+      </>
+    );
+    const { rerender } = render(<Screen save />);
+    await screen.findByRole("button", { name: "Got it" });
+    expect(banner()).not.toHaveAttribute("data-floating");
+    expect(bottom()).toBe("");
+
+    rerender(<Screen save={false} />);
+    expect(banner()).toHaveAttribute("data-floating");
+    expect(bottom()).toBe("81px");
   });
 });

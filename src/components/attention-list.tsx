@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { InterestChip } from "@/components/interest-chip";
 import type { HouseholdAttention, HouseholdAttentionList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 50;
 
@@ -61,7 +62,7 @@ export function AttentionList() {
         <button
           type="button"
           onClick={() => void load(wide)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -79,7 +80,7 @@ export function AttentionList() {
         onClick={() => {
           setWide((open) => !open);
         }}
-        className="min-h-11 w-full rounded-lg border border-border text-body font-medium"
+        className="min-h-11 w-full btn-secondary rounded-lg text-body font-medium"
       >
         {wide ? "High interest only" : "Include medium interest"}
       </button>
@@ -95,13 +96,15 @@ export function AttentionList() {
         <ul className="overflow-hidden rounded-xl border border-border bg-surface">
           {state.rows.map((row) => (
             <li key={row.household.id}>
+              {/* At large text the chip drops under the door rather than cut
+                  who lives there to a few letters. */}
               <Link
                 href={`/households/${row.household.id}`}
-                className="flex min-h-16 items-center gap-3 border-b border-border px-4 py-3 last:border-b-0"
+                className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 last:border-b-0"
               >
-                <span className="min-w-0 flex-1">
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
-                    Blk {row.block.name}, {row.household.unitNumber}
+                    Blk {row.block.name}, <UnitNumber value={row.household.unitNumber} />
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
                     {row.household.name ?? "Nobody named yet"} · last visited{" "}

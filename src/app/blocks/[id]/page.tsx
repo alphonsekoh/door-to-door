@@ -1,14 +1,10 @@
 import { BlockScreen } from "@/components/block-screen";
-import { PageHeader } from "@/components/page-header";
 
 export const metadata = { title: "Record a visit" };
 
+/* The heading is the block's own name, which the screen learns with the
+   session; see BlockScreen. */
 export default async function BlockPage({ params }: PageProps<"/blocks/[id]">) {
   const { id } = await params;
-  return (
-    <>
-      <PageHeader title="Record a visit" subtitle="One unit at a time." />
-      <BlockScreen blockId={id} />
-    </>
-  );
+  return <BlockScreen blockId={id} />;
 }

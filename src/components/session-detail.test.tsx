@@ -53,9 +53,16 @@ function sessionBlock(
 }
 
 /* Routed by path: the screen loads the outing and its blocks in parallel. */
+/* The block registry is listed as soon as the attach sheet opens. */
+const EMPTY_REGISTRY = { data: [], pagination: { limit: 50, offset: 0, total: 0, hasMore: false } };
+
 function serve(status: SessionStatus, blocks: SessionBlock[]) {
   apiFetch.mockImplementation((path: string) =>
-    path.endsWith("/blocks") ? Promise.resolve(blocks) : Promise.resolve(session(status)),
+    path.endsWith("/blocks")
+      ? Promise.resolve(blocks)
+      : path.startsWith("/blocks")
+        ? Promise.resolve(EMPTY_REGISTRY)
+        : Promise.resolve(session(status)),
   );
 }
 
@@ -71,7 +78,8 @@ describe("SessionDetail", () => {
     expect(await screen.findByText("June outing")).toBeInTheDocument();
     expect(screen.getByText("Running now")).toBeInTheDocument();
     expect(screen.getByText("Blk 123")).toBeInTheDocument();
-    expect(screen.getByText("3 units, 4 visits")).toBeInTheDocument();
+    // Units visited in this session, never read as the size of the block.
+    expect(screen.getByText("3 visited, 4 visits")).toBeInTheDocument();
   });
 
   it("names the members working a block right now", async () => {
@@ -98,7 +106,7 @@ describe("SessionDetail", () => {
 
     expect(await screen.findByText("1 visit recorded across 1 block.")).toBeInTheDocument();
     // Every unit had one knock, so a visit count would only repeat the unit count.
-    expect(screen.getByText("1 unit")).toBeInTheDocument();
+    expect(screen.getByText("1 visited")).toBeInTheDocument();
   });
 
   it("calls a member working a block with no name on record Someone", async () => {
@@ -112,7 +120,7 @@ describe("SessionDetail", () => {
   it("offers reopen on an ended outing", async () => {
     serve("ended", []);
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByRole("button", { name: "Reopen outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Reopen session" })).toBeInTheDocument();
   });
 
   it("warns that a block with no attachment leaves members with nowhere to record", async () => {
@@ -264,19 +272,19 @@ describe("SessionDetail", () => {
   it("copes with a non-Error load failure", async () => {
     apiFetch.mockRejectedValue("boom");
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this outing.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this session.");
   });
 
   it("reflects a lifecycle change without a manual refresh", async () => {
     const user = userEvent.setup();
     serve("ended", []);
     render(<SessionDetail sessionId="s1" />);
-    await screen.findByRole("button", { name: "Reopen outing" });
+    await screen.findByRole("button", { name: "Reopen session" });
 
     apiFetch.mockImplementation((path: string) =>
       path.endsWith("/blocks") ? Promise.resolve([]) : Promise.resolve(session("active")),
     );
-    await user.click(screen.getByRole("button", { name: "Reopen outing" }));
+    await user.click(screen.getByRole("button", { name: "Reopen session" }));
 
     expect(await screen.findByText("Running now")).toBeInTheDocument();
   });
@@ -316,7 +324,9 @@ describe("SessionDetail", () => {
 
     await user.click(screen.getByRole("button", { name: "Add blocks" }));
     await user.click(await screen.findByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("shows the team panel for the outing's state", async () => {

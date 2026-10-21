@@ -89,8 +89,28 @@ describe("adding a note", () => {
     render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
     type("Note", "   ");
     fireEvent.click(sheet().getByRole("button", { name: "Save follow-up" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Write the note first.");
+    // Under the field it is about, not in the failure banner.
+    const note = sheet().getByLabelText("Note");
+    expect(note).toHaveAttribute("aria-invalid", "true");
+    expect(note).toHaveAccessibleDescription("Write the note first.");
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("clears the note's error as soon as the note is fixed", () => {
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    fireEvent.click(sheet().getByRole("button", { name: "Save follow-up" }));
+    expect(sheet().getByText("Write the note first.")).toBeInTheDocument();
+
+    type("Note", "Call back");
+    expect(sheet().queryByText("Write the note first.")).toBeNull();
+    expect(sheet().getByLabelText("Note")).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("does not raise the error while a note is being typed", () => {
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type("Note", "   ");
+    expect(sheet().queryByText("Write the note first.")).toBeNull();
   });
 
   it("counts characters and refuses past the limit", () => {
@@ -98,7 +118,9 @@ describe("adding a note", () => {
     type("Note", "x".repeat(2001));
     expect(screen.getByText("2001 of 2000")).toBeInTheDocument();
     fireEvent.click(sheet().getByRole("button", { name: "Save follow-up" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("Keep the note to 2000 characters.");
+    expect(sheet().getByLabelText("Note")).toHaveAccessibleDescription(
+      "Keep the note to 2000 characters.",
+    );
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -197,11 +219,13 @@ describe("editing a note", () => {
     expect(apiFetch).toHaveBeenCalledWith("/follow-ups/f1", { method: "DELETE" });
   });
 
-  it("keeps the note when deleting is cancelled", () => {
+  it("keeps the note when deleting is cancelled", async () => {
     render(<FollowUpSheet mode={edit} onClose={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: "Delete this note" }));
     fireEvent.click(screen.getByRole("button", { name: "Keep as it is" }));
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -213,12 +237,17 @@ describe("editing a note", () => {
     await user.click(remove);
     const keep = screen.getByRole("button", { name: "Keep as it is" });
     expect(keep).toHaveFocus();
-    expect(screen.getByRole("dialog", { name: "Edit follow-up" })).toHaveAttribute("inert");
+    expect(
+      screen.getByRole("dialog", { name: "Edit follow-up" }).closest("[inert]"),
+    ).not.toBeNull();
 
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
-    expect(onClose).not.toHaveBeenCalled();
+    // Focus is back as the confirm starts to leave, not once it has gone.
     expect(remove).toHaveFocus();
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
 
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
@@ -234,7 +263,71 @@ describe("editing a note", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "That note or unit is no longer there.",
     );
-    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("a stray tap or flick", () => {
+  const backdrop = () => screen.getByRole("button", { name: "Close" });
+  const asking = (name: string) => within(screen.getByRole("alertdialog", { name }));
+
+  it("closes an untouched sheet at once", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    fireEvent.click(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("asks before losing a typed note, and keeps it to go on with", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    type("Note", "Call back after six");
+    fireEvent.click(backdrop());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(
+      asking("Discard this note?").getByText("What you typed has not been saved."),
+    ).toBeVisible();
+
+    fireEvent.click(asking("Discard this note?").getByRole("button", { name: "Keep editing" }));
+    expect(sheet().getByLabelText("Note")).toHaveValue("Call back after six");
+    expect(onClose).not.toHaveBeenCalled();
+
+    fireEvent.click(backdrop());
+    fireEvent.click(asking("Discard this note?").getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("counts a due day on its own as something typed", () => {
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type("Due (optional)", "2026-12-24");
+    fireEvent.click(backdrop());
+    expect(screen.getByRole("alertdialog", { name: "Discard this note?" })).toBeInTheDocument();
+  });
+
+  it("asks about the changes to a note being edited, never as if deleting it", () => {
+    const onClose = vi.fn();
+    render(
+      <FollowUpSheet mode={{ kind: "edit", note: existing }} onClose={onClose} onSaved={vi.fn()} />,
+    );
+    fireEvent.click(backdrop());
+    expect(onClose).toHaveBeenCalledOnce();
+
+    type("Note", "Bring two flyers.");
+    fireEvent.click(backdrop());
+    expect(asking("Discard your changes?").getByText("The note stays as it was.")).toBeVisible();
+    expect(screen.queryByRole("alertdialog", { name: "Discard this note?" })).toBeNull();
+  });
+
+  it("still closes at once from Cancel, with a note typed", () => {
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    type("Note", "Call back");
+    fireEvent.click(sheet().getByRole("button", { name: "Cancel" }));
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });
 

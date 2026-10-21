@@ -1,5 +1,6 @@
 import {
   test as base,
+  expect,
   type APIRequestContext,
   type Page,
   type PlaywrightWorkerArgs,
@@ -65,7 +66,20 @@ export const test = base.extend<Fixtures>({
   },
 });
 
-export { expect } from "@playwright/test";
+export { expect };
+
+/*
+ * A block screen loaded by address is live once its docked Save is the
+ * form's own: until then it is the stand-in in the server's HTML, a plain
+ * button. Text typed before that is cleared as React takes over the unit
+ * field (#113), so a test types only after it.
+ */
+export async function untilLive(page: Page): Promise<void> {
+  await expect(page.getByRole("button", { name: "Save and next" })).toHaveAttribute(
+    "type",
+    "submit",
+  );
+}
 
 /*
  * Leaves an outing running with the seeded block attached, whatever state the
@@ -87,7 +101,7 @@ export async function ensureActiveSession(api: APIRequestContext): Promise<strin
 
 async function startFreshSession(api: APIRequestContext): Promise<string> {
   const created = await api.post("/api/sessions", {
-    data: { title: `E2E outing ${new Date().toISOString()}` },
+    data: { title: `E2E session ${new Date().toISOString()}` },
   });
   const { id } = (await created.json()) as { id: string };
   await api.post(`/api/sessions/${id}/start`);

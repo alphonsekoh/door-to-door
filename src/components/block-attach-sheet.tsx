@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Block, BlockList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { useModal } from "@/lib/use-modal";
+import { Sheet, SheetActions } from "@/components/sheet";
 
 /*
  * Pick blocks from the registry, or add one that is not in it yet.
@@ -52,8 +52,10 @@ export function BlockAttachSheet({
     }
   }, []);
 
+  /* The debounce is for typing; opening the sheet, or clearing the search,
+     loads the list without waiting for keystrokes that are not coming. */
   useEffect(() => {
-    const timer = setTimeout(() => void load(search), 200);
+    const timer = setTimeout(() => void load(search), search === "" ? 0 : 200);
     return () => {
       clearTimeout(timer);
     };
@@ -98,150 +100,129 @@ export function BlockAttachSheet({
 
   const available = blocks.filter((block) => !attachedIds.includes(block.id));
 
-  const { overlay, panel } = useModal(onClose);
-
   return (
-    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-      <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
+    <Sheet label="Add blocks" title="Add blocks" onClose={onClose}>
+      {failure === null ? null : (
+        <p role="alert" className="mt-3 notice-danger">
+          {failure}
+        </p>
+      )}
 
-      <div
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Add blocks"
-        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-title font-semibold">Add blocks</p>
-          <button type="button" onClick={onClose} className="min-h-11 text-body text-primary">
-            Cancel
-          </button>
-        </div>
-
-        {failure === null ? null : (
-          <p
-            role="alert"
-            className="mt-3 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
-            {failure}
-          </p>
-        )}
-
-        <div className="mt-3">
-          <label htmlFor="block-search" className="sr-only">
-            Search the block registry
-          </label>
-          <input
-            id="block-search"
-            type="search"
-            value={search}
-            onChange={(event) => {
-              setSearch(event.target.value);
-            }}
-            placeholder="Block number or street"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-          />
-        </div>
-
-        {available.length === 0 ? (
-          <p className="mt-3 text-body text-foreground-muted">
-            Nothing left to attach here. Add a new block below.
-          </p>
-        ) : (
-          <ul className="mt-3 overflow-hidden rounded-xl border border-border bg-surface">
-            {available.map((block) => {
-              const picked = chosen.includes(block.id);
-              return (
-                <li key={block.id}>
-                  <button
-                    type="button"
-                    aria-pressed={picked}
-                    onClick={() => {
-                      setChosen((current) =>
-                        picked ? current.filter((id) => id !== block.id) : [...current, block.id],
-                      );
-                    }}
-                    className="flex min-h-14 w-full items-center justify-between gap-3 border-b border-border px-4 py-2 text-left last:border-b-0"
-                  >
-                    <span className="min-w-0">
-                      <span className="block text-body font-semibold">Blk {block.name}</span>
-                      <span className="block truncate text-caption text-foreground-muted">
-                        {block.street}
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-body font-medium text-primary">
-                      {picked ? "Selected" : "Select"}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-
-        {creating ? (
-          <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface p-4">
-            <div>
-              <label htmlFor="new-block-name" className="mb-1 block text-body font-medium">
-                Block number
-              </label>
-              <input
-                id="new-block-name"
-                value={name}
-                onChange={(event) => {
-                  setName(event.target.value);
-                }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-              />
-            </div>
-            <div>
-              <label htmlFor="new-block-street" className="mb-1 block text-body font-medium">
-                Street
-              </label>
-              <input
-                id="new-block-street"
-                value={street}
-                onChange={(event) => {
-                  setStreet(event.target.value);
-                }}
-                className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-              />
-            </div>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void createBlock()}
-              className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
-            >
-              {busy ? "Adding…" : "Add to the registry"}
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setCreating(true);
-            }}
-            className="mt-3 min-h-11 text-body font-medium text-primary"
-          >
-            Block not listed?
-          </button>
-        )}
-
-        <div className="sticky bottom-0 -mx-4 mt-4 bg-background/95 px-4 py-3 backdrop-blur">
-          <button
-            type="button"
-            disabled={busy || chosen.length === 0}
-            onClick={() => void attach()}
-            className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-          >
-            {chosen.length === 0
-              ? "Select a block"
-              : `Attach ${String(chosen.length)} ${chosen.length === 1 ? "block" : "blocks"}`}
-          </button>
-        </div>
+      <div className="mt-3">
+        <label htmlFor="block-search" className="sr-only">
+          Search the block registry
+        </label>
+        <input
+          id="block-search"
+          type="search"
+          value={search}
+          onChange={(event) => {
+            setSearch(event.target.value);
+          }}
+          placeholder="Block number or street"
+          className="min-h-12 field"
+        />
       </div>
-    </div>
+
+      {available.length === 0 ? (
+        <p className="mt-3 text-body text-foreground-muted">
+          Nothing left to attach here. Add a new block below.
+        </p>
+      ) : (
+        <ul className="mt-3 overflow-hidden rounded-xl border border-border bg-surface">
+          {available.map((block) => {
+            const picked = chosen.includes(block.id);
+            return (
+              <li key={block.id}>
+                {/* At large text Select drops under the block rather than cut
+                    its street to a few letters. */}
+                <button
+                  type="button"
+                  aria-pressed={picked}
+                  onClick={() => {
+                    setChosen((current) =>
+                      picked ? current.filter((id) => id !== block.id) : [...current, block.id],
+                    );
+                  }}
+                  className="flex min-h-14 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
+                >
+                  <span className="min-w-0 flex-[1_1_12ch]">
+                    <span className="block text-body font-semibold">Blk {block.name}</span>
+                    <span className="block truncate text-caption text-foreground-muted">
+                      {block.street}
+                    </span>
+                  </span>
+                  <span className="ml-auto shrink-0 text-body font-medium text-primary">
+                    {picked ? "Selected" : "Select"}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {creating ? (
+        <div className="mt-3 space-y-3 rounded-xl border border-border bg-surface p-4">
+          <div>
+            <label htmlFor="new-block-name" className="mb-1 block text-body font-medium">
+              Block number
+            </label>
+            <input
+              id="new-block-name"
+              value={name}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+              className="min-h-12 field"
+            />
+          </div>
+          <div>
+            <label htmlFor="new-block-street" className="mb-1 block text-body font-medium">
+              Street
+            </label>
+            <input
+              id="new-block-street"
+              value={street}
+              onChange={(event) => {
+                setStreet(event.target.value);
+              }}
+              className="min-h-12 field"
+            />
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void createBlock()}
+            className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
+          >
+            {busy ? "Adding…" : "Add to the registry"}
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            setCreating(true);
+          }}
+          className="mt-3 min-h-11 text-body font-medium btn-text"
+        >
+          Block not listed?
+        </button>
+      )}
+
+      <SheetActions>
+        <button
+          type="button"
+          disabled={busy || chosen.length === 0}
+          onClick={() => void attach()}
+          className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+        >
+          {chosen.length === 0
+            ? "Select a block"
+            : `Attach ${String(chosen.length)} ${chosen.length === 1 ? "block" : "blocks"}`}
+        </button>
+      </SheetActions>
+    </Sheet>
   );
 }

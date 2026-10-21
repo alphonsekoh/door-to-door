@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BlockAttachSheet } from "@/components/block-attach-sheet";
@@ -30,7 +30,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-/* The sheet lists the registry on a 200ms debounce after it opens, so that
+/* The sheet lists the registry as it opens, asynchronously, so that
    listing can land at any point in a test that does not wait for it. Tests
    about creating a block first wait for a listed row, then count creates
    rather than every request. */
@@ -44,6 +44,44 @@ describe("BlockAttachSheet", () => {
     expect(screen.getByRole("dialog", { name: "Add blocks" })).toHaveFocus();
     await userEvent.setup().keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("lists the registry at once on opening, without waiting out the typing debounce", () => {
+    vi.useFakeTimers();
+    try {
+      apiFetch.mockResolvedValue(page([]));
+      render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      expect(apiFetch).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("waits for a pause in typing before searching", () => {
+    vi.useFakeTimers();
+    try {
+      apiFetch.mockResolvedValue(page([]));
+      render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+      act(() => {
+        vi.advanceTimersByTime(0);
+      });
+      act(() => {
+        fireEvent.change(screen.getByLabelText(/search/i), { target: { value: "12" } });
+      });
+      act(() => {
+        vi.advanceTimersByTime(199);
+      });
+      expect(apiFetch).toHaveBeenCalledOnce();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(apiFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("lists the registry", async () => {

@@ -27,25 +27,36 @@ export function BottomNav() {
     return null;
   }
 
+  /*
+   * Glass, exactly --nav-height tall, so the Save bar docked on it meets it
+   * edge to edge with nothing showing through between. When one is docked
+   * the two read as one slab and the nav drops its own lit edge.
+   *
+   * Drawn at the 16px base whatever the text size, as an iPhone's tab bar
+   * is: grown with the text, it took a fifth of the screen at the largest.
+   * Labels never wrap. Where a tab is too narrow for its label, on a narrow
+   * phone, the label is kept for screen readers only (in px, as a container
+   * query's rem is the reader's).
+   */
   return (
     <nav
       aria-label="Primary"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 inset-safe-bottom backdrop-blur"
+      className="material-chrome fixed inset-x-0 bottom-0 z-40 inset-safe-bottom chrome-size [body:has([data-docked])_&]:shadow-none"
     >
-      <ul className="mx-auto flex max-w-screen-sm">
+      <ul className="mx-auto flex h-(--nav-height) max-w-screen-sm">
         {items.map((item) => {
           const active = isActiveRoute(pathname, item);
           return (
-            <li key={item.href} className="flex-1">
+            <li key={item.href} className="@container flex-1">
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
-                className={`flex min-h-14 flex-col items-center justify-center gap-0.5 text-caption font-medium transition-colors ${
-                  active ? "text-primary" : "text-foreground-muted"
+                className={`flex h-full flex-col items-center justify-center gap-0.5 text-caption font-semibold ${
+                  active ? "text-primary" : "text-foreground"
                 }`}
               >
                 <NavIcon name={item.href} />
-                <span>{item.label}</span>
+                <span className="whitespace-nowrap @max-[68px]:sr-only">{item.label}</span>
               </Link>
             </li>
           );

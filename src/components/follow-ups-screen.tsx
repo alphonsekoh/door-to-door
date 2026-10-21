@@ -7,6 +7,7 @@ import { FollowUpSheet } from "@/components/follow-up-sheet";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
+import { SheetPresence } from "@/components/sheet";
 
 const PAGE_SIZE = 20;
 
@@ -106,8 +107,8 @@ export function FollowUpsScreen() {
                 setState({ status: "loading" });
                 router.replace(option.value === "mine" ? "/follow-ups?view=mine" : "/follow-ups");
               }}
-              className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-                on ? "border-primary bg-primary text-primary-foreground" : "border-border"
+              className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+                on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"
               }`}
             >
               {option.label}
@@ -124,7 +125,7 @@ export function FollowUpsScreen() {
           <button
             type="button"
             onClick={reload}
-            className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+            className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
           >
             Try again
           </button>
@@ -156,7 +157,7 @@ export function FollowUpsScreen() {
                   setLoadingMore(false);
                 });
               }}
-              className="min-h-11 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
+              className="min-h-11 w-full btn-secondary rounded-xl text-body font-medium"
             >
               {loadingMore ? "Loading…" : "Show more"}
             </button>
@@ -164,18 +165,20 @@ export function FollowUpsScreen() {
         </>
       )}
 
-      {editing === null ? null : (
-        <FollowUpSheet
-          mode={{ kind: "edit", note: editing }}
-          onClose={() => {
-            setEditing(null);
-          }}
-          onSaved={() => {
-            setEditing(null);
-            reload();
-          }}
-        />
-      )}
+      <SheetPresence>
+        {editing === null ? null : (
+          <FollowUpSheet
+            mode={{ kind: "edit", note: editing }}
+            onClose={() => {
+              setEditing(null);
+            }}
+            onSaved={() => {
+              setEditing(null);
+              reload();
+            }}
+          />
+        )}
+      </SheetPresence>
     </div>
   );
 }

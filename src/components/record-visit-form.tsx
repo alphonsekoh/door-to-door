@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { UnitNumber } from "@/components/unit-number";
+import { DockedActions } from "@/components/docked-actions";
 import { FollowUpSheet } from "@/components/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/household-history";
 import { InterestPicker } from "@/components/interest-picker";
@@ -17,6 +19,7 @@ import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
+import { SheetPresence } from "@/components/sheet";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
   { value: "buddhist", label: "Buddhist" },
@@ -42,6 +45,20 @@ export function validateVisit(unitNumber: string, interestLevel: InterestLevel |
 }
 
 /*
+ * One line beside Save when it refused, because with the details open the
+ * fields at fault are scrolled away and a Save that silently does nothing is
+ * a visit lost at the next door (D-33-29's slot, for validation too).
+ */
+export function blockedMessage(errors: FormErrors): string | null {
+  if (errors.unitNumber !== undefined && errors.interestLevel !== undefined) {
+    return "Not saved. Enter the unit number and choose an interest level.";
+  }
+  if (errors.unitNumber !== undefined) return "Not saved. Enter the unit number.";
+  if (errors.interestLevel !== undefined) return "Not saved. Choose an interest level.";
+  return null;
+}
+
+/*
  * The visit just saved. Its household is known once the server has it: at
  * once for a direct save, and for a queued one when it has been sent. Until
  * then no note can be anchored to it (D-33-11).
@@ -56,9 +73,9 @@ type Saved = {
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
-  /* The running outing, so a queued record names the one it was saved in. */
+  /* The running session, so a queued record names the one it was saved in. */
   sessionId: string | null;
-  /* Asks the server again which outing is running, for a save made before
+  /* Asks the server again which session is running, for a save made before
      the page learnt it. */
   loadSession: () => Promise<OutingAnswer>;
   /* Called after a save that went straight to the server; a queued save is
@@ -70,18 +87,19 @@ type Props = {
 
 /* The status line for a save that went into the queue. */
 function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sending: boolean) {
-  if (sending) return `Sending ${unitNumber}…`;
+  const unit = <UnitNumber value={unitNumber} />;
+  if (sending) return <>Sending {unit}…</>;
   /* One line at phone width, so the form below does not move when this
      changes; the bar above says what happens next. */
   if (record?.state === "held" || record?.state === "quarantined") {
-    return `Saved ${unitNumber} on this phone. Not sent.`;
+    return <>Saved {unit} on this phone. Not sent.</>;
   }
-  return `Saved ${unitNumber} on this phone.`;
+  return <>Saved {unit} on this phone.</>;
 }
 
 const OUTING_UNKNOWN =
-  "Could not load the outing, so this visit is not saved yet. Check your signal and try again.";
-const NO_OUTING = "No outing is running, so this visit is not saved yet.";
+  "Could not load the session, so this visit is not saved yet. Check your signal and try again.";
+const NO_OUTING = "No session is running, so this visit is not saved yet.";
 
 export function RecordVisitForm({
   blockId,
@@ -92,6 +110,7 @@ export function RecordVisitForm({
   onDirtyChange,
 }: Props) {
   const sync = useSyncQueue();
+  const formId = useId();
   const [unitNumber, setUnitNumber] = useState("");
   /* The next unit filled in after a save is the app's guess, not input. */
   const [suggested, setSuggested] = useState("");
@@ -102,6 +121,9 @@ export function RecordVisitForm({
   const [description, setDescription] = useState("");
   const [details, setDetails] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  /* The summary beside Save belongs to a Save that was refused, not to a
+     field left on blur. */
+  const [refused, setRefused] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
@@ -109,6 +131,19 @@ export function RecordVisitForm({
   const [noting, setNoting] = useState(false);
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
+  const top = useRef<HTMLDivElement>(null);
+  const savedId = saved?.visitId ?? null;
+
+  /*
+   * At large text the member scrolls down to the interest level before
+   * Save, and the Saved line and the next unit, already filled in, were left
+   * above the screen: a second tap then recorded that unit unseen. Each save
+   * brings them back into view, clear of the pinned chrome, before it is
+   * painted. Where they are already in view, nothing moves.
+   */
+  useLayoutEffect(() => {
+    if (savedId !== null) top.current?.scrollIntoView({ block: "nearest" });
+  }, [savedId]);
 
   /*
    * Look up what is already known as soon as the unit matches one recorded
@@ -162,8 +197,18 @@ export function RecordVisitForm({
     setDescription("");
     setDetails(false);
     setErrors({});
+    setRefused(false);
     setHistory(null);
   }, []);
+
+  function clearError(field: keyof FormErrors): void {
+    setErrors((current) => {
+      const { [field]: _fixed, ...rest } = current;
+      return rest;
+    });
+  }
+
+  const blocked = refused ? blockedMessage(errors) : null;
 
   const dirty =
     unitNumber.trim() !== suggested ||
@@ -185,6 +230,7 @@ export function RecordVisitForm({
     const found = validateVisit(unitNumber, interestLevel);
     setErrors(found);
     if (Object.keys(found).length > 0 || interestLevel === null) {
+      setRefused(true);
       return;
     }
 
@@ -208,8 +254,8 @@ export function RecordVisitForm({
      * cannot take it (no IndexedDB, a full disk) does it go straight to the
      * server, where a failure keeps everything typed (D-25-8).
      *
-     * Never queued without its outing: sent later, it would join whichever
-     * outing is running then, with a new time. Everything typed is kept.
+     * Never queued without its session: sent later, it would join whichever
+     * session is running then, with a new time. Everything typed is kept.
      * The ask is time-limited: in weak signal it stalls rather than fails.
      */
     if (sync.enqueue !== null) {
@@ -261,14 +307,17 @@ export function RecordVisitForm({
   const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
   const householdId = saved?.householdId ?? queued?.serverVisit?.householdId ?? null;
   const status =
-    saved === null
-      ? null
-      : householdId !== null
-        ? `Saved ${saved.unitNumber}.${saved.noted ? " Follow-up added." : ""}`
-        : queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId));
+    saved === null ? null : householdId !== null ? (
+      <>
+        Saved <UnitNumber value={saved.unitNumber} />.{saved.noted ? " Follow-up added." : ""}
+      </>
+    ) : (
+      queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
+    );
 
   return (
     <form
+      id={formId}
       onSubmit={(event) => {
         event.preventDefault();
         void save();
@@ -276,49 +325,58 @@ export function RecordVisitForm({
       noValidate
       className="space-y-4"
     >
-      {status === null ? null : (
-        <div
-          role="status"
-          className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
-        >
-          <span className="break-words">{status}</span>
-          {householdId === null || saved?.noted !== false ? null : (
-            <button
-              type="button"
-              onClick={() => {
-                setNoting(true);
-              }}
-              className="min-h-11 font-medium text-primary"
-            >
-              Add follow-up
-            </button>
+      <div ref={top} className="scroll-clear-chrome space-y-4">
+        {status === null ? null : (
+          <div
+            role="status"
+            className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          >
+            <span className="break-words">{status}</span>
+            {householdId === null || saved?.noted !== false ? null : (
+              <button
+                type="button"
+                onClick={() => {
+                  setNoting(true);
+                }}
+                className="min-h-11 font-medium btn-text"
+              >
+                Add follow-up
+              </button>
+            )}
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+            Unit number
+          </label>
+          <input
+            id="unitNumber"
+            value={unitNumber}
+            onChange={(event) => {
+              setUnitNumber(event.target.value);
+              setSaved(null);
+              // Cleared the moment it is fixed, so no red lingers while typing.
+              if (event.target.value.trim() !== "") clearError("unitNumber");
+            }}
+            onBlur={() => {
+              if (unitNumber.trim() === "") {
+                setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+              }
+            }}
+            inputMode="text"
+            autoComplete="off"
+            placeholder="#05-123"
+            aria-invalid={errors.unitNumber !== undefined}
+            aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
+            className="min-h-12 field"
+          />
+          {errors.unitNumber === undefined ? null : (
+            <p id="unit-error" className="mt-1 field-error">
+              {errors.unitNumber}
+            </p>
           )}
         </div>
-      )}
-
-      <div>
-        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
-          Unit number
-        </label>
-        <input
-          id="unitNumber"
-          value={unitNumber}
-          onChange={(event) => {
-            setUnitNumber(event.target.value);
-            setSaved(null);
-          }}
-          inputMode="text"
-          autoComplete="off"
-          placeholder="#05-123"
-          aria-invalid={errors.unitNumber !== undefined}
-          aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-        />
-        {errors.unitNumber === undefined ? null : (
-          <p id="unit-error" className="mt-1 text-caption text-interest-low">
-            {errors.unitNumber}
-          </p>
-        )}
       </div>
 
       {history === null ? null : (
@@ -331,34 +389,39 @@ export function RecordVisitForm({
         />
       )}
 
-      {saved === null || householdId === null || !noting ? null : (
-        <FollowUpSheet
-          mode={{
-            kind: "create",
-            householdId,
-            visitId: saved.visitId,
-            unitNumber: saved.unitNumber,
-          }}
-          onClose={() => {
-            setNoting(false);
-          }}
-          onSaved={() => {
-            setNoting(false);
-            setSaved({ ...saved, noted: true });
-            setReloadKey((key) => key + 1);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {saved === null || householdId === null || !noting ? null : (
+          <FollowUpSheet
+            mode={{
+              kind: "create",
+              householdId,
+              visitId: saved.visitId,
+              unitNumber: saved.unitNumber,
+            }}
+            onClose={() => {
+              setNoting(false);
+            }}
+            onSaved={() => {
+              setNoting(false);
+              setSaved({ ...saved, noted: true });
+              setReloadKey((key) => key + 1);
+            }}
+          />
+        )}
+      </SheetPresence>
 
       <div>
         <p className="mb-1 text-body font-medium">Interest level</p>
         <InterestPicker
           value={interestLevel}
-          onChange={setInterestLevel}
+          onChange={(level) => {
+            setInterestLevel(level);
+            clearError("interestLevel");
+          }}
           describedBy={errors.interestLevel === undefined ? undefined : "interest-error"}
         />
         {errors.interestLevel === undefined ? null : (
-          <p id="interest-error" className="mt-1 text-caption text-interest-low">
+          <p id="interest-error" className="mt-1 field-error">
             {errors.interestLevel}
           </p>
         )}
@@ -374,7 +437,7 @@ export function RecordVisitForm({
           setDetails((open) => !open);
         }}
         aria-expanded={details}
-        className="min-h-11 text-body font-medium text-primary"
+        className="min-h-11 text-body font-medium btn-text"
       >
         {details ? "Hide details" : "Add details"}
       </button>
@@ -391,7 +454,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setName(event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="min-h-12 field"
             />
           </div>
 
@@ -406,7 +469,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setContact(event.target.value);
               }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="min-h-12 field"
             />
           </div>
 
@@ -420,7 +483,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setReligion(event.target.value as Religion | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Not known</option>
               {RELIGIONS.map((option) => (
@@ -442,7 +505,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setDescription(event.target.value);
               }}
-              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body"
+              className="field py-2"
             />
           </div>
         </div>
@@ -453,25 +516,37 @@ export function RecordVisitForm({
         A unit with history pushes the form well past a phone screen, and
         scrolling to find Save at every door is how recording gets skipped.
       */}
-      <div className="sticky above-nav -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+      <DockedActions>
         {/* Beside the button rather than atop the form: with the details open
             the top is scrolled away, and a failure there went unseen. */}
-        {failure === null ? null : (
-          <p
-            role="alert"
-            className="mb-2 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
-            {failure}
+        {failure === null && blocked === null ? null : (
+          <p role="alert" className="mb-2 notice-danger">
+            {failure ?? blocked}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={saving}
-          className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-        >
-          {saving ? "Saving…" : "Save and next"}
-        </button>
-      </div>
+        {/* Named, since a DockHost moves the bar out of the form. */}
+        <SaveAndNext form={formId} saving={saving} />
+      </DockedActions>
     </form>
+  );
+}
+
+/*
+ * The form's Save. With no form named it is the stand-in the block screen
+ * draws before the page is live: a plain button, so a tap cannot submit
+ * natively and reload the page. React 19 replays that tap once the page is
+ * live; what can still be lost is text typed before then, which the
+ * controlled unit field clears as React takes over (#113).
+ */
+export function SaveAndNext({ form, saving = false }: { form?: string; saving?: boolean }) {
+  return (
+    <button
+      type={form === undefined ? "button" : "submit"}
+      form={form}
+      disabled={saving}
+      className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+    >
+      {saving ? "Saving…" : "Save and next"}
+    </button>
   );
 }

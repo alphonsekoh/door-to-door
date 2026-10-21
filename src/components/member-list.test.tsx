@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberList, lastActiveLabel } from "@/components/member-list";
 import type { Role, User } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
+import { formatDay } from "@/lib/dates";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -65,7 +66,7 @@ describe("lastActiveLabel", () => {
 
   it("dates the last record", () => {
     const day = new Date(2026, 2, 14, 12).toISOString();
-    expect(lastActiveLabel(day)).toBe(`last recorded ${new Date(day).toLocaleDateString()}`);
+    expect(lastActiveLabel(day)).toBe(`last recorded ${formatDay(day)}`);
   });
 });
 

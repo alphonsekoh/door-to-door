@@ -25,8 +25,8 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 test("an admin takes an outing from draft to reopened", async ({ adminPage }) => {
   await adminPage.goto("/admin/sessions");
 
-  await adminPage.getByRole("button", { name: "New outing" }).click();
-  await adminPage.getByLabel("Name this outing").fill(TITLE);
+  await adminPage.getByRole("button", { name: "New session" }).click();
+  await adminPage.getByLabel("Name this session").fill(TITLE);
   await adminPage.getByRole("button", { name: "Create draft" }).click();
 
   const row = adminPage.getByRole("listitem").filter({ hasText: TITLE });
@@ -34,7 +34,9 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   await expect(row).toContainText("Draft");
 
   await row.getByRole("link", { name: new RegExp(TITLE) }).click();
-  await expect(adminPage.getByRole("heading", { level: 1, name: "Outing" })).toBeVisible();
+  // The outing's own name heads its page, with a way back to the list.
+  await expect(adminPage.getByRole("heading", { level: 1, name: TITLE })).toBeVisible();
+  await expect(adminPage.getByRole("link", { name: "Back to Sessions" })).toBeVisible();
   await expect(adminPage.getByText(/Members cannot record anywhere/)).toBeVisible();
 
   // Attach a block, then start.
@@ -42,9 +44,10 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   const sheet = adminPage.getByRole("dialog", { name: "Add blocks" });
   await sheet.getByRole("button", { name: /Blk 123/ }).click();
   await sheet.getByRole("button", { name: "Attach 1 block" }).click();
-  await expect(adminPage.getByText("Blk 123")).toBeVisible();
+  /* On the outing, not in the sheet that may still be sliding away. */
+  await expect(adminPage.getByRole("main").getByText("Blk 123")).toBeVisible();
 
-  await adminPage.getByRole("button", { name: "Start outing" }).click();
+  await adminPage.getByRole("button", { name: "Start session" }).click();
   await expect(adminPage.getByText("Running now")).toBeVisible();
 
   // The contingency path: a block added while members are already out.
@@ -53,19 +56,25 @@ test("an admin takes an outing from draft to reopened", async ({ adminPage }) =>
   await second.getByRole("button", { name: /Blk 125/ }).click();
   await second.getByRole("button", { name: "Attach 1 block" }).click();
   await expect(adminPage.getByText(/Members will see it the next time they refresh/)).toBeVisible();
-  await expect(adminPage.getByText("Blk 125")).toBeVisible();
+  await expect(adminPage.getByRole("main").getByText("Blk 125")).toBeVisible();
 
   // Ending asks first, and says what it costs.
-  await adminPage.getByRole("button", { name: "End outing" }).click();
-  const confirm = adminPage.getByRole("alertdialog", { name: "End outing" });
+  await adminPage.getByRole("button", { name: "End session" }).click();
+  const confirm = adminPage.getByRole("alertdialog", { name: "End session" });
   await expect(confirm).toContainText("reopened");
-  await confirm.getByRole("button", { name: "End outing" }).click();
+  /* The scrim reaches the bottom edge: it once stopped 20px short, leaving
+     the nav undimmed under a destructive question. */
+  const scrimBottom = await confirm.evaluate(
+    (panel) => panel.closest(".fixed")?.getBoundingClientRect().bottom,
+  );
+  expect(scrimBottom).toBe(await adminPage.evaluate(() => window.innerHeight));
+  await confirm.getByRole("button", { name: "End session" }).click();
 
   await expect(adminPage.getByText("Ended", { exact: true })).toBeVisible();
   await expect(adminPage.getByText(/visits recorded across 2 blocks/)).toBeVisible();
 
   // And the way back.
-  await adminPage.getByRole("button", { name: "Reopen outing" }).click();
+  await adminPage.getByRole("button", { name: "Reopen session" }).click();
   await expect(adminPage.getByText("Running now")).toBeVisible();
 });
 
@@ -79,12 +88,12 @@ test("a second outing cannot be started while one is running", async ({ adminPag
   // how to clear it, not surface a constraint name.
   await adminPage.goto("/admin/sessions");
 
-  await adminPage.getByRole("button", { name: "New outing" }).click();
-  await adminPage.getByLabel("Name this outing").fill(CLASHING_TITLE);
+  await adminPage.getByRole("button", { name: "New session" }).click();
+  await adminPage.getByLabel("Name this session").fill(CLASHING_TITLE);
   await adminPage.getByRole("button", { name: "Create draft" }).click();
 
   const row = adminPage.getByRole("listitem").filter({ hasText: CLASHING_TITLE });
-  await row.getByRole("button", { name: "Start outing" }).click();
+  await row.getByRole("button", { name: "Start session" }).click();
 
   /* Scoped to the row: Next renders its own route announcer with role="alert",
      so an unscoped query is ambiguous the moment the app has navigated. */
@@ -101,6 +110,6 @@ test("reopening is two taps from the outing list", async ({ adminPage, playwrigh
 
   /* One tap. Ending by mistake is the failure this guards against, and an
      admin should not have to hunt through a detail screen to undo it. */
-  await row.getByRole("button", { name: "Reopen outing" }).click();
+  await row.getByRole("button", { name: "Reopen session" }).click();
   await expect(row).toContainText("Running now");
 });

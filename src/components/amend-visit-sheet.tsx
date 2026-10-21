@@ -7,7 +7,8 @@ import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generat
 import { amendRoute, describeAmendFailure } from "@/lib/amend";
 import { apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/use-role";
-import { useModal } from "@/lib/use-modal";
+import { Sheet, SheetActions } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
   { value: "buddhist", label: "Buddhist" },
@@ -95,6 +96,12 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
   const mayAmend = route !== null;
   const othersRecord = visit !== null && visit.member.id !== userId;
 
+  /* Asked before a flick or a stray tap loses a correction. */
+  const discard =
+    Object.keys(diffVisit(original, draft)).length === 0
+      ? undefined
+      : { title: "Discard your changes?", detail: "The visit stays as it was recorded." };
+
   function set<K extends keyof Draft>(key: K, value: Draft[K]): void {
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -127,167 +134,145 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
     }
   }
 
-  const { overlay, panel } = useModal(onClose);
-
   return (
-    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-      {/* Tapping the backdrop closes; it is a plain button so it is reachable
-          by keyboard and screen reader rather than being a click trap. */}
-      <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
-
-      <div
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label={`Amend ${entry.household.unitNumber}`}
-        className="max-h-[85vh] overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-title font-semibold">{entry.household.unitNumber}</p>
-          <button type="button" onClick={onClose} className="min-h-11 text-body text-primary">
-            Cancel
-          </button>
+    <Sheet
+      label={`Amend ${entry.household.unitNumber}`}
+      title={<UnitNumber value={entry.household.unitNumber} />}
+      onClose={onClose}
+      discard={discard}
+    >
+      {visit === null ? (
+        <p className="py-6 text-body text-foreground-muted">
+          Nothing has been recorded here yet. Record a visit first.
+        </p>
+      ) : !mayAmend ? (
+        <div className="space-y-2 py-4">
+          <VisitByline visit={visit} prefix="Recorded by " />
+          <p className="text-body">Only they, their current teammates or an admin can amend it.</p>
         </div>
+      ) : (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save(visit);
+          }}
+          noValidate
+          className="space-y-4 py-4"
+        >
+          {othersRecord ? <VisitByline visit={visit} prefix="Recorded by " /> : null}
 
-        {visit === null ? (
-          <p className="py-6 text-body text-foreground-muted">
-            Nothing has been recorded here yet. Record a visit first.
-          </p>
-        ) : !mayAmend ? (
-          <div className="space-y-2 py-4">
-            <VisitByline visit={visit} prefix="Recorded by " />
-            <p className="text-body">
-              Only they, their current teammates or an admin can amend it.
+          {failure === null ? null : (
+            <p role="alert" className="notice-danger">
+              {failure}
             </p>
-          </div>
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save(visit);
-            }}
-            noValidate
-            className="space-y-4 py-4"
-          >
-            {othersRecord ? <VisitByline visit={visit} prefix="Recorded by " /> : null}
+          )}
 
-            {failure === null ? null : (
-              <p
-                role="alert"
-                className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-              >
-                {failure}
-              </p>
-            )}
-
-            {/* Interest first: a mistap on the picker is the correction this
+          {/* Interest first: a mistap on the picker is the correction this
                 screen exists for, and it should need no scrolling. */}
-            <div>
-              <p className="mb-1 text-body font-medium">Interest level</p>
-              <InterestPicker
-                value={draft.interestLevel}
-                onChange={(value) => {
-                  set("interestLevel", value);
-                }}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setDetails((open) => !open);
+          <div>
+            <p className="mb-1 text-body font-medium">Interest level</p>
+            <InterestPicker
+              value={draft.interestLevel}
+              onChange={(value) => {
+                set("interestLevel", value);
               }}
-              aria-expanded={details}
-              className="min-h-11 text-body font-medium text-primary"
-            >
-              {details ? "Hide details" : "Add details"}
-            </button>
+            />
+          </div>
 
-            {details ? (
-              <div className="space-y-4">
-                <div>
-                  <label htmlFor="amend-name" className="mb-1 block text-body font-medium">
-                    Name
-                  </label>
-                  <input
-                    id="amend-name"
-                    value={draft.name}
-                    onChange={(event) => {
-                      set("name", event.target.value);
-                    }}
-                    className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-                  />
-                </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDetails((open) => !open);
+            }}
+            aria-expanded={details}
+            className="min-h-11 text-body font-medium btn-text"
+          >
+            {details ? "Hide details" : "Add details"}
+          </button>
 
-                <div>
-                  <label htmlFor="amend-contact" className="mb-1 block text-body font-medium">
-                    Contact
-                  </label>
-                  <input
-                    id="amend-contact"
-                    value={draft.contact}
-                    inputMode="tel"
-                    onChange={(event) => {
-                      set("contact", event.target.value);
-                    }}
-                    className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="amend-religion" className="mb-1 block text-body font-medium">
-                    Religion
-                  </label>
-                  <select
-                    id="amend-religion"
-                    value={draft.religion}
-                    onChange={(event) => {
-                      set("religion", event.target.value as Religion | "");
-                    }}
-                    className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-                  >
-                    <option value="">Not known</option>
-                    {RELIGIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          {details ? (
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="amend-name" className="mb-1 block text-body font-medium">
+                  Name
+                </label>
+                <input
+                  id="amend-name"
+                  value={draft.name}
+                  onChange={(event) => {
+                    set("name", event.target.value);
+                  }}
+                  className="min-h-12 field"
+                />
               </div>
-            ) : null}
 
-            <div>
-              <label htmlFor="amend-description" className="mb-1 block text-body font-medium">
-                Notes
-              </label>
-              <textarea
-                id="amend-description"
-                rows={3}
-                value={draft.description}
-                onChange={(event) => {
-                  set("description", event.target.value);
-                }}
-                className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-body"
-              />
+              <div>
+                <label htmlFor="amend-contact" className="mb-1 block text-body font-medium">
+                  Contact
+                </label>
+                <input
+                  id="amend-contact"
+                  value={draft.contact}
+                  inputMode="tel"
+                  onChange={(event) => {
+                    set("contact", event.target.value);
+                  }}
+                  className="min-h-12 field"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="amend-religion" className="mb-1 block text-body font-medium">
+                  Religion
+                </label>
+                <select
+                  id="amend-religion"
+                  value={draft.religion}
+                  onChange={(event) => {
+                    set("religion", event.target.value as Religion | "");
+                  }}
+                  className="h-12 min-h-12 field"
+                >
+                  <option value="">Not known</option>
+                  {RELIGIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+          ) : null}
 
-            {/* Sticky inside the sheet: with details open the form runs past
+          <div>
+            <label htmlFor="amend-description" className="mb-1 block text-body font-medium">
+              Notes
+            </label>
+            <textarea
+              id="amend-description"
+              rows={3}
+              value={draft.description}
+              onChange={(event) => {
+                set("description", event.target.value);
+              }}
+              className="field py-2"
+            />
+          </div>
+
+          {/* Sticky inside the sheet: with details open the form runs past
                 the sheet's height, and a Save you have to scroll for is a Save
                 that does not get pressed. */}
-            <div className="sticky bottom-0 -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
-              <button
-                type="submit"
-                disabled={saving}
-                className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-              >
-                {saving ? "Saving…" : "Save changes"}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+          <SheetActions>
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+            >
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </SheetActions>
+        </form>
+      )}
+    </Sheet>
   );
 }

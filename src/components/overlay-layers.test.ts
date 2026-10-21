@@ -16,8 +16,10 @@ import { describe, expect, it } from "vitest";
 const DIR = join(process.cwd(), "src/components");
 const NAV_LAYER = 40;
 
-/* A full-screen overlay: the shape every sheet and dialog in the app uses. */
-const OVERLAY = /className="fixed inset-0 z-(\d+)/g;
+/* A full-screen overlay: the shape every sheet and dialog in the app uses.
+   The shared Sheet keeps one literal per layer in a lookup, not a className
+   attribute, so the opening quote is all the pattern anchors on. */
+const OVERLAY = /"fixed inset-0 z-(\d+)/g;
 
 function sources(): { file: string; text: string }[] {
   return readdirSync(DIR)
@@ -29,17 +31,30 @@ describe("overlay stacking", () => {
   it("finds the overlays it is meant to be guarding", () => {
     // A pattern that matches nothing would pass every assertion below.
     const found = sources().filter(({ text }) => new RegExp(OVERLAY.source).test(text));
-    expect(found.map(({ file }) => file).sort()).toEqual([
+    expect(found.map(({ file }) => file).sort()).toEqual(["auth-failure-screen.tsx", "sheet.tsx"]);
+  });
+
+  it("builds every sheet and dialog on the shared Sheet, so none sets its own layer", () => {
+    // A hand-rolled overlay would escape both this test and the motion and
+    // portal rules the Sheet carries (#111).
+    const dialogs = sources().filter(
+      ({ file, text }) =>
+        /role="(alert)?dialog"/.test(text) &&
+        !/<Sheet\b/.test(text) &&
+        !["sheet.tsx", "auth-failure-screen.tsx"].includes(file),
+    );
+    expect(dialogs.map(({ file }) => file)).toEqual([]);
+    for (const file of [
       "admin-team-sheet.tsx",
       "amend-visit-sheet.tsx",
-      "auth-failure-screen.tsx",
       "block-attach-sheet.tsx",
-      "confirm-dialog.tsx",
       "follow-up-sheet.tsx",
       "record-on-behalf-form.tsx",
       "sync-queue-sheet.tsx",
       "team-sheet.tsx",
-    ]);
+    ]) {
+      expect(readFileSync(join(DIR, file), "utf8"), file).toMatch(/<Sheet\b/);
+    }
   });
 
   it("puts every overlay above the bottom nav", () => {
@@ -61,17 +76,21 @@ describe("overlay stacking", () => {
   it("opens a confirmation above the sheet that raised it", () => {
     // Ending an outing confirms from inside the detail screen; detaching a
     // block confirms over the sheet listing them.
-    const dialog = readFileSync(join(DIR, "confirm-dialog.tsx"), "utf8");
-    const sheet = readFileSync(join(DIR, "amend-visit-sheet.tsx"), "utf8");
-    const layerOf = (text: string) => Number(new RegExp(OVERLAY.source).exec(text)?.[1]);
-    expect(layerOf(dialog)).toBeGreaterThan(layerOf(sheet));
+    const sheet = readFileSync(join(DIR, "sheet.tsx"), "utf8");
+    const layerOf = (name: string) =>
+      Number(new RegExp(`${name}: "fixed inset-0 z-(\\d+)`).exec(sheet)?.[1]);
+    expect(layerOf("dialog")).toBeGreaterThan(layerOf("sheet"));
+    // ConfirmDialog lives beside Sheet, so the two never import each other.
+    expect(sheet).toMatch(/export function ConfirmDialog\b[\s\S]*?<Sheet\b[^>]*?layer="dialog"/);
   });
 
   it("keeps the install and update banners beneath the nav and every sheet", () => {
     // A banner above a sheet would cover its Save button; above the nav it
     // would hide the tabs. Neither is a full-screen overlay, so the pattern
     // above does not see them.
-    const banner = /className="fixed [^"]*\bz-(\d+)/;
+    // The class itself, wherever it is written: the install banner picks
+    // between floating and sitting in the page.
+    const banner = /"fixed [^"]*\bz-(\d+)/;
     const sheetLayers = sources()
       .flatMap(({ text }) => [...text.matchAll(OVERLAY)].map((match) => Number(match[1])))
       .sort((a, b) => a - b);

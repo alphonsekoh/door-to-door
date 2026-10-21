@@ -1,6 +1,7 @@
 # #32 · PWA manifest, icons, install prompt and service worker
 
-- **Status:** Done (PR #73; D-32-19 to D-32-21 in PR #93; D-32-17 superseded in PR #100)
+- **Status:** Done (PR #73; D-32-19 to D-32-21 in PR #93; D-32-17 superseded in PR #100;
+  D-32-13 and D-32-20 refined in PR #112)
 - **Phase:** 6 - PWA & Offline
 
 ## Task
@@ -51,7 +52,9 @@ Make the app installable and the shell load with no network.
   _Why:_ it must not cover the recording form or the sign-in screen.
 - **D-32-13 · Banners reserve layout space via `--banner-top` / `--banner-bottom`
   and sit at `z-30`, below the nav `z-40`.** Relies on D-30-7. _Why:_ fixed banners
-  covered content before.
+  covered content before. _Refined by D-111-46:_ the install banner floats, and reserves
+  space, only while it is at most a quarter of the screen with no docked Save on screen;
+  otherwise it is a card at the end of the page.
 - **D-32-14 · Registration is classic; `cacheOnNavigation` and `reloadOnOnline` are
   off; the worker is disabled outside production builds.** _Why:_ the first two cache
   authenticated pages / reload under the user (D-32-4, D-32-6); dev worker caches
@@ -78,10 +81,12 @@ Make the app installable and the shell load with no network.
 - **D-32-20 · `useReservedSpace` publishes `--banner-*` from a layout effect.** Extends
   D-32-13. _Why:_ a passive effect runs after paint, so each banner's first frame
   covered content. Same cause as the update-prompt half of #88 (that half is fixed; the
-  block-attach-sheet half is not).
+  block-attach-sheet half is not). _Refined by D-111-47:_ it also re-measures on a
+  `ResizeObserver`.
 - **D-32-21 · A failed cache clear on sign-in never blocks it.** Extends D-32-7, mirrors
   D-74-9. _Why:_ the session is already set, and a rejection left the button disabled
-  with no message.
+  with no message. _Extended by D-111-68:_ a clear that has not settled in 1.5 s counts
+  as failed.
 
 ## Relies on
 

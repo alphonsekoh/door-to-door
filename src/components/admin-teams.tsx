@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminTeamSheet, type AdminTeamSubmit } from "@/components/admin-team-sheet";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { SessionStatus, Team, TeamList, User, UserSummary } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
@@ -18,6 +17,7 @@ import {
 import { useOnline } from "@/lib/use-online";
 import { useRole } from "@/lib/use-role";
 import { loadAllUsers } from "@/lib/users";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 type Loaded = { teams: Team[]; users: User[] };
 
@@ -29,10 +29,10 @@ const BUTTON =
   "min-h-11 rounded-lg border border-border px-3 text-body font-medium disabled:opacity-60";
 
 /*
- * Every team on one outing, for an admin to arrange (D-74-14, D-74-15).
+ * Every team in one session, for an admin to arrange (D-74-14, D-74-15).
  *
  * Follows the server's rules rather than its own: an admin may fix teams on a
- * draft, a running or an ended outing, but no new team can be formed once it
+ * draft, a running or an ended session, but no new team can be formed once it
  * has ended. Online-only like the member card (D-74-19); nothing is queued.
  *
  * `tick` is bumped by the detail screen's own poll, so the panel re-reads
@@ -177,7 +177,7 @@ export function AdminTeams({
 
   return (
     <section aria-label="Teams" className="space-y-3">
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
         <h2 className="text-title font-semibold">Teams</h2>
         {status === "ended" ? null : (
           <button
@@ -196,13 +196,13 @@ export function AdminTeams({
 
       {status === "ended" ? (
         <p className="text-body text-foreground-muted">
-          This outing has ended, so no new team can be formed. Existing teams can still be fixed.
+          This session has ended, so no new team can be formed. Existing teams can still be fixed.
         </p>
       ) : null}
 
       {teams.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          No teams on this outing.
+          No teams in this session.
         </p>
       ) : (
         <ul className="space-y-2">
@@ -218,8 +218,13 @@ export function AdminTeams({
               ) : (
                 <ul className="space-y-1">
                   {team.members.map((member) => (
-                    <li key={member.id} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 text-body break-words">
+                    // At large text Remove drops under the name rather than
+                    // set it a word a line.
+                    <li
+                      key={member.id}
+                      className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1"
+                    >
+                      <span className="min-w-0 flex-[1_1_12ch] text-body break-words">
                         {displayName(member.name)}
                         {member.id === userId ? " (you)" : ""}
                       </span>
@@ -231,7 +236,7 @@ export function AdminTeams({
                           setActionFailure(null);
                           setConfirm({ kind: "remove", team, member });
                         }}
-                        className={`shrink-0 ${BUTTON}`}
+                        className={`ml-auto shrink-0 ${BUTTON}`}
                       >
                         Remove
                       </button>
@@ -284,64 +289,62 @@ export function AdminTeams({
       )}
 
       {authFailed && loadFailure !== null && actionFailure === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {loadFailure}
         </p>
       ) : null}
 
       {actionFailure !== null && sheet === null ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {actionFailure}
         </p>
       ) : null}
 
       <p className="text-caption text-foreground-muted">{ADMIN_UNSYNCED_NOTE}</p>
 
-      {sheet === null ? null : (
-        <AdminTeamSheet
-          key={sheet.mode}
-          mode={sheet.mode}
-          initialName={sheet.mode === "create" ? "" : sheet.team.name}
-          candidates={candidates}
-          meId={userId}
-          canChange={canChange}
-          onSubmit={(value) => submit(sheet, value)}
-          onClose={() => {
-            setSheet(null);
-            setActionFailure(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {sheet === null ? null : (
+          <AdminTeamSheet
+            key={sheet.mode}
+            mode={sheet.mode}
+            initialName={sheet.mode === "create" ? "" : sheet.team.name}
+            candidates={candidates}
+            meId={userId}
+            canChange={canChange}
+            onSubmit={(value) => submit(sheet, value)}
+            onClose={() => {
+              setSheet(null);
+              setActionFailure(null);
+            }}
+          />
+        )}
+      </SheetPresence>
 
-      {confirm === null ? null : confirm.kind === "delete" ? (
-        <ConfirmDialog
-          title={`Delete ${confirm.team.name}?`}
-          detail="Only a team with no records can be deleted. If this team recorded anything, remove its members instead."
-          confirmLabel="Delete team"
-          busy={busy}
-          onConfirm={() => void confirmed(confirm)}
-          onCancel={() => {
-            setConfirm(null);
-          }}
-        />
-      ) : (
-        <ConfirmDialog
-          title={`Remove ${displayName(confirm.member.name)} from ${confirm.team.name}?`}
-          detail="Their records keep this team, and the team keeps access to them. They lose access to their teammates' records."
-          confirmLabel="Remove from team"
-          busy={busy}
-          onConfirm={() => void confirmed(confirm)}
-          onCancel={() => {
-            setConfirm(null);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {confirm === null ? null : confirm.kind === "delete" ? (
+          <ConfirmDialog
+            title={`Delete ${confirm.team.name}?`}
+            detail="Only a team with no records can be deleted. If this team recorded anything, remove its members instead."
+            confirmLabel="Delete team"
+            busy={busy}
+            onConfirm={() => void confirmed(confirm)}
+            onCancel={() => {
+              setConfirm(null);
+            }}
+          />
+        ) : (
+          <ConfirmDialog
+            title={`Remove ${displayName(confirm.member.name)} from ${confirm.team.name}?`}
+            detail="Their records keep this team, and the team keeps access to them. They lose access to their teammates' records."
+            confirmLabel="Remove from team"
+            busy={busy}
+            onConfirm={() => void confirmed(confirm)}
+            onCancel={() => {
+              setConfirm(null);
+            }}
+          />
+        )}
+      </SheetPresence>
     </section>
   );
 }

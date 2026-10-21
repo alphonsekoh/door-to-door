@@ -30,7 +30,10 @@ describe("AdminTeamSheet", () => {
     const name = screen.getByLabelText(/Team name/);
     const list = screen.getByRole("list", { name: "People" });
     expect(name.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole("dialog", { name: "New team" }).className).toContain("scroll-pb-28");
+    // The scrolling body keeps a focused field clear of the sticky footer.
+    expect(
+      screen.getByRole("dialog", { name: "New team" }).querySelector(".overflow-y-auto")?.className,
+    ).toContain("scroll-pb-24");
     expect(
       screen.getByRole("button", { name: "Choose who is on it" }).parentElement?.className,
     ).toContain("sticky");
@@ -83,7 +86,7 @@ describe("AdminTeamSheet", () => {
   it("says when nobody is free to place", () => {
     sheet({ mode: "add", candidates: [] });
     expect(
-      screen.getByText("Everyone active is already on a team in this outing."),
+      screen.getByText("Everyone active is already on a team in this session."),
     ).toBeInTheDocument();
   });
 

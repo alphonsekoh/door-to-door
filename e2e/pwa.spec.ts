@@ -196,7 +196,10 @@ test.describe("the worker in charge", () => {
     await page.getByRole("button", { name: "Save and next" }).click();
     await expect(page.getByText(`Saved ${unit} on this phone.`)).toBeVisible();
     await expect(page.getByRole("button", { name: /1 waiting to send/ })).toBeVisible();
+    // Counted with the blocks, a tap back: the open block is the form alone.
+    await page.getByRole("button", { name: "All blocks" }).click();
     await expect(page.getByText("1 record is saved on this phone.")).toBeVisible();
+    await page.getByRole("button", { name: /Blk 123/ }).click();
 
     const saved = await page.evaluate(
       (target) =>
@@ -242,13 +245,16 @@ test.describe("the worker in charge", () => {
     // No reload happened: the page's own state survived.
     expect(await page.evaluate(() => Reflect.get(window, "__stillHere") === true)).toBe(true);
     // Sent, and still listed: the shell cannot re-read the server's units.
-    await page.getByRole("tab", { name: /Units/ }).click();
+    await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
     await expect(page.getByText("Sent", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Record a visit" })).toBeVisible();
-    await page.getByRole("tab", { name: /Units/ }).click();
+    // The online block screen, which links back to the session; the shell,
+    // also titled for the block, goes back to its blocks in-page.
+    await expect(page.getByRole("link", { name: "Back to Session" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /^Blk / })).toBeVisible();
+    await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
   });
 
@@ -444,58 +450,76 @@ test.describe("the install banner", () => {
     });
   }
 
-  test("never covers the last item, and stays off the recording screen", async ({
+  test("never covers the last item or a docked Save, and stays off the recording screen", async ({
     memberPage,
     adminApi,
   }) => {
-    for (const path of ["/history", "/account"]) {
-      await memberPage.goto(path);
-      await expect(memberPage.getByRole("heading", { level: 1 })).toBeVisible();
-      await offerInstall(memberPage);
-      const banner = memberPage.getByRole("complementary", { name: "Install the app" });
-      await expect(banner).toBeVisible();
+    const banner = memberPage.getByRole("region", { name: "Install the app" });
 
-      /* Scrolled and measured together, and polled: the page keeps growing
-         after the heading shows (the list loads, the reservation is applied),
-         and a scroll issued before that stops short of the real bottom. That
-         was the whole of the WebKit flake - the reservation was always right.
-         A banner that really covers the last item stays negative until the
-         timeout, so this cannot pass a genuine overlap. */
-      await expect
-        .poll(
-          () =>
-            memberPage.evaluate(() => {
-              window.scrollTo(0, document.body.scrollHeight);
-              const last = document.querySelector("main")?.lastElementChild;
-              const banner = document.querySelector('aside[aria-label="Install the app"]');
-              return banner && last
-                ? banner.getBoundingClientRect().top - last.getBoundingClientRect().bottom
-                : null;
-            }),
-          { message: `${path}: the banner covers the last item` },
-        )
-        .toBeGreaterThanOrEqual(0);
+    await memberPage.goto("/history");
+    await expect(memberPage.getByRole("heading", { level: 1 })).toBeVisible();
+    await offerInstall(memberPage);
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveCSS("position", "fixed");
 
-      // The seeded pages are short, so also check the room itself: the
-      // content's bottom padding must clear the nav and the whole banner.
-      const room = await memberPage.evaluate(() => {
-        const main = document.querySelector("main");
-        const banner = document.querySelector('aside[aria-label="Install the app"]');
-        const nav = document.querySelector("nav[aria-label=Primary]");
-        return main && banner && nav
-          ? parseFloat(getComputedStyle(main).paddingBottom) -
-              (banner.getBoundingClientRect().height + nav.getBoundingClientRect().height)
-          : null;
-      });
-      expect(room, `${path}: no room reserved for the banner`).toBeGreaterThanOrEqual(0);
-    }
+    /* Scrolled and measured together, and polled: the page keeps growing
+       after the heading shows (the list loads, the reservation is applied),
+       and a scroll issued before that stops short of the real bottom. That
+       was the whole of the WebKit flake - the reservation was always right.
+       A banner that really covers the last item stays negative until the
+       timeout, so this cannot pass a genuine overlap. */
+    await expect
+      .poll(
+        () =>
+          memberPage.evaluate(() => {
+            window.scrollTo(0, document.body.scrollHeight);
+            const banner = document.querySelector('section[aria-label="Install the app"]');
+            // The banner is rendered in main too, so it is not the last item.
+            const items = [...(document.querySelector("main")?.children ?? [])].filter(
+              (item) => item !== banner,
+            );
+            const last = items.at(-1);
+            return banner && last
+              ? banner.getBoundingClientRect().top - last.getBoundingClientRect().bottom
+              : null;
+          }),
+        { message: "the banner covers the last item" },
+      )
+      .toBeGreaterThanOrEqual(0);
+
+    // The seeded pages are short, so also check the room itself: the
+    // content's bottom padding must clear the nav and the whole banner.
+    const room = await memberPage.evaluate(() => {
+      const main = document.querySelector("main");
+      const banner = document.querySelector('section[aria-label="Install the app"]');
+      const nav = document.querySelector("nav[aria-label=Primary]");
+      return main && banner && nav
+        ? parseFloat(getComputedStyle(main).paddingBottom) -
+            (banner.getBoundingClientRect().height + nav.getBoundingClientRect().height)
+        : null;
+    });
+    expect(room, "no room reserved for the banner").toBeGreaterThanOrEqual(0);
+
+    /* A screen with a docked Save keeps the banner in the page, after
+       everything: floating, it would sit on the Save once that is pinned. */
+    await memberPage.goto("/account");
+    await expect(memberPage.getByRole("heading", { level: 1 })).toBeVisible();
+    await offerInstall(memberPage);
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveCSS("position", "static");
+    expect(
+      await memberPage.evaluate(() =>
+        document.documentElement.style.getPropertyValue("--banner-bottom"),
+      ),
+      "room reserved for a banner that is in the page",
+    ).toBe("");
 
     await ensureActiveSession(adminApi);
     await memberPage.goto("/");
     await memberPage.getByRole("link", { name: /Blk 123/ }).click();
     await expect(memberPage.getByRole("button", { name: "Save and next" })).toBeVisible();
     await offerInstall(memberPage);
-    await expect(memberPage.getByRole("complementary", { name: "Install the app" })).toBeHidden();
+    await expect(memberPage.getByRole("region", { name: "Install the app" })).toBeHidden();
     await endActiveSession(adminApi);
   });
 });

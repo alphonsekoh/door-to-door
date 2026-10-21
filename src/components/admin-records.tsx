@@ -27,6 +27,8 @@ import {
   toSearchParams,
   type RecordFilters,
 } from "@/lib/record-filters";
+import { SheetPresence } from "@/components/sheet";
+import { UnitNumber } from "@/components/unit-number";
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 30_000;
@@ -88,7 +90,7 @@ export function AdminRecords() {
       });
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) {
-        // No outing is running: an ordinary state, not a failure.
+        // No session is running: an ordinary state, not a failure.
         setState({ status: "none" });
         return;
       }
@@ -125,7 +127,7 @@ export function AdminRecords() {
   }, [load, loadMembers, search]);
 
   /*
-   * A team id that is not one of this outing's teams - the outing changed, the
+   * A team id that is not one of this session's teams - the session changed, the
    * team was deleted, or the URL was edited - is unknown, and unknown values
    * are dropped rather than forwarded (D-29-4). Kept, it would filter to
    * nothing while the picker claimed "Any team".
@@ -155,9 +157,9 @@ export function AdminRecords() {
   if (state.status === "none") {
     return (
       <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
-        <p className="text-body font-medium">No outing is running.</p>
+        <p className="text-body font-medium">No session is running.</p>
         <p className="mt-1 text-body text-foreground-muted">
-          Start one from Outings, then the records will appear here as members knock.
+          Start one from Sessions, then the records will appear here as members knock.
         </p>
       </div>
     );
@@ -170,7 +172,7 @@ export function AdminRecords() {
         <button
           type="button"
           onClick={() => void load(filters)}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -185,14 +187,18 @@ export function AdminRecords() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="text-body font-medium">{session.session.title}</p>
+      {/* At large text the button drops under the title rather than push
+          the screen sideways. */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
+        <p className="min-w-0 flex-[1_1_12ch] text-body font-medium break-words">
+          {session.session.title}
+        </p>
         <button
           type="button"
           onClick={() => {
             setRecording(true);
           }}
-          className="min-h-11 shrink-0 rounded-lg border border-border px-3 text-body font-medium"
+          className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium"
         >
           Record for a member
         </button>
@@ -211,7 +217,7 @@ export function AdminRecords() {
               setFilter("q", event.target.value);
             }}
             placeholder="Unit, name or contact"
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
         </div>
 
@@ -226,7 +232,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("blockId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">All blocks</option>
               {blocks.map((block) => (
@@ -247,7 +253,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("memberId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Everyone</option>
               {members.map((member) => (
@@ -268,7 +274,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("teamId", event.target.value);
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any team</option>
               {teams.map((team) => (
@@ -289,7 +295,7 @@ export function AdminRecords() {
               onChange={(event) => {
                 setFilter("interestLevel", event.target.value as InterestLevel | "");
               }}
-              className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+              className="h-12 min-h-12 field"
             >
               <option value="">Any interest</option>
               {LEVELS.map((level) => (
@@ -307,7 +313,7 @@ export function AdminRecords() {
             onClick={() => {
               router.replace("/admin/records");
             }}
-            className="min-h-11 text-body font-medium text-primary"
+            className="min-h-11 text-body font-medium btn-text"
           >
             Clear filters
           </button>
@@ -317,7 +323,7 @@ export function AdminRecords() {
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
           {entries.length === 0 && !hasServerFilter(filters)
-            ? "Nothing has been recorded on this outing yet."
+            ? "Nothing has been recorded in this session yet."
             : "Nothing here matches those filters."}
         </p>
       ) : (
@@ -329,11 +335,13 @@ export function AdminRecords() {
                 onClick={() => {
                   setAmending(entry);
                 }}
-                className="flex min-h-14 w-full items-center gap-3 border-b border-border px-4 py-2 text-left last:border-b-0"
+                className="flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
               >
-                <span className="min-w-0 flex-1">
+                {/* At large text the chip drops under the unit rather than cut
+                    its block and name to a few letters. */}
+                <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
-                    {entry.household.unitNumber}
+                    <UnitNumber value={entry.household.unitNumber} />
                   </span>
                   <span className="block truncate text-caption text-foreground-muted">
                     Blk {entry.block.name}
@@ -359,32 +367,36 @@ export function AdminRecords() {
         </p>
       ) : null}
 
-      {amending === null ? null : (
-        <AmendVisitSheet
-          entry={asHouseholdSummary(amending)}
-          onClose={() => {
-            setAmending(null);
-          }}
-          onSaved={() => {
-            setAmending(null);
-            void load(filters);
-          }}
-        />
-      )}
+      <SheetPresence>
+        {amending === null ? null : (
+          <AmendVisitSheet
+            entry={asHouseholdSummary(amending)}
+            onClose={() => {
+              setAmending(null);
+            }}
+            onSaved={() => {
+              setAmending(null);
+              void load(filters);
+            }}
+          />
+        )}
+      </SheetPresence>
 
-      {recording ? (
-        <RecordOnBehalfForm
-          members={members}
-          blocks={blocks}
-          onRecorded={() => {
-            setRecording(false);
-            void load(filters);
-          }}
-          onClose={() => {
-            setRecording(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {recording ? (
+          <RecordOnBehalfForm
+            members={members}
+            blocks={blocks}
+            onRecorded={() => {
+              setRecording(false);
+              void load(filters);
+            }}
+            onClose={() => {
+              setRecording(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </div>
   );
 }

@@ -91,6 +91,13 @@ describe("BottomNav", () => {
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page");
   });
 
+  it("keeps the admin tab current on the admin screens past Sessions", () => {
+    asRole(true);
+    usePathname.mockReturnValue("/admin/team");
+    render(<BottomNav />);
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("does not render on a public route", () => {
     /*
      * Not cosmetic. Its Links prefetch while the visitor is signed out, the

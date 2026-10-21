@@ -1,8 +1,8 @@
 "use client";
 
+import { DockedActions } from "@/components/docked-actions";
 import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { ConfirmDialog } from "@/components/confirm-dialog";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { accountStore } from "@/lib/account-state";
@@ -11,6 +11,7 @@ import { signOutAndForget } from "@/lib/sign-out";
 import { hasUnsyncedItems } from "@/lib/sw-update";
 import { useRole } from "@/lib/use-role";
 import { loadCurrentUser } from "@/lib/users";
+import { ConfirmDialog, SheetPresence } from "@/components/sheet";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
 
@@ -111,10 +112,7 @@ export function AccountScreen() {
     <>
       <div className="space-y-2">
         {signOutFailure === null ? null : (
-          <p
-            role="alert"
-            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
+          <p role="alert" className="notice-danger">
             {signOutFailure}
           </p>
         )}
@@ -124,35 +122,34 @@ export function AccountScreen() {
           onClick={() => {
             void startSignOut();
           }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium disabled:opacity-60"
+          className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
           {signingOut && !confirmingSignOut ? "Signing out…" : "Sign out"}
         </button>
       </div>
 
-      {confirmingSignOut ? (
-        <ConfirmDialog
-          title="Sign out with unsynced records?"
-          detail="Some records on this phone have not reached the server yet. They will wait here until you sign in again."
-          confirmLabel="Sign out anyway"
-          busy={signingOut}
-          onConfirm={() => {
-            void leave();
-          }}
-          onCancel={() => {
-            setConfirmingSignOut(false);
-          }}
-        />
-      ) : null}
+      <SheetPresence>
+        {confirmingSignOut ? (
+          <ConfirmDialog
+            title="Sign out with unsynced records?"
+            detail="Some records on this phone have not reached the server yet. They will wait here until you sign in again."
+            confirmLabel="Sign out anyway"
+            busy={signingOut}
+            onConfirm={() => {
+              void leave();
+            }}
+            onCancel={() => {
+              setConfirmingSignOut(false);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
     </>
   );
 
   if (loadFailure !== null) {
     const alert = (
-      <p
-        role="alert"
-        className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-      >
+      <p role="alert" className="notice-danger">
         {loadFailure}
       </p>
     );
@@ -192,7 +189,7 @@ export function AccountScreen() {
               setName(event.target.value);
               setSaved(false);
             }}
-            className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+            className="min-h-12 field"
           />
           <p className="mt-1 text-caption text-foreground-muted">
             Shown on your records, including earlier ones.{" "}
@@ -203,31 +200,25 @@ export function AccountScreen() {
         </div>
 
         {failure === null ? null : (
-          <p
-            role="alert"
-            className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-          >
+          <p role="alert" className="notice-danger">
             {failure}
           </p>
         )}
         {saved ? (
-          <p
-            role="status"
-            className="rounded-lg border border-interest-high/40 bg-interest-high/10 px-3 py-2 text-body"
-          >
+          <p role="status" className="notice-success">
             Name saved.
           </p>
         ) : null}
 
-        <div className="sticky above-nav -mx-4 bg-background/95 px-4 py-3 backdrop-blur">
+        <DockedActions>
           <button
             type="submit"
             disabled={saving}
-            className="min-h-12 w-full rounded-xl bg-primary text-body font-semibold text-primary-foreground disabled:opacity-60"
+            className="min-h-12 w-full btn-primary rounded-xl text-body font-semibold"
           >
             {saving ? "Saving…" : "Save name"}
           </button>
-        </div>
+        </DockedActions>
       </form>
 
       <dl className="space-y-3 rounded-xl border border-border bg-surface p-4">

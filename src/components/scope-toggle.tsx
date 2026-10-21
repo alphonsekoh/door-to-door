@@ -28,8 +28,8 @@ export function ScopeToggle({
             onClick={() => {
               if (!on) onChange(option.value);
             }}
-            className={`min-h-11 flex-1 rounded-lg border text-body font-medium ${
-              on ? "border-primary bg-primary text-primary-foreground" : "border-border"
+            className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+              on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"
             }`}
           >
             {option.label}

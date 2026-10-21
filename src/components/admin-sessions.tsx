@@ -33,7 +33,7 @@ export function AdminSessions() {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the outings.",
+        message: error instanceof Error ? error.message : "Could not load the sessions.",
       });
     }
   }, []);
@@ -56,7 +56,7 @@ export function AdminSessions() {
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-3 min-h-11 rounded-lg bg-primary px-4 text-body font-medium text-primary-foreground"
+          className="mt-3 min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
         >
           Try again
         </button>
@@ -68,21 +68,23 @@ export function AdminSessions() {
     <div className="space-y-4">
       <Link
         href="/admin/team"
-        className="flex min-h-12 items-center justify-center rounded-xl border border-border text-body font-medium"
+        className="flex min-h-12 btn-secondary items-center justify-center rounded-xl text-body font-medium"
       >
         Team
       </Link>
 
-      <div className="flex gap-2">
+      {/* Side by side while each has 12ch, and stacked past that: squeezed,
+          "All records" was set a word a line at the largest text. */}
+      <div className="flex flex-wrap gap-2">
         <Link
           href="/admin/attention"
-          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+          className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
         >
           Needs a return visit
         </Link>
         <Link
           href="/admin/history"
-          className="flex min-h-12 flex-1 items-center justify-center rounded-xl border border-border text-body font-medium"
+          className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
         >
           All records
         </Link>
@@ -92,7 +94,7 @@ export function AdminSessions() {
 
       {state.sessions.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
-          <p className="text-body font-medium">No outings yet.</p>
+          <p className="text-body font-medium">No sessions yet.</p>
           <p className="mt-1 text-body text-foreground-muted">
             Create one, attach the blocks, then start it when everyone is ready.
           </p>
@@ -101,9 +103,13 @@ export function AdminSessions() {
         <ul className="space-y-2">
           {state.sessions.map((session) => (
             <li key={session.id} className="rounded-xl border border-border bg-surface p-4">
-              <div className="flex items-start justify-between gap-3">
-                <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-1">
-                  <span className="block text-title font-semibold">{session.title}</span>
+              {/* At large text the action drops under the title rather than
+                  squeeze it to a sliver that paints over the button. */}
+              <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-[1_1_12ch]">
+                  <span className="block text-title font-semibold break-words">
+                    {session.title}
+                  </span>
                   <span
                     className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
                   >
@@ -113,7 +119,7 @@ export function AdminSessions() {
 
                 {/*
                   The action sits on the row, not behind the detail screen.
-                  Reopening an outing ended by mistake has to be two taps from
+                  Reopening a session ended by mistake has to be two taps from
                   here, because a member mid-amendment is locked out until it is.
                 */}
                 {availableActions(session.status).map((spec) => (

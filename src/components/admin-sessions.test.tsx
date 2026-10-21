@@ -50,7 +50,7 @@ describe("AdminSessions", () => {
     apiFetch.mockResolvedValue(page([session("s2", "March outing", "ended")]));
     render(<AdminSessions />);
 
-    expect(await screen.findByRole("button", { name: "Reopen outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Reopen session" })).toBeInTheDocument();
   });
 
   it("offers start on a draft and end on a running outing", async () => {
@@ -59,8 +59,8 @@ describe("AdminSessions", () => {
     );
     render(<AdminSessions />);
 
-    expect(await screen.findByRole("button", { name: "Start outing" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "End outing" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Start session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
   });
 
   it("links each outing to its detail screen", async () => {
@@ -84,7 +84,7 @@ describe("AdminSessions", () => {
         ? Promise.resolve(session("s1", "Draft outing", "active"))
         : Promise.resolve(page([session("s1", "Draft outing", "active")])),
     );
-    await user.click(screen.getByRole("button", { name: "Start outing" }));
+    await user.click(screen.getByRole("button", { name: "Start session" }));
 
     expect(await screen.findByText("Running now")).toBeInTheDocument();
   });
@@ -92,22 +92,22 @@ describe("AdminSessions", () => {
   it("tells an admin with no outings what to do first", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<AdminSessions />);
-    expect(await screen.findByText("No outings yet.")).toBeInTheDocument();
+    expect(await screen.findByText("No sessions yet.")).toBeInTheDocument();
   });
 
   it("shows the newly created outing without a manual refresh", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([]));
     render(<AdminSessions />);
-    await screen.findByText("No outings yet.");
+    await screen.findByText("No sessions yet.");
 
     apiFetch.mockImplementation((path: string) =>
       path === "/sessions"
         ? Promise.resolve(session("s1", "Saturday morning", "draft"))
         : Promise.resolve(page([session("s1", "Saturday morning", "draft")])),
     );
-    await user.click(screen.getByRole("button", { name: "New outing" }));
-    await user.type(screen.getByLabelText("Name this outing"), "Saturday morning");
+    await user.click(screen.getByRole("button", { name: "New session" }));
+    await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
     await user.click(screen.getByRole("button", { name: "Create draft" }));
 
     expect(await screen.findByText("Saturday morning")).toBeInTheDocument();
@@ -128,6 +128,6 @@ describe("AdminSessions", () => {
   it("copes with a non-Error failure", async () => {
     apiFetch.mockRejectedValue("boom");
     render(<AdminSessions />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the outings.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the sessions.");
   });
 });

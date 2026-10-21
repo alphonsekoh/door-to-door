@@ -516,7 +516,7 @@ describe("SyncProvider over a damaged store (#34)", () => {
     );
 
     await user.click(await screen.findByRole("button", { name: /1 not sent/ }));
-    const sheet = screen.getByRole("dialog", { name: "Records not sent" });
+    const sheet = await screen.findByRole("dialog", { name: "Records not sent" });
     expect(sheet).toHaveTextContent("This record could not be read on this phone.");
     expect(within(sheet).queryByRole("button", { name: /^Retry #/ })).toBeNull();
     expect(within(sheet).getByRole("button", { name: "Retry all" })).toBeDisabled();

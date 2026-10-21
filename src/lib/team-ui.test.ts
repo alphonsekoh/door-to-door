@@ -156,7 +156,7 @@ describe("adminCandidates", () => {
     createdAt: "",
   });
 
-  it("offers everyone not already on a team in this outing, the admin included", () => {
+  it("offers everyone not already on a team in this session, the admin included", () => {
     const teams = [{ id: "t1", sessionId: "s", name: "N", members: [user("ben")], createdAt: "" }];
     const offered = adminCandidates([account("admin"), account("ben"), account("cy")], teams);
     expect(offered.map((u) => u.id)).toEqual(["admin", "cy"]);

@@ -78,7 +78,7 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
 - **Session** (`outing_sessions`): `draft → active → ended`, reopenable. At most one
   `active`, by partial unique index.
 - **Blocks** are shared across members and sessions, never locked.
-- **Teams** (#74) are per outing. A visit is stamped once with its author's team and a
+- **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
   always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
   `canAmend`). Participants and team operations are in `src/server/teams/service.ts`
@@ -122,15 +122,15 @@ authoritative, and a change to any of them needs the owner.
 
 ### One active session app-wide
 
-- **Context.** Admins run outings; members record into whichever is running.
+- **Context.** Admins run sessions; members record into whichever is running.
 - **Decision.** At most one `outing_sessions` row has `status = 'active'`, enforced by a
   partial unique index (D-07-4). A second start is `409 session_already_active`, decided
   by the database with no pre-check (D-17-2).
 - **Why.** Two concurrent starts are a race the API cannot close on its own.
-- **Consequences.** Members never choose an outing, only a block in the running one.
-  Queued visits for an ended outing are held, not dropped, until it is reopened
+- **Consequences.** Members never choose a session, only a block in the running one.
+  Queued visits for an ended session are held, not dropped, until it is reopened
   (D-21-4). The E2E suite runs on one worker because parallel specs would fight over the
-  one active outing (D-37-4).
+  one active session (D-37-4).
 
 ### Serwist, not next-pwa
 
@@ -205,15 +205,60 @@ Google SSO (#14) is not built.
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
-- Overlay layers: sync status bar `z-20` (sticky), banners `z-30`, bottom nav `z-40`,
-  sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`. Guarded by `overlay-layers.test.ts`.
-- Every sheet and `ConfirmDialog` is a modal through `useModal` (`src/lib/use-modal.ts`):
-  focus in, Tab trapped, Escape closes the top layer only, page behind `inert` and
-  unscrollable, focus back to the trigger (D-90-1 to D-90-9). A blocking modal stays on
-  top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
+- Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
+  `z-30`, bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`.
+  Guarded by `overlay-layers.test.ts`, which reads the sheet and dialog layers from
+  `src/components/sheet.tsx`.
+- Every sheet and `ConfirmDialog` is built on `Sheet`, both in `src/components/sheet.tsx`,
+  portalled to `<body>` and made modal by `useModal` (`src/lib/use-modal.ts`). Focus moves
+  in, Tab is trapped, Escape closes the top layer only, the page behind is `inert` and
+  unscrollable, and focus goes back to the trigger (D-90-2 to D-90-9). A blocking modal
+  stays on top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
+  The account message calls `useModal` directly.
+- Inside `SheetPresence`, a sheet rises and leaves on a Motion spring and drags down to
+  dismiss, its scrim following it. The physics is in `src/lib/sheet-motion.ts`.
+  `useModal` gives back focus, the page and scrolling as the exit starts (D-111-13 to
+  D-111-18, D-111-41). A sheet given `discard` holds typed work: a pull resists, and a
+  dismissing pull or a backdrop tap asks first (D-111-42).
+- Motion (`motion`, pinned) is imported only by `sheet.tsx`, through `LazyMotion`. The
+  root layout reaches no sheet statically: the sync sheet is fetched when the page is
+  idle (`sync-queue-loader.ts`, `src/lib/when-idle.ts`). `src/app/first-load.test.ts`
+  checks this (D-111-15).
+- Styling is Tailwind v4 `@theme` and `@utility` in `src/app/globals.css`, with no
+  one-off colours or blur (D-111-5):
+  - Colour tokens (`--app-*`) in light and dark, with stronger edges and text under
+    `prefers-contrast: more`.
+  - `--reader-rem`, the text size: 16 to 32px, following iOS Dynamic Type. Spacing and
+    the type scale are multiples of it.
+  - `chrome-size` holds the nav, the docked Save bar and the sync row at the 16px base
+    (`--chrome-rem`) at every text size; `--nav-height` is 64px. `bleed-x` lines them up
+    with the page's margin (`--page-gutter`), and `scroll-clear-chrome` scrolls clear of
+    them.
+  - Control utilities: `btn-*`, `field`, `notice-*`.
+  - Press feedback: `press`, `press-row` and the base layer. `PressFeedback` in
+    `AppShell` makes iOS honour `:active`. No `filter` is ever transitioned
+    (`src/app/filter-transitions.test.ts`).
+  - `material-chrome`, the grainy glass, solid under reduced transparency or more
+    contrast.
+  - `scroll-edge`.
+  - The short-screen switch: `--short-by`, read through `clamp()` by `control-compact`
+    and `space-under-tabs`, so it holds on the first paint.
+
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60 and
+  D-111-67.
+
+- A page's primary action is `DockedActions`, pinned above the nav and glass while
+  pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
+  draws a `standIn` there until it mounts, so Save is in the server's HTML (D-111-20,
+  D-111-40). Unit numbers are shown through `UnitNumber`, which never splits them
+  (D-111-36).
+- Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
+  the offline shell's way back to its blocks). A retracing `BackLink` uses
+  `src/lib/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28). Every
+  date goes through `src/lib/dates.ts` (D-111-29).
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in) nor on the offline shell.
-- Active-session screen: "Join this outing" (shown until the caller is in the server's
+- Active-session screen: "Join this session" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
   stored. The card refreshes with the screen's 30s poll and Refresh.
@@ -227,7 +272,7 @@ Google SSO (#14) is not built.
   `/admin/sessions`. Online-only, re-read from the server after each change.
 - `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
   (`src/lib/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
-- The admin outing detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
+- The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
 - User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/users.ts`).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
@@ -256,10 +301,14 @@ Google SSO (#14) is not built.
 - The worker never touches IndexedDB. Updates are prompted and defer while the
   signed-in member's records are queued or failed (`hasRecordsToSend`, D-33-14); a
   page is controlled from its second load.
-- `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` are fixed
-  banners at `z-30` that reserve space via `--banner-top` / `--banner-bottom`.
+- `PwaProvider` registers the worker; `InstallPrompt` and `UpdatePrompt` render inside
+  `main`. `UpdatePrompt` is a fixed banner at `z-30` that reserves `--banner-top`.
+  `InstallPrompt` floats the same way above the nav, reserving `--banner-bottom`, only
+  while it is at most a quarter of the screen and no docked Save is on screen; otherwise
+  it is a card at the end of the page (D-111-46).
 - Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local
-  copy (D-77-6).
+  copy (D-77-6). The block-list clear gives up after 1.5 s and never blocks either
+  (D-111-68).
 
 ## Offline
 
@@ -267,12 +316,12 @@ Google SSO (#14) is not built.
 on `updatedAt`, reports per item (`applied`, `unchanged`, `stale`, rejected), and is rate
 limited. Clock rules (#76) apply to it and to `POST /visits`: a batch whose `sentAt` is
 off from the server by more than `sync.clockSkewToleranceSeconds` is refused `422
-clock_skew`; items stamped in the future or before their outing are rejected
+clock_skew`; items stamped in the future or before their session are rejected
 `clock_skew` while siblings apply.
 
 **Queue (#33).** The recording form writes the visit to IndexedDB (`door-to-door`,
 store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
-cannot be written. A visit is queued only with its outing's id (D-33-25). Each record carries its owner and a state: `queued`, `failed`,
+cannot be written. A visit is queued only with its session's id (D-33-25). Each record carries its owner and a state: `queued`, `failed`,
 `held`, `quarantined` or `synced`. Sending is in memory only. Nothing unsent is ever
 deleted; sent records are purged after 24 h.
 
@@ -295,8 +344,9 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   controller waits 5 s doubling to 5 min before its timer fires again (D-34-6).
 - Triggers: app start, each save, `online`, focus and visibility, the backoff timer,
   Retry. No Background Sync.
-- `SyncProvider` (in `AppShell`) runs one controller for the signed-in member;
-  `SyncStatusBar` and `SyncQueueSheet` show and retry it, and the unit list overlays
+- `SyncProvider` (in `AppShell`) runs one controller for the signed-in member.
+  `SyncStatusBar` (pinned only while something is unsent) and `SyncQueueSheet` (a chunk
+  of its own, fetched when the page is idle) show it and retry it. The unit list overlays
   unsent records (`unit-overlay.ts`).
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
   D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record).
@@ -305,13 +355,13 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
 at the address that failed; `OfflineShell` then reads the local copy at runtime.
 
 ```
-online:  outing / block screen ─► useLocalCopyWriter ─► door-to-door-local (copy)
+online:  session / block screen ─► useLocalCopyWriter ─► door-to-door-local (copy)
 offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCopy (≤ 12 h)
            ─► "Continue as <name>" ─► shellState.continueAs ─► SyncProvider owner
            ─► BlockViews (in-page, not amendable) ─► queue as usual
 ```
 
-- The copy (`src/lib/offline/`) holds the member, the outing and each opened block's
+- The copy (`src/lib/offline/`) holds the member, the session and each opened block's
   `HouseholdSummary[]`, validated with the generated Zod on read (D-77-3). It is cleared
   on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; never the queue
   (D-77-2, D-77-6).
@@ -326,7 +376,7 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
 **Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
 snapshot and auto-join), otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
-(`canAmend`, newer `updatedAt`, same household and outing), then a narrow `UPDATE` of
+(`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
 interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
 `internal_error` (retryable). The request path above is unchanged; the new endpoints
 (`/sessions/{id}/join`, `/participants`, `/teams`, `/teams/{id}/members`) are ordinary

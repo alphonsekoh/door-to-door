@@ -12,6 +12,12 @@ import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import type { SignedIn } from "@/lib/sync/signed-in";
 import type { SendOutcome, SyncQueue } from "@/lib/sync/types";
 
+/* Text drawn in pieces, as a status is around its unit number: the
+   innermost element holding the whole of it. */
+const pieced = (label: string) => (_: string, element: Element | null) =>
+  element?.textContent === label &&
+  ![...element.children].some((child) => child.textContent === label);
+
 const { usePathname, useRole, apiFetch } = vi.hoisted(() => ({
   usePathname: vi.fn(() => "/blocks/b1"),
   /* Offline the session cannot be fetched, so nobody is signed in. */
@@ -160,7 +166,7 @@ describe("OfflineShell, before anyone continues", () => {
     const { view, openQueue } = mount({ load });
     expect(
       await screen.findByText(
-        "Nothing is saved on this phone to record with. Connect and open your outing first.",
+        "Nothing is saved on this phone to record with. Connect and open your session first.",
       ),
     ).toBeInTheDocument();
     const form = view.container.querySelector("form");
@@ -228,14 +234,16 @@ describe("OfflineShell, recording", () => {
   it("queues a save under the copy's member and outing", async () => {
     const { queue } = mount();
     await openBlock("123");
-    expect(screen.getByText("Blk 123")).toBeInTheDocument();
+    // The block it opened is the title, in place of "Offline".
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Offline" })).not.toBeInTheDocument();
 
     const u = user();
     await u.type(screen.getByLabelText("Unit number"), "#05-02");
     await u.click(screen.getByRole("radio", { name: "High" }));
     await u.click(screen.getByRole("button", { name: "Save and next" }));
 
-    expect(await screen.findByText("Saved #05-02 on this phone.")).toBeInTheDocument();
+    expect(await screen.findByText(pieced("Saved #05-02 on this phone."))).toBeInTheDocument();
     const [saved] = await queue.listAll();
     expect(saved?.ownerId).toBe(ALICE.id);
     expect(saved?.item).toMatchObject({
@@ -243,6 +251,10 @@ describe("OfflineShell, recording", () => {
       blockId: BLK_123,
       unitNumber: "#05-02",
     });
+    // Counted with the blocks, a tap back: the form alone sits under the title.
+    expect(screen.queryByText("1 record is saved on this phone.")).not.toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "All blocks" }));
+    expect(screen.getByRole("heading", { level: 1, name: "Offline" })).toBeInTheDocument();
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
   });
 
@@ -262,10 +274,11 @@ describe("OfflineShell, recording", () => {
       buildQueuedVisit({ ...draft, unitNumber: "#07-02" }, ALICE.id, NOW),
     ]);
     mount({ queue });
-    await openBlock("123");
+    await continueAsAlice();
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
 
-    await user().click(screen.getByRole("tab", { name: /Units/ }));
+    await user().click(screen.getByRole("button", { name: /Blk 123/ }));
+    await user().click(screen.getByRole("tab", { name: /All units/ }));
     expect(screen.getByText("#07-02")).toBeInTheDocument();
     expect(screen.queryByText("#07-01")).not.toBeInTheDocument();
   });
@@ -291,7 +304,7 @@ describe("OfflineShell, recording", () => {
     };
     mount({ queue: createMemoryQueue([sent]) });
     await openBlock("123");
-    await user().click(await screen.findByRole("tab", { name: "Units (2)" }));
+    await user().click(await screen.findByRole("tab", { name: "All units (2)" }));
 
     expect(screen.getByText("Mrs Lim")).toBeInTheDocument();
     expect(screen.getByText("Sent")).toBeInTheDocument();
@@ -323,7 +336,7 @@ describe("OfflineShell, recording", () => {
 });
 
 describe("the reconnect row", () => {
-  it("is there, one line high, in every state", async () => {
+  it("is the same row in every state, saying the records are safe", async () => {
     let finish: (copy: LocalCopy | null) => void = () => undefined;
     mount({
       load: () =>
@@ -332,7 +345,6 @@ describe("the reconnect row", () => {
         }),
     });
     const row = reconnectRow();
-    expect(row).toHaveClass("h-12");
     expect(row).toHaveTextContent("Offline. Records save on this phone.");
 
     await act(async () => {
@@ -341,6 +353,8 @@ describe("the reconnect row", () => {
     });
     expect(reconnectRow()).toBe(row);
     await continueAsAlice();
+    expect(reconnectRow()).toBe(row);
+    await user().click(screen.getByRole("button", { name: /Blk 123/ }));
     expect(reconnectRow()).toBe(row);
   });
 

@@ -57,6 +57,19 @@ export function isStandalone(
   return matchMedia("(display-mode: standalone)").matches || navigatorStandalone === true;
 }
 
+/*
+ * A floating banner covers whatever scrolls under it, so it floats above the
+ * nav only while it is small and nothing else is docked there. Past a
+ * quarter of the screen (large text) it and the nav left the page under
+ * half of it; over a docked Save it hid the screen's main action. Otherwise
+ * it sits at the end of the page and scrolls with it.
+ */
+export const FLOAT_LIMIT = 0.25;
+
+export function bannerFloats(facts: { height: number; screen: number; docked: boolean }): boolean {
+  return !facts.docked && facts.height <= facts.screen * FLOAT_LIMIT;
+}
+
 /* The recording form lives under /blocks; its Save button sits right where the
    banner would. */
 export function isRecordingRoute(pathname: string): boolean {

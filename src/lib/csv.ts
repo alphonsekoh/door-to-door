@@ -37,7 +37,7 @@ const HEADERS = [
   "Recorded by",
   "Team",
   "Teammates",
-  "Outing",
+  "Session",
   "Recorded at",
 ];
 

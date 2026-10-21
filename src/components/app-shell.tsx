@@ -2,7 +2,9 @@ import type { ReactNode } from "react";
 import { AccountGate } from "@/components/account-gate";
 import { BottomNav } from "@/components/bottom-nav";
 import { LocalCopyKeeper } from "@/components/local-copy-keeper";
+import { PressFeedback } from "@/components/press-feedback";
 import { PwaPrompts } from "@/components/pwa-prompts";
+import { ScreenTrailKeeper } from "@/components/screen-trail-keeper";
 import { SyncProvider } from "@/components/sync-provider";
 import { SyncStatusBar } from "@/components/sync-status-bar";
 
@@ -13,14 +15,18 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   return (
     <div className="min-h-dvh">
+      <PressFeedback />
+      <ScreenTrailKeeper />
       <AccountGate>
         <LocalCopyKeeper />
         <SyncProvider>
           <main className="mx-auto w-full max-w-screen-sm px-4 pt-banner pb-nav">
             <SyncStatusBar />
             {children}
+            {/* Inside main: an install banner too tall to float, or on a
+                screen with a docked Save, is the last thing in the page. */}
+            <PwaPrompts />
           </main>
-          <PwaPrompts />
           <BottomNav />
         </SyncProvider>
       </AccountGate>

@@ -70,16 +70,13 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
             setOpen(true);
             setAdded(null);
           }}
-          className="min-h-12 w-full rounded-xl border border-border text-body font-medium"
+          className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
           Add someone
         </button>
 
         {added === null ? null : (
-          <p
-            role="status"
-            className="rounded-lg border border-interest-high/40 bg-interest-high/10 px-3 py-2 text-body"
-          >
+          <p role="status" className="notice-success">
             {added.email} can sign in with <strong>{added.password}</strong>. Pass it on now — it is
             not shown again.
           </p>
@@ -99,10 +96,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
       className="space-y-3 rounded-xl border border-border bg-surface p-4"
     >
       {failure === null ? null : (
-        <p
-          role="alert"
-          className="rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
-        >
+        <p role="alert" className="notice-danger">
           {failure}
         </p>
       )}
@@ -119,7 +113,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           onChange={(event) => {
             setEmail(event.target.value);
           }}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
       </div>
 
@@ -133,7 +127,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           onChange={(event) => {
             setName(event.target.value);
           }}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
       </div>
 
@@ -151,7 +145,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           onChange={(event) => {
             setPassword(event.target.value);
           }}
-          className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="min-h-12 field"
         />
       </div>
 
@@ -165,7 +159,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           onChange={(event) => {
             setRole(event.target.value as Role);
           }}
-          className="h-12 min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
+          className="h-12 min-h-12 field"
         >
           <option value="member">Member</option>
           <option value="admin">Admin</option>
@@ -176,7 +170,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
         <button
           type="submit"
           disabled={saving}
-          className="min-h-12 flex-1 rounded-xl bg-primary text-body font-semibold text-primary-foreground disabled:opacity-60"
+          className="min-h-12 flex-1 btn-primary rounded-xl text-body font-semibold"
         >
           {saving ? "Adding…" : "Add to the team"}
         </button>
@@ -186,7 +180,7 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
             setOpen(false);
             setFailure(null);
           }}
-          className="min-h-12 rounded-xl border border-border px-4 text-body font-medium"
+          className="min-h-12 btn-secondary rounded-xl px-4 text-body font-medium"
         >
           Cancel
         </button>

@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BlockViews } from "@/components/block-views";
+import { DockHost } from "@/components/docked-actions";
 import { useLocalCopyWriter } from "@/components/local-copy-writer";
+import { PageHeader } from "@/components/page-header";
+import { SaveAndNext } from "@/components/record-visit-form";
 import { useSyncQueue } from "@/components/sync-provider";
 import type {
   ActiveSession,
@@ -44,7 +47,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     }
   }, [blockId]);
 
-  /* Separate from the units: the outing marks tonight's rows and is what a
+  /* Separate from the units: the session marks tonight's rows and is what a
      save is queued under (D-33-25), but failing to learn it must not take the
      list down with it. A save asks again if it is still unknown. */
   const loadSession = useCallback(async (): Promise<OutingAnswer> => {
@@ -54,7 +57,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
       return { kind: "running", id: answer.session.id };
     } catch (caught) {
       setActive(null);
-      // The contract's 404 is the one answer that means no outing is running.
+      // The contract's 404 is the one answer that means no session is running.
       return caught instanceof ApiRequestError && caught.status === 404
         ? { kind: "none" }
         : { kind: "unknown" };
@@ -83,7 +86,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     void load();
   }, [syncedVersion, load]);
 
-  /* Whichever of the units and the outing arrives second writes the block
+  /* Whichever of the units and the session arrives second writes the block
      into the offline copy, and every re-read of the units writes it again. */
   useEffect(() => {
     if (active !== null && known !== null) noteBlock(active, blockId, known);
@@ -94,7 +97,7 @@ export function BlockScreen({ blockId }: { blockId: string }) {
   /*
    * Which team the viewer is on NOW decides whether a teammate's unit opens
    * for amending (D-74-17). Only an affordance: the server re-checks. Asked
-   * once both the outing and the viewer are known, and only the newest answer
+   * once both the session and the viewer are known, and only the newest answer
    * may land (D-74-45): a late empty reply must not take Amend away.
    */
   const teamsGeneration = useRef(0);
@@ -116,8 +119,21 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     };
   }, [sessionId, userId]);
 
+  /* Named for the block, so a member moving between blocks can see where
+     the next Save lands. Generic only until the session has answered. */
+  const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
+
+  /* The form's Save is docked at the end of the screen, so it is drawn
+     there on the first paint too, before the form can move it. */
   return (
-    <div className="space-y-5">
+    <DockHost className="space-y-5" standIn={<SaveAndNext />}>
+      <PageHeader
+        title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
+        subtitle={here === undefined ? "One unit at a time." : here.street}
+        back={{ href: "/", label: "Session" }}
+        inline
+      />
+
       {error === null ? null : (
         <p
           role="alert"
@@ -136,6 +152,6 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         onRecorded={() => void load()}
         teamIds={teamIds}
       />
-    </div>
+    </DockHost>
   );
 }

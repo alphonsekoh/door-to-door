@@ -10,7 +10,7 @@ import {
   displayName,
   suggestTeamName,
 } from "@/lib/team-ui";
-import { useModal } from "@/lib/use-modal";
+import { Sheet, SheetActions } from "@/components/sheet";
 
 export type AdminTeamSheetMode = "create" | "add" | "rename";
 
@@ -92,113 +92,90 @@ export function AdminTeamSheet({
     }
   }
 
-  const { overlay, panel } = useModal(onClose);
-
   return (
-    <div ref={overlay} className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40">
-      <button type="button" aria-label="Close" onClick={onClose} className="flex-1" />
+    <Sheet label={TITLE[mode]} title={TITLE[mode]} onClose={onClose}>
+      {failure === null ? null : (
+        <p role="alert" className="mt-3 notice-danger">
+          {failure}
+        </p>
+      )}
 
-      <div
-        ref={panel}
-        tabIndex={-1}
-        role="dialog"
-        aria-modal="true"
-        aria-label={TITLE[mode]}
-        className="max-h-[85dvh] scroll-pb-28 overflow-y-auto rounded-t-2xl border-t border-border bg-background px-4 pt-4 inset-safe-bottom focus:outline-none"
-      >
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="text-title font-semibold">{TITLE[mode]}</p>
-          <button type="button" onClick={onClose} className="min-h-11 text-body text-primary">
-            Cancel
-          </button>
+      {showName ? (
+        <div className="mt-3">
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <label htmlFor="admin-team-name" className="text-body font-medium">
+              Team name
+            </label>
+            <span className="text-caption text-foreground-muted">
+              {String(nameLength(name.trim()))} of {String(MAX_TEAM_NAME_LENGTH)}
+            </span>
+          </div>
+          <input
+            id="admin-team-name"
+            value={name}
+            onChange={(event) => {
+              setTypedName(event.target.value);
+            }}
+            className="min-h-12 field"
+          />
+          {name.trim() !== "" && !nameCheck.ok ? (
+            <p className="mt-1 text-caption text-foreground-muted">{nameCheck.message}</p>
+          ) : null}
         </div>
+      ) : null}
 
-        {failure === null ? null : (
-          <p
-            role="alert"
-            className="mt-3 rounded-lg border border-interest-low/40 bg-interest-low/10 px-3 py-2 text-body"
+      {showPicker ? (
+        candidates.length === 0 ? (
+          <p className="mt-3 text-body text-foreground-muted">
+            Everyone active is already on a team in this session.
+          </p>
+        ) : (
+          <ul
+            aria-label="People"
+            className="mt-3 overflow-hidden rounded-xl border border-border bg-surface"
           >
-            {failure}
+            {candidates.map((user) => {
+              const on = chosen.includes(user.id);
+              return (
+                <li key={user.id}>
+                  <button
+                    type="button"
+                    aria-pressed={on}
+                    onClick={() => {
+                      toggle(user.id);
+                    }}
+                    className="flex min-h-14 w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border press-row px-4 py-2 text-left last:border-b-0"
+                  >
+                    <span className="min-w-0 flex-[1_1_12ch] text-body font-medium break-words">
+                      {displayName(user.name)}
+                      {user.id === meId ? " (you)" : ""}
+                    </span>
+                    <span className="ml-auto shrink-0 text-body font-medium text-primary">
+                      {on ? "Selected" : "Select"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )
+      ) : null}
+
+      <SheetActions>
+        {canChange ? null : (
+          <p className="mb-2 text-center text-caption text-foreground-muted">
+            {ADMIN_OFFLINE_NOTE}
           </p>
         )}
-
-        {showName ? (
-          <div className="mt-3">
-            <div className="mb-1 flex items-baseline justify-between gap-3">
-              <label htmlFor="admin-team-name" className="text-body font-medium">
-                Team name
-              </label>
-              <span className="text-caption text-foreground-muted">
-                {String(nameLength(name.trim()))} of {String(MAX_TEAM_NAME_LENGTH)}
-              </span>
-            </div>
-            <input
-              id="admin-team-name"
-              value={name}
-              onChange={(event) => {
-                setTypedName(event.target.value);
-              }}
-              className="min-h-12 w-full rounded-lg border border-border bg-surface px-3 text-body"
-            />
-            {name.trim() !== "" && !nameCheck.ok ? (
-              <p className="mt-1 text-caption text-foreground-muted">{nameCheck.message}</p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {showPicker ? (
-          candidates.length === 0 ? (
-            <p className="mt-3 text-body text-foreground-muted">
-              Everyone active is already on a team in this outing.
-            </p>
-          ) : (
-            <ul
-              aria-label="People"
-              className="mt-3 overflow-hidden rounded-xl border border-border bg-surface"
-            >
-              {candidates.map((user) => {
-                const on = chosen.includes(user.id);
-                return (
-                  <li key={user.id}>
-                    <button
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() => {
-                        toggle(user.id);
-                      }}
-                      className="flex min-h-14 w-full items-center justify-between gap-3 border-b border-border px-4 py-2 text-left last:border-b-0"
-                    >
-                      <span className="min-w-0 text-body font-medium break-words">
-                        {displayName(user.name)}
-                        {user.id === meId ? " (you)" : ""}
-                      </span>
-                      <span className="shrink-0 text-body font-medium text-primary">
-                        {on ? "Selected" : "Select"}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )
-        ) : null}
-
-        <div className="sticky bottom-0 -mx-4 mt-4 bg-background/95 px-4 py-3 backdrop-blur">
-          {canChange ? null : (
-            <p className="mb-2 text-center text-caption text-foreground-muted">
-              {ADMIN_OFFLINE_NOTE}
-            </p>
-          )}
-          <button
-            type="button"
-            disabled={busy || !canChange || needsPeople}
-            onClick={() => void submit()}
-            className="min-h-14 w-full rounded-xl bg-primary text-title font-semibold text-primary-foreground disabled:opacity-60"
-          >
-            {busy ? "Saving…" : needsPeople ? CHOOSE[mode] : ACTION[mode]}
-          </button>
-        </div>
-      </div>
-    </div>
+        <button
+          type="button"
+          disabled={busy || !canChange || needsPeople}
+          onClick={() => void submit()}
+          className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+        >
+          {busy ? "Saving…" : needsPeople ? CHOOSE[mode] : ACTION[mode]}
+        </button>
+      </SheetActions>
+    </Sheet>
   );
 }
