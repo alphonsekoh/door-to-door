@@ -518,8 +518,10 @@ export function RecordVisitForm({
 
 /*
  * The form's Save. With no form named it is the stand-in the block screen
- * draws before the page is live: a tap then does nothing, where the
- * browser's own submit would reload the page and lose the unit typed.
+ * draws before the page is live: a plain button, so a tap cannot submit
+ * natively and reload the page. React 19 replays that tap once the page is
+ * live; what can still be lost is text typed before then, which the
+ * controlled unit field clears as React takes over (#113).
  */
 export function SaveAndNext({ form, saving = false }: { form?: string; saving?: boolean }) {
   return (
