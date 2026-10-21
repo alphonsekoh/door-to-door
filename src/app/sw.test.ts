@@ -46,6 +46,7 @@ vi.mock("serwist", () => ({
 
 const messageListeners: ((event: {
   data: unknown;
+  ports: { postMessage: (message: unknown) => void }[];
   waitUntil: (p: Promise<unknown>) => void;
 }) => void)[] = [];
 const deleteCache = vi.fn((_name: string) => Promise.resolve(true));
@@ -118,16 +119,37 @@ describe("the service worker", () => {
     expect(handlerFor("/some-image-that-is-not-precached")).toBeUndefined();
   });
 
-  it("clears the API cache when the page asks, and only then", () => {
+  it("clears the API cache when the page asks, and only then, and says when it is done", async () => {
     const [listener] = messageListeners;
-    const waitUntil = vi.fn();
+    const waitUntil = vi.fn<(p: Promise<unknown>) => void>();
+    const answer = { postMessage: vi.fn() };
 
-    listener?.({ data: { type: "SOMETHING_ELSE" }, waitUntil });
+    listener?.({ data: { type: "SOMETHING_ELSE" }, ports: [answer], waitUntil });
     expect(deleteCache).not.toHaveBeenCalled();
 
-    listener?.({ data: { type: "CLEAR_CACHES" }, waitUntil });
+    listener?.({ data: { type: "CLEAR_CACHES" }, ports: [answer], waitUntil });
     expect(deleteCache).toHaveBeenCalledWith("api-reference-v1");
-    expect(waitUntil).toHaveBeenCalledOnce();
+    expect(answer.postMessage).not.toHaveBeenCalled();
+    await waitUntil.mock.calls[0]?.[0];
+    expect(answer.postMessage).toHaveBeenCalledWith("CLEAR_CACHES");
+  });
+
+  it("answers even when the cache could not be deleted, so the page is not kept waiting", async () => {
+    const [listener] = messageListeners;
+    const waitUntil = vi.fn<(p: Promise<unknown>) => void>();
+    const answer = { postMessage: vi.fn() };
+    deleteCache.mockRejectedValueOnce(new Error("storage is gone"));
+
+    listener?.({ data: { type: "CLEAR_CACHES" }, ports: [answer], waitUntil });
+    await waitUntil.mock.calls[0]?.[0]?.catch(() => undefined);
+    expect(answer.postMessage).toHaveBeenCalledWith("CLEAR_CACHES");
+  });
+
+  it("clears for a page that asks without waiting for the answer", () => {
+    const [listener] = messageListeners;
+    const waitUntil = vi.fn();
+    listener?.({ data: { type: "CLEAR_CACHES" }, ports: [], waitUntil });
+    expect(deleteCache).toHaveBeenCalledWith("api-reference-v1");
   });
 });
 
