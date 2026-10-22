@@ -773,3 +773,24 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** measured in PR #112, fix round 9, on scratch PR #114 (core dumps from
   `coredumpctl` after each CI run); CI run 39582214648 on dedd6ee
 - **Used by:** D-111-67, D-111-68
+
+### R-78 · `readdirSync` with `recursive: true` lists paths relative to the folder
+
+- **Finding:** `fs.readdirSync(dir, { recursive: true, encoding: "utf8" })` returns every
+  entry below `dir` as a path relative to it, e.g. `ui/sheet.tsx`, so a guard that names
+  files that way sees the subfolders. The option arrived in Node 20.1 and 18.17; CI and
+  the image run 24.
+- **Source:** [Node.js `fs.readdirSync`](https://nodejs.org/api/fs.html#fsreaddirsyncpath-options);
+  checked on Node 24 in PR #116
+- **Used by:** D-115-7
+
+### R-79 · In ESLint flat config, `*.ts` matches only files beside the config
+
+- **Finding:** `files` patterns are matched relative to the config file's folder and `*`
+  does not cross `/`, so the block of `["*.mjs", "*.ts", "*.config.*"]` that turns off
+  type-aware rules covers root files only. `eslint --print-config` gives
+  `src/auth/index.ts` and `test/vitest.setup.components.ts` `projectService: true` and
+  `no-floating-promises` on; `playwright.config.ts` gets neither.
+- **Source:** [ESLint, specifying files and ignores](https://eslint.org/docs/latest/use/configure/configuration-files#specifying-files-and-ignores);
+  measured in PR #116
+- **Used by:** D-115-10

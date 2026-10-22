@@ -61,7 +61,7 @@ workaround or trade-off earns its place; `// increment the counter` does not.
 
 **[CI]** Every feature and every API endpoint ships with Vitest tests. Coverage thresholds
 are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/**`,
-`src/db/**`, root-level `src/*.ts`; **90%** for `src/components/**` and `src/app/**`.
+`src/db/**`, `src/auth/**`, root-level `src/*.ts`; **90%** for `src/components/**` and `src/app/**`.
 
 **[CI]** A Playwright suite (`e2e/`) runs against the production build in a real browser
 at phone viewports, on Chromium (Pixel 5) and WebKit (iPhone 13): signing in, recording a
@@ -122,7 +122,7 @@ be the only thing preventing an admin action.
 
 **[convention]** Colours, control edges, press states and the glass come from the tokens
 and utilities in `src/app/globals.css`, never a one-off colour, blur or size (D-111-5,
-D-111-10). Every sheet and confirmation is built on `Sheet` (`src/components/sheet.tsx`),
+D-111-10). Every sheet and confirmation is built on `Sheet` (`src/components/ui/sheet.tsx`),
 which keeps the modal rules of D-90 and the motion of D-111-13 to D-111-18.
 
 **[CI]** Motion stays out of the first load: the root layout, sign-in and not-found must

@@ -419,9 +419,9 @@ share a config. Give them different `TEST_DATABASE_URL`s, since each run truncat
 database.
 
 Coverage is enforced per glob: **100%** for `src/server/**`, `src/lib/**`,
-`src/app/api/**`, `src/db/**` and root-level `src/*.ts`; **90%** for `src/components/**`
-and `src/app/**`. Generated code, migrations, the integration-test harness
-(`src/db/testing.ts`) and route `layout.tsx` files are excluded.
+`src/app/api/**`, `src/db/**`, `src/auth/**` and root-level `src/*.ts`; **90%** for
+`src/components/**` and `src/app/**`. Generated code, migrations, the integration-test
+harness (`src/db/testing.ts`) and route `layout.tsx` files are excluded.
 
 The offline sync fuzz (`src/lib/sync/fuzz.test.ts`) runs a fixed seed. To explore further
 or replay a failure: `FC_SEED=7 FC_RUNS=400 npx vitest run src/lib/sync/fuzz.test.ts`. The test has a fixed
@@ -530,14 +530,19 @@ docker run -p 3000:3000 \
 ```
 src/
   app/          routes; app/api/** holds route handlers, one file per contract path
-  components/   React components
-  lib/          framework-free helpers, incl. lib/sync (offline queue) and lib/offline
+  components/   React components, one folder per domain: ui (shared pieces), shell, pwa,
+                sync, visits, households, history, follow-ups, sessions, blocks, teams,
+                admin, account
+  lib/          framework-free helpers, one folder per domain: pwa, teams, units,
+                history, hooks, session, sync (offline queue), offline (local copy)
+  auth/         the Auth.js entrypoint, imported as @/auth; Google sign-in (#14) goes here
   server/       server-only services, auth guards, withContract
   db/           Drizzle schema, client and seed data
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)
 drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
+test/           Vitest setup files
 scripts/        migrate, seed, create-admin, generate-icons, check-standalone (postbuild)
 docs/           architecture, research and per-issue decisions
 ```
