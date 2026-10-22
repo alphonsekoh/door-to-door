@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { auth } from "@/../auth";
+import { auth } from "@/auth";
 import { getDatabase, type Database } from "@/db/client";
 import { users, type Role } from "@/db/schema";
 import {

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
  */
 const ROOT = process.cwd();
 const ALLOWED = new Set(["src/server/auth/session.ts", "src/app/api/auth/[...nextauth]/route.ts"]);
-const AUTH_MODULE = resolve(ROOT, "auth");
+const AUTH_MODULE = resolve(ROOT, "src/auth");
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -34,7 +34,7 @@ function importsAuthModule(file: string, text: string): boolean {
       : specifier.startsWith(".")
         ? resolve(dirname(file), specifier)
         : undefined;
-    return target === AUTH_MODULE;
+    return target === AUTH_MODULE || target === join(AUTH_MODULE, "index");
   });
 }
 
@@ -66,11 +66,12 @@ describe("the raw Auth.js session", () => {
   it("is caught in every import form", () => {
     const file = join(ROOT, "src/app/api/x/route.ts");
     for (const text of [
-      `import { auth } from "@/../auth";`,
-      `import { auth } from '../../../../auth';`,
-      `export { auth } from "../../../../auth";`,
-      "const { auth } = await import(`@/../auth`);",
-      `const { auth } = require("../../../../auth");`,
+      `import { auth } from "@/auth";`,
+      `import { auth } from "@/auth/index";`,
+      `import { auth } from '../../../auth';`,
+      `export { auth } from "../../../auth";`,
+      "const { auth } = await import(`@/auth`);",
+      `const { auth } = require("../../../auth");`,
     ]) {
       expect(importsAuthModule(file, text), text).toBe(true);
     }

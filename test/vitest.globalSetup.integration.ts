@@ -1,8 +1,8 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
-import { requireTestDatabaseUrl } from "./src/db/test-env";
-import { createTestConfigDir } from "./src/db/testing";
+import { requireTestDatabaseUrl } from "../src/db/test-env";
+import { createTestConfigDir } from "../src/db/testing";
 
 /*
  * Brings the test database up to the current schema once per run. Fails loudly
