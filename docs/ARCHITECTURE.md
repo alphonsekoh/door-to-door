@@ -42,17 +42,19 @@ flowchart LR
 | `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
 | `src/server/http/`    | `withContract`, `ApiError`s, route registry                     | 100%     | Validates request _and_ response; maps errors to the envelope.                        |
 | `src/server/auth/`    | Auth.js config, guards, rate limit                              | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
+| `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users.                    |
 | `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
-| `src/lib/`            | Framework-free helpers                                          | 100%     | Where UI logic goes so it can be tested without rendering.                            |
+| `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
-| `src/components/`     | React components                                                | 90%      | Client components; call the API with `fetch`.                                         |
+| `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
 | `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()` → 404 for members.                              |
 | `drizzle/`            | Generated migrations                                            | excluded | From `drizzle-kit generate` only.                                                     |
 | `scripts/`            | `migrate.ts`, `seed.ts`, `create-admin.ts`, `generate-icons.ts` | excluded | Glue over `src/db` and `src/server/users`; `check-standalone.ts` runs as `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
+| `test/`               | Vitest setup and global setup                                   | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
 
 ## Domain model
 
@@ -194,35 +196,36 @@ pages, with `admin/layout.tsx` as a structural guard). Credentials use argon2id
 on failed attempts (a success clears it; a spent budget refuses even the right password).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
 any admin exists (D-105-3).
-Google SSO (#14) is not built.
+Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
+(D-115-3).
 
 ## Client
 
 - Screens fetch through `src/lib/api-client.ts`, typed by `types.gen.ts`.
 - `useRole()` is UI affordance only. Its role comes from the latest `GET /users/me`
   (`loadCurrentUser()`) when that matches the token's user, else from the token.
-- `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/account-state.ts`
+- `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
 - Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
   `z-30`, bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`.
-  Guarded by `overlay-layers.test.ts`, which reads the sheet and dialog layers from
-  `src/components/sheet.tsx`.
-- Every sheet and `ConfirmDialog` is built on `Sheet`, both in `src/components/sheet.tsx`,
-  portalled to `<body>` and made modal by `useModal` (`src/lib/use-modal.ts`). Focus moves
+  Guarded by `src/components/overlay-layers.test.ts`, which walks every component folder
+  and reads the sheet and dialog layers from `src/components/ui/sheet.tsx`.
+- Every sheet and `ConfirmDialog` is built on `Sheet`, both in `src/components/ui/sheet.tsx`,
+  portalled to `<body>` and made modal by `useModal` (`src/lib/hooks/use-modal.ts`). Focus moves
   in, Tab is trapped, Escape closes the top layer only, the page behind is `inert` and
   unscrollable, and focus goes back to the trigger (D-90-2 to D-90-9). A blocking modal
   stays on top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
   The account message calls `useModal` directly.
 - Inside `SheetPresence`, a sheet rises and leaves on a Motion spring and drags down to
-  dismiss, its scrim following it. The physics is in `src/lib/sheet-motion.ts`.
+  dismiss, its scrim following it. The physics is in `src/lib/session/sheet-motion.ts`.
   `useModal` gives back focus, the page and scrolling as the exit starts (D-111-13 to
   D-111-18, D-111-41). A sheet given `discard` holds typed work: a pull resists, and a
   dismissing pull or a backdrop tap asks first (D-111-42).
 - Motion (`motion`, pinned) is imported only by `sheet.tsx`, through `LazyMotion`. The
   root layout reaches no sheet statically: the sync sheet is fetched when the page is
-  idle (`sync-queue-loader.ts`, `src/lib/when-idle.ts`). `src/app/first-load.test.ts`
+  idle (`src/components/sync/sync-queue-loader.ts`, `src/lib/hooks/when-idle.ts`). `src/app/first-load.test.ts`
   checks this (D-111-15).
 - Styling is Tailwind v4 `@theme` and `@utility` in `src/app/globals.css`, with no
   one-off colours or blur (D-111-5):
@@ -254,32 +257,32 @@ Google SSO (#14) is not built.
   (D-111-36).
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
-  `src/lib/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28). Every
-  date goes through `src/lib/dates.ts` (D-111-29).
+  `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).
+  Every date goes through `src/lib/history/dates.ts` (D-111-29).
 - The bottom nav does not render on public routes (its prefetches poisoned the
   router cache before sign-in) nor on the offline shell.
 - Active-session screen: "Join this session" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
-  `src/lib/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
+  `src/lib/teams/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
   stored. The card refreshes with the screen's 30s poll and Refresh.
-- Records show who made them through `VisitByline` (`src/lib/team-label.ts`): the author
+- Records show who made them through `VisitByline` (`src/lib/teams/team-label.ts`): the author
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
-  (`GET /sessions/{id}/teams` or `includeTeam` results), see `src/lib/amend.ts`.
-- Follow-ups: logic in `src/lib/follow-ups.ts`; `HouseholdHistoryPanel` (unit screen and
+  (`GET /sessions/{id}/teams` or `includeTeam` results), see `src/lib/history/amend.ts`.
+- Follow-ups: logic in `src/lib/history/follow-ups.ts`; `HouseholdHistoryPanel` (unit screen and
   recording form) pins outstanding notes above a visits-and-resolved-notes timeline.
   `/follow-ups` lists outstanding notes (`?view=mine`); admins get an overdue card on
   `/admin/sessions`. Online-only, re-read from the server after each change.
 - `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
-  (`src/lib/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
+  (`src/lib/teams/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
-- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/users.ts`).
+- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
-- Sign-out (`src/lib/sign-out.ts`): clears the block cache and the local copy (never the queue), warns
+- Sign-out (`src/lib/session/sign-out.ts`): clears the block cache and the local copy (never the queue), warns
   on the member's unsent records (`hasUnsyncedItems(ownerId)`, D-33-15),
   `signOut({ redirect: false })`, then a full navigation to `/sign-in` (or a given
   destination, e.g. `/sign-in?reason=signed-out`). A refusal

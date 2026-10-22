@@ -21,7 +21,7 @@ function respond(status: number, body: () => Promise<unknown>) {
 async function load() {
   vi.resetModules();
   const { sendBatch } = await import("@/lib/sync/transport");
-  const { accountStore } = await import("@/lib/account-state");
+  const { accountStore } = await import("@/lib/session/account-state");
   return { sendBatch, accountStore };
 }
 

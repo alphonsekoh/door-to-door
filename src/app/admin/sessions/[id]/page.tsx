@@ -1,4 +1,4 @@
-import { SessionDetail } from "@/components/session-detail";
+import { SessionDetail } from "@/components/sessions/session-detail";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Session" };

@@ -8,7 +8,7 @@ import { createTestPool, truncateAll } from "@/db/testing";
  * must follow it on the very next request (#83).
  */
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth }));
 
 const { notFound } = vi.hoisted(() => ({
   notFound: vi.fn(() => {

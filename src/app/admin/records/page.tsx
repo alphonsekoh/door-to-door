@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { AdminRecords } from "@/components/admin-records";
-import { PageHeader } from "@/components/page-header";
+import { AdminRecords } from "@/components/admin/admin-records";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Records" };

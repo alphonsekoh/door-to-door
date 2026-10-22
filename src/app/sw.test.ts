@@ -132,7 +132,7 @@ describe("the service worker", () => {
 });
 
 describe("the worker's reach", () => {
-  const files = ["src/app/sw.ts", "src/lib/sw-api-cache.ts", "src/lib/sw-cache-rules.ts"];
+  const files = ["src/app/sw.ts", "src/lib/pwa/sw-api-cache.ts", "src/lib/pwa/sw-cache-rules.ts"];
 
   it.each(files)("%s never touches IndexedDB", (file) => {
     // The unsynced write queue (#33) lives in IndexedDB and must survive every

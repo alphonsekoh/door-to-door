@@ -1,13 +1,13 @@
 /// <reference lib="webworker" />
 import { NetworkOnly, Serwist, StaleWhileRevalidate, type PrecacheEntry } from "serwist";
-import { createBoundedCachePlugin } from "@/lib/sw-api-cache";
+import { createBoundedCachePlugin } from "@/lib/pwa/sw-api-cache";
 import {
   API_CACHE_NAME,
   SW_MESSAGES,
   isApiRequest,
   isCacheableApiGet,
   messageType,
-} from "@/lib/sw-cache-rules";
+} from "@/lib/pwa/sw-cache-rules";
 
 /*
  * The offline shell, and nothing more.

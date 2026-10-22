@@ -8,7 +8,7 @@ import {
   sessionTeams,
   users,
 } from "@/db/schema";
-import { checkTeamName } from "@/lib/team-name";
+import { checkTeamName } from "@/lib/teams/team-name";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import {
   ConflictError,

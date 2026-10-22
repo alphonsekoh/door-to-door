@@ -21,7 +21,7 @@ import { type SyncItem, syncVisits } from "@/server/visits/sync";
  */
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth }));
 
 const { POST } = await import("@/app/api/visits/sync/route");
 

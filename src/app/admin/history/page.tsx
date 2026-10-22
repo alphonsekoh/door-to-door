@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { ConsolidatedHistory } from "@/components/consolidated-history";
-import { PageHeader } from "@/components/page-header";
+import { ConsolidatedHistory } from "@/components/history/consolidated-history";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "All records" };

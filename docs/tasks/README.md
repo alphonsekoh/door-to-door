@@ -72,7 +72,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 1   | [Scaffold](01-scaffold.md)                              | Done                                                                                          |
 | 2   | [Docs and project rules](02-docs-and-rules.md)          | Done                                                                                          |
 | 3   | [Lint, format, strict TypeScript](03-lint-and-types.md) | Done                                                                                          |
-| 4   | [Vitest and coverage](04-vitest-coverage.md)            | Done                                                                                          |
+| 4   | [Vitest and coverage](04-vitest-coverage.md)            | Done; D-04-2 amended (#36, #115)                                                              |
 | 5   | [Docker Compose](05-docker.md)                          | Done                                                                                          |
 | 6   | [CI pipeline](06-ci.md)                                 | Done                                                                                          |
 | 7   | [Drizzle schema](07-schema.md)                          | Done                                                                                          |
@@ -81,7 +81,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 10  | [OpenAPI contract](10-openapi.md)                       | Done                                                                                          |
 | 11  | [Codegen](11-codegen.md)                                | Done                                                                                          |
 | 12  | [withContract](12-with-contract.md)                     | Done                                                                                          |
-| 13  | [Auth.js setup](13-authjs.md)                           | Done                                                                                          |
+| 13  | [Auth.js setup](13-authjs.md)                           | Done; D-13-5 refined (#115)                                                                   |
 | 14  | [Google SSO](14-google-sso.md)                          | Open                                                                                          |
 | 15  | [Credentials sign-in](15-credentials.md)                | Done                                                                                          |
 | 16  | [Route guards](16-route-guards.md)                      | Done                                                                                          |
@@ -120,4 +120,5 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 105 | [Create first admin](105-create-admin.md)               | Done (PR #108)                                                                                |
 | 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                                                                |
 | 109 | [Private test config](109-private-test-config.md)       | Done (PR #110)                                                                                |
-| 111 | [Apple design pass](111-apple-design.md)                | In review (PR #112); D-111-50, D-111-52 rejected by the owner (D-33-12 kept)                  |
+| 111 | [Apple design pass](111-apple-design.md)                | Done (PR #112); D-111-50, D-111-52 rejected by the owner (D-33-12 kept)                       |
+| 115 | [Domain folders](115-domain-folders.md)                 | In review (PR #116)                                                                           |

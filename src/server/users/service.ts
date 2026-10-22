@@ -3,7 +3,7 @@ import type { Database } from "@/db/client";
 import type { Role } from "@/db/schema";
 import { users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
-import { checkOwnName } from "@/lib/own-name";
+import { checkOwnName } from "@/lib/session/own-name";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
 import { hashPassword } from "@/server/password";
 

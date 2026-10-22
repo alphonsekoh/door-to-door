@@ -1,6 +1,6 @@
 # #111 · Align the UI with the Apple design principles
 
-- **Status:** In review (PR #112)
+- **Status:** Done (PR #112)
 - **Phase:** none (no milestone)
 - **Depends on:** #25, #33, #77, #85, #90
 

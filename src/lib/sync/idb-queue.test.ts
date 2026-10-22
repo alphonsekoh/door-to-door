@@ -3,7 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { openDB } from "idb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
-import { hasRecordsToSend, hasUnsyncedItems } from "@/lib/sw-update";
+import { hasRecordsToSend, hasUnsyncedItems } from "@/lib/pwa/sw-update";
 import { DATABASE_NAME, openQueue, sharedQueue } from "@/lib/sync/idb-queue";
 import type { QueuedVisit, SyncQueue } from "@/lib/sync/types";
 

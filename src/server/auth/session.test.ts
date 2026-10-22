@@ -3,7 +3,7 @@ import type { Database } from "@/db/client";
 import type { SessionLike } from "@/server/auth/guards";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth }));
 
 const { getDatabase } = vi.hoisted(() => ({ getDatabase: vi.fn() }));
 vi.mock("@/db/client", () => ({ getDatabase }));

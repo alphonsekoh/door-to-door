@@ -4,7 +4,7 @@ import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth }));
 
 /* The database client reads its URL from the same config, so only the tolerance is overridden. */
 const tolerance = vi.hoisted(() => ({ seconds: 300 }));

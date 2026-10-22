@@ -3,7 +3,7 @@ import { resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
-vi.mock("@/../auth", () => ({ auth }));
+vi.mock("@/auth", () => ({ auth }));
 
 const { GET: listBlocks, POST: attach } = await import("./[id]/blocks/route");
 const { DELETE: detach } = await import("./[id]/blocks/[blockId]/route");

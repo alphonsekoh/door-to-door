@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { OfflineShell } from "@/components/offline-shell";
+import { OfflineShell } from "@/components/shell/offline-shell";
 
 export const metadata: Metadata = { title: "Offline" };
 

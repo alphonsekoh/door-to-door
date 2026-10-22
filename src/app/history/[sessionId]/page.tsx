@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { PageHeader } from "@/components/page-header";
-import { SessionRecords } from "@/components/session-records";
+import { PageHeader } from "@/components/ui/page-header";
+import { SessionRecords } from "@/components/sessions/session-records";
 
 export const metadata = { title: "Session records" };
 

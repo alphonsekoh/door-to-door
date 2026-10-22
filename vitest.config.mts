@@ -27,8 +27,8 @@ export default defineConfig({
           name: { label: "integration", color: "yellow" },
           environment: "node",
           include: ["src/**/*.integration.test.ts"],
-          globalSetup: ["./vitest.globalSetup.integration.ts"],
-          setupFiles: ["./vitest.setup.integration.ts"],
+          globalSetup: ["./test/vitest.globalSetup.integration.ts"],
+          setupFiles: ["./test/vitest.setup.integration.ts"],
           // Shared scratch database: parallel files would truncate each other.
           fileParallelism: false,
           testTimeout: 20_000,
@@ -40,7 +40,7 @@ export default defineConfig({
           name: { label: "components", color: "cyan" },
           environment: "jsdom",
           include: ["src/**/*.test.tsx"],
-          setupFiles: ["./vitest.setup.components.ts"],
+          setupFiles: ["./test/vitest.setup.components.ts"],
         },
       },
     ],
@@ -70,6 +70,7 @@ export default defineConfig({
         "src/server/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "src/db/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         "src/app/api/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
+        "src/auth/**": { statements: 100, branches: 100, functions: 100, lines: 100 },
         // Root-level entry points: the proxy and instrumentation hooks.
         "src/*.ts": { statements: 100, branches: 100, functions: 100, lines: 100 },
 

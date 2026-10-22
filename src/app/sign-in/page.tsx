@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { PageHeader } from "@/components/page-header";
-import { SignInForm } from "@/components/sign-in-form";
+import { PageHeader } from "@/components/ui/page-header";
+import { SignInForm } from "@/components/account/sign-in-form";
 
 export const metadata = { title: "Sign in" };
 

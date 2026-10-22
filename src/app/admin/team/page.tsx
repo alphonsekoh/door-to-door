@@ -1,5 +1,5 @@
-import { MemberList } from "@/components/member-list";
-import { PageHeader } from "@/components/page-header";
+import { MemberList } from "@/components/admin/member-list";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Team" };

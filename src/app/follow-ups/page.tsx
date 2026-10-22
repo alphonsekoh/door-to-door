@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { FollowUpsScreen } from "@/components/follow-ups-screen";
-import { PageHeader } from "@/components/page-header";
+import { FollowUpsScreen } from "@/components/follow-ups/follow-ups-screen";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "Follow-ups" };
 

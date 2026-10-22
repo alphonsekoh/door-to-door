@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as AccountStateModule from "@/lib/account-state";
+import type * as AccountStateModule from "@/lib/session/account-state";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 
 const { reportAuthFailure } = vi.hoisted(() => ({ reportAuthFailure: vi.fn() }));
-vi.mock("@/lib/account-state", async () => ({
-  ...(await vi.importActual<typeof AccountStateModule>("@/lib/account-state")),
+vi.mock("@/lib/session/account-state", async () => ({
+  ...(await vi.importActual<typeof AccountStateModule>("@/lib/session/account-state")),
   accountStore: { reportAuthFailure },
 }));
 

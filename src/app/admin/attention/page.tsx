@@ -1,5 +1,5 @@
-import { AttentionList } from "@/components/attention-list";
-import { PageHeader } from "@/components/page-header";
+import { AttentionList } from "@/components/follow-ups/attention-list";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Needs a return visit" };
