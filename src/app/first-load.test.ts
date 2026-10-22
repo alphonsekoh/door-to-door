@@ -53,7 +53,7 @@ const usesMotion = (packages: Set<string>) =>
 describe("what the first load downloads", () => {
   it("finds Motion where a sheet is drawn, so the walk is not missing it", () => {
     // A walk that found nothing would pass every assertion below.
-    expect(usesMotion(packagesLoadedBy("src/components/sheet.tsx"))).not.toEqual([]);
+    expect(usesMotion(packagesLoadedBy("src/components/ui/sheet.tsx"))).not.toEqual([]);
     expect(usesMotion(packagesLoadedBy("src/app/history/page.tsx"))).not.toEqual([]);
   });
 

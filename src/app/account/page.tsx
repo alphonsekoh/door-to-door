@@ -1,5 +1,5 @@
-import { AccountScreen } from "@/components/account-screen";
-import { PageHeader } from "@/components/page-header";
+import { AccountScreen } from "@/components/account/account-screen";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "Account" };
 

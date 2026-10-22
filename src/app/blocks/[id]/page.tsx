@@ -1,4 +1,4 @@
-import { BlockScreen } from "@/components/block-screen";
+import { BlockScreen } from "@/components/blocks/block-screen";
 
 export const metadata = { title: "Record a visit" };
 

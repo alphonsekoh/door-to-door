@@ -1,4 +1,4 @@
-import { PageHeader } from "@/components/page-header";
+import { PageHeader } from "@/components/ui/page-header";
 
 /*
  * Shown the moment a block is tapped, so the navigation commits on the first

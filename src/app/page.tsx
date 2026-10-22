@@ -1,5 +1,5 @@
-import { ActiveSessionScreen } from "@/components/active-session";
-import { PageHeader } from "@/components/page-header";
+import { ActiveSessionScreen } from "@/components/sessions/active-session";
+import { PageHeader } from "@/components/ui/page-header";
 
 export default function SessionPage() {
   return (

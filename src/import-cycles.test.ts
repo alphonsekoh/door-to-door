@@ -66,8 +66,8 @@ function cycles(files: string[]): string[] {
 describe("the import graph", () => {
   it("reads the imports it is meant to be checking", () => {
     // A walk that found nothing would pass the check below.
-    expect(localImports(join(SRC, "components/follow-up-sheet.tsx"))).toContain(
-      join(SRC, "components/sheet.tsx"),
+    expect(localImports(join(SRC, "components/follow-ups/follow-up-sheet.tsx"))).toContain(
+      join(SRC, "components/ui/sheet.tsx"),
     );
   });
 

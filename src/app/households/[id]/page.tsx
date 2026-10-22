@@ -1,4 +1,4 @@
-import { HouseholdScreen } from "@/components/household-screen";
+import { HouseholdScreen } from "@/components/households/household-screen";
 
 export const metadata = { title: "Unit" };
 

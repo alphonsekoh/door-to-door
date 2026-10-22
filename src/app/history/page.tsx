@@ -1,6 +1,6 @@
 import { Suspense } from "react";
-import { HISTORY_SUBTITLE, OwnHistoryScreen } from "@/components/own-history";
-import { PageHeader } from "@/components/page-header";
+import { HISTORY_SUBTITLE, OwnHistoryScreen } from "@/components/history/own-history";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "History" };
 

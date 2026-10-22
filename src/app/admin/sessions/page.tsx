@@ -1,6 +1,6 @@
-import { AdminSessions } from "@/components/admin-sessions";
-import { OverdueFollowUps } from "@/components/overdue-follow-ups";
-import { PageHeader } from "@/components/page-header";
+import { AdminSessions } from "@/components/admin/admin-sessions";
+import { OverdueFollowUps } from "@/components/follow-ups/overdue-follow-ups";
+import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Sessions" };

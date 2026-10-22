@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { SessionProvider } from "next-auth/react";
-import { AppShell } from "@/components/app-shell";
-import { PwaProvider } from "@/components/pwa-provider";
+import { AppShell } from "@/components/shell/app-shell";
+import { PwaProvider } from "@/components/pwa/pwa-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
