@@ -2,12 +2,12 @@
 
 import { signOut } from "next-auth/react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { AuthFailure } from "@/lib/account-state";
-import { goTo } from "@/lib/navigate";
-import { signOutAndForget } from "@/lib/sign-out";
-import { useModal } from "@/lib/use-modal";
-import { hasUnsyncedItems } from "@/lib/sw-update";
-import { useRole } from "@/lib/use-role";
+import type { AuthFailure } from "@/lib/session/account-state";
+import { goTo } from "@/lib/session/navigate";
+import { signOutAndForget } from "@/lib/session/sign-out";
+import { useModal } from "@/lib/hooks/use-modal";
+import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
+import { useRole } from "@/lib/hooks/use-role";
 
 const COPY = {
   deactivated: {

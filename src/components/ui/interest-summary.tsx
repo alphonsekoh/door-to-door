@@ -1,5 +1,5 @@
 import type { InterestBreakdown } from "@/generated/types.gen";
-import { interestSegments, totalRecorded } from "@/lib/history";
+import { interestSegments, totalRecorded } from "@/lib/history/history";
 
 const BAR: Record<string, string> = {
   high: "bg-interest-high",

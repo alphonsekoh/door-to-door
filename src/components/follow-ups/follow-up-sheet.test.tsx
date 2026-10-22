@@ -5,7 +5,7 @@ import { FollowUpSheet, diffFollowUp } from "@/components/follow-ups/follow-up-s
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { dueDayToInstant } from "@/lib/follow-ups";
+import { dueDayToInstant } from "@/lib/history/follow-ups";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -14,7 +14,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
-vi.mock("@/lib/use-online", () => ({ useOnline }));
+vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
 const existing: FollowUp = {
   id: "f1",

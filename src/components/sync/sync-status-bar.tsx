@@ -6,7 +6,7 @@ import { useSyncQueue } from "@/components/sync/sync-provider";
 import { type SyncQueueView, loadSyncQueue } from "@/components/sync/sync-queue-loader";
 import { useShellState } from "@/lib/offline/shell-state";
 import { barSummary, quietText } from "@/lib/sync/sync-ui";
-import { whenIdle } from "@/lib/when-idle";
+import { whenIdle } from "@/lib/hooks/when-idle";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*

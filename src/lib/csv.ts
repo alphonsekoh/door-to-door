@@ -1,6 +1,6 @@
 import type { HistoryEntry } from "@/generated/types.gen";
-import { teamName, teammateNames } from "@/lib/team-label";
-import { displayName } from "@/lib/team-ui";
+import { teamName, teammateNames } from "@/lib/teams/team-label";
+import { displayName } from "@/lib/teams/team-ui";
 
 /*
  * CSV for the export of a filtered history view.

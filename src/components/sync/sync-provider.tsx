@@ -8,14 +8,14 @@ import {
   createSyncController,
 } from "@/lib/sync/controller";
 import type { VisitDraft } from "@/lib/sync/enqueue";
-import { isLeavingOnPurpose } from "@/lib/navigate";
+import { isLeavingOnPurpose } from "@/lib/session/navigate";
 import { useShellState } from "@/lib/offline/shell-state";
 import { sharedQueue } from "@/lib/sync/idb-queue";
 import { isSending } from "@/lib/sync/sync-ui";
 import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
 import { sendBatch } from "@/lib/sync/transport";
 import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*

@@ -20,7 +20,7 @@ const { useSyncQueue, usePathname, loadSyncQueue, idle } = vi.hoisted(() => ({
 vi.mock("@/components/sync/sync-provider", () => ({ useSyncQueue }));
 vi.mock("next/navigation", () => ({ usePathname }));
 vi.mock("@/components/sync/sync-queue-loader", () => ({ loadSyncQueue }));
-vi.mock("@/lib/when-idle", () => ({
+vi.mock("@/lib/hooks/when-idle", () => ({
   whenIdle: (task: () => void) => {
     idle.tasks.push(task);
     return () => {

@@ -12,10 +12,10 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
-vi.mock("@/lib/use-online", () => ({ useOnline }));
+vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
 const asViewer = (userId: string, isAdmin = false) => {
   useRole.mockReturnValue({ userId, isAdmin });

@@ -2,9 +2,9 @@
 
 import { usePathname } from "next/navigation";
 import { useEffect } from "react";
-import { arrived, traversed } from "@/lib/screen-trail";
+import { arrived, traversed } from "@/lib/session/screen-trail";
 
-/* Feeds the trail a retracing Back reads (lib/screen-trail.ts). */
+/* Feeds the trail a retracing Back reads (lib/session/screen-trail.ts). */
 export function ScreenTrailKeeper() {
   const pathname = usePathname();
 

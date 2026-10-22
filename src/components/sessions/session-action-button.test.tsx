@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
 import type * as ApiClientModule from "@/lib/api-client";
-import { availableActions } from "@/lib/sessions";
+import { availableActions } from "@/lib/session/sessions";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {

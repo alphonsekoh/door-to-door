@@ -2,14 +2,14 @@
 
 import { useRef, useState } from "react";
 import type { UserSummary } from "@/generated/types.gen";
-import { nameLength } from "@/lib/own-name";
-import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
+import { nameLength } from "@/lib/session/own-name";
+import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/teams/team-name";
 import {
   ADMIN_OFFLINE_NOTE,
   describeAdminTeamFailure,
   displayName,
   suggestTeamName,
-} from "@/lib/team-ui";
+} from "@/lib/teams/team-ui";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 
 export type AdminTeamSheetMode = "create" | "add" | "rename";

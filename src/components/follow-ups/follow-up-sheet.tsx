@@ -9,8 +9,8 @@ import {
   describeFollowUpFailure,
   dueDayToInstant,
   instantToDueDay,
-} from "@/lib/follow-ups";
-import { useOnline } from "@/lib/use-online";
+} from "@/lib/history/follow-ups";
+import { useOnline } from "@/lib/hooks/use-online";
 import { ConfirmDialog, Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 

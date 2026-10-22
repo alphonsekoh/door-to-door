@@ -6,7 +6,7 @@ import { canRetry } from "@/lib/sync/classify";
 import { isCorrupt } from "@/lib/sync/record";
 import { QUEUE_NOTE, blockReason, queueTitle, recordReason, stateLabel } from "@/lib/sync/sync-ui";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
-import { formatDayTime } from "@/lib/dates";
+import { formatDayTime } from "@/lib/history/dates";
 import { UnitNumber } from "@/components/ui/unit-number";
 
 /* The sheet with its way out, as the one piece the sync bar loads when it

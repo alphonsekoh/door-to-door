@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountGate } from "@/components/shell/account-gate";
-import { accountStore } from "@/lib/account-state";
+import { accountStore } from "@/lib/session/account-state";
 
 const { usePathname, useRole, loadCurrentUser, hasUnsynced } = vi.hoisted(() => ({
   usePathname: vi.fn<() => string>(),
@@ -12,9 +12,9 @@ const { usePathname, useRole, loadCurrentUser, hasUnsynced } = vi.hoisted(() => 
 }));
 
 vi.mock("next/navigation", () => ({ usePathname }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
-vi.mock("@/lib/users", () => ({ loadCurrentUser }));
-vi.mock("@/lib/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
+vi.mock("@/lib/session/users", () => ({ loadCurrentUser }));
+vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 vi.mock("next-auth/react", () => ({ signOut: vi.fn() }));
 
 const signedIn = (isSignedIn: boolean) => useRole.mockReturnValue({ isSignedIn });
@@ -32,7 +32,7 @@ beforeEach(() => {
 async function freshGate() {
   vi.resetModules();
   const { AccountGate: Gate } = await import("@/components/shell/account-gate");
-  const { accountStore: store } = await import("@/lib/account-state");
+  const { accountStore: store } = await import("@/lib/session/account-state");
   return { Gate, store };
 }
 

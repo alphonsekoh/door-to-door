@@ -16,8 +16,8 @@ import type {
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
-import { findMyTeam } from "@/lib/team-ui";
-import { useRole } from "@/lib/use-role";
+import { findMyTeam } from "@/lib/teams/team-ui";
+import { useRole } from "@/lib/hooks/use-role";
 
 export function BlockScreen({ blockId }: { blockId: string }) {
   const { userId } = useRole();

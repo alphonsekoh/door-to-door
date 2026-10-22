@@ -20,7 +20,7 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams.value,
 }));
 
-vi.mock("@/lib/use-role", () => ({
+vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({
     userId: "u1",
     role: "member",

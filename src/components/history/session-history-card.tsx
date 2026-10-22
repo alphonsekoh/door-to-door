@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { InterestSummary } from "@/components/ui/interest-summary";
 import type { SessionHistorySummary } from "@/generated/types.gen";
-import { isSameDay } from "@/lib/history";
-import { formatDay } from "@/lib/dates";
+import { isSameDay } from "@/lib/history/history";
+import { formatDay } from "@/lib/history/dates";
 
 /* A session spanning midnight, or reopened days later, needs both ends. */
 function dateRange(from: string, to: string): string {

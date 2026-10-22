@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { updateLocalCopy } from "@/lib/offline/local-copy-store";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 
 /*
  * A signed-in page that sees someone other than the copy's member forgets

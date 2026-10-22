@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { SessionHistoryCard } from "@/components/history/session-history-card";
 import type { Block, SessionHistorySummary } from "@/generated/types.gen";
-import { formatDay } from "@/lib/dates";
+import { formatDay } from "@/lib/history/dates";
 
 const block = (id: string, name: string): Block => ({
   id,

@@ -16,8 +16,8 @@ import type {
   User,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
-import { asHouseholdSummary } from "@/lib/history";
-import { loadAllUsers } from "@/lib/users";
+import { asHouseholdSummary } from "@/lib/history/history";
+import { loadAllUsers } from "@/lib/session/users";
 import {
   hasAnyFilter,
   hasServerFilter,
@@ -26,7 +26,7 @@ import {
   toHistoryQuery,
   toSearchParams,
   type RecordFilters,
-} from "@/lib/record-filters";
+} from "@/lib/history/record-filters";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 

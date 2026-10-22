@@ -6,7 +6,7 @@ import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 20;

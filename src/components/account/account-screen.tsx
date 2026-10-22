@@ -5,12 +5,12 @@ import { signOut, useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
-import { accountStore } from "@/lib/account-state";
-import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/own-name";
-import { signOutAndForget } from "@/lib/sign-out";
-import { hasUnsyncedItems } from "@/lib/sw-update";
-import { useRole } from "@/lib/use-role";
-import { loadCurrentUser } from "@/lib/users";
+import { accountStore } from "@/lib/session/account-state";
+import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/session/own-name";
+import { signOutAndForget } from "@/lib/session/sign-out";
+import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
+import { useRole } from "@/lib/hooks/use-role";
+import { loadCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;

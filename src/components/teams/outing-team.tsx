@@ -14,9 +14,9 @@ import {
   hasJoined,
   isNetworkFailure,
   pickerCandidates,
-} from "@/lib/team-ui";
-import { useOnline } from "@/lib/use-online";
-import { loadCurrentUser } from "@/lib/users";
+} from "@/lib/teams/team-ui";
+import { useOnline } from "@/lib/hooks/use-online";
+import { loadCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 type Loaded = { me: User; participants: Participant[]; teams: Team[] };

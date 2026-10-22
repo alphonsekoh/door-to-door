@@ -6,7 +6,7 @@ import { DockHost } from "@/components/ui/docked-actions";
 import { PageHeader } from "@/components/ui/page-header";
 import { ReloadWhenOnline } from "@/components/pwa/reload-when-online";
 import { useSyncQueue } from "@/components/sync/sync-provider";
-import { goTo } from "@/lib/navigate";
+import { goTo } from "@/lib/session/navigate";
 import {
   type LocalBlock,
   type LocalCopy,

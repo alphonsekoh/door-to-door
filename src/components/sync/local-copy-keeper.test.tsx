@@ -7,7 +7,7 @@ import type { LocalCopy } from "@/lib/offline/local-copy";
 import { loadLocalCopy, updateLocalCopy } from "@/lib/offline/local-copy-store";
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 const ALICE = "0190a000-0000-7000-8000-00000000000a";
 const BEN = "0190a000-0000-7000-8000-00000000000b";

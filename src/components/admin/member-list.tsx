@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { AddMemberForm } from "@/components/admin/add-member-form";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { useRole } from "@/lib/use-role";
-import { formatDay } from "@/lib/dates";
+import { useRole } from "@/lib/hooks/use-role";
+import { formatDay } from "@/lib/history/dates";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 100;

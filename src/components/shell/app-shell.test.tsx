@@ -1,12 +1,12 @@
 import { act, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/app-shell";
-import { accountStore } from "@/lib/account-state";
+import { accountStore } from "@/lib/session/account-state";
 
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 /* The nav reads the role to decide whether to offer the admin tab, so it needs
    a session. The real tree gets one from SessionProvider in the root layout. */
-vi.mock("@/lib/use-role", () => ({
+vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({
     userId: "u1",
     role: "member",
@@ -18,7 +18,7 @@ vi.mock("@/lib/use-role", () => ({
 }));
 
 /* The shell reads /users/me once on load; that read is the gate's to test. */
-vi.mock("@/lib/users", () => ({
+vi.mock("@/lib/session/users", () => ({
   loadCurrentUser: () => Promise.resolve({ id: "u1", role: "member" }),
 }));
 

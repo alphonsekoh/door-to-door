@@ -5,7 +5,7 @@ import { useCallback, useMemo } from "react";
 import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
 import { type LocalCopy, type LocalMember, noteBlock, noteOuting } from "@/lib/offline/local-copy";
 import { updateLocalCopy } from "@/lib/offline/local-copy-store";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 
 export type LocalCopyWriter = {
   noteOuting: (active: ActiveSession | null) => void;

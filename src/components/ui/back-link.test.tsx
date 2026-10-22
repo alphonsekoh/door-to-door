@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BackLink } from "@/components/ui/back-link";
-import { arrived, resetTrail } from "@/lib/screen-trail";
+import { arrived, resetTrail } from "@/lib/session/screen-trail";
 
 beforeEach(() => {
   resetTrail();

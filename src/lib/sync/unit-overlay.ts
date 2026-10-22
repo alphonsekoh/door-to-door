@@ -1,7 +1,7 @@
 import type { HouseholdSummary, InterestLevel } from "@/generated/types.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
-import type { UnitLike } from "@/lib/unit-list";
-import { normaliseUnitNumber } from "@/lib/unit-number";
+import type { UnitLike } from "@/lib/units/unit-list";
+import { normaliseUnitNumber } from "@/lib/units/unit-number";
 
 /*
  * The block's units as the server has them, with this phone's unsent records

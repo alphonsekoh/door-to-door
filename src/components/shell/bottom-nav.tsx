@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NavIcon } from "@/components/ui/nav-icon";
-import { isActiveRoute, visibleNavItems } from "@/lib/nav";
+import { isActiveRoute, visibleNavItems } from "@/lib/session/nav";
 import { useShellState } from "@/lib/offline/shell-state";
 import { isPublicPath } from "@/server/auth/routes";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 
 export function BottomNav() {
   const pathname = usePathname();

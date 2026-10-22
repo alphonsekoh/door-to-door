@@ -11,10 +11,10 @@ import {
   doneByline,
   isOverdue,
   mayEditFollowUp,
-} from "@/lib/follow-ups";
-import { useOnline } from "@/lib/use-online";
-import { useRole } from "@/lib/use-role";
-import { formatDay } from "@/lib/dates";
+} from "@/lib/history/follow-ups";
+import { useOnline } from "@/lib/hooks/use-online";
+import { useRole } from "@/lib/hooks/use-role";
+import { formatDay } from "@/lib/history/dates";
 import { FollowUpDoor } from "@/components/ui/unit-number";
 
 /* Words as well as colour: colour alone is lost in sunlight and to some eyes. */

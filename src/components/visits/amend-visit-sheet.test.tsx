@@ -13,7 +13,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 type Options = {
   name?: string | null;

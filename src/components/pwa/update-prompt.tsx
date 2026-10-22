@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useReservedSpace } from "@/components/ui/use-reserved-space";
-import { reloadPage } from "@/lib/navigate";
-import { activateWaitingWorker, watchForWaitingWorker } from "@/lib/sw-update";
+import { reloadPage } from "@/lib/session/navigate";
+import { activateWaitingWorker, watchForWaitingWorker } from "@/lib/pwa/sw-update";
 
 type Props = {
   /* Whether the signed-in member still has records being sent (#33). */

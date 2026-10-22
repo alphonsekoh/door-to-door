@@ -3,9 +3,9 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
-import { accountStore } from "@/lib/account-state";
-import { useRole } from "@/lib/use-role";
-import { loadCurrentUser } from "@/lib/users";
+import { accountStore } from "@/lib/session/account-state";
+import { useRole } from "@/lib/hooks/use-role";
+import { loadCurrentUser } from "@/lib/session/users";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*

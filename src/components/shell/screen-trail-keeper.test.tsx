@@ -1,7 +1,7 @@
 import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ScreenTrailKeeper } from "@/components/shell/screen-trail-keeper";
-import { canRetrace, resetTrail } from "@/lib/screen-trail";
+import { canRetrace, resetTrail } from "@/lib/session/screen-trail";
 
 const route = vi.hoisted(() => ({ pathname: "/follow-ups" }));
 vi.mock("next/navigation", () => ({ usePathname: () => route.pathname }));

@@ -2,7 +2,7 @@ import { eq, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { users } from "@/db/schema";
 import { zCreateUserRequest } from "@/generated/zod.gen";
-import { checkOwnName } from "@/lib/own-name";
+import { checkOwnName } from "@/lib/session/own-name";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { assertPasswordAcceptable, hashPassword } from "@/server/password";
 

@@ -33,8 +33,8 @@ import {
   throwSpring,
   toPx,
   unresist,
-} from "@/lib/sheet-motion";
-import { useModal } from "@/lib/use-modal";
+} from "@/lib/session/sheet-motion";
+import { useModal } from "@/lib/hooks/use-modal";
 
 /*
  * Every sheet and confirmation in the app, so they rise, leave and drag the

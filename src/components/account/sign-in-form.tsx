@@ -3,9 +3,9 @@
 import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import { useState, type ComponentProps } from "react";
-import { destinationAfterSignIn, goTo } from "@/lib/navigate";
+import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
-import { clearServiceWorkerCaches } from "@/lib/sw-client";
+import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
 type SubmitEvent = Parameters<NonNullable<ComponentProps<"form">["onSubmit"]>>[0];

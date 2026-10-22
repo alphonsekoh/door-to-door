@@ -11,7 +11,7 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
-vi.mock("@/lib/use-online", () => ({ useOnline }));
+vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
 const person = (id: string, name: string | null) => ({ id, name, image: null });
 const ME = { ...person("me", "Ann Tan"), role: "member" };

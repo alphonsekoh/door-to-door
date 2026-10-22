@@ -17,7 +17,7 @@ const { usePathname, useRole, fetchSignedIn } = vi.hoisted(() => ({
   fetchSignedIn: vi.fn<() => Promise<SignedIn>>(),
 }));
 vi.mock("next/navigation", () => ({ usePathname }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 /* Who the server says is signed in, asked before every send. */
 vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({
   ...(await importOriginal<typeof SignedInModule>()),
@@ -26,7 +26,7 @@ vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({
 const { isLeavingOnPurpose } = vi.hoisted(() => ({
   isLeavingOnPurpose: vi.fn(() => false),
 }));
-vi.mock("@/lib/navigate", () => ({ isLeavingOnPurpose }));
+vi.mock("@/lib/session/navigate", () => ({ isLeavingOnPurpose }));
 const cookieFor = (id: string | null) => fetchSignedIn.mockResolvedValue({ kind: "member", id });
 
 const as = (userId: string | undefined) => useRole.mockReturnValue({ userId });

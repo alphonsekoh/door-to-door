@@ -5,7 +5,7 @@ import { InterestPicker } from "@/components/ui/interest-picker";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 import type { Block, InterestLevel, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { normaliseUnitNumber } from "@/lib/unit-number";
+import { normaliseUnitNumber } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
 
 /*

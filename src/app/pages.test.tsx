@@ -32,7 +32,7 @@ vi.mock("@/lib/api-client", async () => {
   };
 });
 vi.mock("next-auth/react", () => ({ useSession: () => ({ update: vi.fn() }), signOut: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({
+vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({
     userId: "u1",
     role: "member",

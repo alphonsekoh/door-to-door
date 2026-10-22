@@ -25,7 +25,7 @@ const { usePathname, useRole, apiFetch } = vi.hoisted(() => ({
   apiFetch: vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
 }));
 vi.mock("next/navigation", () => ({ usePathname }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClientModule>()),
   apiFetch,

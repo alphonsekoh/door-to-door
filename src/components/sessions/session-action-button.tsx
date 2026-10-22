@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import type { ActionSpec } from "@/lib/sessions";
+import type { ActionSpec } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 /*

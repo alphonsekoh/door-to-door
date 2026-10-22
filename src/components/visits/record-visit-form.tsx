@@ -18,7 +18,7 @@ import { apiFetch } from "@/lib/api-client";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
-import { normaliseUnitNumber, nextUnitNumber } from "@/lib/unit-number";
+import { normaliseUnitNumber, nextUnitNumber } from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const RELIGIONS: { value: Religion; label: string }[] = [

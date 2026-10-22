@@ -2,9 +2,14 @@
 
 import { useRef, useState } from "react";
 import type { Participant } from "@/generated/types.gen";
-import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/team-name";
-import { nameLength } from "@/lib/own-name";
-import { OFFLINE_NOTE, defaultTeamName, describeTeamFailure, displayName } from "@/lib/team-ui";
+import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/teams/team-name";
+import { nameLength } from "@/lib/session/own-name";
+import {
+  OFFLINE_NOTE,
+  defaultTeamName,
+  describeTeamFailure,
+  displayName,
+} from "@/lib/teams/team-ui";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 
 export type TeamSheetMode = "create" | "add" | "rename";

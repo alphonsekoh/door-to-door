@@ -5,8 +5,8 @@ import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
-import { buildTimeline, sortOutstanding } from "@/lib/follow-ups";
-import { formatDay } from "@/lib/dates";
+import { buildTimeline, sortOutstanding } from "@/lib/history/follow-ups";
+import { formatDay } from "@/lib/history/dates";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const INTEREST_LABEL: Record<string, string> = {

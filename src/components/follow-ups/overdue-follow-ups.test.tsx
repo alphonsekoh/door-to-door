@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OverdueFollowUps } from "@/components/follow-ups/overdue-follow-ups";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
-import { startOfToday } from "@/lib/follow-ups";
+import { startOfToday } from "@/lib/history/follow-ups";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {

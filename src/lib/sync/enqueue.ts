@@ -1,6 +1,6 @@
 import type { CreateVisitRequest, InterestLevel, Religion } from "@/generated/types.gen";
 import type { QueuedItem, QueuedVisit } from "@/lib/sync/types";
-import { normaliseUnitNumber } from "@/lib/unit-number";
+import { normaliseUnitNumber } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
 
 /* What the recording form collects, as typed. */

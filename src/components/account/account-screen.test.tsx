@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountScreen } from "@/components/account/account-screen";
 import type { User } from "@/generated/types.gen";
-import { accountStore } from "@/lib/account-state";
+import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget } = vi.hoisted(() => ({
@@ -15,11 +15,11 @@ const { apiFetch, update, signOut, hasUnsynced, signOutAndForget } = vi.hoisted(
 }));
 
 vi.mock("next-auth/react", () => ({ useSession: () => ({ update }), signOut }));
-vi.mock("@/lib/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
+vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
-vi.mock("@/lib/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
-vi.mock("@/lib/sign-out", () => ({ signOutAndForget }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
+vi.mock("@/lib/session/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/api-client", async () => ({
   ...(await vi.importActual<typeof ApiClientModule>("@/lib/api-client")),
   apiFetch,

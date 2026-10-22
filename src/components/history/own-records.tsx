@@ -6,11 +6,11 @@ import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { InterestChip } from "@/components/ui/interest-chip";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { HistoryEntry } from "@/generated/types.gen";
-import { mayAmendVisit } from "@/lib/amend";
-import { asHouseholdSummary } from "@/lib/history";
-import { vouchedTeamIds } from "@/lib/team-view";
-import { useRole } from "@/lib/use-role";
-import { formatDay } from "@/lib/dates";
+import { mayAmendVisit } from "@/lib/history/amend";
+import { asHouseholdSummary } from "@/lib/history/history";
+import { vouchedTeamIds } from "@/lib/teams/team-view";
+import { useRole } from "@/lib/hooks/use-role";
+import { formatDay } from "@/lib/history/dates";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 

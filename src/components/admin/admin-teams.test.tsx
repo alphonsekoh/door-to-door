@@ -11,8 +11,8 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
-vi.mock("@/lib/use-online", () => ({ useOnline }));
-vi.mock("@/lib/use-role", () => ({
+vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
+vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({
     userId: "admin",
     role: "admin",

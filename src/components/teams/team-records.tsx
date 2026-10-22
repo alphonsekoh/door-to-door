@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OwnRecords, TEAM_VIEW_NOTE } from "@/components/history/own-records";
 import type { HistoryEntry, HistoryList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { ownHistoryRequest } from "@/lib/team-view";
+import { ownHistoryRequest } from "@/lib/teams/team-view";
 
 const PAGE_SIZE = 20;
 

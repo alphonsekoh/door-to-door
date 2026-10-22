@@ -1,5 +1,5 @@
 import type { Visit } from "@/generated/types.gen";
-import { teamName, visitByline } from "@/lib/team-label";
+import { teamName, visitByline } from "@/lib/teams/team-label";
 
 /*
  * Who recorded a visit, and the team it was stamped with, in words. Spans

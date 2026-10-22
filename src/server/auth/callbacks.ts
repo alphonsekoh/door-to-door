@@ -1,5 +1,5 @@
 import type { Role } from "@/db/schema";
-import { checkOwnName } from "@/lib/own-name";
+import { checkOwnName } from "@/lib/session/own-name";
 
 /*
  * Session callbacks, kept as plain functions so the role logic is testable

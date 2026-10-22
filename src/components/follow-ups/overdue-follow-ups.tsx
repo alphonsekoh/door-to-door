@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { OverdueBadge } from "@/components/follow-ups/follow-up-item";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { startOfToday } from "@/lib/follow-ups";
+import { startOfToday } from "@/lib/history/follow-ups";
 import { FollowUpDoor } from "@/components/ui/unit-number";
 
 const SHOWN = 5;

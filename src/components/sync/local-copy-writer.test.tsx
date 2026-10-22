@@ -9,7 +9,7 @@ const { useRole, useSession, updateLocalCopy } = vi.hoisted(() => ({
   useSession: vi.fn(),
   updateLocalCopy: vi.fn<(change: (copy: LocalCopy | null) => LocalCopy | null) => Promise<void>>(),
 }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 vi.mock("next-auth/react", () => ({ useSession }));
 vi.mock("@/lib/offline/local-copy-store", () => ({ updateLocalCopy }));
 

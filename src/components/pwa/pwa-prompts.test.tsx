@@ -7,10 +7,10 @@ const { signedIn, hasRecordsToSend } = vi.hoisted(() => ({
   signedIn: { value: false },
   hasRecordsToSend: vi.fn(() => Promise.resolve(false)),
 }));
-vi.mock("@/lib/use-role", () => ({
+vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({ isSignedIn: signedIn.value, userId: signedIn.value ? "ann" : undefined }),
 }));
-vi.mock("@/lib/sw-update", () => ({ hasRecordsToSend }));
+vi.mock("@/lib/pwa/sw-update", () => ({ hasRecordsToSend }));
 vi.mock("@/components/pwa/install-prompt", () => ({ InstallPrompt: () => <p>install</p> }));
 vi.mock("@/components/pwa/update-prompt", () => ({
   UpdatePrompt: ({ hasUnsynced }: { hasUnsynced: () => Promise<boolean> }) => (

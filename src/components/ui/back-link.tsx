@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { canRetrace } from "@/lib/screen-trail";
+import { canRetrace } from "@/lib/session/screen-trail";
 
 export type Back = {
   href: string;

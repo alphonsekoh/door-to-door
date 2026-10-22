@@ -1,6 +1,6 @@
 "use client";
 
-import type { RecordScope } from "@/lib/team-view";
+import type { RecordScope } from "@/lib/teams/team-view";
 
 const OPTIONS: { value: RecordScope; label: string }[] = [
   { value: "me", label: "Me" },

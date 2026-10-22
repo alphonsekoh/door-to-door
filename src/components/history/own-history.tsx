@@ -13,8 +13,8 @@ import type {
   SessionHistorySummary,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { parseScope, scopeHref } from "@/lib/team-view";
-import { useRole } from "@/lib/use-role";
+import { parseScope, scopeHref } from "@/lib/teams/team-view";
+import { useRole } from "@/lib/hooks/use-role";
 
 /* Small enough to stay quick on a phone, large enough that most members never
    reach for "Show more". */

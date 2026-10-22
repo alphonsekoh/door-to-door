@@ -6,7 +6,7 @@ import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
 import type { OutingSession, SessionList, SessionStatus } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { availableActions, statusLabel } from "@/lib/sessions";
+import { availableActions, statusLabel } from "@/lib/session/sessions";
 
 const PAGE_SIZE = 25;
 

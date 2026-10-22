@@ -21,9 +21,9 @@ import type {
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
-import { asHouseholdSummary } from "@/lib/history";
-import { loadAllUsers } from "@/lib/users";
-import { formatDay } from "@/lib/dates";
+import { asHouseholdSummary } from "@/lib/history/history";
+import { loadAllUsers } from "@/lib/session/users";
+import { formatDay } from "@/lib/history/dates";
 import {
   groupByHousehold,
   hasHistoryFilter,
@@ -32,7 +32,7 @@ import {
   toHistoryRequest,
   toHistorySearch,
   type HistoryFilters,
-} from "@/lib/history-filters";
+} from "@/lib/history/history-filters";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 

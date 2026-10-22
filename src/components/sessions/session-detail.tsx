@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { availableActions, statusLabel } from "@/lib/sessions";
+import { availableActions, statusLabel } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 /* While a session runs the numbers move, so they refresh on their own. Long

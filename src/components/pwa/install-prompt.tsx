@@ -4,8 +4,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDockedBarOnScreen } from "@/components/ui/docked-actions";
 import { useReservedSpace } from "@/components/ui/use-reserved-space";
-import { classifyBrowser, INSTALL_GUIDES, installPathFor } from "@/lib/install-environment";
-import type { InstallPath } from "@/lib/install-environment";
+import { classifyBrowser, INSTALL_GUIDES, installPathFor } from "@/lib/pwa/install-environment";
+import type { InstallPath } from "@/lib/pwa/install-environment";
 import {
   bannerFloats,
   deriveInstallState,
@@ -16,8 +16,8 @@ import {
   readInstalled,
   writeDismissedAt,
   writeInstalled,
-} from "@/lib/install-prompt";
-import { useRole } from "@/lib/use-role";
+} from "@/lib/pwa/install-prompt";
+import { useRole } from "@/lib/hooks/use-role";
 import { isPublicPath } from "@/server/auth/routes";
 
 type BeforeInstallPromptEvent = Event & {

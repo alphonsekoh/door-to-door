@@ -12,12 +12,12 @@ const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
 }));
 
 vi.mock("next-auth/react", () => ({ signOut }));
-vi.mock("@/lib/sign-out", () => ({ signOutAndForget }));
-vi.mock("@/lib/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
+vi.mock("@/lib/session/sign-out", () => ({ signOutAndForget }));
+vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
-vi.mock("@/lib/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
-vi.mock("@/lib/navigate", () => ({ goTo }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
+vi.mock("@/lib/session/navigate", () => ({ goTo }));
 
 beforeEach(() => {
   vi.clearAllMocks();

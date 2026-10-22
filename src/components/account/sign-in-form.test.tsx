@@ -12,9 +12,9 @@ const { signIn, goTo, get, clearCaches, clearLocalCopy } = vi.hoisted(() => ({
 }));
 
 vi.mock("next-auth/react", () => ({ signIn }));
-vi.mock("@/lib/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
+vi.mock("@/lib/pwa/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
 vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
-vi.mock(import("@/lib/navigate"), async (importOriginal) => ({
+vi.mock(import("@/lib/session/navigate"), async (importOriginal) => ({
   ...(await importOriginal()),
   goTo,
 }));

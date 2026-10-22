@@ -7,7 +7,7 @@ import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdSummary } from "@/generated/types.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
 import type { UnitRow as Row } from "@/lib/sync/unit-overlay";
-import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/unit-list";
+import { filterUnits, groupByFloor, progressLabel, summariseProgress } from "@/lib/units/unit-list";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 

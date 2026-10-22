@@ -1,6 +1,6 @@
 "use client";
 
-import { accountStore, classifyAuthFailure } from "@/lib/account-state";
+import { accountStore, classifyAuthFailure } from "@/lib/session/account-state";
 import type { ErrorBody } from "@/server/http/errors";
 
 /*

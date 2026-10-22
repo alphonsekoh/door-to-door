@@ -8,7 +8,7 @@ import type { QueuedVisit } from "@/lib/sync/types";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 type Options = {
   name?: string | null;

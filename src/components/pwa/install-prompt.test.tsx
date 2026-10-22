@@ -3,14 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DockedActions } from "@/components/ui/docked-actions";
 import { InstallPrompt } from "@/components/pwa/install-prompt";
-import { DISMISS_KEY, INSTALLED_KEY } from "@/lib/install-prompt";
+import { DISMISS_KEY, INSTALLED_KEY } from "@/lib/pwa/install-prompt";
 
 const { pathname, role } = vi.hoisted(() => ({
   pathname: { current: "/" },
   role: { signedIn: true },
 }));
 vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
-vi.mock("@/lib/use-role", () => ({ useRole: () => ({ isSignedIn: role.signedIn }) }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ isSignedIn: role.signedIn }) }));
 
 const ANDROID_CHROME =
   "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Mobile Safari/537.36";

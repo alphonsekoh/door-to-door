@@ -13,10 +13,10 @@ import {
   displayName,
   isNetworkFailure,
   type AdminTeamAction,
-} from "@/lib/team-ui";
-import { useOnline } from "@/lib/use-online";
-import { useRole } from "@/lib/use-role";
-import { loadAllUsers } from "@/lib/users";
+} from "@/lib/teams/team-ui";
+import { useOnline } from "@/lib/hooks/use-online";
+import { useRole } from "@/lib/hooks/use-role";
+import { loadAllUsers } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 type Loaded = { teams: Team[]; users: User[] };

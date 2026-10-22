@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberList, lastActiveLabel } from "@/components/admin/member-list";
 import type { Role, User } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
-import { formatDay } from "@/lib/dates";
+import { formatDay } from "@/lib/history/dates";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -13,7 +13,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 const AT = "2026-03-14T11:00:00.000Z";
 

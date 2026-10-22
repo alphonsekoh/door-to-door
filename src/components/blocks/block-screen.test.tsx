@@ -20,7 +20,7 @@ vi.mock("@/components/sync/local-copy-writer", () => ({
 }));
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
-vi.mock("@/lib/use-role", () => ({ useRole }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 /* Unavailable unless a test says otherwise, so a save goes straight to the
    server as it does where IndexedDB cannot be opened. */

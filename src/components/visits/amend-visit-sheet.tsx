@@ -4,9 +4,9 @@ import { useRef, useState } from "react";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generated/types.gen";
-import { amendRoute, describeAmendFailure } from "@/lib/amend";
+import { amendRoute, describeAmendFailure } from "@/lib/history/amend";
 import { apiFetch } from "@/lib/api-client";
-import { useRole } from "@/lib/use-role";
+import { useRole } from "@/lib/hooks/use-role";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
