@@ -6,6 +6,7 @@ import HistoryPage from "@/app/history/page";
 import SessionHistoryPage from "@/app/history/[sessionId]/page";
 import AdminSessionPage from "@/app/admin/sessions/[id]/page";
 import AdminAttentionPage from "@/app/admin/attention/page";
+import AdminFollowUpsPage from "@/app/admin/follow-ups/page";
 import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
 import AdminTeamPage from "@/app/admin/team/page";
@@ -117,6 +118,26 @@ describe("block screen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
   });
+
+  it("arrives with the unit picked from a follow-up list", async () => {
+    render(
+      await BlockPage({
+        params: Promise.resolve({ id: "b1" }),
+        searchParams: Promise.resolve({ unit: "#05-123" }),
+      }),
+    );
+    expect(await screen.findByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  it("ignores a unit given twice in the address", async () => {
+    render(
+      await BlockPage({
+        params: Promise.resolve({ id: "b1" }),
+        searchParams: Promise.resolve({ unit: ["#05-123", "#06-201"] }),
+      }),
+    );
+    expect(await screen.findByLabelText("Unit number")).toHaveValue("");
+  });
 });
 
 describe("block screen while it loads", () => {
@@ -136,6 +157,7 @@ describe("admin screens", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
     // The overdue card failing must not stand in for the outing list's own state.
     expect(await screen.findByText("Could not check for overdue follow-ups.")).toBeInTheDocument();
+    expect(await screen.findByText("Could not check for suggestions.")).toBeInTheDocument();
   });
 
   it("guards the record list before rendering it", async () => {
@@ -156,6 +178,17 @@ describe("admin screens", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Needs a return visit" }),
     ).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("guards the follow-up list before rendering it", async () => {
+    render(await AdminFollowUpsPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Follow-up list" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Sessions" })).toHaveAttribute(
+      "href",
+      "/admin/sessions",
+    );
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 

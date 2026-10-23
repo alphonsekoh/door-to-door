@@ -1,7 +1,12 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AttentionList, daysSince, sinceLabel } from "@/components/follow-ups/attention-list";
+import {
+  AttentionList,
+  daysSince,
+  sinceLabel,
+  startingNote,
+} from "@/components/follow-ups/attention-list";
 import type { HouseholdAttention, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 
@@ -16,6 +21,12 @@ vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
 });
+
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
+
+const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
+vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
 const AT = "2026-03-14T11:00:00.000Z";
 
@@ -65,6 +76,8 @@ const page = (rows: HouseholdAttention[], total = rows.length) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+  useOnline.mockReturnValue(true);
 });
 
 describe("daysSince", () => {
@@ -191,5 +204,75 @@ describe("AttentionList", () => {
     apiFetch.mockRejectedValue("boom");
     render(<AttentionList />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the list.");
+  });
+});
+
+describe("adding a door to the follow-up list", () => {
+  it("starts the note from why the door is here", () => {
+    expect(
+      startingNote(row("#05-123", { lastVisitedAt: new Date(2026, 2, 3, 12).toISOString() })),
+    ).toBe("Showed high interest on 3 Mar 2026.");
+    expect(
+      startingNote(
+        row("#05-123", {
+          interestLevel: "medium",
+          lastVisitedAt: new Date(2026, 2, 3, 12).toISOString(),
+        }),
+      ),
+    ).toBe("Showed medium interest on 3 Mar 2026.");
+  });
+
+  it("adds a row's household, anchored to its latest visit, then re-reads the list", async () => {
+    const user = userEvent.setup();
+    let added = false;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "POST") {
+        added = true;
+        return Promise.resolve({});
+      }
+      return Promise.resolve(page(added ? [] : [row("#05-123")]));
+    });
+    render(<AttentionList />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    expect(sheet.getByLabelText("What should the next visit do?")).toHaveValue(
+      startingNote(row("#05-123")),
+    );
+    await user.click(sheet.getByRole("button", { name: "Add to list" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
+      method: "POST",
+      body: JSON.stringify({
+        householdId: "h-#05-123",
+        visitId: "v-#05-123",
+        note: startingNote(row("#05-123")),
+        dueDate: null,
+      }),
+    });
+    // Listed now, so it has left this list.
+    expect(await screen.findByText("Nothing is waiting.")).toBeInTheDocument();
+  });
+
+  it("puts the action beside the row, never inside its link", async () => {
+    apiFetch.mockResolvedValue(page([row("#05-123")]));
+    render(<AttentionList />);
+    const button = await screen.findByRole("button", { name: "Add to list" });
+    expect(button.closest("a")).toBeNull();
+  });
+
+  it("closes without a request on Cancel", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([row("#05-123")]));
+    render(<AttentionList />);
+    await user.click(await screen.findByRole("button", { name: "Add to list" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 });

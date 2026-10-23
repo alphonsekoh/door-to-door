@@ -85,6 +85,32 @@ describe("POST /api/sessions", () => {
     expect(body.error.details.map((d) => d.path)).toContain("/title");
   });
 
+  it("is a door-to-door session when no kind is sent", async () => {
+    // Older clients send no kind and keep working as before.
+    asAdmin();
+    const body = (await (await POST(create({ title: "March outing" }))).json()) as {
+      kind: string;
+    };
+    expect(body.kind).toBe("regular");
+  });
+
+  it("creates a follow-up session", async () => {
+    asAdmin();
+    const response = await POST(create({ title: "Follow-up visits", kind: "follow_up" }));
+    expect(response.status).toBe(201);
+    expect(((await response.json()) as { kind: string }).kind).toBe("follow_up");
+    const { rows } = await pool.query<{ kind: string }>(`SELECT kind FROM outing_sessions`);
+    expect(rows).toEqual([{ kind: "follow_up" }]);
+  });
+
+  it("rejects an unknown kind with 400", async () => {
+    asAdmin();
+    const response = await POST(create({ title: "Outing", kind: "revisit" }));
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toContain("/kind");
+  });
+
   it("rejects an unknown block with 404", async () => {
     asAdmin();
     const response = await POST(

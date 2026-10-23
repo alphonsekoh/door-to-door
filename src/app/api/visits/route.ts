@@ -86,6 +86,7 @@ export const POST = withContract(
      * to someone else is an admin capturing a paper or phoned-in record.
      */
     const memberId = resolveMemberScope(session, body.memberId);
+    const user = requireUser(session);
     const visit = await createVisit(
       getDatabase(),
       {
@@ -101,6 +102,7 @@ export const POST = withContract(
         memberId,
       },
       currentClock(),
+      { role: user.role },
     );
     return { status: 201, body: toVisit(visit) };
   },

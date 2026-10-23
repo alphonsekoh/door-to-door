@@ -11,6 +11,23 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+/* The revisits panel has its own tests; here it only has to be placed and fed. */
+vi.mock("@/components/sessions/session-revisits", () => ({
+  SessionRevisits: ({
+    attachedIds,
+    tick,
+    onAttached,
+  }: {
+    attachedIds: string[];
+    tick: number;
+    onAttached: () => Promise<void>;
+  }) => (
+    <button type="button" onClick={() => void onAttached()}>
+      Revisits panel: {attachedIds.join(",")}, read {String(tick)}
+    </button>
+  ),
+}));
+
 /* The team panel has its own tests; here it only has to be placed and fed. */
 vi.mock("@/components/admin/admin-teams", () => ({
   AdminTeams: ({ status, tick }: { status: string; tick: number }) => (
@@ -26,6 +43,7 @@ function session(status: SessionStatus): OutingSession {
   return {
     id: "s1",
     title: "June outing",
+    kind: "regular",
     status,
     startedAt: null,
     endedAt: null,
@@ -351,5 +369,48 @@ describe("SessionDetail", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a follow-up session", () => {
+  function serveKind(kind: "regular" | "follow_up") {
+    apiFetch.mockImplementation((path: string) =>
+      path.endsWith("/blocks")
+        ? Promise.resolve([sessionBlock("b1", "123")])
+        : Promise.resolve({ ...session("draft"), kind }),
+    );
+  }
+
+  it("says what kind it is and what that means for members", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText("Follow-up")).toBeInTheDocument();
+    expect(screen.getByText("Members can record only households on its list.")).toBeVisible();
+  });
+
+  it("shows its households to revisit, given the blocks it covers", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText(/Revisits panel: b1, read 0/)).toBeInTheDocument();
+  });
+
+  it("reads the session again once a block is added from the panel", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    const calls = () => apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1").length;
+    await screen.findByText(/Revisits panel/);
+    const before = calls();
+    await userEvent.click(screen.getByRole("button", { name: /Revisits panel/ }));
+    await waitFor(() => {
+      expect(calls()).toBe(before + 1);
+    });
+  });
+
+  it("has neither for a door-to-door session", async () => {
+    serveKind("regular");
+    render(<SessionDetail sessionId="s1" />);
+    await screen.findByText("June outing");
+    expect(screen.queryByText("Follow-up")).toBeNull();
+    expect(screen.queryByText(/Revisits panel/)).toBeNull();
   });
 });

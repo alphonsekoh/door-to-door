@@ -14,9 +14,13 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-const { noteOuting, noteBlock } = vi.hoisted(() => ({ noteOuting: vi.fn(), noteBlock: vi.fn() }));
+const { noteOuting, noteBlock, noteRevisits } = vi.hoisted(() => ({
+  noteOuting: vi.fn(),
+  noteBlock: vi.fn(),
+  noteRevisits: vi.fn(),
+}));
 vi.mock("@/components/sync/local-copy-writer", () => ({
-  useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
+  useLocalCopyWriter: () => ({ noteOuting, noteBlock, noteRevisits }),
 }));
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
@@ -548,5 +552,131 @@ describe("the offline copy", () => {
     render(<BlockScreen blockId="b1" />);
     await screen.findByRole("alert");
     expect(noteBlock).not.toHaveBeenCalled();
+  });
+});
+
+describe("in a follow-up session", () => {
+  const followUp = {
+    session: { id: "s1", title: "Revisits", kind: "follow_up" },
+    blocks: [
+      {
+        block: {
+          id: "b1",
+          name: "123",
+          street: "Ang Mo Kio Ave 3",
+          postalCode: null,
+          createdAt: "",
+        },
+        visitCount: 0,
+        householdCount: 0,
+        activeMembers: [],
+      },
+    ],
+  };
+  const revisits = {
+    data: [
+      {
+        household: { ...list(["#05-123"]).data[0]?.household, blockId: "b1" },
+        block: followUp.blocks[0]?.block,
+        notes: [{ id: "n1", doneAt: null }],
+        latestVisit: null,
+        visitedInSession: false,
+      },
+    ],
+  };
+
+  function serveFollowUp(listAnswer: () => Promise<unknown> = () => Promise.resolve(revisits)) {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") return listAnswer();
+      return Promise.resolve(list(["#05-123"]));
+    });
+  }
+
+  it("says only listed units can be recorded, and offers them", async () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    expect(
+      await screen.findByText(/Only units on the list can be recorded\.$/),
+    ).toBeInTheDocument();
+    const chips = within(await screen.findByRole("list", { name: "On the list in this block" }));
+    expect(chips.getByRole("button", { name: "#05-123" })).toBeInTheDocument();
+  });
+
+  it("keeps the list on the phone for the offline shell", async () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(noteRevisits).toHaveBeenCalledWith(followUp, revisits.data);
+    });
+  });
+
+  it("tells an admin they can record any unit", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    expect(await screen.findByText(/As an admin you can record any unit\./)).toBeInTheDocument();
+  });
+
+  it("says it could not check the list when it cannot be read", async () => {
+    serveFollowUp(() => Promise.reject(new TypeError("offline")));
+    const user = userEvent.setup();
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByText(/Only units on the list can be recorded/);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /^Could not check the follow-up list\./,
+    );
+    expect(noteRevisits).not.toHaveBeenCalled();
+  });
+
+  it("arrives with the unit picked from the list", () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  it("asks for no list in a door-to-door session", async () => {
+    serve(list([]), { ...followUp, session: { ...followUp.session, kind: "regular" } });
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("heading", { level: 1, name: "Blk 123" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/revisits");
+    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+  });
+
+  it("lets only the newest list land when the session answers twice", async () => {
+    let late: (value: unknown) => void = () => undefined;
+    let calls = 0;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") {
+        calls += 1;
+        return calls === 1
+          ? new Promise((resolve) => {
+              late = resolve;
+            })
+          : Promise.resolve({ data: [] });
+      }
+      return Promise.resolve(list(["#05-123"]));
+    });
+    const queue = { ...NO_QUEUE };
+    useSyncQueue.mockReturnValue(queue);
+    const view = render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(calls).toBe(1);
+    });
+    // A record reaching the server re-reads the list.
+    useSyncQueue.mockReturnValue({ ...queue, syncedVersion: 1 });
+    view.rerender(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(calls).toBe(2);
+    });
+    await act(async () => {
+      late(revisits);
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
   });
 });

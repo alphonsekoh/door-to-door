@@ -3,6 +3,7 @@ import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import {
   zDeleteFollowUpPath,
+  zDeleteFollowUpQuery,
   zUpdateFollowUpBody,
   zUpdateFollowUpPath,
   zUpdateFollowUpResponse,
@@ -34,11 +35,12 @@ export const DELETE = withContract(
   {
     operationId: "deleteFollowUp",
     path: zDeleteFollowUpPath,
+    query: zDeleteFollowUpQuery,
     responses: { 204: z.undefined() },
   },
-  async ({ path }) => {
+  async ({ path, query }) => {
     const user = requireUser(await currentSession());
-    await deleteFollowUp(getDatabase(), path.id, { id: user.id, role: user.role });
+    await deleteFollowUp(getDatabase(), path.id, { id: user.id, role: user.role }, query.reason);
     return { status: 204 };
   },
 );

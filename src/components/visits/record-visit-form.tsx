@@ -1,20 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
-import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
+import {
+  ADDED_TO_LIST,
+  FollowUpSheet,
+  SUGGESTION_SENT,
+} from "@/components/follow-ups/follow-up-sheet";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
+  ActiveSession,
   HouseholdHistory,
   HouseholdSummary,
   InterestLevel,
   Religion,
+  RevisitEntry,
   Visit,
 } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { type RevisitState, listedUnitsIn, unitGate } from "@/lib/follow-ups/revisits";
+import { ADD_TO_LIST, SUGGEST, householdAction } from "@/lib/follow-ups/rights";
+import { useRole } from "@/lib/hooks/use-role";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
@@ -70,9 +80,30 @@ type Saved = {
   noted: boolean;
 };
 
+/*
+ * A follow-up session's rule for this form: a member records only at units
+ * on its list. `revisits` is null when the list could not be read, which
+ * leaves the server to hold an unlisted record until an admin adds it.
+ */
+export type FollowUpRule = { revisits: RevisitEntry[] | null };
+
+export const OFF_THE_LIST = "Not saved. This unit is not on the follow-up list.";
+
+const CHIP_STATE: Record<RevisitState, string> = {
+  to_visit: "",
+  visited: " · Visited",
+  done: " · Done",
+};
+
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
+  /* Null in a door-to-door session, where every unit may be recorded. */
+  followUp?: FollowUpRule | null;
+  /* The running session, for what the history panel lets the member change. */
+  active?: ActiveSession | null;
+  /* A unit chosen from the follow-up list, already filled in. */
+  initialUnit?: string;
   /* The running session, so a queued record names the one it was saved in. */
   sessionId: string | null;
   /* Asks the server again which session is running, for a save made before
@@ -104,16 +135,21 @@ const NO_OUTING = "No session is running, so this visit is not saved yet.";
 export function RecordVisitForm({
   blockId,
   known,
+  followUp = null,
+  active = null,
+  initialUnit = "",
   sessionId,
   loadSession,
   onRecorded,
   onDirtyChange,
 }: Props) {
   const sync = useSyncQueue();
+  const { userId, isAdmin } = useRole();
   const formId = useId();
-  const [unitNumber, setUnitNumber] = useState("");
-  /* The next unit filled in after a save is the app's guess, not input. */
-  const [suggested, setSuggested] = useState("");
+  const [unitNumber, setUnitNumber] = useState(initialUnit);
+  /* The next unit filled in after a save, or the one picked from the list,
+     is the app's guess, not input. */
+  const [suggested, setSuggested] = useState(initialUnit);
   const [interestLevel, setInterestLevel] = useState<InterestLevel | null>(null);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -129,6 +165,9 @@ export function RecordVisitForm({
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [noting, setNoting] = useState(false);
+  /* Suggesting the unit just refused, from the notice that refused it. */
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestSent, setSuggestSent] = useState(false);
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
   const top = useRef<HTMLDivElement>(null);
@@ -208,7 +247,17 @@ export function RecordVisitForm({
     });
   }
 
-  const blocked = refused ? blockedMessage(errors) : null;
+  const gate = followUp === null ? "ok" : unitGate(unitNumber, blockId, followUp.revisits, isAdmin);
+  const chips = followUp?.revisits == null ? [] : listedUnitsIn(followUp.revisits, blockId);
+  const typed = normaliseUnitNumber(unitNumber);
+  /* Offered beside the refusal only when the server would take it. */
+  const canSuggestHere =
+    gate === "unlisted" &&
+    history !== null &&
+    householdAction(history.followUps, { userId, isAdmin }).kind === "suggest";
+  const blocked = refused
+    ? (blockedMessage(errors) ?? (gate === "unlisted" ? OFF_THE_LIST : null))
+    : null;
 
   const dirty =
     unitNumber.trim() !== suggested ||
@@ -229,15 +278,19 @@ export function RecordVisitForm({
   async function save(): Promise<void> {
     const found = validateVisit(unitNumber, interestLevel);
     setErrors(found);
-    if (Object.keys(found).length > 0 || interestLevel === null) {
+    if (Object.keys(found).length > 0 || interestLevel === null || gate === "unlisted") {
       setRefused(true);
       return;
     }
 
     setFailure(null);
     setSaved(null);
+    setSuggestSent(false);
     setSaving(true);
     const unit = normaliseUnitNumber(unitNumber);
+    /* In a follow-up session the next door is the next household on the
+       list, not the next number along, so nothing is guessed. */
+    const nextUnit = followUp === null ? nextUnitNumber(unitNumber) : null;
     const fields: VisitFields = {
       blockId,
       unitNumber: unit,
@@ -270,7 +323,7 @@ export function RecordVisitForm({
       }
       try {
         const record = await sync.enqueue({ ...fields, sessionId: outing.id });
-        reset(nextUnitNumber(unitNumber));
+        reset(nextUnit);
         setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
         setSaving(false);
         return;
@@ -288,7 +341,7 @@ export function RecordVisitForm({
         body: JSON.stringify(visitRequest),
       });
       // Straight on to the next door, with the unit already filled in.
-      reset(nextUnitNumber(unitNumber));
+      reset(nextUnit);
       setSaved({
         visitId: visit.id,
         householdId: visit.householdId,
@@ -297,7 +350,13 @@ export function RecordVisitForm({
       });
       onRecorded();
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not save this visit.");
+      setFailure(
+        error instanceof ApiRequestError && error.code === "not_on_follow_up_list"
+          ? OFF_THE_LIST
+          : error instanceof Error
+            ? error.message
+            : "Could not save this visit.",
+      );
     } finally {
       setSaving(false);
     }
@@ -309,11 +368,15 @@ export function RecordVisitForm({
   const status =
     saved === null ? null : householdId !== null ? (
       <>
-        Saved <UnitNumber value={saved.unitNumber} />.{saved.noted ? " Follow-up added." : ""}
+        Saved <UnitNumber value={saved.unitNumber} />.
+        {saved.noted ? ` ${isAdmin ? ADDED_TO_LIST : SUGGESTION_SENT}` : ""}
       </>
     ) : (
       queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
     );
+  /* A member in a follow-up session records only listed doors, which already
+     have their follow-up; anywhere else the right action for the role. */
+  const noteLabel = isAdmin ? ADD_TO_LIST : followUp === null ? SUGGEST : null;
 
   return (
     <form
@@ -332,7 +395,7 @@ export function RecordVisitForm({
             className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
           >
             <span className="break-words">{status}</span>
-            {householdId === null || saved?.noted !== false ? null : (
+            {householdId === null || saved?.noted !== false || noteLabel === null ? null : (
               <button
                 type="button"
                 onClick={() => {
@@ -340,8 +403,13 @@ export function RecordVisitForm({
                 }}
                 className="min-h-11 font-medium btn-text"
               >
-                Add follow-up
+                {noteLabel}
               </button>
+            )}
+            {followUp === null ? null : (
+              <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
+                Back to the list
+              </Link>
             )}
           </div>
         )}
@@ -356,6 +424,7 @@ export function RecordVisitForm({
             onChange={(event) => {
               setUnitNumber(event.target.value);
               setSaved(null);
+              setSuggestSent(false);
               // Cleared the moment it is fixed, so no red lingers while typing.
               if (event.target.value.trim() !== "") clearError("unitNumber");
             }}
@@ -368,7 +437,13 @@ export function RecordVisitForm({
             autoComplete="off"
             placeholder="#05-123"
             aria-invalid={errors.unitNumber !== undefined}
-            aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
+            aria-describedby={
+              errors.unitNumber !== undefined
+                ? "unit-error"
+                : gate === "ok"
+                  ? undefined
+                  : "unit-gate"
+            }
             className="min-h-12 field"
           />
           {errors.unitNumber === undefined ? null : (
@@ -376,12 +451,79 @@ export function RecordVisitForm({
               {errors.unitNumber}
             </p>
           )}
+          {gate === "unlisted" ? (
+            <div id="unit-gate" className="mt-2 notice-info">
+              <p className="break-words">
+                <UnitNumber value={typed} /> is not on the follow-up list, so it can&apos;t be
+                recorded in this session. Ask an admin to add it.
+              </p>
+              {suggestSent ? (
+                <p role="status" className="mt-1 font-medium">
+                  {SUGGESTION_SENT}
+                </p>
+              ) : canSuggestHere ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuggesting(true);
+                  }}
+                  className="mt-1 min-h-11 font-medium btn-text"
+                >
+                  {SUGGEST}
+                </button>
+              ) : null}
+            </div>
+          ) : gate === "unknown" ? (
+            <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+              Could not check the follow-up list. A visit to a unit not on it will wait on this
+              phone until an admin adds it.
+            </p>
+          ) : gate === "admin_override" ? (
+            <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+              Not on the follow-up list. You can still record it as an admin.
+            </p>
+          ) : null}
         </div>
+
+        {chips.length === 0 ? null : (
+          <div>
+            <p className="mb-1 text-caption font-medium text-foreground-muted">
+              On the list in this block:
+            </p>
+            {/* Wraps at large text; a unit number never splits (D-111-36). */}
+            <ul className="flex flex-wrap gap-2" aria-label="On the list in this block">
+              {chips.map((chip) => (
+                <li key={chip.householdId}>
+                  <button
+                    type="button"
+                    aria-pressed={chip.unitNumber === typed}
+                    onClick={() => {
+                      setUnitNumber(chip.unitNumber);
+                      setSuggested(chip.unitNumber);
+                      setSaved(null);
+                      setSuggestSent(false);
+                      clearError("unitNumber");
+                    }}
+                    className={`min-h-11 press rounded-full border px-3 text-body tabular-nums ${
+                      chip.unitNumber === typed
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-border-strong bg-surface"
+                    }`}
+                  >
+                    <UnitNumber value={chip.unitNumber} />
+                    {CHIP_STATE[chip.state]}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {history === null ? null : (
         <HouseholdHistoryPanel
           history={history}
+          active={active}
           atDoor
           onChanged={() => {
             setReloadKey((key) => key + 1);
@@ -408,6 +550,27 @@ export function RecordVisitForm({
             }}
           />
         )}
+      </SheetPresence>
+
+      <SheetPresence>
+        {suggesting && history !== null ? (
+          <FollowUpSheet
+            mode={{
+              kind: "create",
+              householdId: history.household.id,
+              visitId: null,
+              unitNumber: history.household.unitNumber,
+            }}
+            onClose={() => {
+              setSuggesting(false);
+            }}
+            onSaved={() => {
+              setSuggesting(false);
+              setSuggestSent(true);
+              setReloadKey((key) => key + 1);
+            }}
+          />
+        ) : null}
       </SheetPresence>
 
       <div>

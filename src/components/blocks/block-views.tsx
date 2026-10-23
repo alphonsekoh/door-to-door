@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { RecordVisitForm } from "@/components/visits/record-visit-form";
+import { type FollowUpRule, RecordVisitForm } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { UnitList } from "@/components/ui/unit-list";
-import type { HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { UnitRow } from "@/lib/sync/unit-overlay";
 
@@ -22,6 +22,10 @@ type Props = {
   /* The offline shell: nothing that needs the server's row is offered. */
   offline?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  /* A follow-up session's list rule; null for door-to-door. */
+  followUp?: FollowUpRule | null;
+  active?: ActiveSession | null;
+  initialUnit?: string;
 };
 
 /* A block's two views, the form and its units, for the block screen and the
@@ -36,6 +40,9 @@ export function BlockViews({
   teamIds,
   offline = false,
   onDirtyChange,
+  followUp = null,
+  active = null,
+  initialUnit = "",
 }: Props) {
   const { inFlight } = useSyncQueue();
   const [tab, setTab] = useState<Tab>("record");
@@ -90,6 +97,9 @@ export function BlockViews({
           <RecordVisitForm
             blockId={blockId}
             known={known}
+            followUp={followUp}
+            active={active}
+            initialUnit={initialUnit}
             sessionId={sessionId}
             loadSession={loadSession}
             onRecorded={onRecorded}

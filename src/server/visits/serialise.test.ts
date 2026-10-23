@@ -35,9 +35,11 @@ const visit: VisitRow = {
 const followUp: FollowUpRow = {
   id: "f1",
   householdId: "h1",
+  blockId: "b1",
   blockName: "123",
   unitNumber: "#05-123",
   visitId: "v1",
+  status: "listed",
   note: "Bring the flyer.",
   dueDate: at,
   doneAt: at,
@@ -48,6 +50,15 @@ const followUp: FollowUpRow = {
   doneById: "u2",
   doneByName: "Ben",
   doneByImage: null,
+  listedAt: at,
+  listedById: "u3",
+  listedByName: "Admin",
+  listedByImage: null,
+  deletedAt: null,
+  deletedById: null,
+  deletedByName: null,
+  deletedByImage: null,
+  deleteReason: null,
 };
 
 describe("toHousehold", () => {
@@ -117,5 +128,50 @@ describe("toFollowUp", () => {
 
   it("allows a note not tied to a particular visit", () => {
     expect(toFollowUp({ ...followUp, visitId: null }).visitId).toBeNull();
+  });
+
+  it("names the block and who put it on the list", () => {
+    expect(toFollowUp(followUp)).toMatchObject({
+      blockId: "b1",
+      status: "listed",
+      listedAt: "2026-03-14T10:00:00.000Z",
+      listedBy: { id: "u3", name: "Admin", image: null },
+    });
+  });
+
+  it("leaves the lister null on a suggestion", () => {
+    const suggestion = {
+      ...followUp,
+      status: "suggested" as const,
+      listedAt: null,
+      listedById: null,
+      listedByName: null,
+      listedByImage: null,
+    };
+    expect(toFollowUp(suggestion)).toMatchObject({ listedAt: null, listedBy: null });
+  });
+
+  it("carries who removed it and why", () => {
+    const removed = {
+      ...followUp,
+      deletedAt: at,
+      deletedById: "u3",
+      deletedByName: "Admin",
+      deletedByImage: null,
+      deleteReason: "Moved away",
+    };
+    expect(toFollowUp(removed)).toMatchObject({
+      deletedAt: "2026-03-14T10:00:00.000Z",
+      deletedBy: { id: "u3", name: "Admin", image: null },
+      deleteReason: "Moved away",
+    });
+  });
+
+  it("leaves the removal fields null on a live note", () => {
+    expect(toFollowUp(followUp)).toMatchObject({
+      deletedAt: null,
+      deletedBy: null,
+      deleteReason: null,
+    });
   });
 });

@@ -77,6 +77,7 @@ function entry(
     session: {
       id: "s1",
       title: "June outing",
+      kind: "regular",
       status: "active",
       startedAt: null,
       endedAt: null,

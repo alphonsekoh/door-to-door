@@ -31,7 +31,12 @@ export const POST = withContract(
     const clock = currentClock();
     assertBatchClockSane(new Date(body.sentAt), clock);
 
-    const outcomes = await syncVisits(getDatabase(), body.items, user.id, clock);
+    const outcomes = await syncVisits(
+      getDatabase(),
+      body.items,
+      { id: user.id, role: user.role },
+      clock,
+    );
 
     return {
       status: 200,

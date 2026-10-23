@@ -1,0 +1,206 @@
+import { describe, expect, it } from "vitest";
+import type { ActiveSession, FollowUp, SessionKind } from "@/generated/types.gen";
+import {
+  type FollowUpRights,
+  followUpRights,
+  householdAction,
+  onActiveList,
+  waitingLabel,
+} from "@/lib/follow-ups/rights";
+
+const BLOCK = "b1";
+const STARTED = "2026-10-20T18:00:00.000Z";
+const ALICE = { id: "alice", name: "Alice Tan", image: null };
+const BEN = { id: "ben", name: "Ben Lim", image: null };
+
+function note(overrides: Partial<FollowUp> = {}): FollowUp {
+  return {
+    id: "n1",
+    householdId: "h1",
+    blockId: BLOCK,
+    blockName: "123",
+    unitNumber: "#05-123",
+    visitId: null,
+    status: "listed",
+    author: ALICE,
+    note: "Bring the booklet",
+    dueDate: null,
+    doneAt: null,
+    doneBy: null,
+    listedAt: null,
+    listedBy: null,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: null,
+    createdAt: "2026-10-01T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function running(kind: SessionKind, blockIds = [BLOCK], startedAt: string | null = STARTED) {
+  return {
+    session: {
+      id: "s1",
+      title: "Tonight",
+      kind,
+      status: "active",
+      startedAt,
+      endedAt: null,
+      createdBy: { id: "admin", name: "Admin", image: null },
+      createdAt: STARTED,
+    },
+    blocks: blockIds.map((id) => ({
+      block: { id, name: "123", street: "Ave 3", postalCode: null, createdAt: STARTED },
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    })),
+  } satisfies ActiveSession;
+}
+
+const followUp = running("follow_up");
+
+describe("onActiveList", () => {
+  it.each<[string, FollowUp, ActiveSession | null, boolean]>([
+    ["a listed note owed, in a follow-up session's block", note(), followUp, true],
+    [
+      "one resolved during the session",
+      note({ doneAt: "2026-10-20T19:00:00.000Z" }),
+      followUp,
+      true,
+    ],
+    [
+      "one resolved before it started",
+      note({ doneAt: "2026-10-19T19:00:00.000Z" }),
+      followUp,
+      false,
+    ],
+    ["a suggestion", note({ status: "suggested" }), followUp, false],
+    ["a removed note", note({ deletedAt: STARTED }), followUp, false],
+    ["a block not in the session", note({ blockId: "b2" }), followUp, false],
+    ["a regular session", note(), running("regular"), false],
+    ["no session running", note(), null, false],
+    [
+      "a resolved note when the session has no start",
+      note({ doneAt: STARTED }),
+      running("follow_up", [BLOCK], null),
+      false,
+    ],
+  ])("%s: %s", (_case, subject, active, expected) => {
+    expect(onActiveList(subject, active)).toBe(expected);
+  });
+});
+
+/* The server's rights table, row by row (src/server/follow-ups/service.ts). */
+describe("followUpRights", () => {
+  const none: FollowUpRights = {
+    canResolve: false,
+    canEditText: false,
+    canRemove: false,
+    canPromote: false,
+    locked: false,
+  };
+  const admin = { userId: "admin", isAdmin: true };
+  const alice = { userId: ALICE.id, isAdmin: false };
+  const ben = { userId: BEN.id, isAdmin: false };
+
+  it.each<
+    [
+      string,
+      FollowUp,
+      { userId: string | undefined; isAdmin: boolean },
+      ActiveSession | null,
+      FollowUpRights,
+    ]
+  >([
+    [
+      "an admin, on a listed note, any time",
+      note(),
+      admin,
+      null,
+      { ...none, canResolve: true, canEditText: true, canRemove: true },
+    ],
+    [
+      "an admin, on a suggestion",
+      note({ status: "suggested" }),
+      admin,
+      null,
+      { ...none, canEditText: true, canRemove: true, canPromote: true },
+    ],
+    [
+      "the author, on their suggestion",
+      note({ status: "suggested" }),
+      alice,
+      null,
+      { ...none, canEditText: true, canRemove: true },
+    ],
+    ["another member, on a suggestion", note({ status: "suggested" }), ben, followUp, none],
+    [
+      "the author, on a listed note in its session",
+      note(),
+      alice,
+      followUp,
+      { ...none, canResolve: true, canEditText: true },
+    ],
+    [
+      "another member, on a listed note in its session",
+      note(),
+      ben,
+      followUp,
+      { ...none, canResolve: true },
+    ],
+    [
+      "the author, on a listed note outside its session",
+      note(),
+      alice,
+      null,
+      { ...none, locked: true },
+    ],
+    ["a member, in a regular session", note(), ben, running("regular"), { ...none, locked: true }],
+    [
+      "someone not yet known",
+      note(),
+      { userId: undefined, isAdmin: false },
+      followUp,
+      { ...none, canResolve: true },
+    ],
+  ])("%s", (_case, subject, viewer, active, expected) => {
+    expect(followUpRights(subject, viewer, active)).toEqual(expected);
+  });
+});
+
+describe("householdAction", () => {
+  const member = { userId: BEN.id, isAdmin: false };
+
+  it("always lets an admin list a household", () => {
+    expect(householdAction([note()], { userId: "admin", isAdmin: true })).toEqual({
+      kind: "add_to_list",
+    });
+  });
+
+  it("offers a member a suggestion when nothing is open", () => {
+    expect(householdAction([], member)).toEqual({ kind: "suggest" });
+    expect(householdAction([note({ doneAt: STARTED })], member)).toEqual({ kind: "suggest" });
+  });
+
+  it("says the household is on the list while a listed note is owed", () => {
+    expect(householdAction([note(), note({ status: "suggested" })], member)).toEqual({
+      kind: "listed",
+    });
+  });
+
+  it("names who suggested it while the suggestion waits", () => {
+    expect(householdAction([note({ status: "suggested" })], member)).toEqual({
+      kind: "waiting",
+      by: "Alice Tan",
+    });
+    expect(householdAction([note({ status: "suggested", author: BEN })], member)).toEqual({
+      kind: "waiting",
+      by: "you",
+    });
+  });
+
+  it("reads as a sentence", () => {
+    expect(waitingLabel("Alice Tan")).toBe("Suggested by Alice Tan, waiting for review");
+  });
+});

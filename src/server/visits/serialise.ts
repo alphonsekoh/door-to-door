@@ -43,21 +43,34 @@ export function toVisit(row: VisitRow): Visit {
   };
 }
 
+/* A left-joined user: all three columns are null together when nobody is named. */
+function userOrNull(
+  id: string | null,
+  name: string | null,
+  image: string | null,
+): FollowUp["doneBy"] {
+  return id === null ? null : { id, name, image };
+}
+
 export function toFollowUp(row: FollowUpRow): FollowUp {
   return {
     id: row.id,
     householdId: row.householdId,
+    blockId: row.blockId,
     blockName: row.blockName,
     unitNumber: row.unitNumber,
     visitId: row.visitId,
+    status: row.status,
     author: { id: row.authorId, name: row.authorName, image: row.authorImage },
     note: row.note,
     dueDate: row.dueDate?.toISOString() ?? null,
     doneAt: row.doneAt?.toISOString() ?? null,
-    doneBy:
-      row.doneById === null
-        ? null
-        : { id: row.doneById, name: row.doneByName, image: row.doneByImage },
+    doneBy: userOrNull(row.doneById, row.doneByName, row.doneByImage),
+    listedAt: row.listedAt?.toISOString() ?? null,
+    listedBy: userOrNull(row.listedById, row.listedByName, row.listedByImage),
+    deletedAt: row.deletedAt?.toISOString() ?? null,
+    deletedBy: userOrNull(row.deletedById, row.deletedByName, row.deletedByImage),
+    deleteReason: row.deleteReason,
     createdAt: row.createdAt.toISOString(),
   };
 }

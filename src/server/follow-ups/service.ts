@@ -1,8 +1,10 @@
-import { and, asc, eq, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
+import type { FollowUpStatus, Role } from "@/db/schema";
 import { followUps, households, visits } from "@/db/schema";
-import { firstOrThrow } from "@/server/db-utils";
-import { ForbiddenError, NotFoundError } from "@/server/http/errors";
+import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
+import { isNoteOnActiveRevisitList, liveFollowUp } from "@/server/follow-ups/list-rule";
+import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 
 /*
@@ -11,13 +13,27 @@ import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
  * They attach to the household, not the session, so a promise made in January
  * is still there when someone knocks on that door in August. That is the whole
  * reason the feature exists, and it is why nothing here is scoped to a session.
+ *
+ * Only an admin decides what is owed: an admin's note goes on the follow-up
+ * list (`listed`), while a member's is a suggestion for an admin to review.
+ * Removal is soft everywhere, so a declined suggestion can be explained.
  */
+
+export type Actor = { id: string; role: Role };
+
+/* The database's one-pending-suggestion rule, which decides a race. */
+export const ONE_OPEN_SUGGESTION = "follow_ups_one_open_suggestion_idx";
+
+const EXISTS_MESSAGE =
+  "This household is already on the follow-up list or has a suggestion waiting.";
 
 export type ListFollowUpOptions = {
   householdId?: string | undefined;
   authorId?: string | undefined;
+  status?: FollowUpStatus | undefined;
   outstanding?: boolean | undefined;
   dueBefore?: string | undefined;
+  deleted?: boolean | undefined;
   limit: number;
   offset: number;
 };
@@ -27,15 +43,17 @@ export async function listFollowUps(
   options: ListFollowUpOptions,
 ): Promise<{ rows: FollowUpRow[]; total: number }> {
   const conditions = [
+    options.deleted === true ? isNotNull(followUps.deletedAt) : liveFollowUp,
     ...(options.householdId === undefined ? [] : [eq(followUps.householdId, options.householdId)]),
     ...(options.authorId === undefined ? [] : [eq(followUps.authorId, options.authorId)]),
+    ...(options.status === undefined ? [] : [eq(followUps.status, options.status)]),
     ...(options.outstanding === true ? [isNull(followUps.doneAt)] : []),
-    ...(options.outstanding === false ? [sql`${followUps.doneAt} is not null`] : []),
+    ...(options.outstanding === false ? [isNotNull(followUps.doneAt)] : []),
     ...(options.dueBefore === undefined
       ? []
       : [lt(followUps.dueDate, new Date(options.dueBefore))]),
   ];
-  const filter = conditions.length > 0 ? and(...conditions) : undefined;
+  const filter = and(...conditions);
 
   /*
    * Outstanding notes first, then earliest due.
@@ -43,15 +61,21 @@ export async function listFollowUps(
    * `nulls first` on doneAt is deliberate: Postgres sorts NULLs last in ASC,
    * which would sink every outstanding note below the resolved ones - exactly
    * backwards for the actionable list. dueDate keeps the default nulls-last,
-   * so an undated note does not push a dated one down.
+   * so an undated note does not push a dated one down. The removed-notes view
+   * is an audit trail, so it reads newest removal first.
    */
+  const order =
+    options.deleted === true
+      ? [desc(followUps.deletedAt), asc(followUps.createdAt)]
+      : [
+          sql`${followUps.doneAt} asc nulls first`,
+          asc(followUps.dueDate),
+          asc(followUps.createdAt),
+        ];
+
   const rows = await selectFollowUps(db)
     .where(filter)
-    .orderBy(
-      sql`${followUps.doneAt} asc nulls first`,
-      asc(followUps.dueDate),
-      asc(followUps.createdAt),
-    )
+    .orderBy(...order)
     .limit(options.limit)
     .offset(options.offset);
 
@@ -63,13 +87,38 @@ export async function listFollowUps(
   return { rows, total: firstOrThrow(counted, "the follow-up count").total };
 }
 
+/* A removed note is gone to everyone who would change it. */
 export async function getFollowUp(db: Database, id: string): Promise<FollowUpRow> {
-  const rows = await selectFollowUps(db).where(eq(followUps.id, id)).limit(1);
+  const rows = await selectFollowUps(db)
+    .where(and(eq(followUps.id, id), liveFollowUp))
+    .limit(1);
   const found = rows[0];
   if (!found) {
     throw new NotFoundError("No such follow-up.");
   }
   return found;
+}
+
+/*
+ * A member's suggestion would only repeat what an unresolved listed note
+ * already asks for. A pending suggestion is the other open note; the partial
+ * unique index refuses a second one, so two members suggesting at once
+ * cannot both succeed and no read is needed for it.
+ */
+async function hasOutstandingListedNote(db: Database, householdId: string): Promise<boolean> {
+  const found = await db
+    .select({ id: followUps.id })
+    .from(followUps)
+    .where(
+      and(
+        eq(followUps.householdId, householdId),
+        liveFollowUp,
+        eq(followUps.status, "listed"),
+        isNull(followUps.doneAt),
+      ),
+    )
+    .limit(1);
+  return found.length > 0;
 }
 
 export async function createFollowUp(
@@ -79,8 +128,8 @@ export async function createFollowUp(
     visitId?: string | null | undefined;
     note: string;
     dueDate?: string | null | undefined;
-    authorId: string;
   },
+  actor: Actor,
 ): Promise<FollowUpRow> {
   const household = await db
     .select({ id: households.id })
@@ -109,64 +158,123 @@ export async function createFollowUp(
     }
   }
 
-  const inserted = await db
-    .insert(followUps)
-    .values({
-      householdId: input.householdId,
-      visitId: input.visitId ?? null,
-      note: input.note.trim(),
-      dueDate: input.dueDate == null ? null : new Date(input.dueDate),
-      authorId: input.authorId,
-    })
-    .returning({ id: followUps.id });
+  const listed = actor.role === "admin";
+  if (!listed && (await hasOutstandingListedNote(db, input.householdId))) {
+    throw new ConflictError("follow_up_exists", EXISTS_MESSAGE);
+  }
+
+  const now = new Date();
+  let inserted: { id: string }[];
+  try {
+    inserted = await db
+      .insert(followUps)
+      .values({
+        householdId: input.householdId,
+        visitId: input.visitId ?? null,
+        note: input.note.trim(),
+        dueDate: input.dueDate == null ? null : new Date(input.dueDate),
+        authorId: actor.id,
+        status: listed ? "listed" : "suggested",
+        listedAt: listed ? now : null,
+        listedBy: listed ? actor.id : null,
+      })
+      .returning({ id: followUps.id });
+  } catch (error) {
+    if (isConstraintViolation(error, ONE_OPEN_SUGGESTION)) {
+      throw new ConflictError("follow_up_exists", EXISTS_MESSAGE);
+    }
+    throw error;
+  }
 
   return getFollowUp(db, firstOrThrow(inserted, "the follow-up insert").id);
 }
 
-/*
- * Editing a note - its text or its due date - is restricted to the author or
- * an admin. The words belong to whoever wrote them.
- */
-function assertMayEdit(
-  followUp: FollowUpRow,
-  actor: { id: string; role: "admin" | "member" },
-): void {
-  if (actor.role !== "admin" && followUp.authorId !== actor.id) {
-    throw new ForbiddenError("You can only change your own follow-ups.");
-  }
-}
+export type FollowUpChanges = {
+  note?: string | undefined;
+  dueDate?: string | null | undefined;
+  done?: boolean | undefined;
+  status?: "listed" | undefined;
+};
 
 /*
  * Resolving is not editing. Whether the thing got done is a fact about the
- * household, and the member who did it is exactly who should record it - a
- * note written by one member and acted on by another would otherwise sit on
- * the outstanding list until its author happened to notice. doneBy keeps it
- * attributable.
+ * household, and the member who did it is exactly who should record it. A
+ * body that resolves and also rewrites is judged as the rewrite.
  */
-function isResolutionOnly(changes: Record<string, unknown>): boolean {
-  const keys = Object.keys(changes);
-  return keys.length > 0 && keys.every((key) => key === "done");
+function isEdit(changes: FollowUpChanges): boolean {
+  return changes.note !== undefined || changes.dueDate !== undefined;
+}
+
+/*
+ * What a member may do, in the order the contract promises: 403 for a right
+ * they never have, then 409 for one they have only inside the follow-up
+ * session whose list the note is on.
+ */
+async function assertMemberMayUpdate(
+  db: Database,
+  existing: FollowUpRow,
+  changes: FollowUpChanges,
+  actor: Actor,
+): Promise<void> {
+  if (changes.status !== undefined) {
+    throw new ForbiddenError("Only an admin can add a household to the follow-up list.");
+  }
+  const own = existing.authorId === actor.id;
+
+  if (existing.status === "suggested") {
+    // A suggestion is its author's until an admin acts on it.
+    if (!own) {
+      throw new ForbiddenError("You can only change your own suggestions.");
+    }
+    if (changes.done !== undefined) {
+      throw new ConflictError(
+        "conflict",
+        "A suggestion can be marked done only once an admin adds it to the follow-up list.",
+      );
+    }
+    return;
+  }
+
+  // The words belong to whoever wrote them.
+  if (isEdit(changes) && !own) {
+    throw new ForbiddenError("You can only change the wording of your own follow-ups.");
+  }
+  if (!(await isNoteOnActiveRevisitList(db, existing.id))) {
+    throw new ConflictError(
+      "not_on_follow_up_list",
+      "You can change this only during a follow-up session that includes its block.",
+    );
+  }
 }
 
 export async function updateFollowUp(
   db: Database,
   id: string,
-  changes: {
-    note?: string | undefined;
-    dueDate?: string | null | undefined;
-    done?: boolean | undefined;
-  },
-  actor: { id: string; role: "admin" | "member" },
+  changes: FollowUpChanges,
+  actor: Actor,
 ): Promise<FollowUpRow> {
   const existing = await getFollowUp(db, id);
-  if (!isResolutionOnly(changes)) {
-    assertMayEdit(existing, actor);
+
+  if (actor.role === "admin") {
+    const promoting = changes.status === "listed";
+    if (changes.done !== undefined && existing.status === "suggested" && !promoting) {
+      throw new ConflictError("conflict", "Add it to the follow-up list before marking it done.");
+    }
+  } else {
+    await assertMemberMayUpdate(db, existing, changes, actor);
   }
 
-  const values: Record<string, unknown> = { updatedAt: new Date() };
+  const now = new Date();
+  const values: Record<string, unknown> = { updatedAt: now };
   if (changes.note !== undefined) values["note"] = changes.note.trim();
   if (changes.dueDate !== undefined) {
     values["dueDate"] = changes.dueDate == null ? null : new Date(changes.dueDate);
+  }
+  if (changes.status === "listed" && existing.status === "suggested") {
+    // Promoting twice changes nothing: the first admin to list it keeps it.
+    values["status"] = "listed";
+    values["listedAt"] = now;
+    values["listedBy"] = actor.id;
   }
   if (changes.done === true) {
     /*
@@ -175,7 +283,7 @@ export async function updateFollowUp(
      * take the credit from whoever resolved it. Coalesce in the UPDATE itself,
      * so two members resolving at once cannot both win.
      */
-    values["doneAt"] = sql`coalesce(${followUps.doneAt}, ${new Date()})`;
+    values["doneAt"] = sql`coalesce(${followUps.doneAt}, ${now})`;
     values["doneBy"] = sql`coalesce(${followUps.doneBy}, ${actor.id})`;
   }
   if (changes.done === false) {
@@ -183,15 +291,43 @@ export async function updateFollowUp(
     values["doneBy"] = null;
   }
 
-  await db.update(followUps).set(values).where(eq(followUps.id, id));
+  await db
+    .update(followUps)
+    .set(values)
+    .where(and(eq(followUps.id, id), liveFollowUp));
   return getFollowUp(db, id);
 }
 
+/*
+ * Never removes the row. An admin dismisses a suggestion or takes a note off
+ * the list; a member may only withdraw their own suggestion. The reason is
+ * for the author, who is told a suggestion was declined.
+ */
 export async function deleteFollowUp(
   db: Database,
   id: string,
-  actor: { id: string; role: "admin" | "member" },
+  actor: Actor,
+  reason?: string,
 ): Promise<void> {
-  assertMayEdit(await getFollowUp(db, id), actor);
-  await db.delete(followUps).where(eq(followUps.id, id));
+  const existing = await getFollowUp(db, id);
+
+  if (actor.role !== "admin") {
+    if (existing.status === "listed") {
+      throw new ForbiddenError("Only an admin can take a household off the follow-up list.");
+    }
+    if (existing.authorId !== actor.id) {
+      throw new ForbiddenError("You can only withdraw your own suggestions.");
+    }
+  }
+
+  const trimmed = reason?.trim() ?? "";
+  // Only a live row, so when two remove at once the first one's who and why stand.
+  await db
+    .update(followUps)
+    .set({
+      deletedAt: new Date(),
+      deletedBy: actor.id,
+      deleteReason: trimmed === "" ? null : trimmed,
+    })
+    .where(and(eq(followUps.id, id), liveFollowUp));
 }

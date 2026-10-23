@@ -133,6 +133,16 @@ describe("applyResult", () => {
     expect(next).toMatchObject({ state: "held", nextAttemptAt: NOW + PROBE_MS });
   });
 
+  it("holds a unit off the follow-up list and looks again in five minutes", () => {
+    // An admin adding the unit to the list lets the same record through.
+    const next = applyResult(record(), rejected("not_on_follow_up_list"), NOW, half);
+    expect(next).toMatchObject({
+      state: "held",
+      nextAttemptAt: NOW + PROBE_MS,
+      lastError: { code: "not_on_follow_up_list" },
+    });
+  });
+
   it.each(["not_found", "validation_failed"])("holds %s for a tap", (code) => {
     expect(applyResult(record(), rejected(code), NOW, half)).toMatchObject({
       state: "held",

@@ -18,6 +18,7 @@ function summaryFor(overrides: Partial<SessionHistorySummary> = {}): SessionHist
     session: {
       id: "s1",
       title: "March outing",
+      kind: "regular",
       status: "ended",
       startedAt: null,
       endedAt: null,

@@ -21,6 +21,7 @@ const active: ActiveSession = {
   session: {
     id: "0190a000-0000-7000-8000-0000000000cc",
     title: "Thursday evening",
+    kind: "regular",
     status: "active",
     startedAt: STAMP,
     endedAt: null,

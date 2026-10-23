@@ -5,7 +5,12 @@ import type * as ApiClientModule from "@/lib/api-client";
 import { OfflineShell, PROBE_INTERVAL_MS } from "@/components/shell/offline-shell";
 import { SyncProvider } from "@/components/sync/sync-provider";
 import type { ActiveSession, HouseholdSummary, VisitSyncItem } from "@/generated/types.gen";
-import { LOCAL_COPY_TTL_MS, type LocalCopy, noteBlock } from "@/lib/offline/local-copy";
+import {
+  LOCAL_COPY_TTL_MS,
+  type LocalCopy,
+  noteBlock,
+  noteRevisits,
+} from "@/lib/offline/local-copy";
 import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { createMemoryQueue } from "@/lib/sync/memory-queue";
@@ -43,6 +48,7 @@ const active: ActiveSession = {
   session: {
     id: OUTING,
     title: "Thursday evening",
+    kind: "regular",
     status: "active",
     startedAt: STAMP,
     endedAt: null,
@@ -540,5 +546,71 @@ describe("the reconnect row", () => {
 
     await save("#05-03");
     expect(await screen.findByRole("button", { name: "Continue" })).toBeInTheDocument();
+  });
+});
+
+describe("OfflineShell, in a follow-up session", () => {
+  const followUp: ActiveSession = { ...active, session: { ...active.session, kind: "follow_up" } };
+  const followUpCopy = (withList: boolean): LocalCopy => {
+    const one = noteBlock(null, ALICE, followUp, BLK_123, [household], NOW);
+    const saved = one?.blocks[0];
+    if (one === null || saved === undefined) throw new Error("expected a copy");
+    if (!withList) return one;
+    return noteRevisits(
+      one,
+      ALICE,
+      followUp,
+      [
+        {
+          household: household.household,
+          block: saved.block,
+          notes: [
+            {
+              id: "0190a000-0000-7000-8000-0000000000f1",
+              householdId: household.household.id,
+              blockId: BLK_123,
+              blockName: "123",
+              unitNumber: "#05-01",
+              visitId: null,
+              status: "listed",
+              author: { id: ALICE.id, name: "Admin", image: null },
+              note: "Bring the booklet",
+              dueDate: null,
+              doneAt: null,
+              doneBy: null,
+              listedAt: STAMP,
+              listedBy: null,
+              deletedAt: null,
+              deletedBy: null,
+              deleteReason: null,
+              createdAt: STAMP,
+            },
+          ],
+          latestVisit: null,
+          visitedInSession: false,
+        },
+      ],
+      NOW,
+    );
+  };
+
+  it("offers the units on the list it saved, and refuses one that is not", async () => {
+    mount({ copy: followUpCopy(true) });
+    await openBlock("123");
+    const chips = within(screen.getByRole("list", { name: "On the list in this block" }));
+    expect(chips.getByRole("button", { name: "#05-01" })).toBeInTheDocument();
+    await user().type(screen.getByLabelText("Unit number"), "#05-02");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /^#05-02 is not on the follow-up list/,
+    );
+  });
+
+  it("says it could not check when no list was saved", async () => {
+    mount({ copy: followUpCopy(false) });
+    await openBlock("123");
+    await user().type(screen.getByLabelText("Unit number"), "#05-02");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /^Could not check the follow-up list\./,
+    );
   });
 });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { CreateSessionForm } from "@/components/sessions/create-session-form";
+import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
 import type { OutingSession, SessionList, SessionStatus } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -77,6 +78,12 @@ export function AdminSessions() {
           "All records" was set a word a line at the largest text. */}
       <div className="flex flex-wrap gap-2">
         <Link
+          href="/admin/follow-ups"
+          className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
+        >
+          Follow-up list
+        </Link>
+        <Link
           href="/admin/attention"
           className="flex min-h-12 flex-[1_1_12ch] btn-secondary items-center justify-center rounded-xl px-3 text-center text-body font-medium"
         >
@@ -110,10 +117,13 @@ export function AdminSessions() {
                   <span className="block text-title font-semibold break-words">
                     {session.title}
                   </span>
-                  <span
-                    className={`mt-1 inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
-                  >
-                    {statusLabel(session.status)}
+                  <span className="mt-1 flex flex-wrap gap-2">
+                    <span
+                      className={`inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
+                    >
+                      {statusLabel(session.status)}
+                    </span>
+                    <KindBadge kind={session.kind} />
                   </span>
                 </Link>
 

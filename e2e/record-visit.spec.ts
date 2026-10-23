@@ -18,7 +18,9 @@ import {
 
 /* A unit no seed row uses, so the assertions describe this run's work. */
 const UNIT = "#21-07";
-const NOTED_UNIT = "#21-11";
+/* One door per browser: both run against one database, and a member may
+   not suggest a door whose suggestion is still waiting for review. */
+const notedUnit = (): string => (test.info().project.name.includes("webkit") ? "#21-12" : "#21-11");
 
 /* In the viewport and actually what a tap would land on: elementFromPoint is
    the stacking check jsdom cannot make. An open sheet makes the page behind
@@ -224,9 +226,10 @@ test("the amend sheet works from the keyboard alone", async ({ memberPage }) => 
   await expect.poll(inertAround).toBe(false);
 });
 
-test("a follow-up added after saving is waiting the next time the unit is typed", async ({
+test("a return visit suggested after saving is waiting the next time the unit is typed", async ({
   memberPage,
 }) => {
+  const NOTED_UNIT = notedUnit();
   await memberPage.goto("/");
   await memberPage.getByRole("link", { name: /Blk 123/ }).click();
 
@@ -235,9 +238,9 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   await memberPage.getByRole("button", { name: "Save and next" }).click();
   await expect(memberPage.getByRole("status")).toContainText(`Saved ${NOTED_UNIT}.`);
 
-  await memberPage.getByRole("button", { name: "Add follow-up" }).click();
-  const sheet = memberPage.getByRole("dialog", { name: `Follow-up for ${NOTED_UNIT}` });
-  await sheet.getByLabel("Note").fill("Bring the festival flyer on Sunday.");
+  await memberPage.getByRole("button", { name: "Suggest a return visit" }).click();
+  const sheet = memberPage.getByRole("dialog", { name: `Suggest a return visit, ${NOTED_UNIT}` });
+  await sheet.getByLabel("Why should we go back?").fill("Bring the festival flyer on Sunday.");
 
   /* A flick down the header would throw an empty sheet away. Holding a note
      typed at the door, it gives, springs back and asks instead. Measured
@@ -245,7 +248,7 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   await expect
     .poll(() => sheet.evaluate((panel) => getComputedStyle(panel).transform))
     .toBe("none");
-  const header = await sheet.getByText(`Follow-up for ${NOTED_UNIT}`).boundingBox();
+  const header = await sheet.getByText("Suggest a return visit").first().boundingBox();
   const x = (header?.x ?? 0) + 20;
   const y = (header?.y ?? 0) + (header?.height ?? 0) / 2;
   await memberPage.mouse.move(x, y);
@@ -256,20 +259,25 @@ test("a follow-up added after saving is waiting the next time the unit is typed"
   await expectTappable(ask.getByRole("button", { name: "Keep editing" }));
   await ask.getByRole("button", { name: "Keep editing" }).click();
   await expect(ask).toBeHidden();
-  await expect(sheet.getByLabel("Note")).toHaveValue("Bring the festival flyer on Sunday.");
+  await expect(sheet.getByLabel("Why should we go back?")).toHaveValue(
+    "Bring the festival flyer on Sunday.",
+  );
 
   /* The sheet opens over the recording form and the bottom nav: the same
      place a Save button has been buried before. */
-  const save = sheet.getByRole("button", { name: "Save follow-up" });
+  const save = sheet.getByRole("button", { name: "Send suggestion" });
   await expectTappable(save);
   await save.click();
   await expect(sheet).toBeHidden();
-  await expect(memberPage.getByRole("status")).toContainText("Follow-up added.");
+  await expect(memberPage.getByRole("status")).toContainText(
+    "Suggestion sent. An admin will review it.",
+  );
 
-  /* Back at the same door: the note shows before knocking. */
+  /* Back at the same door: the suggestion shows before knocking, so nobody
+     suggests it twice. */
   await memberPage.getByLabel("Unit number").fill(NOTED_UNIT);
-  const owed = memberPage.getByRole("list", { name: "Outstanding follow-ups" });
-  await expect(owed).toContainText("Bring the festival flyer on Sunday.");
+  const waiting = memberPage.getByRole("list", { name: "Waiting for review" });
+  await expect(waiting).toContainText("Bring the festival flyer on Sunday.");
   await expectTappable(memberPage.getByRole("button", { name: "Save and next" }));
 });
 

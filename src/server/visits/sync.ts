@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel } from "@/db/schema";
+import type { InterestLevel, Role } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
+import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
 import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
@@ -41,7 +42,10 @@ export type SyncOutcome = {
   error: ApiError | null;
 };
 
-type ResolvedSession = { id: string; startedAt: Date };
+type ResolvedSession = RevisitSession & { startedAt: Date };
+
+/* Whoever's queue is flushing; the cookie decides it, never the request. */
+export type SyncCaller = { id: string; role: Role };
 
 async function resolveSession(
   db: Database,
@@ -51,6 +55,7 @@ async function resolveSession(
     const found = await db
       .select({
         id: outingSessions.id,
+        kind: outingSessions.kind,
         status: outingSessions.status,
         startedAt: outingSessions.startedAt,
       })
@@ -75,12 +80,17 @@ async function resolveSession(
     }
     return {
       id: session.id,
+      kind: session.kind,
       startedAt: presentOrThrow(session.startedAt, "an active session start"),
     };
   }
 
   const active = await db
-    .select({ id: outingSessions.id, startedAt: outingSessions.startedAt })
+    .select({
+      id: outingSessions.id,
+      kind: outingSessions.kind,
+      startedAt: outingSessions.startedAt,
+    })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
     .limit(1);
@@ -91,6 +101,7 @@ async function resolveSession(
   }
   return {
     id: session.id,
+    kind: session.kind,
     startedAt: presentOrThrow(session.startedAt, "an active session start"),
   };
 }
@@ -98,9 +109,10 @@ async function resolveSession(
 async function applyItem(
   db: Database,
   item: SyncItem,
-  memberId: string,
+  caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome> {
+  const memberId = caller.id;
   const incomingUpdatedAt = new Date(item.updatedAt);
   const incomingCreatedAt = new Date(item.clientCreatedAt);
   const blockExists = await db
@@ -191,6 +203,15 @@ async function applyItem(
 
   if (attached.length === 0) {
     throw new ConflictError("conflict", "That block is not part of the session.");
+  }
+
+  /*
+   * Only a new record is judged against the follow-up list: an amend corrects
+   * a visit already stored, wherever it was allowed at the time. The caller's
+   * role decides here, though canAmend above still asks the member question.
+   */
+  if (!stored) {
+    await assertMayRecordHere(db, caller, session, item.blockId, item.unitNumber);
   }
 
   const write = {
@@ -344,13 +365,13 @@ const logSyncFailure = createThrottledLog();
 export async function syncVisits(
   db: Database,
   items: SyncItem[],
-  memberId: string,
+  caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome[]> {
   const outcomes: SyncOutcome[] = [];
   for (const item of items) {
     try {
-      outcomes.push(await applyItem(db, item, memberId, clock));
+      outcomes.push(await applyItem(db, item, caller, clock));
     } catch (error) {
       // The client gets only the generic message; the cause stays in the logs.
       if (!(error instanceof ApiError)) {

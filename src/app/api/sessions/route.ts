@@ -47,6 +47,7 @@ export const POST = withContract(
     const admin = await currentUser("admin");
     const session = await createSession(getDatabase(), {
       title: body.title,
+      kind: body.kind,
       ...(body.blockIds === undefined ? {} : { blockIds: body.blockIds }),
       createdBy: admin.id,
     });

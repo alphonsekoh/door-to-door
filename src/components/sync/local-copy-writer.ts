@@ -2,14 +2,21 @@
 
 import { useSession } from "next-auth/react";
 import { useCallback, useMemo } from "react";
-import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
-import { type LocalCopy, type LocalMember, noteBlock, noteOuting } from "@/lib/offline/local-copy";
+import type { ActiveSession, HouseholdSummary, RevisitEntry } from "@/generated/types.gen";
+import {
+  type LocalCopy,
+  type LocalMember,
+  noteBlock,
+  noteOuting,
+  noteRevisits,
+} from "@/lib/offline/local-copy";
 import { updateLocalCopy } from "@/lib/offline/local-copy-store";
 import { useRole } from "@/lib/hooks/use-role";
 
 export type LocalCopyWriter = {
   noteOuting: (active: ActiveSession | null) => void;
   noteBlock: (active: ActiveSession, blockId: string, households: HouseholdSummary[]) => void;
+  noteRevisits: (active: ActiveSession, revisits: RevisitEntry[]) => void;
 };
 
 /*
@@ -40,6 +47,9 @@ export function useLocalCopyWriter(): LocalCopyWriter {
       },
       noteBlock: (active, blockId, households) => {
         write((copy, member, now) => noteBlock(copy, member, active, blockId, households, now));
+      },
+      noteRevisits: (active, revisits) => {
+        write((copy, member, now) => noteRevisits(copy, member, active, revisits, now));
       },
     }),
     [write],

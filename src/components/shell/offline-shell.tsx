@@ -324,7 +324,9 @@ function Recording({
   );
 
   /* A block open is the form alone, under its own title (above); the sync
-     bar counts what is waiting meanwhile. */
+     bar counts what is waiting meanwhile. In a follow-up session the list
+     saved with the copy says which units may be recorded; with none saved,
+     the form says it could not check. */
   if (picked !== undefined) {
     return (
       <BlockViews
@@ -337,6 +339,7 @@ function Recording({
         teamIds={NO_TEAM}
         offline
         onDirtyChange={onDirtyChange}
+        followUp={copy.outing.kind === "follow_up" ? { revisits: copy.revisits } : null}
       />
     );
   }

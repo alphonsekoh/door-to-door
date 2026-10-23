@@ -37,6 +37,22 @@ export const zSessionStatus = z.enum([
     'ended'
 ]);
 
+/**
+ * `regular` is door-to-door knocking. `follow_up` revisits households on
+ * the follow-up list. Set at creation and never changed.
+ *
+ */
+export const zSessionKind = z.enum(['regular', 'follow_up']);
+
+/**
+ * `listed` is on the follow-up list: an admin created it, or promoted a
+ * suggestion. `suggested` is a member's request for a return visit,
+ * waiting for an admin to add it to the list or dismiss it. A suggestion
+ * is not a list entry and is never resolved.
+ *
+ */
+export const zFollowUpStatus = z.enum(['suggested', 'listed']);
+
 export const zErrorCode = z.enum([
     'validation_failed',
     'unauthenticated',
@@ -48,6 +64,8 @@ export const zErrorCode = z.enum([
     'session_already_active',
     'clock_skew',
     'block_in_use',
+    'not_on_follow_up_list',
+    'follow_up_exists',
     'rate_limited',
     'internal_error'
 ]);
@@ -113,6 +131,7 @@ export const zSessionBlock = z.object({
 export const zOutingSession = z.object({
     id: z.uuid(),
     title: z.string().min(1).max(160),
+    kind: zSessionKind,
     status: zSessionStatus,
     startedAt: z.iso.datetime().nullable(),
     endedAt: z.iso.datetime().nullable(),
@@ -190,6 +209,13 @@ export const zParticipant = z.object({
 export const zFollowUp = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
+    blockId: z.uuid(),
+    status: zFollowUpStatus,
+    listedAt: z.iso.datetime().nullable(),
+    listedBy: zUserSummary.nullable(),
+    deletedAt: z.iso.datetime().nullable(),
+    deletedBy: zUserSummary.nullable(),
+    deleteReason: z.string().max(500).nullable(),
     blockName: z.string(),
     unitNumber: z.string(),
     visitId: z.uuid().nullable(),
@@ -213,8 +239,28 @@ export const zHouseholdHistory = z.object({
     followUps: z.array(zFollowUp)
 });
 
+/**
+ * One household on a follow-up session's list: it is in one of the
+ * session's attached blocks and has at least one `listed`, not removed
+ * note that is outstanding or was resolved after the session started.
+ * This is the set a member may record visits at in that session.
+ *
+ */
+export const zRevisitEntry = z.object({
+    household: zHousehold,
+    block: zBlock,
+    notes: z.array(zFollowUp).min(1),
+    latestVisit: zVisit.nullable(),
+    visitedInSession: z.boolean()
+});
+
+export const zRevisitList = z.object({
+    data: z.array(zRevisitEntry)
+});
+
 export const zCreateSessionRequest = z.object({
     title: z.string().min(1).max(160),
+    kind: zSessionKind.optional().default('regular'),
     blockIds: z.array(z.uuid()).optional()
 });
 
@@ -317,7 +363,8 @@ export const zCreateFollowUpRequest = z.object({
 export const zUpdateFollowUpRequest = z.object({
     note: z.string().min(1).max(2000).optional(),
     dueDate: z.iso.datetime().nullish(),
-    done: z.boolean().optional()
+    done: z.boolean().optional(),
+    status: z.enum(['listed']).optional()
 });
 
 export const zCreateUserRequest = z.object({
@@ -554,6 +601,15 @@ export const zDetachSessionBlockPath = z.object({
  */
 export const zDetachSessionBlockResponse = z.void();
 
+export const zListSessionRevisitsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The households to revisit.
+ */
+export const zListSessionRevisitsResponse = zRevisitList;
+
 export const zListParticipantsPath = z.object({
     id: z.uuid()
 });
@@ -737,8 +793,10 @@ export const zSyncVisitsResponse = zVisitSyncResponse;
 export const zListFollowUpsQuery = z.object({
     householdId: z.uuid().optional(),
     authorId: z.uuid().optional(),
+    status: zFollowUpStatus.optional(),
     outstanding: z.boolean().optional(),
     dueBefore: z.iso.datetime().optional(),
+    deleted: z.boolean().optional().default(false),
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).optional().default(0)
 });
@@ -759,8 +817,12 @@ export const zDeleteFollowUpPath = z.object({
     id: z.uuid()
 });
 
+export const zDeleteFollowUpQuery = z.object({
+    reason: z.string().max(500).optional()
+});
+
 /**
- * Deleted.
+ * Removed.
  */
 export const zDeleteFollowUpResponse = z.void();
 

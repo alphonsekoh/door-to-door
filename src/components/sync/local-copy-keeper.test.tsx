@@ -13,11 +13,12 @@ const ALICE = "0190a000-0000-7000-8000-00000000000a";
 const BEN = "0190a000-0000-7000-8000-00000000000b";
 
 const alicesCopy: LocalCopy = {
-  v: 1,
+  v: 2,
   member: { id: ALICE, name: "Alice Tan" },
   savedAt: Date.now(),
   outing: null,
   blocks: [],
+  revisits: null,
 };
 
 beforeEach(async () => {

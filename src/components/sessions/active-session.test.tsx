@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveSessionScreen } from "@/components/sessions/active-session";
@@ -17,6 +17,22 @@ vi.mock("@/components/sync/local-copy-writer", () => ({
   useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
 }));
 
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
+
+/* Tested on its own; here only that it is given the session and the beat. */
+vi.mock("@/components/follow-ups/revisit-list", () => ({
+  RevisitList: ({
+    active,
+    tick,
+    isAdmin,
+  }: {
+    active: { session: { id: string } };
+    tick: number;
+    isAdmin: boolean;
+  }) => <p>{`revisits ${active.session.id} tick ${String(tick)} admin ${String(isAdmin)}`}</p>,
+}));
+
 vi.mock("@/components/teams/outing-team", () => ({
   OutingTeam: ({ sessionId, tick }: { sessionId: string; tick: number }) => (
     <p>{`team card ${sessionId} tick ${String(tick)}`}</p>
@@ -31,10 +47,11 @@ const block = (name: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const session = (blocks: unknown[]) => ({
+const session = (blocks: unknown[], kind = "regular") => ({
   session: {
     id: "s1",
     title: "March outing",
+    kind,
     status: "active",
     startedAt: null,
     endedAt: null,
@@ -46,6 +63,8 @@ const session = (blocks: unknown[]) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -243,5 +262,58 @@ describe("the offline copy", () => {
     render(<ActiveSessionScreen />);
     await screen.findByRole("alert");
     expect(noteOuting).not.toHaveBeenCalled();
+  });
+});
+
+describe("a follow-up session", () => {
+  it("says what kind of session it is and what it allows", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Follow-up")).toBeInTheDocument();
+    expect(
+      screen.getByText(/You can record visits only at the households listed below\.$/),
+    ).toBeInTheDocument();
+  });
+
+  it("tells an admin they can still record any unit", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText(/As an admin you can also record any unit\./)).toBeVisible();
+    expect(screen.getByText(/admin true/)).toBeInTheDocument();
+  });
+
+  it("drives the screen from the list of households, not the block cards", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("revisits s1 tick 1 admin false")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Blk 123/ })).not.toBeInTheDocument();
+    // The team card still works as in any session.
+    expect(screen.getByText(/team card s1/)).toBeInTheDocument();
+  });
+
+  it("re-reads the list with every refresh", async () => {
+    apiFetch.mockResolvedValue(session([], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/revisits s1 tick 1/);
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText(/revisits s1 tick 2/)).toBeInTheDocument();
+  });
+
+  it("explains how it works once, until dismissed on this phone", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
+    expect(hint).toHaveTextContent("When the follow-up is finished, tap Mark done.");
+    fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("region", { name: "How a follow-up session works" })).toBeNull();
+  });
+
+  it("carries no badge or rule for a door-to-door session", async () => {
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("Blk 123");
+    expect(screen.queryByText("Follow-up")).toBeNull();
+    expect(screen.queryByText(/revisits/)).toBeNull();
   });
 });

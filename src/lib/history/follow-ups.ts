@@ -76,21 +76,48 @@ export function buildTimeline(
   return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
-/* Affordance only: the server decides (D-16-2). Resolving is open to anyone. */
-export function mayEditFollowUp(
-  note: Pick<FollowUp, "author">,
-  viewer: { userId: string | undefined; isAdmin: boolean },
-): boolean {
-  return viewer.isAdmin || (viewer.userId !== undefined && note.author.id === viewer.userId);
+/*
+ * Who put the note where it is. A member's words an admin listed say both,
+ * so the list shows whose idea it was and who decided; a note listed before
+ * suggestions existed names no lister and reads as before.
+ */
+export function addedByline(
+  note: Pick<FollowUp, "author" | "createdAt" | "status" | "listedBy">,
+): string {
+  const by = `${displayName(note.author.name)} · ${formatDay(note.createdAt)}`;
+  if (note.status === "suggested") return `Suggested by ${by} · Waiting for review`;
+  return note.listedBy !== null && note.listedBy.id !== note.author.id
+    ? `Suggested by ${by}`
+    : `Added by ${by}`;
 }
 
-export function addedByline(note: Pick<FollowUp, "author" | "createdAt">): string {
-  return `Added by ${displayName(note.author.name)} · ${formatDay(note.createdAt)}`;
+export function listedByline(
+  note: Pick<FollowUp, "author" | "status" | "listedAt" | "listedBy">,
+): string | null {
+  if (note.status !== "listed" || note.listedBy === null || note.listedAt === null) return null;
+  if (note.listedBy.id === note.author.id) return null;
+  return `Added to the list by ${displayName(note.listedBy.name)} · ${formatDay(note.listedAt)}`;
+}
+
+/* How a removed note left, for the audit view and the author's notice. */
+export function removedByline(
+  note: Pick<FollowUp, "author" | "status" | "deletedAt" | "deletedBy">,
+): string | null {
+  if (note.deletedAt === null) return null;
+  const by = `${displayName(note.deletedBy?.name ?? null)} · ${formatDay(note.deletedAt)}`;
+  if (note.status === "listed") return `Removed from the list by ${by}`;
+  return note.deletedBy?.id === note.author.id ? `Withdrawn by ${by}` : `Dismissed by ${by}`;
 }
 
 export function doneByline(note: Pick<FollowUp, "doneAt" | "doneBy">): string | null {
   if (note.doneAt === null) return null;
   return `Done by ${displayName(note.doneBy?.name ?? null)} · ${formatDay(note.doneAt)}`;
+}
+
+/* What the author of a declined suggestion is told. */
+export function declinedByline(note: Pick<FollowUp, "deletedAt" | "deletedBy">): string | null {
+  if (note.deletedAt === null) return null;
+  return `Declined by ${displayName(note.deletedBy?.name ?? null)} · ${formatDay(note.deletedAt)}`;
 }
 
 /*
@@ -107,13 +134,21 @@ export function describeFollowUpFailure(error: unknown): string {
   if (error.status === 401 || error.code === "account_deactivated") {
     return "Your sign-in has ended. Sign in again.";
   }
+  switch (error.code) {
+    case "follow_up_exists":
+      return "This household is already on the follow-up list or has a suggestion waiting.";
+    case "not_on_follow_up_list":
+      return "You can change this only during a follow-up session that includes its block.";
+  }
   switch (error.status) {
     case 400:
-      return "That note was not accepted. Check it is not empty.";
+      return "That was not accepted. Check the note is not empty and the reason is short.";
     case 403:
-      return "Only the person who wrote this note, or an admin, can change it.";
+      return "Only the person who wrote this, or an admin, can change it.";
     case 404:
       return "That note or unit is no longer there. Refresh to see the latest.";
+    case 409:
+      return "Add it to the follow-up list before marking it done.";
     default:
       return "Could not save the follow-up. Try again.";
   }

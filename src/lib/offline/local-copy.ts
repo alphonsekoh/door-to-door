@@ -1,6 +1,12 @@
 import { z } from "zod";
-import type { ActiveSession, Block, HouseholdSummary, OutingSession } from "@/generated/types.gen";
-import { zBlock, zHouseholdSummary, zOutingSession } from "@/generated/zod.gen";
+import type {
+  ActiveSession,
+  Block,
+  HouseholdSummary,
+  OutingSession,
+  RevisitEntry,
+} from "@/generated/types.gen";
+import { zBlock, zHouseholdSummary, zOutingSession, zRevisitEntry } from "@/generated/zod.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { type UnitRow, overlayQueued } from "@/lib/sync/unit-overlay";
 
@@ -19,25 +25,32 @@ export type LocalMember = { id: string; name: string };
 
 export type LocalBlock = { block: Block; households: HouseholdSummary[]; savedAt: number };
 
+/*
+ * v2 adds a follow-up session's list, so the shell can tell a member which
+ * units they may record. A v1 copy fails to read and is thrown away once.
+ */
 export type LocalCopy = {
-  v: 1;
+  v: 2;
   member: LocalMember;
   /* The last write, which is what the copy's age is measured from. */
   savedAt: number;
   outing: OutingSession | null;
   blocks: LocalBlock[];
+  /* The outing's follow-up list as last read; null when none was read. */
+  revisits: RevisitEntry[] | null;
 };
 
 export type UsableCopy = LocalCopy & { outing: OutingSession };
 
 const zLocalCopy = z.object({
-  v: z.literal(1),
+  v: z.literal(2),
   member: z.object({ id: z.string().min(1), name: z.string().min(1) }),
   savedAt: z.number(),
   outing: zOutingSession.nullable(),
   blocks: z.array(
     z.object({ block: zBlock, households: z.array(zHouseholdSummary), savedAt: z.number() }),
   ),
+  revisits: z.array(zRevisitEntry).nullable(),
 });
 
 export function readCopy(raw: unknown): LocalCopy | null {
@@ -64,11 +77,23 @@ export function noteOuting(
   /* Blocks opened tonight means this outing's: another outing starts empty,
      and a block detached since it was opened is dropped, or the shell would
      record units the server refuses. */
-  const blocks =
-    active !== null && base !== null && base.outing?.id === active.session.id
-      ? base.blocks.filter((b) => active.blocks.some((e) => e.block.id === b.block.id))
-      : [];
-  return { v: 1, member, savedAt: now, outing, blocks };
+  const same = active !== null && base !== null && base.outing?.id === active.session.id;
+  const blocks = same
+    ? base.blocks.filter((b) => active.blocks.some((e) => e.block.id === b.block.id))
+    : [];
+  /* Another outing's list says nothing about this one's. */
+  return { v: 2, member, savedAt: now, outing, blocks, revisits: same ? base.revisits : null };
+}
+
+/* A follow-up session's list, as the session or block screen read it. */
+export function noteRevisits(
+  copy: LocalCopy | null,
+  member: LocalMember,
+  active: ActiveSession,
+  revisits: RevisitEntry[],
+  now: number,
+): LocalCopy {
+  return { ...noteOuting(copy, member, active, now), revisits };
 }
 
 /*

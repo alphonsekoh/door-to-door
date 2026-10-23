@@ -42,8 +42,55 @@ describe("CreateSessionForm", () => {
     });
     expect(apiFetch).toHaveBeenCalledWith("/sessions", {
       method: "POST",
-      body: JSON.stringify({ title: "Saturday morning" }),
+      body: JSON.stringify({ title: "Saturday morning", kind: "regular" }),
     });
+  });
+
+  it("asks what kind of session it is, door-to-door unless chosen otherwise", async () => {
+    await open();
+    const kinds = screen.getByRole("group", { name: "What kind of session?" });
+    expect(screen.getByRole("radio", { name: /Door-to-door/ })).toBeChecked();
+    expect(kinds).toHaveTextContent("Knock on every unit in the blocks you attach.");
+    expect(kinds).toHaveTextContent(
+      "Go back to households on the follow-up list. Members can record only those households.",
+    );
+    expect(kinds).toHaveTextContent("You can't change this later.");
+  });
+
+  it("creates a follow-up session, with a name that fits it", async () => {
+    const user = userEvent.setup();
+    const onCreated = vi.fn();
+    apiFetch.mockResolvedValue({ id: "s1", status: "draft", kind: "follow_up" });
+    render(<CreateSessionForm onCreated={onCreated} />);
+
+    await user.click(screen.getByRole("button", { name: "New session" }));
+    await user.click(screen.getByRole("radio", { name: /Follow-up/ }));
+    expect(screen.getByLabelText("Name this session")).toHaveAttribute(
+      "placeholder",
+      "Follow-up visits, Saturday",
+    );
+    await user.type(screen.getByLabelText("Name this session"), "Revisits");
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+
+    await waitFor(() => {
+      expect(onCreated).toHaveBeenCalled();
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/sessions", {
+      method: "POST",
+      body: JSON.stringify({ title: "Revisits", kind: "follow_up" }),
+    });
+  });
+
+  it("starts the next session as door-to-door again", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue({ id: "s1", status: "draft", kind: "follow_up" });
+    render(<CreateSessionForm onCreated={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "New session" }));
+    await user.click(screen.getByRole("radio", { name: /Follow-up/ }));
+    await user.type(screen.getByLabelText("Name this session"), "Revisits");
+    await user.click(screen.getByRole("button", { name: "Create draft" }));
+    await user.click(await screen.findByRole("button", { name: "New session" }));
+    expect(screen.getByRole("radio", { name: /Door-to-door/ })).toBeChecked();
   });
 
   it("refuses an outing with no name, before a round trip", async () => {

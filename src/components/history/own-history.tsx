@@ -56,7 +56,9 @@ export function OwnHistoryScreen() {
   useEffect(() => {
     if (userId === undefined) return;
     const timer = setTimeout(() => {
-      apiFetch<FollowUpList>(`/follow-ups?authorId=${userId}&outstanding=true&limit=10`).then(
+      apiFetch<FollowUpList>(
+        `/follow-ups?authorId=${userId}&status=listed&outstanding=true&limit=10`,
+      ).then(
         (page) => {
           setNotes(page.data);
         },

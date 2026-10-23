@@ -2,12 +2,13 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
+import { ApiRequestError } from "@/lib/api-client";
 import {
   RecordVisitForm,
   blockedMessage,
   validateVisit,
 } from "@/components/visits/record-visit-form";
-import type { HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, FollowUp, HouseholdSummary } from "@/generated/types.gen";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
@@ -93,18 +94,47 @@ beforeEach(() => {
 });
 
 /* A note left on an earlier outing, months before this knock. */
-const owed = {
+const owed: FollowUp = {
   id: "f1",
   householdId: "h1",
+  blockId: "b1",
   blockName: "123",
   unitNumber: "#05-123",
   visitId: null,
+  status: "listed",
   author: { id: "u2", name: "Ben", image: null },
   note: "Bring the community event flyer.",
   dueDate: null,
   doneAt: null,
   doneBy: null,
+  listedAt: null,
+  listedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
   createdAt: "2025-11-02T10:00:00.000Z",
+};
+
+/* A follow-up session covering this block, so a member may resolve its notes. */
+const FOLLOW_UP: ActiveSession = {
+  session: {
+    id: "s9",
+    title: "Follow-up",
+    kind: "follow_up",
+    status: "active",
+    startedAt: "2025-01-01T00:00:00.000Z",
+    endedAt: null,
+    createdBy: { id: "a1", name: "Admin", image: null },
+    createdAt: "2025-01-01T00:00:00.000Z",
+  },
+  blocks: [
+    {
+      block: { id: BLOCK, name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    },
+  ],
 };
 
 describe("validateVisit", () => {
@@ -382,8 +412,7 @@ describe("history before knocking", () => {
     );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
 
-    expect(await screen.findByText("Outstanding follow-up")).toBeInTheDocument();
-    const list = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    const list = within(await screen.findByRole("list", { name: "On the follow-up list" }));
     expect(list.getByText("Bring the community event flyer.")).toBeInTheDocument();
     expect(list.getByText(/Added by Ben · 2 Nov 2025/)).toBeInTheDocument();
   });
@@ -416,6 +445,7 @@ describe("history before knocking", () => {
         loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
+        active={FOLLOW_UP}
         onRecorded={vi.fn()}
       />,
     );
@@ -424,7 +454,7 @@ describe("history before knocking", () => {
 
     const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
     expect(await timeline.findByText("Follow-up done")).toBeInTheDocument();
-    expect(screen.queryByText("Outstanding follow-up")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "On the follow-up list" })).not.toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
   });
 
@@ -472,6 +502,7 @@ describe("history before knocking", () => {
         loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
+        active={FOLLOW_UP}
         onRecorded={vi.fn()}
       />,
     );
@@ -644,14 +675,14 @@ describe("a follow-up after saving", () => {
     return user;
   };
 
-  it("offers to add one, anchored to the visit just saved", async () => {
+  it("offers a member a suggestion, anchored to the visit just saved", async () => {
     const user = await saveVisit();
     expect(await screen.findByRole("status")).toHaveTextContent("Saved #06-201.");
-    await user.click(screen.getByRole("button", { name: "Add follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
 
-    const sheet = screen.getByRole("dialog", { name: "Follow-up for #06-201" });
-    await user.type(within(sheet).getByLabelText("Note"), "Call on Sunday");
-    await user.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
+    await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
+    await user.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
@@ -664,16 +695,34 @@ describe("a follow-up after saving", () => {
         }),
       });
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201. Follow-up added.");
-    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved #06-201. Suggestion sent. An admin will review it.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Suggest a return visit" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers an admin the follow-up list itself", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const user = await saveVisit();
+    await user.click(await screen.findByRole("button", { name: "Add to follow-up list" }));
+    const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #06-201" });
+    await user.type(within(sheet).getByLabelText("What should the next visit do?"), "Flyer");
+    await user.click(within(sheet).getByRole("button", { name: "Add to list" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Saved #06-201. Added to the follow-up list.",
+      );
+    });
   });
 
   it("can be dismissed without adding anything", async () => {
     const user = await saveVisit();
-    await user.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Suggest a return visit" })).toBeInTheDocument();
   });
 
   it("clears once the next unit is typed", async () => {
@@ -701,7 +750,9 @@ describe("a follow-up after saving", () => {
       await user.click(screen.getByRole("button", { name: "Save and next" }));
     });
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Suggest a return visit" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -1035,10 +1086,10 @@ describe("saving into the offline queue", () => {
     rerenderForm(view);
     expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201.");
 
-    await user.click(screen.getByRole("button", { name: "Add follow-up" }));
-    const sheet = screen.getByRole("dialog", { name: "Follow-up for #06-201" });
-    await user.type(within(sheet).getByLabelText("Note"), "Call on Sunday");
-    await user.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
+    await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
+    await user.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
         method: "POST",
@@ -1318,5 +1369,206 @@ describe("telling the page whether anything would be lost", () => {
     await user.type(screen.getByLabelText("Unit number"), "#05-1");
     view.unmount();
     expect(last()).toBe(false);
+  });
+});
+
+describe("in a follow-up session", () => {
+  const revisit = (unitNumber: string, { done = false, visited = false } = {}) => ({
+    household: { ...summary(unitNumber, `h${unitNumber}`).household },
+    block: { id: BLOCK, name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+    notes: [{ ...owed, id: `n${unitNumber}`, doneAt: done ? "2026-10-20T10:00:00.000Z" : null }],
+    latestVisit: null,
+    visitedInSession: visited,
+  });
+  const LIST = [
+    revisit("#05-123"),
+    revisit("#06-201", { visited: true }),
+    revisit("#07-301", { done: true }),
+  ];
+
+  const mount = (
+    revisits: ReturnType<typeof revisit>[] | null = LIST,
+    known: HouseholdSummary[] = [],
+    initialUnit?: string,
+  ) =>
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={known}
+        followUp={{ revisits }}
+        onRecorded={vi.fn()}
+        {...(initialUnit === undefined ? {} : { initialUnit })}
+      />,
+    );
+
+  it("offers the block's listed units as chips that fill in the unit", async () => {
+    const user = userEvent.setup();
+    mount();
+    const chips = within(screen.getByRole("list", { name: "On the list in this block" }));
+    expect(chips.getAllByRole("button").map((chip) => chip.textContent)).toEqual([
+      "#05-123",
+      "#06-201 · Visited",
+      "#07-301 · Done",
+    ]);
+    await user.click(chips.getByRole("button", { name: "#06-201 · Visited" }));
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(chips.getByRole("button", { name: "#06-201 · Visited" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("explains an unlisted unit and refuses to save it, beside Save", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on the follow-up list, so it can't be recorded in this session. Ask an admin to add it.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not saved. This unit is not on the follow-up list.",
+    );
+    expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
+  });
+
+  it("lifts the refusal once a listed unit is chosen", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-123" });
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+  });
+
+  it("lets a member suggest a known, unlisted household from the refusal", async () => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
+      Promise.resolve(
+        init?.method === "POST" ? {} : history({ household: summary("#05-124", "h9").household }),
+      ),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Suggest a return visit, #05-124" }));
+    await user.type(sheet.getByLabelText("Why should we go back?"), "Wants a visit");
+    await user.click(sheet.getByRole("button", { name: "Send suggestion" }));
+    expect(
+      await screen.findByText("Suggestion sent. An admin will review it."),
+    ).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
+      method: "POST",
+      body: JSON.stringify({
+        householdId: "h9",
+        visitId: null,
+        note: "Wants a visit",
+        dueDate: null,
+      }),
+    });
+  });
+
+  it("offers no suggestion for a household already waiting for review", async () => {
+    apiFetch.mockResolvedValue(
+      history({
+        household: summary("#05-124", "h9").household,
+        followUps: [{ ...owed, status: "suggested" }],
+      }),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(await screen.findByRole("list", { name: "Waiting for review" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+  });
+
+  it("tells an admin the unit is off the list, and records it anyway", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "Not on the follow-up list. You can still record it as an admin.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+  });
+
+  it("says when the list could not be checked, and still saves", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount(null);
+    expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "Could not check the follow-up list. A visit to a unit not on it will wait on this phone until an admin adds it.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+  });
+
+  it("guesses no next unit after a save, and offers the way back to the list", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Saved #05-123.");
+    expect(within(status).getByRole("link", { name: "Back to the list" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    // The household is listed already: a member has nothing to suggest here.
+    expect(within(status).queryByRole("button")).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("");
+  });
+
+  it("explains a refusal from the server in the same words", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "not_on_follow_up_list", message: "raw server text" },
+      }),
+    );
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved. This unit is not on the follow-up list.",
+    );
+  });
+
+  it("arrives with a unit picked from the list, which counts as nothing typed", () => {
+    const onDirtyChange = vi.fn();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        followUp={{ revisits: LIST }}
+        initialUnit="#06-201"
+        onRecorded={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   });
 });

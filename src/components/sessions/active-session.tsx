@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { BlockCard } from "@/components/blocks/block-card";
+import { RevisitList } from "@/components/follow-ups/revisit-list";
+import { KindBadge } from "@/components/sessions/kind-badge";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { OutingTeam } from "@/components/teams/outing-team";
+import { HintCard } from "@/components/ui/hint-card";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { useRole } from "@/lib/hooks/use-role";
 
 /* Long enough not to drain a phone, short enough that a block added
  * mid-session appears without anyone being told to refresh. */
@@ -18,6 +22,7 @@ type State =
   | { status: "error"; message: string };
 
 export function ActiveSessionScreen() {
+  const { isAdmin } = useRole();
   const [state, setState] = useState<State>({ status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   /* Tells the team card to re-read along with every load. */
@@ -97,13 +102,16 @@ export function ActiveSessionScreen() {
   }
 
   const { session, blocks } = state.data;
+  const followUp = session.kind === "follow_up";
 
   return (
     <div className="space-y-4">
       {/* Wraps at large text sizes, so the title is not squeezed into a
           one-word column beside Refresh. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="min-w-0 text-body font-medium break-words">{session.title}</p>
+        <p className="min-w-0 text-body font-medium break-words">
+          {session.title} <KindBadge kind={session.kind} />
+        </p>
         <button
           type="button"
           onClick={() => void load(true)}
@@ -114,7 +122,21 @@ export function ActiveSessionScreen() {
         </button>
       </div>
 
-      {blocks.length === 0 ? (
+      {followUp ? (
+        <>
+          <p className="notice-info">
+            <span className="font-semibold">Follow-up session.</span> Tonight we go back to
+            households that showed interest. You can record visits only at the households listed
+            below.{isAdmin ? " As an admin you can also record any unit." : ""}
+          </p>
+          <HintCard id="follow-up-session" title="How a follow-up session works">
+            Tap a household to record your visit. When the follow-up is finished, tap Mark done. Met
+            someone who should be on the list? Ask an admin.
+          </HintCard>
+          {/* The list stands in for the block cards: each group opens its block. */}
+          <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
+        </>
+      ) : blocks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">No blocks yet.</p>
           <p className="mt-1 text-body text-foreground-muted">

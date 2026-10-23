@@ -7,6 +7,7 @@ import {
   zListFollowUpsResponse,
 } from "@/generated/zod.gen";
 import { requireUser, resolveMemberScope } from "@/server/auth/guards";
+import { ForbiddenError } from "@/server/http/errors";
 import { createFollowUp, listFollowUps } from "@/server/follow-ups/service";
 import { withContract } from "@/server/http/contract";
 import { toFollowUp } from "@/server/visits/serialise";
@@ -19,9 +20,7 @@ export const GET = withContract(
   },
   async ({ query }) => {
     const session = await currentSession();
-    // Called for its guard, not its result: without it an unauthenticated
-    // caller passing no authorId would reach the query.
-    requireUser(session);
+    const user = requireUser(session);
     const { limit, offset } = query;
 
     /*
@@ -34,13 +33,23 @@ export const GET = withContract(
       resolveMemberScope(session, query.authorId);
     }
 
+    /*
+     * Removed notes are an admin's audit trail. A member may read only their
+     * own, to learn that a suggestion was not added and why.
+     */
+    if (query.deleted && user.role !== "admin" && query.authorId !== user.id) {
+      throw new ForbiddenError("Only an admin can see removed follow-ups.");
+    }
+
     const { rows, total } = await listFollowUps(getDatabase(), {
       limit,
       offset,
       ...(query.householdId === undefined ? {} : { householdId: query.householdId }),
       ...(query.authorId === undefined ? {} : { authorId: query.authorId }),
+      ...(query.status === undefined ? {} : { status: query.status }),
       ...(query.outstanding === undefined ? {} : { outstanding: query.outstanding }),
       ...(query.dueBefore === undefined ? {} : { dueBefore: query.dueBefore }),
+      deleted: query.deleted,
     });
 
     return {
@@ -61,13 +70,17 @@ export const POST = withContract(
   },
   async ({ body }) => {
     const user = requireUser(await currentSession());
-    const created = await createFollowUp(getDatabase(), {
-      householdId: body.householdId,
-      visitId: body.visitId,
-      note: body.note,
-      dueDate: body.dueDate,
-      authorId: user.id,
-    });
+    // The caller's role decides: an admin lists it, a member suggests it.
+    const created = await createFollowUp(
+      getDatabase(),
+      {
+        householdId: body.householdId,
+        visitId: body.visitId,
+        note: body.note,
+        dueDate: body.dueDate,
+      },
+      { id: user.id, role: user.role },
+    );
     return { status: 201, body: toFollowUp(created) };
   },
 );

@@ -45,6 +45,7 @@ beforeEach(async () => {
 });
 
 const CLOCK: Clock = { now: new Date(), toleranceMs: 300_000 };
+const MEMBER = { role: "member" } as const;
 
 afterAll(async () => {
   await pool.end();
@@ -62,6 +63,7 @@ const record = (unit: string, extra: Record<string, unknown> = {}) =>
       ...extra,
     },
     CLOCK,
+    MEMBER,
   );
 
 describe("households accumulate", () => {
@@ -98,6 +100,7 @@ describe("households accumulate", () => {
         memberId: ALICE,
       },
       CLOCK,
+      MEMBER,
     );
     expect(there.householdId).not.toBe(here.householdId);
   });
@@ -175,6 +178,7 @@ describe("recording rules", () => {
           memberId: ALICE,
         },
         CLOCK,
+        MEMBER,
       ),
     ).rejects.toThrow(NotFoundError);
   });
@@ -188,8 +192,8 @@ describe("recording rules", () => {
       interestLevel: "low" as const,
       memberId: ALICE,
     };
-    await createVisit(db, args, CLOCK);
-    await expect(createVisit(db, args, CLOCK)).rejects.toThrow(ConflictError);
+    await createVisit(db, args, CLOCK, MEMBER);
+    await expect(createVisit(db, args, CLOCK, MEMBER)).rejects.toThrow(ConflictError);
 
     const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);
     expect(rows[0]?.count).toBe("1");

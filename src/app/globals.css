@@ -426,6 +426,12 @@
   @apply rounded-lg border border-interest-high/40 bg-interest-high/10 px-3 py-2 text-body;
 }
 
+/* Context that changes what a screen allows, such as a follow-up session's
+   rule: the primary hue, so it never reads as an error or an interest level. */
+@utility notice-info {
+  @apply rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-body;
+}
+
 /*
  * A scroll-edge effect in place of a hard rule under sticky chrome: a short
  * fade that appears only once the page has scrolled, which is when content is

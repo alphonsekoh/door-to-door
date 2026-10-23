@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HouseholdScreen } from "@/components/households/household-screen";
-import type { HouseholdHistory } from "@/generated/types.gen";
+import type { FollowUp, HouseholdHistory } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -15,6 +15,30 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
+
+/* A follow-up session covering the unit's block, so a member may resolve. */
+const { useActiveSession } = vi.hoisted(() => ({ useActiveSession: vi.fn() }));
+vi.mock("@/lib/hooks/use-active-session", () => ({ useActiveSession }));
+const FOLLOW_UP = {
+  session: {
+    id: "s9",
+    title: "Follow-up",
+    kind: "follow_up",
+    status: "active",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: null,
+    createdBy: { id: "admin", name: "Admin", image: null },
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  blocks: [
+    {
+      block: { id: "b1", name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    },
+  ],
+};
 
 const AT = "2026-03-14T11:00:00.000Z";
 
@@ -47,17 +71,24 @@ const history: HouseholdHistory = {
   followUps: [],
 };
 
-const owed = {
+const owed: FollowUp = {
   id: "f1",
   householdId: "h1",
+  blockId: "b1",
   blockName: "123",
   unitNumber: "#05-123",
   visitId: null,
+  status: "listed",
   author: { id: "u1", name: "Alice", image: null },
   note: "Bring the flyer.",
   dueDate: null,
   doneAt: null,
   doneBy: null,
+  listedAt: null,
+  listedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
   createdAt: AT,
 };
 
@@ -65,6 +96,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   useRole.mockReturnValue({ userId: "u1", isAdmin: false });
   useOnline.mockReturnValue(true);
+  useActiveSession.mockReturnValue(FOLLOW_UP);
 });
 
 /* Answers GETs with the unit and everything else with an empty success. */
@@ -155,13 +187,17 @@ describe("HouseholdScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this unit.");
   });
 
-  it("adds a note to the unit from the header, not tied to a visit", async () => {
+  it("lets a member suggest a return visit from the header, not tied to a visit", async () => {
     serve(() => history);
     render(<HouseholdScreen householdId="h1" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Add follow-up" }));
-    const sheet = within(screen.getByRole("dialog", { name: "Follow-up for #05-123" }));
-    fireEvent.change(sheet.getByLabelText("Note"), { target: { value: "Call back" } });
-    fireEvent.click(sheet.getByRole("button", { name: "Save follow-up" }));
+    const [header] = await screen.findAllByRole("button", { name: "Suggest a return visit" });
+    if (header === undefined) throw new Error("expected the header action");
+    fireEvent.click(header);
+    const sheet = within(screen.getByRole("dialog", { name: "Suggest a return visit, #05-123" }));
+    fireEvent.change(sheet.getByLabelText("Why should we go back?"), {
+      target: { value: "Call back" },
+    });
+    fireEvent.click(sheet.getByRole("button", { name: "Send suggestion" }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
@@ -178,24 +214,66 @@ describe("HouseholdScreen", () => {
       expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Suggestion sent. An admin will review it.",
+    );
+  });
+
+  it("lets an admin add the household straight to the list", async () => {
+    useRole.mockReturnValue({ userId: "admin", isAdmin: true });
+    serve(() => history);
+    render(<HouseholdScreen householdId="h1" />);
+    const [header] = await screen.findAllByRole("button", { name: "Add to follow-up list" });
+    if (header === undefined) throw new Error("expected the header action");
+    fireEvent.click(header);
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    fireEvent.change(sheet.getByLabelText("What should the next visit do?"), {
+      target: { value: "Bring the flyer" },
+    });
+    fireEvent.click(sheet.getByRole("button", { name: "Add to list" }));
+    expect(await screen.findByText("Added to the follow-up list.")).toBeInTheDocument();
+  });
+
+  it("says the household is on the list instead of offering a suggestion", async () => {
+    serve(() => ({ ...history, followUps: [owed] }));
+    render(<HouseholdScreen householdId="h1" />);
+    // The header says it, and so does the section holding the note.
+    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+  });
+
+  it("says whose suggestion is waiting, so nobody suggests the door twice", async () => {
+    serve(() => ({
+      ...history,
+      followUps: [
+        { ...owed, status: "suggested", author: { id: "u2", name: "Ben Lim", image: null } },
+      ],
+    }));
+    render(<HouseholdScreen householdId="h1" />);
+    expect(await screen.findByText("Suggested by Ben Lim, waiting for review")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
   });
 
   it("closes the add sheet on Cancel", async () => {
     serve(() => history);
     render(<HouseholdScreen householdId="h1" />);
-    fireEvent.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    const [header] = await screen.findAllByRole("button", { name: "Suggest a return visit" });
+    if (header === undefined) throw new Error("expected the header action");
+    fireEvent.click(header);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 
-  it("offers a follow-up on each visit row", async () => {
+  it("offers a suggestion on each visit row as well as the header", async () => {
     serve(() => history);
     render(<HouseholdScreen householdId="h1" />);
-    expect(
-      await screen.findByRole("button", { name: "Follow up on this visit" }),
-    ).toBeInTheDocument();
+    expect(await screen.findAllByRole("button", { name: "Suggest a return visit" })).toHaveLength(
+      2,
+    );
   });
 
   it("re-reads the unit after a note is marked done", async () => {
@@ -243,9 +321,7 @@ describe("HouseholdScreen", () => {
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledTimes(3);
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add follow-up" }));
-    fireEvent.change(screen.getByLabelText("Note"), { target: { value: "x" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save follow-up" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
     await waitFor(() => {
       expect(screen.queryByText("Asked us to come back")).not.toBeInTheDocument();
     });

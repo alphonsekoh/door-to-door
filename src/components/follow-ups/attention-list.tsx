@@ -2,9 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import {
+  ADDED_TO_LIST,
+  FollowUpSheet,
+  type FollowUpSheetMode,
+} from "@/components/follow-ups/follow-up-sheet";
 import { InterestChip } from "@/components/ui/interest-chip";
 import type { HouseholdAttention, HouseholdAttentionList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { formatDay } from "@/lib/history/dates";
+import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
 const PAGE_SIZE = 50;
@@ -26,9 +33,28 @@ export function sinceLabel(days: number): string {
   return `${String(Math.floor(days / 30))} months ago`;
 }
 
+/* Where an admin's note starts: why the door is on this list at all. The
+   list holds only medium and high interest. */
+export function startingNote(row: HouseholdAttention): string {
+  const level = row.latestVisit.interestLevel === "medium" ? "medium" : "high";
+  return `Showed ${level} interest on ${formatDay(row.latestVisit.createdAt)}.`;
+}
+
+function addMode(row: HouseholdAttention): FollowUpSheetMode {
+  return {
+    kind: "create",
+    householdId: row.household.id,
+    visitId: row.latestVisit.id,
+    unitNumber: row.household.unitNumber,
+    initialNote: startingNote(row),
+  };
+}
+
 export function AttentionList() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [wide, setWide] = useState(false);
+  const [adding, setAdding] = useState<FollowUpSheetMode | null>(null);
+  const [added, setAdded] = useState(false);
 
   const load = useCallback(async (includeMedium: boolean) => {
     try {
@@ -85,22 +111,29 @@ export function AttentionList() {
         {wide ? "High interest only" : "Include medium interest"}
       </button>
 
+      {added ? (
+        <p role="status" className="notice-success">
+          {ADDED_TO_LIST}
+        </p>
+      ) : null}
+
       {state.rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">Nothing is waiting.</p>
           <p className="mt-1 text-body text-foreground-muted">
-            Every door that showed interest either has a follow-up open or has been back to.
+            Every door that showed interest is on the follow-up list, has a suggestion waiting, or
+            has been back to.
           </p>
         </div>
       ) : (
         <ul className="overflow-hidden rounded-xl border border-border bg-surface">
           {state.rows.map((row) => (
-            <li key={row.household.id}>
+            <li key={row.household.id} className="border-b border-border last:border-b-0">
               {/* At large text the chip drops under the door rather than cut
                   who lives there to a few letters. */}
               <Link
                 href={`/households/${row.household.id}`}
-                className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-4 py-3 last:border-b-0"
+                className="flex min-h-16 flex-wrap items-center gap-x-3 gap-y-1 px-4 pt-3 pb-1"
               >
                 <span className="min-w-0 flex-[1_1_12ch]">
                   <span className="block text-body font-semibold tabular-nums">
@@ -118,10 +151,40 @@ export function AttentionList() {
                 </span>
                 <InterestChip level={row.latestVisit.interestLevel} />
               </Link>
+              {/* Beside the row, never inside its link. */}
+              <div className="px-4 pb-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAdded(false);
+                    setAdding(addMode(row));
+                  }}
+                  className="min-h-11 btn-secondary rounded-lg px-4 text-body font-medium"
+                >
+                  Add to list
+                </button>
+              </div>
             </li>
           ))}
         </ul>
       )}
+
+      <SheetPresence>
+        {adding === null ? null : (
+          <FollowUpSheet
+            mode={adding}
+            onClose={() => {
+              setAdding(null);
+            }}
+            onSaved={() => {
+              setAdding(null);
+              setAdded(true);
+              // Listed now, so it leaves this list.
+              void load(wide);
+            }}
+          />
+        )}
+      </SheetPresence>
 
       {state.total > state.rows.length ? (
         <p className="text-caption text-foreground-muted">

@@ -16,6 +16,19 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
+/* A follow-up session covering the notes' block, so a member may resolve. */
+const { useActiveSession } = vi.hoisted(() => ({ useActiveSession: vi.fn() }));
+vi.mock("@/lib/hooks/use-active-session", () => ({ useActiveSession }));
+const FOLLOW_UP = {
+  session: { kind: "follow_up", startedAt: "2026-01-01T00:00:00.000Z" },
+  blocks: [{ block: { id: "b1" } }],
+};
+
+/* Tested on its own; here it would only add a request to every count. */
+vi.mock("@/components/follow-ups/declined-notice", () => ({
+  DeclinedNotice: ({ userId }: { userId: string }) => <p>{`declined notice for ${userId}`}</p>,
+}));
+
 const { replace, search } = vi.hoisted(() => ({ replace: vi.fn(), search: { value: "" } }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace }),
@@ -26,14 +39,21 @@ function note(id: string, overrides: Partial<FollowUp> = {}): FollowUp {
   return {
     id,
     householdId: `h-${id}`,
+    blockId: "b1",
     blockName: "123",
     unitNumber: `#05-${id}`,
     visitId: null,
+    status: "listed",
     author: { id: "u1", name: "Alice", image: null },
     note: `Note ${id}`,
     dueDate: null,
     doneAt: null,
     doneBy: null,
+    listedAt: null,
+    listedBy: null,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: null,
     createdAt: "2026-03-14T10:00:00.000Z",
     ...overrides,
   };
@@ -54,18 +74,23 @@ beforeEach(() => {
   search.value = "";
   useRole.mockReturnValue({ userId: "u1", isAdmin: false });
   useOnline.mockReturnValue(true);
+  useActiveSession.mockReturnValue(FOLLOW_UP);
+  localStorage.clear();
 });
 
+const LIST = "/follow-ups?status=listed&outstanding=true&limit=20&offset=0";
+
 describe("parseFollowUpView", () => {
-  it("reads Mine only from the one known value", () => {
+  it("reads only the known views, and the list otherwise", () => {
     expect(parseFollowUpView(new URLSearchParams("view=mine"))).toBe("mine");
-    expect(parseFollowUpView(new URLSearchParams("view=team"))).toBe("everyone");
-    expect(parseFollowUpView(new URLSearchParams())).toBe("everyone");
+    expect(parseFollowUpView(new URLSearchParams("view=review"))).toBe("review");
+    expect(parseFollowUpView(new URLSearchParams("view=team"))).toBe("list");
+    expect(parseFollowUpView(new URLSearchParams())).toBe("list");
   });
 });
 
 describe("FollowUpsScreen", () => {
-  it("lists everyone's outstanding notes by default, naming and linking each door", async () => {
+  it("lists what is owed on the follow-up list by default, naming and linking each door", async () => {
     apiFetch.mockResolvedValue(page([note("1"), note("2")]));
     render(<FollowUpsScreen />);
 
@@ -73,22 +98,57 @@ describe("FollowUpsScreen", () => {
       "href",
       "/households/h-1",
     );
-    expect(apiFetch).toHaveBeenCalledWith("/follow-ups?outstanding=true&limit=20&offset=0");
-    expect(screen.getByRole("button", { name: "Everyone" })).toHaveAttribute(
+    expect(apiFetch).toHaveBeenCalledWith(LIST);
+    expect(screen.getByRole("button", { name: "On the list" })).toHaveAttribute(
       "aria-pressed",
       "true",
     );
   });
 
-  it("asks for the viewer's own notes under Mine", async () => {
+  it("shows every suggestion waiting for review", async () => {
+    search.value = "view=review";
+    apiFetch.mockResolvedValue(
+      page([note("1", { status: "suggested", author: { id: "u2", name: "Ben", image: null } })]),
+    );
+    render(<FollowUpsScreen />);
+    expect(await screen.findByText(/^Suggested by Ben · .* · Waiting for review$/)).toBeVisible();
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups?status=suggested&limit=20&offset=0");
+  });
+
+  it("says so when no suggestion waits", async () => {
+    search.value = "view=review";
+    apiFetch.mockResolvedValue(page([]));
+    render(<FollowUpsScreen />);
+    expect(await screen.findByText("No suggestions waiting.")).toBeInTheDocument();
+  });
+
+  it("asks for the viewer's own notes under Mine, and says how to start one", async () => {
     search.value = "view=mine";
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
 
-    expect(await screen.findByText("You have no follow-ups waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("You have no follow-ups or suggestions.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Open a household and tap Suggest a return visit."),
+    ).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith(
-      "/follow-ups?outstanding=true&limit=20&offset=0&authorId=u1",
+      "/follow-ups?authorId=u1&outstanding=true&limit=20&offset=0",
     );
+  });
+
+  it("tells the member about suggestions that were not added", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<FollowUpsScreen />);
+    expect(await screen.findByText("declined notice for u1")).toBeInTheDocument();
+  });
+
+  it("explains follow-ups once, until dismissed on this phone", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<FollowUpsScreen />);
+    const hint = await screen.findByRole("region", { name: "What are follow-ups?" });
+    expect(hint).toHaveTextContent("Admins choose which go on the follow-up list.");
+    fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("region", { name: "What are follow-ups?" })).toBeNull();
   });
 
   it("waits for the viewer before asking for Mine", async () => {
@@ -100,30 +160,35 @@ describe("FollowUpsScreen", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
-  it("says so when nothing is waiting", async () => {
+  it("says so when nothing is on the list, and who adds to it", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
-    expect(await screen.findByText("No follow-ups waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing is on the follow-up list.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Admins add households here for follow-up sessions."),
+    ).toBeInTheDocument();
   });
 
   it("switches views through the URL", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
-    await screen.findByText("No follow-ups waiting.");
+    await screen.findByText("Nothing is on the follow-up list.");
 
     fireEvent.click(screen.getByRole("button", { name: "Mine" }));
     expect(replace).toHaveBeenCalledWith("/follow-ups?view=mine");
+    fireEvent.click(screen.getByRole("button", { name: "Waiting for review" }));
+    expect(replace).toHaveBeenCalledWith("/follow-ups?view=review");
 
-    fireEvent.click(screen.getByRole("button", { name: "Everyone" }));
-    expect(replace).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "On the list" }));
+    expect(replace).toHaveBeenCalledTimes(2);
   });
 
-  it("goes back to Everyone without a query", async () => {
+  it("goes back to the list without a query", async () => {
     search.value = "view=mine";
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
-    await screen.findByText("You have no follow-ups waiting.");
-    fireEvent.click(screen.getByRole("button", { name: "Everyone" }));
+    await screen.findByText("You have no follow-ups or suggestions.");
+    fireEvent.click(screen.getByRole("button", { name: "On the list" }));
     expect(replace).toHaveBeenCalledWith("/follow-ups");
   });
 
@@ -136,7 +201,9 @@ describe("FollowUpsScreen", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Show more" }));
     expect(await screen.findByText("Note 2")).toBeInTheDocument();
     expect(screen.getByText("Note 1")).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenLastCalledWith("/follow-ups?outstanding=true&limit=20&offset=1");
+    expect(apiFetch).toHaveBeenLastCalledWith(
+      "/follow-ups?status=listed&outstanding=true&limit=20&offset=1",
+    );
     expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
   });
 
@@ -154,7 +221,7 @@ describe("FollowUpsScreen", () => {
     );
     render(<FollowUpsScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
-    expect(await screen.findByText("No follow-ups waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing is on the follow-up list.")).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith("/follow-ups/1", {
       method: "PATCH",
       body: JSON.stringify({ done: true }),
@@ -167,13 +234,15 @@ describe("FollowUpsScreen", () => {
     );
     render(<FollowUpsScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
-    const sheet = within(screen.getByRole("dialog", { name: "Edit follow-up" }));
-    fireEvent.change(sheet.getByLabelText("Note"), { target: { value: "Changed" } });
+    const sheet = within(screen.getByRole("dialog", { name: "Edit follow-up, #05-1" }));
+    fireEvent.change(sheet.getByLabelText("What should the next visit do?"), {
+      target: { value: "Changed" },
+    });
     fireEvent.click(sheet.getByRole("button", { name: "Save changes" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    expect(apiFetch).toHaveBeenLastCalledWith("/follow-ups?outstanding=true&limit=20&offset=0");
+    expect(apiFetch).toHaveBeenLastCalledWith(LIST);
   });
 
   it("closes the sheet on Cancel", async () => {
@@ -190,7 +259,7 @@ describe("FollowUpsScreen", () => {
     apiFetch.mockRejectedValueOnce(new TypeError("offline")).mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
     fireEvent.click(await screen.findByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("No follow-ups waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing is on the follow-up list.")).toBeInTheDocument();
   });
 
   /* A promise settles once, so the late answer and the late failure each
@@ -225,11 +294,11 @@ describe("FollowUpsScreen", () => {
     });
     search.value = "view=mine";
     rerender(<FollowUpsScreen />);
-    expect(await screen.findByText("You have no follow-ups waiting.")).toBeInTheDocument();
+    expect(await screen.findByText("You have no follow-ups or suggestions.")).toBeInTheDocument();
 
     settle(first);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.getByText("You have no follow-ups waiting.")).toBeInTheDocument();
+    expect(screen.getByText("You have no follow-ups or suggestions.")).toBeInTheDocument();
     expect(screen.queryByText("Note 1")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

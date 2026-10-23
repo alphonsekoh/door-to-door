@@ -11,6 +11,8 @@ import type {
   ActiveSession,
   HouseholdList,
   HouseholdSummary,
+  RevisitEntry,
+  RevisitList,
   TeamList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -19,10 +21,19 @@ import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
 import { useRole } from "@/lib/hooks/use-role";
 
-export function BlockScreen({ blockId }: { blockId: string }) {
-  const { userId } = useRole();
+export function BlockScreen({
+  blockId,
+  initialUnit = "",
+}: {
+  blockId: string;
+  /* A unit picked from the follow-up list, filled in on arrival. */
+  initialUnit?: string;
+}) {
+  const { userId, isAdmin } = useRole();
   const { records, syncedVersion } = useSyncQueue();
-  const { noteBlock } = useLocalCopyWriter();
+  const { noteBlock, noteRevisits } = useLocalCopyWriter();
+  /* A follow-up session's list; null until read, and if it cannot be. */
+  const [revisits, setRevisits] = useState<RevisitEntry[] | null>(null);
   /* Null until the first answer, so the copy is never written with a list
      that was merely not loaded yet. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
@@ -86,6 +97,31 @@ export function BlockScreen({ blockId }: { blockId: string }) {
     void load();
   }, [syncedVersion, load]);
 
+  /*
+   * In a follow-up session, which units may be recorded. Re-read with every
+   * answer about the session, newest answer only, and kept in the offline
+   * copy so the shell can tell a member the same thing in a dead spot.
+   */
+  const followUpSession = active?.session.kind === "follow_up" ? active : null;
+  const revisitsGeneration = useRef(0);
+  useEffect(() => {
+    if (followUpSession === null) return;
+    const mine = ++revisitsGeneration.current;
+    apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`).then(
+      (list) => {
+        if (mine !== revisitsGeneration.current) return;
+        setRevisits(list.data);
+        noteRevisits(followUpSession, list.data);
+      },
+      () => {
+        if (mine === revisitsGeneration.current) setRevisits(null);
+      },
+    );
+    return () => {
+      revisitsGeneration.current += 1;
+    };
+  }, [followUpSession, noteRevisits, syncedVersion]);
+
   /* Whichever of the units and the session arrives second writes the block
      into the offline copy, and every re-read of the units writes it again. */
   useEffect(() => {
@@ -143,6 +179,13 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         </p>
       )}
 
+      {followUpSession === null ? null : (
+        <p className="notice-info text-caption">
+          <span className="font-semibold">Follow-up session</span> · Only units on the list can be
+          recorded.{isAdmin ? " As an admin you can record any unit." : ""}
+        </p>
+      )}
+
       <BlockViews
         blockId={blockId}
         known={units}
@@ -151,6 +194,9 @@ export function BlockScreen({ blockId }: { blockId: string }) {
         loadSession={loadSession}
         onRecorded={() => void load()}
         teamIds={teamIds}
+        followUp={followUpSession === null ? null : { revisits }}
+        active={active}
+        initialUnit={initialUnit}
       />
     </DockHost>
   );

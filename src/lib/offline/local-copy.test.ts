@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, HouseholdSummary, RevisitEntry } from "@/generated/types.gen";
 import {
   LOCAL_COPY_TTL_MS,
   type LocalCopy,
   noteBlock,
   noteOuting,
+  noteRevisits,
   offlineRows,
   readCopy,
   usableCopy,
@@ -34,6 +35,7 @@ function active(sessionId = TONIGHT, blockIds = [BLK_123, BLK_456]): ActiveSessi
     session: {
       id: sessionId,
       title: "Thursday evening",
+      kind: "regular",
       status: "active",
       startedAt: STAMP,
       endedAt: null,
@@ -78,6 +80,41 @@ function household(unitNumber: string, blockId = BLK_123): HouseholdSummary {
   };
 }
 
+/* Tonight's follow-up list: #05-01 in Blk 123. */
+function revisits(): RevisitEntry[] {
+  const { household: unit, latestVisit } = household("#05-01");
+  return [
+    {
+      household: unit,
+      block: block(BLK_123, "123"),
+      notes: [
+        {
+          id: "0190a000-0000-7000-8000-0000000000f1",
+          householdId: unit.id,
+          blockId: BLK_123,
+          blockName: "123",
+          unitNumber: "#05-01",
+          visitId: null,
+          status: "listed",
+          author: { id: ALICE.id, name: "Admin", image: null },
+          note: "Bring the booklet",
+          dueDate: null,
+          doneAt: null,
+          doneBy: null,
+          listedAt: STAMP,
+          listedBy: { id: ALICE.id, name: "Admin", image: null },
+          deletedAt: null,
+          deletedBy: null,
+          deleteReason: null,
+          createdAt: STAMP,
+        },
+      ],
+      latestVisit,
+      visitedInSession: false,
+    },
+  ];
+}
+
 /* Alice, tonight's outing, Blk 123 opened at NOW. */
 function copyWithBlock(at = NOW): LocalCopy {
   const copy = noteBlock(null, ALICE, active(), BLK_123, [household("#05-01")], at);
@@ -108,11 +145,12 @@ function queued(unitNumber: string, at: number, overrides: Partial<QueuedVisit> 
 describe("noteOuting", () => {
   it("starts a copy for the member with the outing and no blocks", () => {
     expect(noteOuting(null, ALICE, active(), NOW)).toEqual({
-      v: 1,
+      v: 2,
       member: ALICE,
       savedAt: NOW,
       outing: active().session,
       blocks: [],
+      revisits: null,
     });
   });
 
@@ -148,6 +186,28 @@ describe("noteOuting", () => {
     const renamed = noteOuting(copyWithBlock(), { ...ALICE, name: "Alice Ng" }, active(), NOW);
     expect(renamed.member.name).toBe("Alice Ng");
     expect(renamed.blocks).toHaveLength(1);
+  });
+});
+
+describe("noteRevisits", () => {
+  it("keeps the follow-up list with the outing", () => {
+    const copy = noteRevisits(copyWithBlock(), ALICE, active(), revisits(), NOW + 1);
+    expect(copy.revisits).toEqual(revisits());
+    expect(copy.blocks.map((b) => b.block.id)).toEqual([BLK_123]);
+    expect(copy.savedAt).toBe(NOW + 1);
+  });
+
+  it("is kept while the same outing runs, and dropped for another", () => {
+    const listed = noteRevisits(null, ALICE, active(), revisits(), NOW);
+    expect(noteOuting(listed, ALICE, active(), NOW + 1).revisits).toEqual(revisits());
+    expect(noteBlock(listed, ALICE, active(), BLK_456, [], NOW + 1)?.revisits).toEqual(revisits());
+    expect(noteOuting(listed, ALICE, active(LAST_WEEK), NOW + 1).revisits).toBeNull();
+    expect(noteOuting(listed, ALICE, null, NOW + 1).revisits).toBeNull();
+  });
+
+  it("is never taken from another member's copy", () => {
+    const alices = noteRevisits(null, ALICE, active(), revisits(), NOW);
+    expect(noteOuting(alices, BEN, active(), NOW).revisits).toBeNull();
   });
 });
 
@@ -196,14 +256,17 @@ describe("noteBlock", () => {
 
 describe("readCopy", () => {
   it("reads back what was written", () => {
-    const copy = copyWithBlock();
+    const copy = noteRevisits(copyWithBlock(), ALICE, active(), revisits(), NOW);
     expect(readCopy(structuredClone(copy))).toEqual(copy);
   });
 
   it.each([
     ["nothing", undefined],
     ["a string", "Alice"],
-    ["another version", { ...copyWithBlock(), v: 2 }],
+    // Written before follow-up lists: thrown away once, and filled again online.
+    ["a copy from before follow-up lists", { ...copyWithBlock(), v: 1 }],
+    ["no follow-up list field", { ...copyWithBlock(), revisits: undefined }],
+    ["a bad follow-up list", { ...copyWithBlock(), revisits: [{ household: null }] }],
     ["no member", { ...copyWithBlock(), member: null }],
     ["a blank name", { ...copyWithBlock(), member: { id: ALICE.id, name: "" } }],
     ["a bad outing", { ...copyWithBlock(), outing: { id: TONIGHT } }],

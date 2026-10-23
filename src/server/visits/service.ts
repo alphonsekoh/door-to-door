@@ -1,10 +1,11 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Religion } from "@/db/schema";
+import type { InterestLevel, Religion, Role } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
+import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
 import {
   attachTeams,
   autoJoin,
@@ -111,9 +112,16 @@ export const visitColumns = {
   memberImage: users.image,
 };
 
-async function requireActiveSessionWithBlock(db: Database, blockId: string): Promise<string> {
+async function requireActiveSessionWithBlock(
+  db: Database,
+  blockId: string,
+): Promise<RevisitSession> {
   const active = await db
-    .select({ id: outingSessions.id })
+    .select({
+      id: outingSessions.id,
+      kind: outingSessions.kind,
+      startedAt: outingSessions.startedAt,
+    })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
     .limit(1);
@@ -132,7 +140,7 @@ async function requireActiveSessionWithBlock(db: Database, blockId: string): Pro
   if (attached.length === 0) {
     throw new ConflictError("conflict", "That block is not part of the active session.");
   }
-  return session.id;
+  return session;
 }
 
 export async function getVisit(db: Database, id: string): Promise<VisitRow> {
@@ -162,6 +170,8 @@ export async function createVisit(
     memberId: string;
   } & HouseholdIdentity,
   clock: Clock,
+  // Who is recording, which is not the author when an admin records for someone.
+  actor: { role: Role },
 ): Promise<VisitRow> {
   if (input.clientCreatedAt !== undefined) {
     assertNotInFuture(new Date(input.clientCreatedAt), clock);
@@ -190,7 +200,9 @@ export async function createVisit(
     throw new NotFoundError("No such member.");
   }
 
-  const sessionId = await requireActiveSessionWithBlock(db, input.blockId);
+  const session = await requireActiveSessionWithBlock(db, input.blockId);
+  await assertMayRecordHere(db, actor, session, input.blockId, input.unitNumber);
+  const sessionId = session.id;
 
   /*
    * One transaction, so a duplicate id rolls the household upsert back and a

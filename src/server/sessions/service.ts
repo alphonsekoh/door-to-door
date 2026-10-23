@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
-import type { SessionStatus } from "@/db/schema";
+import type { SessionKind, SessionStatus } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { ConflictError, NotFoundError } from "@/server/http/errors";
 
@@ -22,6 +22,7 @@ export const isActiveSessionClash = (error: unknown): boolean =>
 export type SessionRow = {
   id: string;
   title: string;
+  kind: SessionKind;
   status: SessionStatus;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -34,6 +35,7 @@ export type SessionRow = {
 const sessionColumns = {
   id: outingSessions.id,
   title: outingSessions.title,
+  kind: outingSessions.kind,
   status: outingSessions.status,
   startedAt: outingSessions.startedAt,
   endedAt: outingSessions.endedAt,
@@ -83,12 +85,17 @@ export async function getSession(db: Database, id: string): Promise<SessionRow> 
 
 export async function createSession(
   db: Database,
-  input: { title: string; blockIds?: string[]; createdBy: string },
+  input: { title: string; kind?: SessionKind; blockIds?: string[]; createdBy: string },
 ): Promise<SessionRow> {
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(outingSessions)
-      .values({ title: input.title, status: "draft", createdBy: input.createdBy })
+      .values({
+        title: input.title,
+        kind: input.kind ?? "regular",
+        status: "draft",
+        createdBy: input.createdBy,
+      })
       .returning({ id: outingSessions.id });
 
     const id = firstOrThrow(inserted, "the session insert").id;

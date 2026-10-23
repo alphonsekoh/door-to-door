@@ -15,6 +15,7 @@ function session(id: string, title: string, status: SessionStatus): OutingSessio
   return {
     id,
     title,
+    kind: "regular",
     status,
     startedAt: null,
     endedAt: null,
@@ -129,5 +130,29 @@ describe("AdminSessions", () => {
     apiFetch.mockRejectedValue("boom");
     render(<AdminSessions />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the sessions.");
+  });
+});
+
+describe("follow-up sessions and the list", () => {
+  it("marks a follow-up session on its row", async () => {
+    apiFetch.mockResolvedValue(
+      page([
+        { ...session("s1", "Revisits", "draft"), kind: "follow_up" },
+        session("s2", "Knocking", "draft"),
+      ]),
+    );
+    render(<AdminSessions />);
+    const revisits = (await screen.findByText("Revisits")).closest("li");
+    expect(revisits).toHaveTextContent("Follow-up");
+    expect(screen.getByText("Knocking").closest("li")).not.toHaveTextContent("Follow-up");
+  });
+
+  it("leads to the follow-up list", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<AdminSessions />);
+    expect(await screen.findByRole("link", { name: "Follow-up list" })).toHaveAttribute(
+      "href",
+      "/admin/follow-ups",
+    );
   });
 });

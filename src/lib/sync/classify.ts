@@ -123,8 +123,10 @@ export function applyResult(
       return failAttempt(record, code, now, random);
     case "clock_skew":
       return restamp(record, now);
-    /* An admin reopening the outing lets it through (D-21-4). */
+    /* An admin reopening the outing lets it through (D-21-4), as an admin
+       adding the unit to the follow-up list lets the other through. */
     case "session_not_active":
+    case "not_on_follow_up_list":
       return hold(record, code, now + PROBE_MS);
     /* Never retried by itself (D-74-23): nothing will change its answer. */
     default:

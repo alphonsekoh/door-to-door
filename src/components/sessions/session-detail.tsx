@@ -5,7 +5,9 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminTeams } from "@/components/admin/admin-teams";
 import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import { PageHeader } from "@/components/ui/page-header";
+import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
+import { SessionRevisits } from "@/components/sessions/session-revisits";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
@@ -126,7 +128,15 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   return (
     <div className="space-y-5">
       {/* The session's own name is the heading, not the word "Session". */}
-      <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
+      <div>
+        <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
+        {session.kind === "follow_up" ? (
+          <p className="-mt-3 flex flex-wrap items-center gap-2 text-caption text-foreground-muted">
+            <KindBadge kind={session.kind} />
+            Members can record only households on its list.
+          </p>
+        ) : null}
+      </div>
 
       {session.status === "ended" ? (
         <div className="rounded-xl border border-border bg-surface-muted p-4">
@@ -231,6 +241,15 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           </ul>
         )}
       </div>
+
+      {session.kind === "follow_up" ? (
+        <SessionRevisits
+          sessionId={session.id}
+          attachedIds={blocks.map((entry) => entry.block.id)}
+          tick={tick}
+          onAttached={load}
+        />
+      ) : null}
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />
 

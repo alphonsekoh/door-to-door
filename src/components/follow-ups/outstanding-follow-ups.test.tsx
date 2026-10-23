@@ -7,14 +7,21 @@ function note(id: string, text: string, dueDate: string | null = null): FollowUp
   return {
     id,
     householdId: `h-${id}`,
+    blockId: "b1",
     blockName: "123",
     unitNumber: `#05-${id}`,
     visitId: null,
+    status: "listed",
     author: { id: "u1", name: "Alice", image: null },
     note: text,
     dueDate,
     doneAt: null,
     doneBy: null,
+    listedAt: null,
+    listedBy: null,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: null,
     createdAt: "2026-03-14T10:00:00.000Z",
   };
 }

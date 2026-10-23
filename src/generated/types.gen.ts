@@ -59,6 +59,38 @@ export const SessionStatus = {
  */
 export type SessionStatus = typeof SessionStatus[keyof typeof SessionStatus];
 
+/**
+ * `regular` is door-to-door knocking. `follow_up` revisits households on
+ * the follow-up list. Set at creation and never changed.
+ *
+ */
+export const SessionKind = { REGULAR: 'regular', FOLLOW_UP: 'follow_up' } as const;
+
+/**
+ * `regular` is door-to-door knocking. `follow_up` revisits households on
+ * the follow-up list. Set at creation and never changed.
+ *
+ */
+export type SessionKind = typeof SessionKind[keyof typeof SessionKind];
+
+/**
+ * `listed` is on the follow-up list: an admin created it, or promoted a
+ * suggestion. `suggested` is a member's request for a return visit,
+ * waiting for an admin to add it to the list or dismiss it. A suggestion
+ * is not a list entry and is never resolved.
+ *
+ */
+export const FollowUpStatus = { SUGGESTED: 'suggested', LISTED: 'listed' } as const;
+
+/**
+ * `listed` is on the follow-up list: an admin created it, or promoted a
+ * suggestion. `suggested` is a member's request for a return visit,
+ * waiting for an admin to add it to the list or dismiss it. A suggestion
+ * is not a list entry and is never resolved.
+ *
+ */
+export type FollowUpStatus = typeof FollowUpStatus[keyof typeof FollowUpStatus];
+
 export const ErrorCode = {
     VALIDATION_FAILED: 'validation_failed',
     UNAUTHENTICATED: 'unauthenticated',
@@ -70,6 +102,8 @@ export const ErrorCode = {
     SESSION_ALREADY_ACTIVE: 'session_already_active',
     CLOCK_SKEW: 'clock_skew',
     BLOCK_IN_USE: 'block_in_use',
+    NOT_ON_FOLLOW_UP_LIST: 'not_on_follow_up_list',
+    FOLLOW_UP_EXISTS: 'follow_up_exists',
     RATE_LIMITED: 'rate_limited',
     INTERNAL_ERROR: 'internal_error'
 } as const;
@@ -176,6 +210,7 @@ export type UserSummary = {
 export type OutingSession = {
     id: string;
     title: string;
+    kind: SessionKind;
     status: SessionStatus;
     /**
      * Null while the session is a draft.
@@ -298,6 +333,41 @@ export type FollowUp = {
      */
     householdId: string;
     /**
+     * The household's block, so a client can tell which notes a session's
+     * attached blocks cover without a lookup per note.
+     *
+     */
+    blockId: string;
+    status: FollowUpStatus;
+    /**
+     * When an admin put it on the follow-up list. Null for a suggestion,
+     * and for notes listed before suggestions existed.
+     *
+     */
+    listedAt: string | null;
+    /**
+     * The admin who put it on the list, as `listedAt`.
+     */
+    listedBy: UserSummary | null;
+    /**
+     * Set when the note was dismissed, withdrawn or removed from the list.
+     * Always null outside `GET /follow-ups?deleted=true`: every other read
+     * leaves removed notes out.
+     *
+     */
+    deletedAt: string | null;
+    /**
+     * Who removed it: an admin, or the author withdrawing their own
+     * suggestion. A suggestion removed by anyone but its author was
+     * declined, and the author is told so.
+     *
+     */
+    deletedBy: UserSummary | null;
+    /**
+     * Optional, given when it was removed. Shown to the author.
+     */
+    deleteReason: string | null;
+    /**
      * The household's block, so a list of notes can name the door without
      * a lookup per note.
      *
@@ -333,11 +403,53 @@ export type HouseholdHistory = {
      * Oldest first, so the interest trajectory reads left to right.
      */
     visits: Array<Visit>;
+    /**
+     * Listed notes and pending suggestions, anyone's, oldest first.
+     * Removed notes are left out.
+     *
+     */
     followUps: Array<FollowUp>;
+};
+
+/**
+ * One household on a follow-up session's list: it is in one of the
+ * session's attached blocks and has at least one `listed`, not removed
+ * note that is outstanding or was resolved after the session started.
+ * This is the set a member may record visits at in that session.
+ *
+ */
+export type RevisitEntry = {
+    household: Household;
+    block: Block;
+    /**
+     * The listed notes that put it on the list: outstanding first (by due
+     * day, undated last), then those resolved during the session.
+     *
+     */
+    notes: Array<FollowUp>;
+    /**
+     * The most recent visit here in any session, or null.
+     */
+    latestVisit: Visit | null;
+    /**
+     * Someone has recorded a visit here during this session.
+     */
+    visitedInSession: boolean;
+};
+
+export type RevisitList = {
+    /**
+     * Ordered by block name, then unit number.
+     */
+    data: Array<RevisitEntry>;
 };
 
 export type CreateSessionRequest = {
     title: string;
+    /**
+     * Fixed once created; there is no way to change it later.
+     */
+    kind?: SessionKind;
     /**
      * Blocks to attach immediately. More may be added later.
      */
@@ -517,9 +629,17 @@ export type UpdateFollowUpRequest = {
     dueDate?: string | null;
     /**
      * `true` marks it resolved and records who did so; `false` reopens it.
+     * Only a `listed` note can be resolved.
      *
      */
     done?: boolean;
+    /**
+     * **Requires: admin.** Promotes a suggestion onto the follow-up list,
+     * recording who did so. Sending it for a note already listed changes
+     * nothing. There is no way back to `suggested`.
+     *
+     */
+    status?: 'listed';
 };
 
 export type CreateUserRequest = {
@@ -604,7 +724,9 @@ export type HouseholdSummary = {
     visitCount: number;
     latestVisit: Visit | null;
     /**
-     * Surfaced before a member knocks, so a promise is not missed.
+     * Unresolved `listed` notes, surfaced before a member knocks so a
+     * promise is not missed. Suggestions and removed notes do not count.
+     *
      */
     outstandingFollowUps?: number;
 };
@@ -1138,6 +1260,51 @@ export type DetachSessionBlockResponses = {
 };
 
 export type DetachSessionBlockResponse = DetachSessionBlockResponses[keyof DetachSessionBlockResponses];
+
+export type ListSessionRevisitsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/revisits';
+};
+
+export type ListSessionRevisitsErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `conflict`: the session is a regular session.
+     */
+    409: Error;
+};
+
+export type ListSessionRevisitsError = ListSessionRevisitsErrors[keyof ListSessionRevisitsErrors];
+
+export type ListSessionRevisitsResponses = {
+    /**
+     * The households to revisit.
+     */
+    200: RevisitList;
+};
+
+export type ListSessionRevisitsResponse = ListSessionRevisitsResponses[keyof ListSessionRevisitsResponses];
 
 export type ListParticipantsData = {
     body?: never;
@@ -1866,8 +2033,10 @@ export type CreateVisitErrors = {
      */
     404: Error;
     /**
-     * A visit with this id already exists, or no session is active, or the
-     * block is not attached to the active session.
+     * A visit with this id already exists, or no session is active
+     * (`session_not_active`), or the block is not attached to the active
+     * session, or a member is recording an unlisted unit in a follow-up
+     * session (`not_on_follow_up_list`).
      *
      */
     409: Error;
@@ -1999,6 +2168,10 @@ export type ListFollowUpsData = {
          */
         authorId?: string;
         /**
+         * Only notes with this status. Both when omitted.
+         */
+        status?: FollowUpStatus;
+        /**
          * `true` returns only unresolved notes.
          */
         outstanding?: boolean;
@@ -2009,6 +2182,12 @@ export type ListFollowUpsData = {
          *
          */
         dueBefore?: string;
+        /**
+         * `true` returns removed notes only. **Requires: admin**, unless
+         * `authorId` is the caller's own id; otherwise `403`.
+         *
+         */
+        deleted?: boolean;
         /**
          * Rows per page.
          */
@@ -2073,6 +2252,12 @@ export type CreateFollowUpErrors = {
      * The household, or the referenced visit, does not exist.
      */
     404: Error;
+    /**
+     * `follow_up_exists`: a member suggesting a household that is already
+     * on the follow-up list or already has a suggestion waiting.
+     *
+     */
+    409: Error;
 };
 
 export type CreateFollowUpError = CreateFollowUpErrors[keyof CreateFollowUpErrors];
@@ -2091,11 +2276,22 @@ export type DeleteFollowUpData = {
     path: {
         id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Why it was removed, shown to the note's author. Trimmed; blank is
+         * stored as none.
+         *
+         */
+        reason?: string;
+    };
     url: '/follow-ups/{id}';
 };
 
 export type DeleteFollowUpErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
     /**
      * No valid session. Also returned for a valid token whose account no
      * longer exists: the account is looked up on every request, so a deleted
@@ -2120,7 +2316,7 @@ export type DeleteFollowUpError = DeleteFollowUpErrors[keyof DeleteFollowUpError
 
 export type DeleteFollowUpResponses = {
     /**
-     * Deleted.
+     * Removed.
      */
     204: void;
 };
@@ -2149,9 +2345,8 @@ export type UpdateFollowUpErrors = {
      */
     401: Error;
     /**
-     * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * A member promoting, changing another member's suggestion, or
+     * changing the text or due date of a listed note they did not write.
      *
      */
     403: Error;
@@ -2159,6 +2354,13 @@ export type UpdateFollowUpErrors = {
      * No such resource, or not visible to this user.
      */
     404: Error;
+    /**
+     * `conflict`: resolving a suggestion. `not_on_follow_up_list`: a member
+     * changing a listed note outside the follow-up session whose list it
+     * is on.
+     *
+     */
+    409: Error;
 };
 
 export type UpdateFollowUpError = UpdateFollowUpErrors[keyof UpdateFollowUpErrors];

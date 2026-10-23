@@ -13,17 +13,18 @@ const ADMIN = "aceaceac-0000-4000-8000-000000000001";
 const ALICE = "aceaceac-0000-4000-8000-000000000002";
 const BEN = "aceaceac-0000-4000-8000-000000000003";
 const BLOCK = "aceaceac-0000-4000-8001-000000000001";
+const FAR_BLOCK = "aceaceac-0000-4000-8001-000000000002";
 const HOUSEHOLD = "aceaceac-0000-4000-8003-000000000001";
 const OTHER_HOUSEHOLD = "aceaceac-0000-4000-8003-000000000002";
-const SESSION = "aceaceac-0000-4000-8002-000000000001";
+const PAST = "aceaceac-0000-4000-8002-000000000001";
+const TONIGHT = "aceaceac-0000-4000-8002-000000000002";
 const VISIT = "01960000-0000-7000-8000-00000000ce01";
 
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
-const asAlice = () =>
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
-const asBen = () =>
-  auth.mockResolvedValue({ user: { id: BEN, role: "member", deactivated: false } });
+const as = (id: string, role: "admin" | "member") => () =>
+  auth.mockResolvedValue({ user: { id, role, deactivated: false } });
+const asAdmin = as(ADMIN, "admin");
+const asAlice = as(ALICE, "member");
+const asBen = as(BEN, "member");
 
 const url = (q = "") => `https://test.local/api/follow-ups${q}`;
 const create = (body: unknown) =>
@@ -43,12 +44,84 @@ const patch = (id: string, body: unknown) =>
     }),
     { params: Promise.resolve({ id }) },
   );
-const remove = (id: string) =>
-  DELETE(new Request(url(`/${id}`), { method: "DELETE" }), {
-    params: Promise.resolve({ id }),
-  });
+const remove = (id: string, reason?: string) =>
+  DELETE(
+    new Request(
+      url(`/${id}${reason === undefined ? "" : `?reason=${encodeURIComponent(reason)}`}`),
+      { method: "DELETE" },
+    ),
+    { params: Promise.resolve({ id }) },
+  );
+const list = async (q = "") => {
+  const response = await GET(new Request(url(q)));
+  return {
+    status: response.status,
+    body: (await response.json()) as {
+      data: { id: string; note: string; status: string; [key: string]: unknown }[];
+      pagination: { total: number; hasMore: boolean };
+    },
+  };
+};
 
-const noteId = async (response: Response) => ((await response.json()) as { id: string }).id;
+type Note = {
+  id: string;
+  note: string;
+  status: string;
+  listedAt: string | null;
+  listedBy: { name: string } | null;
+  doneAt: string | null;
+  doneBy: { name: string } | null;
+  author: { name: string };
+};
+const read = async (response: Response) => (await response.json()) as Note;
+const code = async (response: Response) =>
+  ((await response.json()) as { error: { code: string } }).error.code;
+
+/* An admin's note: straight on the list. */
+const listed = async (note: string, householdId = HOUSEHOLD, dueDate?: string) => {
+  asAdmin();
+  const response = await create({ householdId, note, ...(dueDate ? { dueDate } : {}) });
+  expect(response.status).toBe(201);
+  return (await read(response)).id;
+};
+/* A member's note: a suggestion waiting for review. */
+const suggested = async (who: () => unknown, note: string, householdId = HOUSEHOLD) => {
+  who();
+  const response = await create({ householdId, note });
+  expect(response.status).toBe(201);
+  return (await read(response)).id;
+};
+/* Alice's words, put on the list by an admin. */
+const alicesListed = async (note = "Alice's wording") => {
+  const id = await suggested(asAlice, note);
+  asAdmin();
+  expect((await patch(id, { status: "listed" })).status).toBe(200);
+  return id;
+};
+
+/* A running session; a follow-up session covers the blocks given. */
+const run = async (kind: "regular" | "follow_up", blockIds: string[] = [BLOCK]) => {
+  await pool.query(
+    `INSERT INTO outing_sessions (id, title, kind, status, started_at, created_by)
+     VALUES ($1,'Tonight',$2,'active', now() - interval '1 hour', $3)`,
+    [TONIGHT, kind, ADMIN],
+  );
+  for (const blockId of blockIds) {
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      TONIGHT,
+      blockId,
+    ]);
+  }
+};
+
+const stored = async (id: string) =>
+  (
+    await pool.query<{
+      deleted_at: Date | null;
+      deleted_by: string | null;
+      delete_reason: string | null;
+    }>(`SELECT deleted_at, deleted_by, delete_reason FROM follow_ups WHERE id = $1`, [id])
+  ).rows[0];
 
 beforeEach(async () => {
   await truncateAll(pool);
@@ -57,19 +130,23 @@ beforeEach(async () => {
       ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member'), ($3,'ben@t.local','Ben','member')`,
     [ADMIN, ALICE, BEN],
   );
-  await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
+  await pool.query(
+    `INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave'), ($2,'125','Test Ave')`,
+    [BLOCK, FAR_BLOCK],
+  );
   await pool.query(
     `INSERT INTO households (id, block_id, unit_number) VALUES ($1,$2,'#05-123'), ($3,$2,'#06-201')`,
     [HOUSEHOLD, BLOCK, OTHER_HOUSEHOLD],
   );
   await pool.query(
-    `INSERT INTO outing_sessions (id, title, status, created_by) VALUES ($1,'Outing','active',$2)`,
-    [SESSION, ADMIN],
+    `INSERT INTO outing_sessions (id, title, status, started_at, ended_at, created_by)
+     VALUES ($1,'March','ended', now() - interval '30 days', now() - interval '29 days', $2)`,
+    [PAST, ADMIN],
   );
   await pool.query(
     `INSERT INTO visits (id, household_id, session_id, member_id, interest_level)
      VALUES ($1,$2,$3,$4,'high')`,
-    [VISIT, HOUSEHOLD, SESSION, ALICE],
+    [VISIT, HOUSEHOLD, PAST, ALICE],
   );
   vi.clearAllMocks();
 });
@@ -80,20 +157,37 @@ afterAll(async () => {
 });
 
 describe("creating a note", () => {
-  it("attaches it to the household", async () => {
-    asAlice();
+  it("puts an admin's note straight on the follow-up list", async () => {
+    asAdmin();
     const response = await create({ householdId: HOUSEHOLD, note: "Bring the flyer." });
     expect(response.status).toBe(201);
-    const body = (await response.json()) as { note: string; author: { name: string } };
-    expect(body).toMatchObject({ note: "Bring the flyer.", author: { name: "Alice" } });
+    const body = await read(response);
+    expect(body).toMatchObject({ status: "listed", listedBy: { name: "Admin" } });
+    expect(body.listedAt).not.toBeNull();
   });
 
-  it("names the door it was left at", async () => {
+  it("makes a member's note a suggestion for an admin to review", async () => {
+    asAlice();
+    const body = await read(await create({ householdId: HOUSEHOLD, note: "Come back at 7pm." }));
+    expect(body).toMatchObject({
+      status: "suggested",
+      listedAt: null,
+      listedBy: null,
+      author: { name: "Alice" },
+    });
+  });
+
+  it("names the door and block it was left at", async () => {
     asAlice();
     const body = (await (
       await create({ householdId: HOUSEHOLD, note: "Bring the flyer." })
     ).json()) as unknown;
-    expect(body).toMatchObject({ householdId: HOUSEHOLD, blockName: "123", unitNumber: "#05-123" });
+    expect(body).toMatchObject({
+      householdId: HOUSEHOLD,
+      blockId: BLOCK,
+      blockName: "123",
+      unitNumber: "#05-123",
+    });
   });
 
   it("can anchor it to a specific visit", async () => {
@@ -151,152 +245,338 @@ describe("creating a note", () => {
   });
 });
 
-describe("resolving a note", () => {
-  it("records who closed it, not just that it closed", async () => {
+describe("suggesting a return visit", () => {
+  it("is allowed with no session running", async () => {
     asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Send pamphlet" }));
+    expect((await create({ householdId: HOUSEHOLD, note: "Worth a visit" })).status).toBe(201);
+  });
 
-    // An admin, because only the author or an admin may change a note.
+  it("is refused while the household is on the list and not yet done", async () => {
+    await listed("Bring the flyer");
+    asBen();
+    const response = await create({ householdId: HOUSEHOLD, note: "Me too" });
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("follow_up_exists");
+  });
+
+  it("is refused while another member's suggestion is waiting", async () => {
+    await suggested(asAlice, "Asked us back");
+    asBen();
+    const response = await create({ householdId: HOUSEHOLD, note: "Also asked me" });
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("follow_up_exists");
+  });
+
+  it("is refused while the member's own suggestion is waiting", async () => {
+    await suggested(asAlice, "Asked us back");
+    asAlice();
+    expect(await code(await create({ householdId: HOUSEHOLD, note: "Again" }))).toBe(
+      "follow_up_exists",
+    );
+  });
+
+  it("is allowed again once the listed note is resolved", async () => {
+    const id = await listed("Bring the flyer");
     asAdmin();
-    const body = (await (await patch(id, { done: true })).json()) as {
-      doneAt: string | null;
-      doneBy: { name: string } | null;
-    };
-    expect(body.doneAt).not.toBeNull();
+    await patch(id, { done: true });
+    asAlice();
+    expect((await create({ householdId: HOUSEHOLD, note: "Wants another" })).status).toBe(201);
+  });
+
+  it("is allowed again once a suggestion is dismissed", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
+    await remove(id, "Already visited");
+    asBen();
+    expect((await create({ householdId: HOUSEHOLD, note: "Asked again" })).status).toBe(201);
+  });
+
+  it("is allowed again once a listed note is removed from the list", async () => {
+    const id = await listed("Bring the flyer");
+    asAdmin();
+    await remove(id);
+    asAlice();
+    expect((await create({ householdId: HOUSEHOLD, note: "Still keen" })).status).toBe(201);
+  });
+
+  it("lets exactly one of two members suggesting the same door at once succeed", async () => {
+    // The database decides the race; there is no window between a check and the insert.
+    auth
+      .mockResolvedValueOnce({ user: { id: ALICE, role: "member", deactivated: false } })
+      .mockResolvedValueOnce({ user: { id: BEN, role: "member", deactivated: false } });
+    const responses = await Promise.all([
+      create({ householdId: HOUSEHOLD, note: "Alice's" }),
+      create({ householdId: HOUSEHOLD, note: "Ben's" }),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 409]);
+    const { rows } = await pool.query(`SELECT 1 FROM follow_ups WHERE status = 'suggested'`);
+    expect(rows).toHaveLength(1);
+  });
+
+  it("lets an admin list a household that already has an open note", async () => {
+    // A household may carry several listed notes; only members are limited.
+    await listed("First");
+    await suggested(asAlice, "Waiting", OTHER_HOUSEHOLD);
+    asAdmin();
+    expect((await create({ householdId: HOUSEHOLD, note: "Second" })).status).toBe(201);
+    expect((await create({ householdId: OTHER_HOUSEHOLD, note: "Listed too" })).status).toBe(201);
+  });
+});
+
+describe("promoting a suggestion", () => {
+  it("puts it on the list and records the admin who did", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
+    const body = await read(await patch(id, { status: "listed" }));
+    expect(body).toMatchObject({
+      status: "listed",
+      listedBy: { name: "Admin" },
+      author: { name: "Alice" },
+    });
+    expect(body.listedAt).not.toBeNull();
+  });
+
+  it("changes nothing when the note is already listed", async () => {
+    const id = await alicesListed();
+    asAdmin();
+    const before = (await list(`?householdId=${HOUSEHOLD}`)).body.data[0];
+    const after = await read(await patch(id, { status: "listed" }));
+    expect(after.listedAt).toBe(before?.["listedAt"]);
+  });
+
+  it("refuses a member, even the author", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAlice();
+    expect((await patch(id, { status: "listed" })).status).toBe(403);
+  });
+
+  it("can resolve in the same request", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
+    const body = await read(await patch(id, { status: "listed", done: true }));
+    expect(body.status).toBe("listed");
     expect(body.doneBy?.name).toBe("Admin");
   });
 
-  it("lets another member resolve a note they acted on", async () => {
-    /*
-     * Alice writes "bring the flyer" in March; Ben works the block in June,
-     * reads the note and brings it. He must be able to tick it off, or the
-     * outstanding list fills with things that already happened.
-     */
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
-
-    asBen();
+  it("refuses an admin resolving a suggestion without listing it", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
     const response = await patch(id, { done: true });
-    expect(response.status).toBe(200);
-    const body = (await response.json()) as { doneBy: { name: string } | null };
-    // Attributable to whoever actually did it, not to the author.
-    expect(body.doneBy?.name).toBe("Ben");
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("conflict");
   });
 
-  it("keeps the first resolver when a note already done is marked done again", async () => {
-    /*
-     * Ben, on a list he opened yesterday, taps Mark done on a note Alice
-     * already resolved. The credit, and the day it happened, stay hers.
-     */
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
-    const first = (await (await patch(id, { done: true })).json()) as {
-      doneAt: string;
-      doneBy: { name: string } | null;
-    };
+  it("lets an admin reword a suggestion", async () => {
+    const id = await suggested(asAlice, "Asked us bak");
+    asAdmin();
+    expect((await read(await patch(id, { note: "Asked us back" }))).note).toBe("Asked us back");
+  });
+});
 
-    asBen();
-    const response = await patch(id, { done: true });
-    expect(response.status).toBe(200);
-    const second = (await response.json()) as { doneAt: string; doneBy: { name: string } | null };
-    expect(second.doneBy?.name).toBe("Alice");
-    expect(second.doneAt).toBe(first.doneAt);
+describe("a member and a suggestion", () => {
+  it("lets the author reword it with no session running", async () => {
+    const id = await suggested(asAlice, "Typo");
+    asAlice();
+    expect((await read(await patch(id, { note: "Corrected" }))).note).toBe("Corrected");
   });
 
-  it("lets another member reopen a note ticked off by mistake", async () => {
+  it("lets the author set its due date", async () => {
+    const id = await suggested(asAlice, "Soon");
     asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Bring the flyer" }));
-    asBen();
-    await patch(id, { done: true });
-    const body = (await (await patch(id, { done: false })).json()) as { doneAt: null };
-    expect(body.doneAt).toBeNull();
-  });
-
-  it("still refuses another member editing the note text", async () => {
-    // The words belong to whoever wrote them.
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's wording" }));
-    asBen();
-    expect((await patch(id, { note: "Ben's rewrite" })).status).toBe(403);
-  });
-
-  it("still refuses another member changing the due date", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
-    asBen();
-    expect((await patch(id, { dueDate: "2026-12-01T00:00:00.000Z" })).status).toBe(403);
-  });
-
-  it("refuses a resolution bundled with an edit", async () => {
-    // Otherwise `done` would be a way to smuggle in a rewrite.
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
-    asBen();
-    expect((await patch(id, { done: true, note: "and rewritten" })).status).toBe(403);
-  });
-
-  it("still names the door after an update", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: OTHER_HOUSEHOLD, note: "Call back" }));
-    const body = (await (await patch(id, { done: true })).json()) as unknown;
-    expect(body).toMatchObject({ blockName: "123", unitNumber: "#06-201" });
-  });
-
-  it("can reopen a note that was closed too early", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Not done after all" }));
-    await patch(id, { done: true });
-
-    const body = (await (await patch(id, { done: false })).json()) as {
-      doneAt: string | null;
-      doneBy: unknown;
-    };
-    expect(body.doneAt).toBeNull();
-    expect(body.doneBy).toBeNull();
-  });
-
-  it("lets the author amend the note text", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Typo" }));
-    const body = (await (await patch(id, { note: "Corrected" })).json()) as { note: string };
-    expect(body.note).toBe("Corrected");
-  });
-
-  it("can set a due date that was not there before", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "No date yet" }));
     const body = (await (await patch(id, { dueDate: "2026-10-01T00:00:00.000Z" })).json()) as {
       dueDate: string;
     };
     expect(body.dueDate).toBe("2026-10-01T00:00:00.000Z");
   });
 
-  it("can clear a due date", async () => {
-    asAlice();
-    const id = await noteId(
-      await create({ householdId: HOUSEHOLD, note: "x", dueDate: "2026-09-30T00:00:00.000Z" }),
-    );
-    const body = (await (await patch(id, { dueDate: null })).json()) as { dueDate: null };
-    expect(body.dueDate).toBeNull();
-  });
-
-  it("refuses a member amending someone else's note", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
+  it("refuses another member rewording it", async () => {
+    const id = await suggested(asAlice, "Alice's");
     asBen();
-    expect((await patch(id, { note: "Ben's edit" })).status).toBe(403);
+    expect((await patch(id, { note: "Ben's" })).status).toBe(403);
   });
 
-  it("lets an admin amend anyone's note", async () => {
+  it("refuses another member marking it done", async () => {
+    const id = await suggested(asAlice, "Alice's");
+    asBen();
+    expect((await patch(id, { done: true })).status).toBe(403);
+  });
+
+  it("refuses the author marking it done, since it is not on the list", async () => {
+    const id = await suggested(asAlice, "Alice's");
     asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
+    const response = await patch(id, { done: true });
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("conflict");
+  });
+
+  it("lets the author withdraw it", async () => {
+    const id = await suggested(asAlice, "Changed my mind");
+    asAlice();
+    expect((await remove(id)).status).toBe(204);
+    expect((await stored(id))?.deleted_by).toBe(ALICE);
+  });
+
+  it("refuses another member withdrawing it", async () => {
+    const id = await suggested(asAlice, "Alice's");
+    asBen();
+    expect((await remove(id)).status).toBe(403);
+  });
+});
+
+describe("a member and a listed note outside its follow-up session", () => {
+  it("refuses resolving it with no session running", async () => {
+    const id = await listed("Bring the flyer");
+    asAlice();
+    const response = await patch(id, { done: true });
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("not_on_follow_up_list");
+  });
+
+  it("refuses resolving it in a regular session", async () => {
+    await run("regular");
+    const id = await listed("Bring the flyer");
+    asAlice();
+    expect(await code(await patch(id, { done: true }))).toBe("not_on_follow_up_list");
+  });
+
+  it("refuses resolving it in a follow-up session that does not cover its block", async () => {
+    await run("follow_up", [FAR_BLOCK]);
+    const id = await listed("Bring the flyer");
+    asAlice();
+    expect(await code(await patch(id, { done: true }))).toBe("not_on_follow_up_list");
+  });
+
+  it("refuses the author rewording it", async () => {
+    const id = await alicesListed();
+    asAlice();
+    expect(await code(await patch(id, { note: "New words" }))).toBe("not_on_follow_up_list");
+  });
+
+  it("refuses another member's rewording as forbidden before anything else", async () => {
+    // 403 is a right they never have; 409 only says when they would have it.
+    const id = await alicesListed();
+    asBen();
+    expect((await patch(id, { note: "Ben's" })).status).toBe(403);
+  });
+
+  it("refuses removing it, even for its author", async () => {
+    const id = await alicesListed();
+    asAlice();
+    expect((await remove(id)).status).toBe(403);
+  });
+});
+
+describe("a member and a listed note in its follow-up session", () => {
+  beforeEach(async () => {
+    await run("follow_up");
+  });
+
+  it("lets any member resolve it, and records who did", async () => {
+    const id = await listed("Bring the flyer");
+    asBen();
+    const response = await patch(id, { done: true });
+    expect(response.status).toBe(200);
+    expect((await read(response)).doneBy?.name).toBe("Ben");
+  });
+
+  it("keeps the first resolver when it is marked done again", async () => {
+    const id = await listed("Bring the flyer");
+    asAlice();
+    const first = await read(await patch(id, { done: true }));
+    asBen();
+    const second = await read(await patch(id, { done: true }));
+    expect(second.doneBy?.name).toBe("Alice");
+    expect(second.doneAt).toBe(first.doneAt);
+  });
+
+  it("lets another member reopen one resolved during the session", async () => {
+    const id = await listed("Bring the flyer");
+    asAlice();
+    await patch(id, { done: true });
+    asBen();
+    const body = await read(await patch(id, { done: false }));
+    expect(body.doneAt).toBeNull();
+    expect(body.doneBy).toBeNull();
+  });
+
+  it("refuses reopening one resolved before the session started", async () => {
+    // It is not on tonight's list, so it is not tonight's to change.
+    const id = await listed("Bring the flyer");
+    await pool.query(`UPDATE follow_ups SET done_at = now() - interval '2 hours' WHERE id = $1`, [
+      id,
+    ]);
+    asAlice();
+    expect(await code(await patch(id, { done: false }))).toBe("not_on_follow_up_list");
+  });
+
+  it("lets the author reword it", async () => {
+    const id = await alicesListed();
+    asAlice();
+    expect((await read(await patch(id, { note: "Better words" }))).note).toBe("Better words");
+  });
+
+  it("refuses another member rewording it", async () => {
+    const id = await alicesListed();
+    asBen();
+    expect((await patch(id, { note: "Ben's rewrite" })).status).toBe(403);
+  });
+
+  it("refuses another member changing its due date", async () => {
+    const id = await alicesListed();
+    asBen();
+    expect((await patch(id, { dueDate: "2026-12-01T00:00:00.000Z" })).status).toBe(403);
+  });
+
+  it("refuses a resolution bundled with another member's edit", async () => {
+    // Otherwise `done` would be a way to smuggle in a rewrite.
+    const id = await alicesListed();
+    asBen();
+    expect((await patch(id, { done: true, note: "and rewritten" })).status).toBe(403);
+  });
+
+  it("refuses removing it", async () => {
+    const id = await alicesListed();
+    asAlice();
+    expect((await remove(id)).status).toBe(403);
+  });
+
+  it("still names the door after an update", async () => {
+    const id = await listed("Call back", OTHER_HOUSEHOLD);
+    asAlice();
+    const body = (await (await patch(id, { done: true })).json()) as unknown;
+    expect(body).toMatchObject({ blockName: "123", unitNumber: "#06-201" });
+  });
+});
+
+describe("an admin and a listed note", () => {
+  it("resolves it with no session running", async () => {
+    const id = await listed("Bring the flyer");
+    asAdmin();
+    expect((await read(await patch(id, { done: true }))).doneBy?.name).toBe("Admin");
+  });
+
+  it("rewords anyone's", async () => {
+    const id = await alicesListed();
     asAdmin();
     expect((await patch(id, { note: "Tidied" })).status).toBe(200);
   });
 
+  it("can set and clear a due date", async () => {
+    const id = await listed("No date yet");
+    asAdmin();
+    const set = (await (await patch(id, { dueDate: "2026-10-01T00:00:00.000Z" })).json()) as {
+      dueDate: string | null;
+    };
+    expect(set.dueDate).toBe("2026-10-01T00:00:00.000Z");
+    const cleared = (await (await patch(id, { dueDate: null })).json()) as {
+      dueDate: string | null;
+    };
+    expect(cleared.dueDate).toBeNull();
+  });
+
   it("rejects an empty change with 400", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "x" }));
+    const id = await listed("x");
+    asAdmin();
     expect((await patch(id, {})).status).toBe(400);
   });
 
@@ -306,163 +586,227 @@ describe("resolving a note", () => {
   });
 });
 
-describe("deleting a note", () => {
-  it("lets the author delete it", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Mistake" }));
-    expect((await remove(id)).status).toBe(204);
-  });
-
-  it("refuses a member deleting someone else's", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
-    asBen();
-    expect((await remove(id)).status).toBe(403);
-  });
-
-  it("lets an admin delete anyone's", async () => {
-    asAlice();
-    const id = await noteId(await create({ householdId: HOUSEHOLD, note: "Alice's" }));
+describe("removing a note", () => {
+  it("keeps the row, with who removed it, when and why", async () => {
+    const id = await listed("Bring the flyer");
     asAdmin();
-    expect((await remove(id)).status).toBe(204);
+    expect((await remove(id, "  Moved away  ")).status).toBe(204);
+    const row = await stored(id);
+    expect(row?.deleted_at).not.toBeNull();
+    expect(row?.deleted_by).toBe(ADMIN);
+    expect(row?.delete_reason).toBe("Moved away");
+  });
+
+  it("stores a blank reason as none", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
+    await remove(id, "   ");
+    expect((await stored(id))?.delete_reason).toBeNull();
+  });
+
+  it("refuses a reason over 500 characters", async () => {
+    const id = await listed("Bring the flyer");
+    asAdmin();
+    expect((await remove(id, "x".repeat(501))).status).toBe(400);
+    expect((await stored(id))?.deleted_at).toBeNull();
+  });
+
+  it("treats a removed note as gone to anyone changing it", async () => {
+    const id = await suggested(asAlice, "Asked us back");
+    asAdmin();
+    await remove(id);
+    expect((await patch(id, { status: "listed" })).status).toBe(404);
+    expect((await remove(id)).status).toBe(404);
+    asAlice();
+    expect((await patch(id, { note: "Again" })).status).toBe(404);
   });
 
   it("returns 404 for an unknown note", async () => {
     asAdmin();
     expect((await remove("aceaceac-0000-4000-8004-00000000ffff")).status).toBe(404);
   });
+
+  it("refuses an unauthenticated caller", async () => {
+    const id = await listed("x");
+    auth.mockResolvedValue(null);
+    expect((await remove(id)).status).toBe(401);
+  });
 });
 
 describe("listing", () => {
   const seedNotes = async () => {
-    asAlice();
-    await create({ householdId: HOUSEHOLD, note: "Due soon", dueDate: "2026-07-15T00:00:00.000Z" });
-    await create({
-      householdId: HOUSEHOLD,
-      note: "Due later",
-      dueDate: "2026-09-30T00:00:00.000Z",
-    });
-    const done = await noteId(await create({ householdId: OTHER_HOUSEHOLD, note: "Finished" }));
+    await listed("Due soon", HOUSEHOLD, "2026-07-15T00:00:00.000Z");
+    await listed("Due later", HOUSEHOLD, "2026-09-30T00:00:00.000Z");
+    const done = await listed("Finished", OTHER_HOUSEHOLD);
+    asAdmin();
     await patch(done, { done: true });
   };
 
   it("puts outstanding notes before resolved ones, earliest due first", async () => {
     // This is the actionable list, so the next thing to do sits at the top.
     await seedNotes();
-    const body = (await (await GET(new Request(url()))).json()) as { data: { note: string }[] };
-    expect(body.data.map((n) => n.note)).toEqual(["Due soon", "Due later", "Finished"]);
+    expect((await list()).body.data.map((n) => n.note)).toEqual([
+      "Due soon",
+      "Due later",
+      "Finished",
+    ]);
   });
 
   it("filters to outstanding notes", async () => {
     await seedNotes();
-    const body = (await (await GET(new Request(url("?outstanding=true")))).json()) as {
-      data: unknown[];
-    };
-    expect(body.data).toHaveLength(2);
+    expect((await list("?outstanding=true")).body.data).toHaveLength(2);
   });
 
   it("filters to resolved notes", async () => {
     await seedNotes();
-    const body = (await (await GET(new Request(url("?outstanding=false")))).json()) as {
-      data: { note: string }[];
-    };
-    expect(body.data.map((n) => n.note)).toEqual(["Finished"]);
+    expect((await list("?outstanding=false")).body.data.map((n) => n.note)).toEqual(["Finished"]);
   });
 
   it("filters by household", async () => {
     await seedNotes();
-    const body = (await (
-      await GET(new Request(url(`?householdId=${OTHER_HOUSEHOLD}`)))
-    ).json()) as { data: unknown[] };
-    expect(body.data).toHaveLength(1);
+    expect((await list(`?householdId=${OTHER_HOUSEHOLD}`)).body.data).toHaveLength(1);
+  });
+
+  it("filters by status", async () => {
+    await seedNotes();
+    await suggested(asAlice, "Asked us back", OTHER_HOUSEHOLD);
+    asAdmin();
+    expect((await list("?status=suggested")).body.data.map((n) => n.note)).toEqual([
+      "Asked us back",
+    ]);
+    expect((await list("?status=listed")).body.data).toHaveLength(3);
   });
 
   it("finds overdue notes with dueBefore", async () => {
     await seedNotes();
-    const body = (await (
-      await GET(new Request(url("?outstanding=true&dueBefore=2026-08-01T00:00:00.000Z")))
-    ).json()) as { data: { note: string }[] };
-    expect(body.data.map((n) => n.note)).toEqual(["Due soon"]);
+    expect(
+      (await list("?outstanding=true&dueBefore=2026-08-01T00:00:00.000Z")).body.data.map(
+        (n) => n.note,
+      ),
+    ).toEqual(["Due soon"]);
   });
 
   it("treats dueBefore as strictly before, so a note due today is not yet overdue", async () => {
     // Callers pass the start of today; a note due on that day starts at that instant.
-    asAlice();
-    await create({
-      householdId: HOUSEHOLD,
-      note: "Due today",
-      dueDate: "2026-10-13T16:00:00.000Z",
-    });
-    await create({
-      householdId: HOUSEHOLD,
-      note: "Due yesterday",
-      dueDate: "2026-10-12T16:00:00.000Z",
-    });
-    await create({ householdId: HOUSEHOLD, note: "Undated" });
-    const body = (await (
-      await GET(new Request(url("?outstanding=true&dueBefore=2026-10-13T16:00:00.000Z")))
-    ).json()) as { data: { note: string }[] };
-    expect(body.data.map((n) => n.note)).toEqual(["Due yesterday"]);
+    await listed("Due today", HOUSEHOLD, "2026-10-13T16:00:00.000Z");
+    await listed("Due yesterday", HOUSEHOLD, "2026-10-12T16:00:00.000Z");
+    await listed("Undated");
+    expect(
+      (await list("?outstanding=true&dueBefore=2026-10-13T16:00:00.000Z")).body.data.map(
+        (n) => n.note,
+      ),
+    ).toEqual(["Due yesterday"]);
   });
 
   it("names each note's door in a list across households", async () => {
     await seedNotes();
-    const body = (await (await GET(new Request(url()))).json()) as {
-      data: { note: string; blockName: string; unitNumber: string }[];
-    };
-    expect(body.data.map((n) => [n.note, n.blockName, n.unitNumber])).toEqual([
+    expect((await list()).body.data.map((n) => [n.note, n["blockName"], n["unitNumber"]])).toEqual([
       ["Due soon", "123", "#05-123"],
       ["Due later", "123", "#05-123"],
       ["Finished", "123", "#06-201"],
     ]);
   });
 
-  it("lets a member filter to their own notes", async () => {
+  it("leaves removed notes out", async () => {
     await seedNotes();
+    const gone = await listed("Removed overdue", OTHER_HOUSEHOLD, "2026-07-01T00:00:00.000Z");
+    asAdmin();
+    await remove(gone);
+    const { body } = await list();
+    expect(body.data.map((n) => n.note)).not.toContain("Removed overdue");
+    expect(body.pagination.total).toBe(3);
+    // Nor is it overdue any more.
+    expect(
+      (await list("?outstanding=true&dueBefore=2026-08-01T00:00:00.000Z")).body.data.map(
+        (n) => n.note,
+      ),
+    ).toEqual(["Due soon"]);
+  });
+
+  it("lets a member filter to their own notes", async () => {
+    await suggested(asAlice, "Mine", HOUSEHOLD);
+    await listed("Not mine", OTHER_HOUSEHOLD);
     asAlice();
-    const body = (await (await GET(new Request(url(`?authorId=${ALICE}`)))).json()) as {
-      data: unknown[];
-    };
-    expect(body.data).toHaveLength(3);
+    expect((await list(`?authorId=${ALICE}`)).body.data.map((n) => n.note)).toEqual(["Mine"]);
   });
 
   it("refuses a member asking for another member's notes", async () => {
-    await seedNotes();
     asBen();
-    expect((await GET(new Request(url(`?authorId=${ALICE}`)))).status).toBe(403);
+    expect((await list(`?authorId=${ALICE}`)).status).toBe(403);
   });
 
   it("lets an admin filter by any author", async () => {
-    await seedNotes();
     asAdmin();
-    expect((await GET(new Request(url(`?authorId=${ALICE}`)))).status).toBe(200);
+    expect((await list(`?authorId=${ALICE}`)).status).toBe(200);
   });
 
-  it("shows a household's notes to any member who can reach the unit", async () => {
+  it("shows a household's notes, suggestions included, to any member", async () => {
     /*
      * Notes are not private to their author - the point of writing one down is
      * that whoever knocks next reads it.
      */
-    await seedNotes();
+    await listed("On the list");
+    await suggested(asAlice, "Suggested by Alice", OTHER_HOUSEHOLD);
     asBen();
-    const body = (await (await GET(new Request(url(`?householdId=${HOUSEHOLD}`)))).json()) as {
-      data: unknown[];
-    };
-    expect(body.data).toHaveLength(2);
+    expect((await list()).body.data.map((n) => n.note)).toEqual([
+      "On the list",
+      "Suggested by Alice",
+    ]);
   });
 
   it("paginates", async () => {
     await seedNotes();
-    const body = (await (await GET(new Request(url("?limit=1")))).json()) as {
-      data: unknown[];
-      pagination: { total: number; hasMore: boolean };
-    };
+    const { body } = await list("?limit=1");
     expect(body.data).toHaveLength(1);
     expect(body.pagination).toMatchObject({ total: 3, hasMore: true });
   });
 
   it("refuses an unauthenticated caller", async () => {
     auth.mockResolvedValue(null);
-    expect((await GET(new Request(url()))).status).toBe(401);
+    expect((await list()).status).toBe(401);
+  });
+});
+
+describe("reading removed notes", () => {
+  const seedRemoved = async () => {
+    const dismissed = await suggested(asAlice, "Dismissed one");
+    asAdmin();
+    await remove(dismissed, "Already visited");
+    const taken = await listed("Taken off", OTHER_HOUSEHOLD);
+    asAdmin();
+    await remove(taken);
+    await listed("Still listed");
+  };
+
+  it("gives an admin only removed notes, newest removal first", async () => {
+    await seedRemoved();
+    asAdmin();
+    const { status, body } = await list("?deleted=true");
+    expect(status).toBe(200);
+    expect(body.data.map((n) => n.note)).toEqual(["Taken off", "Dismissed one"]);
+    expect(body.data[1]).toMatchObject({
+      deletedBy: { name: "Admin" },
+      deleteReason: "Already visited",
+    });
+  });
+
+  it("lets a member read their own removed notes, with the reason", async () => {
+    await seedRemoved();
+    asAlice();
+    const { status, body } = await list(`?deleted=true&authorId=${ALICE}`);
+    expect(status).toBe(200);
+    expect(body.data.map((n) => [n.note, n["deleteReason"]])).toEqual([
+      ["Dismissed one", "Already visited"],
+    ]);
+  });
+
+  it("refuses a member reading everyone's removed notes", async () => {
+    asAlice();
+    expect((await list("?deleted=true")).status).toBe(403);
+  });
+
+  it("refuses a member reading another member's removed notes", async () => {
+    asBen();
+    expect((await list(`?deleted=true&authorId=${ALICE}`)).status).toBe(403);
   });
 });

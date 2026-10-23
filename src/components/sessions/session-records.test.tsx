@@ -83,6 +83,7 @@ function entry(
     session: {
       id: "s1",
       title: "March outing",
+      kind: "regular",
       status,
       startedAt: null,
       endedAt: null,

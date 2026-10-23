@@ -2,19 +2,22 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import type { FollowUp } from "@/generated/types.gen";
+import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
+import type { ActiveSession, FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { followUpRights } from "@/lib/follow-ups/rights";
 import {
   FOLLOW_UP_OFFLINE_NOTE,
   addedByline,
   describeFollowUpFailure,
   doneByline,
   isOverdue,
-  mayEditFollowUp,
+  listedByline,
 } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRole } from "@/lib/hooks/use-role";
 import { formatDay } from "@/lib/history/dates";
+import { SheetPresence } from "@/components/ui/sheet";
 import { FollowUpDoor } from "@/components/ui/unit-number";
 
 /* Words as well as colour: colour alone is lost in sunlight and to some eyes. */
@@ -27,28 +30,34 @@ export function OverdueBadge() {
 }
 
 export function followUpTone(note: FollowUp, now: Date): string {
+  if (note.status === "suggested") return "border-dashed border-border-strong bg-surface";
   return isOverdue(note, now) ? "border-danger/60 bg-danger/10" : "border-border bg-surface";
 }
 
 /*
  * One note: the door (when the list spans doors), the words, when it is due,
- * who wrote and who closed it, and its controls.
+ * who wrote, listed and closed it, and the controls the viewer has. A
+ * suggestion is drawn with a dashed edge: it is a request, not yet owed.
  */
 export function FollowUpItem({
   note,
   now,
+  active,
   showUnit = false,
   onChanged,
   onEdit,
 }: {
   note: FollowUp;
   now: Date;
+  /* The running session, which decides what a member may change. */
+  active: ActiveSession | null;
   showUnit?: boolean;
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
 }) {
   const overdue = isOverdue(note, now);
   const resolved = doneByline(note);
+  const listed = listedByline(note);
 
   return (
     <div className={`rounded-lg border p-3 ${followUpTone(note, now)}`}>
@@ -70,46 +79,51 @@ export function FollowUpItem({
 
       <p className="text-body break-words whitespace-pre-wrap">{note.note}</p>
       {note.dueDate === null ? null : (
-        <p className="text-caption text-foreground-muted">Due {formatDay(note.dueDate)}</p>
+        <p className="text-caption text-foreground-muted">
+          {note.status === "suggested" ? "Go back by" : "Due"} {formatDay(note.dueDate)}
+        </p>
       )}
       <p className="mt-1 text-caption break-words text-foreground-muted">{addedByline(note)}</p>
+      {listed === null ? null : (
+        <p className="text-caption break-words text-foreground-muted">{listed}</p>
+      )}
       {resolved === null ? null : (
         <p className="text-caption break-words text-foreground-muted">{resolved}</p>
       )}
 
-      <FollowUpControls note={note} onChanged={onChanged} onEdit={onEdit} />
+      <FollowUpControls note={note} active={active} onChanged={onChanged} onEdit={onEdit} />
     </div>
   );
 }
 
 function FollowUpControls({
   note,
+  active,
   onChanged,
   onEdit,
 }: {
   note: FollowUp;
+  active: ActiveSession | null;
   onChanged: (() => void) | undefined;
   onEdit: ((note: FollowUp) => void) | undefined;
 }) {
   const online = useOnline();
   const { userId, isAdmin } = useRole();
+  const rights = followUpRights(note, { userId, isAdmin }, active);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
   const done = note.doneAt !== null;
 
-  async function toggle(): Promise<void> {
+  async function change(body: Record<string, unknown>): Promise<void> {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
-      /* `done` alone, so it counts as a resolution any member may make. */
-      await apiFetch(`/follow-ups/${note.id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ done: !done }),
-      });
+      await apiFetch(`/follow-ups/${note.id}`, { method: "PATCH", body: JSON.stringify(body) });
       onChanged?.();
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
@@ -119,40 +133,96 @@ function FollowUpControls({
     }
   }
 
-  const label = done ? "Reopen" : "Mark done";
+  const editable = onEdit !== undefined && rights.canEditText;
+  const offers = rights.canResolve || rights.canPromote || editable || rights.canRemove;
+  const removeLabel = !isAdmin
+    ? "Withdraw"
+    : note.status === "suggested"
+      ? "Dismiss"
+      : "Remove from list";
 
   return (
-    <div className="mt-2">
+    <>
       {failure === null ? null : (
-        <p role="alert" className="mb-2 notice-danger">
+        <p role="alert" className="mt-2 notice-danger">
           {failure}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={busy || !online}
-          onClick={() => void toggle()}
-          className="min-h-11 btn-secondary rounded-lg bg-background px-4 text-body font-medium"
-        >
-          {busy ? "Saving…" : label}
-        </button>
-        {onEdit !== undefined && mayEditFollowUp(note, { userId, isAdmin }) ? (
-          <button
-            type="button"
-            disabled={!online}
-            onClick={() => {
-              onEdit(note);
-            }}
-            className="min-h-11 rounded-lg px-4 text-body font-medium btn-text"
-          >
-            Edit
-          </button>
-        ) : null}
-      </div>
-      {online ? null : (
+      {offers ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {rights.canPromote ? (
+            <button
+              type="button"
+              disabled={busy || !online}
+              onClick={() => void change({ status: "listed" })}
+              className="min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
+            >
+              {busy ? "Saving…" : "Add to list"}
+            </button>
+          ) : null}
+          {rights.canResolve ? (
+            /* `done` alone, so it counts as a resolution any member may make. */
+            <button
+              type="button"
+              disabled={busy || !online}
+              onClick={() => void change({ done: !done })}
+              className="min-h-11 btn-secondary rounded-lg bg-background px-4 text-body font-medium"
+            >
+              {busy ? "Saving…" : done ? "Reopen" : "Mark done"}
+            </button>
+          ) : null}
+          {editable ? (
+            <button
+              type="button"
+              disabled={!online}
+              onClick={() => {
+                onEdit(note);
+              }}
+              className="min-h-11 rounded-lg px-4 text-body font-medium btn-text"
+            >
+              Edit
+            </button>
+          ) : null}
+          {rights.canRemove ? (
+            <button
+              type="button"
+              disabled={busy || !online}
+              onClick={() => {
+                setRemoving(true);
+              }}
+              className="min-h-11 rounded-lg px-4 text-body font-medium text-danger disabled:opacity-60"
+            >
+              {removeLabel}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {rights.locked ? (
+        <p className="mt-1 text-caption text-foreground-muted">
+          {done
+            ? "You can reopen this during a follow-up session."
+            : "You can mark this done during a follow-up session."}
+        </p>
+      ) : null}
+      {offers && !online ? (
         <p className="mt-1 text-caption text-foreground-muted">{FOLLOW_UP_OFFLINE_NOTE}</p>
-      )}
-    </div>
+      ) : null}
+
+      <SheetPresence>
+        {removing ? (
+          <RemoveFollowUpSheet
+            note={note}
+            isAdmin={isAdmin}
+            onClose={() => {
+              setRemoving(false);
+            }}
+            onRemoved={() => {
+              setRemoving(false);
+              onChanged?.();
+            }}
+          />
+        ) : null}
+      </SheetPresence>
+    </>
   );
 }

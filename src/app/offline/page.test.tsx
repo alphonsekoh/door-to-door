@@ -36,11 +36,12 @@ describe("the offline page", () => {
      the phone, so it must be the same for everyone (D-32-4, D-77-7). */
   it("renders on the server with nothing but fixed text, whatever is saved on the phone", async () => {
     await updateLocalCopy(() => ({
-      v: 1,
+      v: 2,
       member: { id: ALICE, name: "Alice Tan" },
       savedAt: Date.now(),
       outing: null,
       blocks: [],
+      revisits: null,
     }));
     const html = renderToString(<OfflinePage />);
     const text = html

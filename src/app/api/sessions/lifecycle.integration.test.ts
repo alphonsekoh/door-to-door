@@ -26,12 +26,16 @@ const url = (path: string) => `https://test.local/api/sessions${path}`;
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
 const post = (path: string) => new Request(url(path), { method: "POST" });
 
-async function newDraft(title = "Outing", blockIds?: string[]): Promise<string> {
+async function newDraft(
+  title = "Outing",
+  blockIds?: string[],
+  kind?: "regular" | "follow_up",
+): Promise<string> {
   asAdmin();
   const response = await createSessionRoute(
     new Request(url(""), {
       method: "POST",
-      body: JSON.stringify({ title, ...(blockIds ? { blockIds } : {}) }),
+      body: JSON.stringify({ title, ...(blockIds ? { blockIds } : {}), ...(kind ? { kind } : {}) }),
       headers: { "content-type": "application/json" },
     }),
   );
@@ -80,6 +84,30 @@ describe("the lifecycle over HTTP", () => {
     expect(response.status).toBe(409);
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe("session_already_active");
+  });
+
+  it("allows one active session whatever its kind", async () => {
+    const regular = await newDraft("Door-to-door");
+    const followUp = await newDraft("Follow-up", undefined, "follow_up");
+    asAdmin();
+    await start(post(`/${regular}/start`), ctx(regular));
+
+    const response = await start(post(`/${followUp}/start`), ctx(followUp));
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "session_already_active",
+    );
+  });
+
+  it("keeps a session's kind through start, end and reopen", async () => {
+    const id = await newDraft("Follow-up", undefined, "follow_up");
+    asAdmin();
+    await start(post(`/${id}/start`), ctx(id));
+    await end(post(`/${id}/end`), ctx(id));
+    const reopened = (await (await reopen(post(`/${id}/reopen`), ctx(id))).json()) as {
+      kind: string;
+    };
+    expect(reopened.kind).toBe("follow_up");
   });
 
   it("returns 409 for an illegal transition", async () => {

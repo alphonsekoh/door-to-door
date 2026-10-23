@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
-import type { FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
+import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
@@ -30,6 +30,29 @@ beforeEach(() => {
 
 const noop = () => undefined;
 
+/* A follow-up session covering the unit's block, started before any test's
+   resolution, so a member may act on its listed notes. */
+const FOLLOW_UP: ActiveSession = {
+  session: {
+    id: "s9",
+    title: "Follow-up",
+    kind: "follow_up",
+    status: "active",
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: null,
+    createdBy: { id: "admin", name: "Admin", image: null },
+    createdAt: "2026-01-01T00:00:00.000Z",
+  },
+  blocks: [
+    {
+      block: { id: "b1", name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    },
+  ],
+};
+
 const visit = (over: Partial<Visit> = {}): Visit => ({
   id: "v1",
   householdId: "h1",
@@ -47,14 +70,21 @@ const visit = (over: Partial<Visit> = {}): Visit => ({
 const note = (over: Partial<FollowUp> = {}): FollowUp => ({
   id: "f1",
   householdId: "h1",
+  blockId: "b1",
   blockName: "123",
   unitNumber: "#05-123",
   visitId: null,
+  status: "listed",
   author: { id: "u1", name: "Alice", image: null },
   note: "Bring the flyer.",
   dueDate: null,
   doneAt: null,
   doneBy: null,
+  listedAt: null,
+  listedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
   createdAt: "2026-03-14T10:00:00.000Z",
   ...over,
 });
@@ -76,118 +106,147 @@ const history = (over: Partial<HouseholdHistory> = {}): HouseholdHistory => ({
   ...over,
 });
 
+function Panel({
+  over = {},
+  active = FOLLOW_UP,
+  onChanged = noop,
+  anchorVisits = false,
+}: {
+  over?: Partial<HouseholdHistory>;
+  active?: ActiveSession | null;
+  onChanged?: () => void;
+  anchorVisits?: boolean;
+}) {
+  return (
+    <HouseholdHistoryPanel
+      history={history(over)}
+      active={active}
+      onChanged={onChanged}
+      anchorVisits={anchorVisits}
+    />
+  );
+}
+
+const suggestion = (over: Partial<FollowUp> = {}) =>
+  note({ id: "s1", status: "suggested", note: "Asked us back after 7pm.", ...over });
+
 describe("what is known about the unit", () => {
   it("leads with the name", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history()} />);
+    render(<Panel />);
     expect(screen.getByText("Mr Tan")).toBeInTheDocument();
   });
 
   it("says plainly when nobody has ever answered", () => {
     // Better than a blank space, which reads as a loading bug.
     const unknown = history();
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={{ ...unknown, household: { ...unknown.household, name: null } }}
-      />,
-    );
+    render(<Panel over={{ household: { ...unknown.household, name: null } }} />);
     expect(screen.getByText("Nobody has answered here yet")).toBeInTheDocument();
   });
 
   it("shows a contact when there is one", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history()} />);
+    render(<Panel />);
     expect(screen.getByText("+65 9000 0000")).toBeInTheDocument();
   });
 
   it("omits the contact line entirely when unknown", () => {
     const h = history();
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={{ ...h, household: { ...h.household, contact: null } }}
-      />,
-    );
+    render(<Panel over={{ household: { ...h.household, contact: null } }} />);
     expect(screen.queryByText("+65 9000 0000")).not.toBeInTheDocument();
   });
 });
 
-describe("outstanding follow-ups", () => {
+describe("on the follow-up list", () => {
   it("surfaces a promise made last time", () => {
     /*
      * The point of the panel: arriving at the door knowing what was promised,
      * rather than finding out afterwards.
      */
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
-    expect(screen.getByText("Outstanding follow-up")).toBeInTheDocument();
-
+    render(<Panel over={{ followUps: [note()] }} />);
     // Scoped to the note itself: Alice also appears as the previous visitor.
-    const owed = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
     expect(owed.getByText("Bring the flyer.")).toBeInTheDocument();
     expect(owed.getByText(/Added by Alice/)).toBeInTheDocument();
   });
 
-  it("pluralises for several", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ followUps: [note(), note({ id: "f2", note: "And call back." })] })}
-      />,
-    );
-    expect(screen.getByText("Outstanding follow-ups")).toBeInTheDocument();
-  });
-
   it("hides notes that are already done", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ followUps: [note({ doneAt: "2026-04-01T00:00:00.000Z" })] })}
-      />,
-    );
-    expect(screen.queryByText("Outstanding follow-up")).not.toBeInTheDocument();
+    render(<Panel over={{ followUps: [note({ doneAt: "2026-04-01T00:00:00.000Z" })] }} />);
+    expect(screen.queryByRole("list", { name: "On the follow-up list" })).not.toBeInTheDocument();
   });
 
   it("falls back when the author has no name", () => {
     render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({
-          followUps: [note({ author: { id: "u9", name: null, image: null } })],
-        })}
-      />,
+      <Panel over={{ followUps: [note({ author: { id: "u9", name: null, image: null } })] }} />,
     );
     expect(screen.getAllByText(/Added by Someone/).length).toBeGreaterThan(0);
+  });
+
+  it("names who put a member's words on the list", () => {
+    const promoted = note({
+      listedAt: new Date(2026, 2, 20, 12).toISOString(),
+      listedBy: { id: "admin", name: "Admin", image: null },
+    });
+    render(<Panel over={{ followUps: [promoted] }} />);
+    expect(screen.getByText(/^Suggested by Alice/)).toBeInTheDocument();
+    expect(screen.getByText("Added to the list by Admin · 20 Mar 2026")).toBeInTheDocument();
+  });
+});
+
+describe("waiting for review", () => {
+  it("shows another member's suggestion to everyone, as waiting", () => {
+    asViewer("u2");
+    render(<Panel over={{ followUps: [suggestion()] }} />);
+    const waiting = within(screen.getByRole("list", { name: "Waiting for review" }));
+    expect(waiting.getByText("Asked us back after 7pm.")).toBeInTheDocument();
+    expect(waiting.getByText(/^Suggested by Alice · .* · Waiting for review$/)).toBeInTheDocument();
+    // Not theirs, so nothing to do but read it.
+    expect(waiting.queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("lets the author edit or withdraw it, but never mark it done", () => {
+    render(<Panel over={{ followUps: [suggestion()] }} />);
+    const waiting = within(screen.getByRole("list", { name: "Waiting for review" }));
+    expect(waiting.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(waiting.getByRole("button", { name: "Withdraw" })).toBeInTheDocument();
+    expect(waiting.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
+  });
+
+  it("lets an admin add it to the list, edit it or dismiss it", async () => {
+    asViewer("admin", true);
+    const onChanged = vi.fn();
+    render(<Panel over={{ followUps: [suggestion()] }} onChanged={onChanged} />);
+    const waiting = within(screen.getByRole("list", { name: "Waiting for review" }));
+    expect(waiting.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(waiting.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    fireEvent.click(waiting.getByRole("button", { name: "Add to list" }));
+    await waitFor(() => {
+      expect(onChanged).toHaveBeenCalled();
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups/s1", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "listed" }),
+    });
   });
 });
 
 describe("previous visits", () => {
   it("labels the interest level readably", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ visits: [visit()] })} />);
+    render(<Panel />);
     expect(screen.getByText("Medium")).toBeInTheDocument();
   });
 
   it("labels a silent door as No response, not no_response", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ visits: [visit({ interestLevel: "no_response", description: "" })] })}
-      />,
-    );
+    render(<Panel over={{ visits: [visit({ interestLevel: "no_response", description: "" })] }} />);
     expect(screen.getByText("No response")).toBeInTheDocument();
   });
 
   it("names who recorded it", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history()} />);
+    render(<Panel />);
     const list = screen.getByRole("list", { name: "Timeline" });
     expect(within(list).getByText(/Alice/)).toBeInTheDocument();
   });
 
   it("falls back when the member has no name", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ visits: [visit({ member: { id: "u9", name: null, image: null } })] })}
-      />,
-    );
+    render(<Panel over={{ visits: [visit({ member: { id: "u9", name: null, image: null } })] }} />);
     expect(screen.getByText("Someone")).toBeInTheDocument();
   });
 
@@ -204,9 +263,7 @@ describe("previous visits", () => {
         ],
       },
     });
-    render(
-      <HouseholdHistoryPanel onChanged={noop} history={history({ visits: [visit(), teamed] })} />,
-    );
+    render(<Panel over={{ visits: [visit(), teamed] }} />);
     const [solo, paired] = within(screen.getByRole("list", { name: "Timeline" })).getAllByRole(
       "listitem",
     );
@@ -218,27 +275,17 @@ describe("previous visits", () => {
   });
 
   it("omits an empty description rather than leaving a gap", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ visits: [visit({ description: "" })] })}
-      />,
-    );
+    render(<Panel over={{ visits: [visit({ description: "" })] }} />);
     expect(screen.queryByText("Listened for a while.")).not.toBeInTheDocument();
   });
 
   it("renders nothing for a unit with no visits", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ visits: [] })} />);
+    render(<Panel over={{ visits: [] }} />);
     expect(screen.queryByRole("list", { name: "Timeline" })).not.toBeInTheDocument();
   });
 
   it("shows an unrecognised level as-is rather than blank", () => {
-    render(
-      <HouseholdHistoryPanel
-        onChanged={noop}
-        history={history({ visits: [visit({ interestLevel: "unknown" as never })] })}
-      />,
-    );
+    render(<Panel over={{ visits: [visit({ interestLevel: "unknown" as never })] }} />);
     expect(screen.getByText("unknown")).toBeInTheDocument();
   });
 });
@@ -261,9 +308,9 @@ describe("the timeline", () => {
         createdAt: "2026-04-01T00:00:00.000Z",
       }),
     ];
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: notes })} />);
+    render(<Panel over={{ followUps: notes }} />);
 
-    const owed = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
     expect(owed.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
       expect.stringContaining("Dated note"),
       expect.stringContaining("Undated note"),
@@ -286,8 +333,8 @@ describe("the timeline", () => {
       doneAt: "2026-06-01T00:00:00.000Z",
       createdAt: "2026-01-01T00:00:00.000Z",
     });
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [resolved] })} />);
-    expect(screen.queryByRole("list", { name: "Outstanding follow-ups" })).not.toBeInTheDocument();
+    render(<Panel over={{ followUps: [resolved] }} />);
+    expect(screen.queryByRole("list", { name: "On the follow-up list" })).not.toBeInTheDocument();
     const timeline = within(screen.getByRole("list", { name: "Timeline" }));
     expect(timeline.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
       expect.stringContaining("Old promise"),
@@ -300,26 +347,26 @@ describe("the timeline", () => {
       doneAt: new Date(2026, 5, 9, 12).toISOString(),
       doneBy: { id: "u2", name: "Ben Lim", image: null },
     });
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [done] })} />);
+    render(<Panel over={{ followUps: [done] }} />);
     expect(screen.getByText("Done by Ben Lim · 9 Jun 2026")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reopen" })).toBeInTheDocument();
   });
 
   it("marks an overdue note in words, not only colour", () => {
     const overdue = note({ dueDate: "2020-01-01T00:00:00.000Z" });
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [overdue] })} />);
-    const owed = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    render(<Panel over={{ followUps: [overdue] }} />);
+    const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
     expect(owed.getByText("Overdue")).toBeInTheDocument();
   });
 
   it("does not call a note due later overdue", () => {
     const later = note({ dueDate: "2099-01-01T00:00:00.000Z" });
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [later] })} />);
+    render(<Panel over={{ followUps: [later] }} />);
     expect(screen.queryByText("Overdue")).not.toBeInTheDocument();
   });
 
   it("offers one Mark done per outstanding note", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} />);
     expect(screen.getAllByRole("button", { name: "Mark done" })).toHaveLength(1);
   });
 });
@@ -327,9 +374,7 @@ describe("the timeline", () => {
 describe("acting on a note", () => {
   it("marks it done with one request on a double tap, then asks for a re-read", async () => {
     const onChanged = vi.fn();
-    render(
-      <HouseholdHistoryPanel onChanged={onChanged} history={history({ followUps: [note()] })} />,
-    );
+    render(<Panel over={{ followUps: [note()] }} onChanged={onChanged} />);
     const button = screen.getByRole("button", { name: "Mark done" });
     act(() => {
       fireEvent.click(button);
@@ -348,9 +393,7 @@ describe("acting on a note", () => {
   it("reopens a resolved note with done alone", async () => {
     const onChanged = vi.fn();
     const done = note({ doneAt: "2026-04-01T00:00:00.000Z", doneBy: null });
-    render(
-      <HouseholdHistoryPanel onChanged={onChanged} history={history({ followUps: [done] })} />,
-    );
+    render(<Panel over={{ followUps: [done] }} onChanged={onChanged} />);
     fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
     await waitFor(() => {
       expect(onChanged).toHaveBeenCalled();
@@ -364,9 +407,7 @@ describe("acting on a note", () => {
   it("says a lost answer may still have landed", async () => {
     apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     const onChanged = vi.fn();
-    render(
-      <HouseholdHistoryPanel onChanged={onChanged} history={history({ followUps: [note()] })} />,
-    );
+    render(<Panel over={{ followUps: [note()] }} onChanged={onChanged} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not confirm. Refresh to see whether it went through.",
@@ -374,27 +415,44 @@ describe("acting on a note", () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
-  it("lets any member resolve, but offers Edit only to the author", () => {
+  it("lets any member resolve in its session, but offers Edit only to the author", () => {
     asViewer("u2");
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} />);
     expect(screen.getByRole("button", { name: "Mark done" })).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
   });
 
-  it("offers Edit to the author", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+  it("tells a member outside a follow-up session when they can mark it done", () => {
+    // Members change listed notes only during the session whose list they are on.
+    render(<Panel over={{ followUps: [note()] }} active={null} />);
+    expect(screen.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
+    expect(screen.getByText("You can mark this done during a follow-up session.")).toBeVisible();
+  });
+
+  it("says the same about reopening a resolved note", () => {
+    const done = note({ doneAt: "2026-04-01T00:00:00.000Z" });
+    render(<Panel over={{ followUps: [done] }} active={null} />);
+    expect(screen.getByText("You can reopen this during a follow-up session.")).toBeVisible();
+  });
+
+  it("offers Edit to the author in the session", () => {
+    render(<Panel over={{ followUps: [note()] }} />);
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
 
-  it("offers Edit to an admin on anyone's note", () => {
+  it("offers an admin everything on anyone's note, at any time", () => {
     asViewer("admin", true);
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} active={null} />);
+    expect(screen.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove from list" })).toBeInTheDocument();
+    expect(screen.queryByText(/during a follow-up session/)).not.toBeInTheDocument();
   });
 
   it("disables every control offline and says why", () => {
     useOnline.mockReturnValue(false);
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} />);
     expect(screen.getByRole("button", { name: "Mark done" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Edit" })).toBeDisabled();
     expect(screen.getByText("Connect to change follow-ups")).toBeInTheDocument();
@@ -402,12 +460,12 @@ describe("acting on a note", () => {
 
   it("edits through the sheet and re-reads once saved", async () => {
     const onChanged = vi.fn();
-    render(
-      <HouseholdHistoryPanel onChanged={onChanged} history={history({ followUps: [note()] })} />,
-    );
+    render(<Panel over={{ followUps: [note()] }} onChanged={onChanged} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    const sheet = screen.getByRole("dialog", { name: "Edit follow-up" });
-    fireEvent.change(within(sheet).getByLabelText("Note"), { target: { value: "Bring two." } });
+    const sheet = screen.getByRole("dialog", { name: "Edit follow-up, #05-123" });
+    fireEvent.change(within(sheet).getByLabelText("What should the next visit do?"), {
+      target: { value: "Bring two." },
+    });
     fireEvent.click(within(sheet).getByRole("button", { name: "Save changes" }));
     await waitFor(() => {
       expect(onChanged).toHaveBeenCalled();
@@ -420,7 +478,7 @@ describe("acting on a note", () => {
   });
 
   it("closes the sheet on Cancel without a request", async () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => {
@@ -429,12 +487,18 @@ describe("acting on a note", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it("anchors a new note to a visit when asked", async () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history()} anchorVisits />);
-    fireEvent.click(screen.getByRole("button", { name: "Follow up on this visit" }));
-    const sheet = screen.getByRole("dialog", { name: "Follow-up for #05-123" });
-    fireEvent.change(within(sheet).getByLabelText("Note"), { target: { value: "Call back" } });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+  it("lets a member suggest a return visit from a visit, and says it was sent", async () => {
+    const onChanged = vi.fn();
+    render(<Panel anchorVisits onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole("button", { name: "Suggest a return visit" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #05-123" });
+    expect(sheet).toHaveTextContent(
+      "An admin reviews every suggestion and decides whether to add it to the follow-up list.",
+    );
+    fireEvent.change(within(sheet).getByLabelText("Why should we go back?"), {
+      target: { value: "Call back" },
+    });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
         method: "POST",
@@ -446,12 +510,41 @@ describe("acting on a note", () => {
         }),
       });
     });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Suggestion sent. An admin will review it.",
+    );
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it("lets an admin add a visit's household straight to the list", async () => {
+    asViewer("admin", true);
+    render(<Panel anchorVisits />);
+    fireEvent.click(screen.getByRole("button", { name: "Add to follow-up list" }));
+    const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" });
+    fireEvent.change(within(sheet).getByLabelText("What should the next visit do?"), {
+      target: { value: "Bring the flyer" },
+    });
+    fireEvent.click(within(sheet).getByRole("button", { name: "Add to list" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
+  });
+
+  it("offers no anchor where the household is already listed or waiting", () => {
+    const { unmount } = render(<Panel anchorVisits over={{ followUps: [note()] }} />);
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    unmount();
+    render(
+      <Panel
+        anchorVisits
+        over={{ followUps: [suggestion({ author: { id: "u2", name: "Ben", image: null } })] }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
   });
 
   it("does not offer anchoring unless asked", () => {
-    render(<HouseholdHistoryPanel onChanged={noop} history={history()} />);
+    render(<Panel />);
     expect(
-      screen.queryByRole("button", { name: "Follow up on this visit" }),
+      screen.queryByRole("button", { name: "Suggest a return visit" }),
     ).not.toBeInTheDocument();
   });
 
@@ -459,10 +552,21 @@ describe("acting on a note", () => {
     apiFetch.mockRejectedValue(
       new ApiRequestError(403, { error: { code: "forbidden", message: "raw" } }),
     );
-    render(<HouseholdHistoryPanel onChanged={noop} history={history({ followUps: [note()] })} />);
+    render(<Panel over={{ followUps: [note()] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Only the person who wrote this note, or an admin, can change it.",
+      "Only the person who wrote this, or an admin, can change it.",
+    );
+  });
+
+  it("explains a refusal outside the note's session", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, { error: { code: "not_on_follow_up_list", message: "raw" } }),
+    );
+    render(<Panel over={{ followUps: [note()] }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You can change this only during a follow-up session that includes its block.",
     );
   });
 });

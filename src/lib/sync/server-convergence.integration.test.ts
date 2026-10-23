@@ -180,7 +180,12 @@ describe("the queue against the real server", () => {
   it("files what it can from a mixed batch and holds the rest with a reason", async () => {
     const owner = await newMember();
     const bens = stored(BEN, 900);
-    await syncVisits(db, [bens.item], BEN, { now: new Date(), toleranceMs: 300_000 });
+    await syncVisits(
+      db,
+      [bens.item],
+      { id: BEN, role: "member" },
+      { now: new Date(), toleranceMs: 300_000 },
+    );
 
     const valid = stored(owner, 1);
     const loose = stored(owner, 2);
@@ -328,7 +333,12 @@ describe("convergence on the newest updatedAt", () => {
         for (let at = 0, c = 0; at < arriving.length; c += 1) {
           const batch = arriving.slice(at, at + (cuts[c % cuts.length] ?? 1));
           at += batch.length;
-          const outcomes = await syncVisits(db, batch.map(toItem), owner, clock);
+          const outcomes = await syncVisits(
+            db,
+            batch.map(toItem),
+            { id: owner, role: "member" },
+            clock,
+          );
           outcomes.forEach((outcome, i) => {
             expect(outcome.status).not.toBe("rejected");
             const version = batch[i];
