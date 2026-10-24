@@ -234,11 +234,12 @@ export async function listSessionHouseholds(
 
 /*
  * Takes a household out of a session, and its block too once no other pick
- * is in it. Refused for the last household (a follow-up session always has
- * one), for one visited in this session (that visit is the session's work),
- * and where its block would leave while holding this session's visits, an
- * admin's off-list ones say: history is never orphaned by a UI action
- * (D-18-3).
+ * is in it. Refused, in this order, as the session page foresees it: a
+ * household never picked (404, before anything about the session), an ended
+ * session, one visited in this session (that visit is the session's work),
+ * the last household (a follow-up session always has one), and where its
+ * block would leave while holding this session's visits, an admin's
+ * off-list ones say: history is never orphaned by a UI action (D-18-3).
  */
 export async function removeSessionHousehold(
   db: Database,
@@ -246,7 +247,7 @@ export async function removeSessionHousehold(
   householdId: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    assertPicksOpen(await lockSession(tx, sessionId));
+    const session = await lockSession(tx, sessionId);
 
     const pick = await tx
       .select({ blockId: households.blockId })
@@ -262,17 +263,7 @@ export async function removeSessionHousehold(
     if (!found) {
       throw new NotFoundError("That household is not in this session.");
     }
-
-    const counted = await tx
-      .select({ total: sql<number>`count(*)::int` })
-      .from(sessionHouseholds)
-      .where(eq(sessionHouseholds.sessionId, sessionId));
-    if (firstOrThrow(counted, "the household count").total <= 1) {
-      throw new ConflictError(
-        "conflict",
-        "A follow-up session needs at least one household, so the last one can't be removed.",
-      );
-    }
+    assertPicksOpen(session);
 
     const knocked = await tx
       .select({ id: visits.id })
@@ -283,6 +274,17 @@ export async function removeSessionHousehold(
       throw new ConflictError(
         "conflict",
         "Someone has recorded a visit here in this session, so it stays in the session.",
+      );
+    }
+
+    const counted = await tx
+      .select({ total: sql<number>`count(*)::int` })
+      .from(sessionHouseholds)
+      .where(eq(sessionHouseholds.sessionId, sessionId));
+    if (firstOrThrow(counted, "the household count").total <= 1) {
+      throw new ConflictError(
+        "conflict",
+        "A follow-up session needs at least one household, so the last one can't be removed.",
       );
     }
 

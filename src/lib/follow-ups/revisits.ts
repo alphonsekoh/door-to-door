@@ -30,10 +30,33 @@ export function revisitState(
   return entry.visitedInSession ? "visited" : "to_visit";
 }
 
+/*
+ * On the offline shell, a household this phone holds a record for in this
+ * session, sent or not, reads visited: the list was read before it was.
+ */
+export function stateOnPhone(
+  entry: RevisitEntry,
+  records: readonly QueuedVisit[],
+  sessionId: string,
+): RevisitState {
+  const state = revisitState(entry);
+  if (state !== "to_visit") return state;
+  const recorded = records.some(
+    (record) =>
+      record.item.sessionId === sessionId &&
+      record.item.blockId === entry.block.id &&
+      normaliseUnitNumber(record.item.unitNumber) === entry.household.unitNumber,
+  );
+  return recorded ? "visited" : "to_visit";
+}
+
 /* Counted as the rows are labelled: a household marked done without a
    knock reads Done, not Visited, and counts as dealt with. */
-export function progress(entries: readonly RevisitEntry[]): string {
-  const dealt = entries.filter((entry) => revisitState(entry) !== "to_visit").length;
+export function progress(
+  entries: readonly RevisitEntry[],
+  stateOf: (entry: RevisitEntry) => RevisitState = revisitState,
+): string {
+  const dealt = entries.filter((entry) => stateOf(entry) !== "to_visit").length;
   return `${String(dealt)} of ${String(entries.length)} visited or done`;
 }
 

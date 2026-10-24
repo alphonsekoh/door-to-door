@@ -4,6 +4,7 @@ import { SessionHouseholds } from "@/components/sessions/session-households";
 import type {
   FollowUp,
   OutingSession,
+  SessionBlock,
   SessionHousehold,
   SessionStatus,
 } from "@/generated/types.gen";
@@ -116,11 +117,24 @@ function server({
   });
 }
 
-const mount = (status: SessionStatus = "active", onChanged = vi.fn(() => Promise.resolve())) => {
+/* A session block as the detail screen reads it, with this session's visits in it. */
+const sessionBlock = (name: string, visitCount: number): SessionBlock => ({
+  block: { id: `b${name}`, name, street: "Test Ave", postalCode: null, createdAt: AT },
+  visitCount,
+  householdCount: visitCount,
+  activeMembers: [],
+});
+
+const mount = (
+  status: SessionStatus = "active",
+  onChanged = vi.fn(() => Promise.resolve()),
+  blocks: SessionBlock[] = [],
+) => {
   const onCounted = vi.fn();
   const view = render(
     <SessionHouseholds
       session={session(status)}
+      blocks={blocks}
       tick={0}
       onChanged={onChanged}
       onCounted={onCounted}
@@ -151,6 +165,24 @@ describe("the households a follow-up session goes back to", () => {
     expect(first).toHaveAttribute("href", "/households/h1");
     expect(first).toHaveTextContent("Mr Tan");
     expect(screen.getByRole("link", { name: /#h2/ })).toHaveTextContent("Name not known");
+  });
+
+  it("says what each visit is for, unless it is off the follow-up list", async () => {
+    server({
+      picks: () =>
+        Promise.resolve({
+          data: [
+            pick("h1", "123"),
+            pick("h2", "123", {
+              notes: [note("h2", { doneAt: "2026-03-28T10:00:00.000Z" })],
+              onList: false,
+            }),
+          ],
+        }),
+    });
+    mount();
+    expect(await screen.findByRole("link", { name: /#h1/ })).toHaveTextContent("Visit h1");
+    expect(screen.getByRole("link", { name: /#h2/ })).not.toHaveTextContent("Visit h2");
   });
 
   it("says where each stands", async () => {
@@ -243,7 +275,13 @@ describe("the households a follow-up session goes back to", () => {
     const { rerender } = mount();
     await screen.findByRole("heading", { name: "Households to revisit (3)" });
     rerender(
-      <SessionHouseholds session={session()} tick={1} onChanged={vi.fn()} onCounted={vi.fn()} />,
+      <SessionHouseholds
+        session={session()}
+        blocks={[]}
+        tick={1}
+        onChanged={vi.fn()}
+        onCounted={vi.fn()}
+      />,
     );
     await waitFor(() => {
       expect(reads()).toBe(2);
@@ -377,6 +415,23 @@ describe("taking a household out", () => {
     if (row === null) throw new Error("expected a row");
     expect(within(row).queryByRole("button")).toBeNull();
     expect(row).toHaveTextContent("Visited in this session, so it stays.");
+  });
+
+  it("is not offered for the last pick in a block holding this session's visits", async () => {
+    // An admin recorded off the list in Blk 125, at a door nobody picked.
+    mount(
+      "active",
+      vi.fn(() => Promise.resolve()),
+      [sessionBlock("123", 0), sessionBlock("125", 1)],
+    );
+    const row = (await screen.findByRole("link", { name: /#h3/ })).closest("li");
+    if (row === null) throw new Error("expected a row");
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(row).toHaveTextContent("Its block has visits recorded in this session, so it stays.");
+    // Blk 123 keeps another pick, so either of its two may go.
+    expect(
+      screen.getByRole("button", { name: "Remove Blk 123 · #h1 from this session" }),
+    ).toBeVisible();
   });
 
   it("is not offered for the last household, and says why", async () => {

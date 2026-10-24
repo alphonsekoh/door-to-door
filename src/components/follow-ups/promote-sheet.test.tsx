@@ -260,6 +260,27 @@ describe("PromoteSheet", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("says why the session turned the door away, and offers Done, not a retry", async () => {
+    const ENDED =
+      "This session has ended, so its households can no longer change. Reopen it first.";
+    server({
+      drafts: [SESSION],
+      addToSession: () =>
+        Promise.reject(new ApiRequestError(409, { error: { code: "conflict", message: ENDED } })),
+    });
+    const onPromoted = vi.fn();
+    render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={onPromoted} />);
+    await sheet().findByRole("checkbox", { name: /Also add to/ });
+    fireEvent.click(addButton());
+    expect(await sheet().findByRole("alert")).toHaveTextContent(
+      `Added to the follow-up list, but not to Saturday revisits. ${ENDED}`,
+    );
+    expect(sheet().queryByRole("button", { name: "Add to Saturday revisits" })).toBeNull();
+    fireEvent.click(sheet().getByRole("button", { name: "Done" }));
+    expect(onPromoted).toHaveBeenCalledWith("Added to the follow-up list.");
+    expect(writes().map(([path]) => path)).toEqual(["/follow-ups/s1", "/sessions/fu1/households"]);
+  });
+
   it("is disabled offline and says why", async () => {
     useOnline.mockReturnValue(false);
     render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);

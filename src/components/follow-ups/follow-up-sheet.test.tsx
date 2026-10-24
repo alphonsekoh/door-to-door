@@ -344,6 +344,8 @@ describe("an admin adding to the follow-up list", () => {
   });
 
   describe("when the door is listed but not added to the session", () => {
+    const ENDED =
+      "This session has ended, so its households can no longer change. Reopen it first.";
     const failOnce = () => {
       asAdmin();
       let first = true;
@@ -397,6 +399,35 @@ describe("an admin adding to the follow-up list", () => {
       });
       expect(sheet().getByRole("alert")).toHaveTextContent("but not to Saturday revisits");
       expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it("says why the session turned the door away, and offers Done, not a retry", async () => {
+      // The session ended between the sheet's lookup and the add.
+      asAdmin();
+      let refused = false;
+      server({
+        running: [SESSION],
+        addToSession: () => {
+          if (!refused) {
+            refused = true;
+            return Promise.reject(new TypeError("Failed to fetch"));
+          }
+          return Promise.reject(
+            new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+          );
+        },
+      });
+      const onSaved = vi.fn();
+      await listOnce(onSaved);
+      fireEvent.click(sheet().getByRole("button", { name: "Add to Saturday revisits" }));
+      await waitFor(() => {
+        expect(sheet().getByRole("alert")).toHaveTextContent(
+          `Added to the follow-up list, but not to Saturday revisits. ${ENDED}`,
+        );
+      });
+      expect(sheet().queryByRole("button", { name: "Add to Saturday revisits" })).toBeNull();
+      fireEvent.click(sheet().getByRole("button", { name: "Done" }));
+      expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list.");
     });
 
     it("closes without asking, since the note is saved", async () => {

@@ -2,12 +2,13 @@
 
 import { useRef, useState } from "react";
 import { AlsoAddRow, useAlsoAdd } from "@/components/follow-ups/also-add";
-import type { FollowUp, OutingSession } from "@/generated/types.gen";
+import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import {
   ADDED_TO_LIST,
-  addToSession,
-  addedMessage,
+  type AddOutcome,
+  type HalfAdded,
+  intoSession,
   listThenAdd,
   partialMessage,
 } from "@/lib/follow-ups/add-to-list";
@@ -113,9 +114,7 @@ export function FollowUpSheet({
   const also = useAlsoAdd(isAdmin && mode.kind === "create");
   /* Listed, but the session step failed: the note is saved, so only that
      step is retried, and closing loses nothing. */
-  const [partial, setPartial] = useState<{ target: OutingSession; householdId: string } | null>(
-    null,
-  );
+  const [partial, setPartial] = useState<(HalfAdded & { householdId: string }) | null>(null);
   const [text, setText] = useState(editing?.note ?? "");
   const [day, setDay] = useState(instantToDueDay(editing?.dueDate ?? null));
   const [busy, setBusy] = useState(false);
@@ -179,12 +178,9 @@ export function FollowUpSheet({
         });
         return;
       }
-      void send(async () => {
-        const outcome = await listThenAdd(create, mode.householdId, also.chosen);
-        if (outcome.status === "done") return outcome.message;
-        setPartial({ target: outcome.target, householdId: mode.householdId });
-        return null;
-      });
+      void send(async () =>
+        settle(await listThenAdd(create, mode.householdId, also.chosen), mode.householdId),
+      );
       return;
     }
     const changes = diffFollowUp(mode.note, text, day);
@@ -201,17 +197,16 @@ export function FollowUpSheet({
     });
   }
 
-  /* Only the session step: the note is already on the list. A second
-     failure leaves the alert as it is. */
-  function retry({ target, householdId }: { target: OutingSession; householdId: string }): void {
-    void send(async () => {
-      try {
-        await addToSession(target, householdId);
-      } catch {
-        return null;
-      }
-      return addedMessage(target);
-    });
+  /* What to say once done, or the half done, kept open to say why. */
+  function settle(outcome: AddOutcome, householdId: string): string | null {
+    if (outcome.status === "done") return outcome.message;
+    setPartial({ ...outcome.half, householdId });
+    return null;
+  }
+
+  /* Only the session step: the note is already on the list. */
+  function retry({ target, householdId }: HalfAdded & { householdId: string }): void {
+    void send(async () => settle(await intoSession(target, householdId), householdId));
   }
 
   const unit = mode.kind === "create" ? mode.unitNumber : mode.note.unitNumber;
@@ -250,7 +245,7 @@ export function FollowUpSheet({
       )}
       {partial === null ? null : (
         <p role="alert" className="mt-3 notice-danger">
-          {partialMessage(partial.target)}
+          {partialMessage(partial)}
         </p>
       )}
 
@@ -309,7 +304,7 @@ export function FollowUpSheet({
             {FOLLOW_UP_OFFLINE_NOTE}
           </p>
         )}
-        {partial !== null ? (
+        {partial === null ? null : partial.refused === null ? (
           <button
             type="button"
             disabled={busy || !online}
@@ -321,6 +316,17 @@ export function FollowUpSheet({
             {busy ? "Saving…" : `Add to ${partial.target.title}`}
           </button>
         ) : (
+          <button
+            type="button"
+            onClick={() => {
+              onSaved(ADDED_TO_LIST);
+            }}
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+          >
+            Done
+          </button>
+        )}
+        {partial !== null ? null : (
           <button
             type="button"
             disabled={busy || !online || also.looking}

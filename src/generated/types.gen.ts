@@ -1555,14 +1555,16 @@ export type RemoveSessionHouseholdErrors = {
      */
     403: Error;
     /**
-     * The session does not exist, or the household is not picked for it.
+     * The session does not exist, or the household is not picked for
+     * it, which is every household for a door-to-door session.
+     *
      */
     404: Error;
     /**
-     * `conflict`: a regular or ended session, the session's last
-     * household, or a household visited in this session. `block_in_use`:
-     * its block holds visits recorded in this session and no other
-     * picked household.
+     * `conflict`: an ended session, a household visited in this
+     * session, or the session's last household. `block_in_use`: its
+     * block holds visits recorded in this session and no other picked
+     * household.
      *
      */
     409: Error;

@@ -28,6 +28,8 @@ type Props = {
   active?: ActiveSession | null;
   initialUnit?: string;
   guessNext?: boolean;
+  /* Said above the units, where they are not all of the block's. */
+  unitsNote?: string | null;
 };
 
 /* A block's two views, the form and its units, for the block screen and the
@@ -46,6 +48,7 @@ export function BlockViews({
   active = null,
   initialUnit = "",
   guessNext = true,
+  unitsNote = null,
 }: Props) {
   const { inFlight } = useSyncQueue();
   const { isAdmin } = useRole();
@@ -122,6 +125,9 @@ export function BlockViews({
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
+          {unitsNote === null ? null : (
+            <p className="mb-2 text-caption text-foreground-muted">{unitsNote}</p>
+          )}
           <UnitList
             rows={rows}
             inFlight={inFlight}

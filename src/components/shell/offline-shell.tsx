@@ -7,17 +7,21 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ReloadWhenOnline } from "@/components/pwa/reload-when-online";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { goTo } from "@/lib/session/navigate";
+import { ShellRevisits } from "@/components/shell/shell-revisits";
 import {
-  type LocalBlock,
   type LocalCopy,
+  type ShellBlock,
   type UsableCopy,
   offlineRows,
   replaceRevisits,
+  shellBlocks,
+  shellList,
   usableCopy,
 } from "@/lib/offline/local-copy";
 import { loadLocalCopy, updateLocalCopy } from "@/lib/offline/local-copy-store";
 import { readRevisits } from "@/lib/offline/read-revisits";
 import { shellState } from "@/lib/offline/shell-state";
+import { shellTarget } from "@/lib/offline/shell-target";
 import { type SignedIn, fetchSignedIn } from "@/lib/sync/signed-in";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { RevisitEntry } from "@/generated/types.gen";
@@ -48,10 +52,25 @@ type Phase =
 
 const NO_TEAM: readonly string[] = [];
 
+/* A block open on the shell, and the unit its form starts with. */
+type Open = { block: ShellBlock; unit: string };
+
 /* The address the fallback was shown at is where the member was going. */
 function returnTarget(): string {
   const { pathname, search } = window.location;
   return pathname === "/offline" ? "/" : pathname + search;
+}
+
+/*
+ * That address's block, opened as the member continues, with the unit a
+ * household on the follow-up list filled in: they were on their way there.
+ * Null when it names no block the shell can open.
+ */
+function openingFor(copy: UsableCopy): Open | null {
+  const target = shellTarget(window.location.pathname, window.location.search);
+  if (target === null) return null;
+  const block = shellBlocks(copy).find((entry) => entry.block.id === target.blockId);
+  return block === undefined ? null : { block, unit: target.unit };
 }
 
 /*
@@ -135,7 +154,17 @@ export function OfflineShell({
 }) {
   const sync = useSyncQueue();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
-  const [blockId, setBlockId] = useState<string | null>(null);
+  /* Held whole, not by id: a list read again must not close the form a
+     member is typing in when it drops their block. */
+  const [open, setOpen] = useState<Open | null>(null);
+  /*
+   * A follow-up session's list, from the copy as the member continues, then
+   * as read again once the server can answer, as the block screen does: when
+   * signal comes back, a record gets through, the server holds one as off
+   * the list (so a unit an admin removed stops being offered), or the member
+   * comes back to the app. A failed read keeps the list shown.
+   */
+  const [revisits, setRevisits] = useState<RevisitEntry[] | null>(null);
   const [dirty, setDirty] = useState(false);
   /* What to do once the member agrees to drop what they typed. */
   const [confirming, setConfirming] = useState<{ run: () => void } | null>(null);
@@ -172,10 +201,7 @@ export function OfflineShell({
     else run();
   };
 
-  const picked =
-    phase.kind === "recording"
-      ? phase.copy.blocks.find((entry) => entry.block.id === blockId)
-      : undefined;
+  const picked = phase.kind === "recording" ? open?.block : undefined;
 
   return (
     <DockHost className="space-y-5">
@@ -192,10 +218,10 @@ export function OfflineShell({
           title={`Blk ${picked.block.name}`}
           subtitle={picked.block.street}
           back={{
-            label: "All blocks",
+            label: revisits === null ? "All blocks" : "The list",
             onBack: () => {
               unlessDirty(() => {
-                setBlockId(null);
+                setOpen(null);
               });
             },
           }}
@@ -263,6 +289,8 @@ export function OfflineShell({
             type="button"
             onClick={() => {
               shellState.continueAs(phase.copy.member.id);
+              setOpen(openingFor(phase.copy));
+              setRevisits(phase.copy.revisits);
               setPhase({ kind: "recording", copy: phase.copy });
             }}
             className="min-h-14 w-full btn-primary rounded-xl px-4 text-title font-semibold"
@@ -278,13 +306,15 @@ export function OfflineShell({
       {phase.kind === "recording" ? (
         <Recording
           copy={phase.copy}
-          picked={picked}
+          open={open}
+          revisits={revisits}
+          onRevisits={setRevisits}
           records={sync.records}
           syncedVersion={sync.syncedVersion}
           reachable={reachable}
           readList={readList}
           queueOpen={sync.enqueue !== null}
-          onPick={setBlockId}
+          onOpen={setOpen}
           onDirtyChange={setDirty}
         />
       ) : null}
@@ -312,23 +342,27 @@ export function OfflineShell({
 
 function Recording({
   copy,
-  picked,
+  open,
+  revisits,
+  onRevisits,
   records,
   syncedVersion,
   reachable,
   readList,
   queueOpen,
-  onPick,
+  onOpen,
   onDirtyChange,
 }: {
   copy: UsableCopy;
-  picked: LocalBlock | undefined;
+  open: Open | null;
+  revisits: RevisitEntry[] | null;
+  onRevisits: (list: RevisitEntry[]) => void;
   records: ReturnType<typeof useSyncQueue>["records"];
   syncedVersion: number;
   reachable: boolean;
   readList: (outingId: string) => Promise<RevisitEntry[] | null>;
   queueOpen: boolean;
-  onPick: (id: string) => void;
+  onOpen: (open: Open) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const outingId = copy.outing.id;
@@ -339,24 +373,17 @@ function Recording({
     [outingId],
   );
 
-  /*
-   * A follow-up session's list starts as the copy saved it and is read again
-   * once the server can answer, as the block screen does: when signal comes
-   * back, a record gets through, the server holds one as off the list (so a
-   * unit an admin removed stops being offered), or the member comes back to
-   * the app. A failed read keeps the list shown; only the newest answer lands.
-   */
-  const [revisits, setRevisits] = useState(copy.revisits);
+  /* Only the newest answer lands. */
   const generation = useRef(0);
   const recheck = useCallback(async (): Promise<RevisitEntry[] | null> => {
     const mine = ++generation.current;
     const list = await readList(outingId);
     if (list !== null && mine === generation.current) {
-      setRevisits(list);
+      onRevisits(list);
       updateLocalCopy((current) => replaceRevisits(current, outingId, list)).catch(() => undefined);
     }
     return list;
-  }, [readList, outingId]);
+  }, [readList, outingId, onRevisits]);
 
   /* A record held or sent proves the server answered, sooner than the
      reconnect row may say so. */
@@ -385,12 +412,13 @@ function Recording({
   /* A block open is the form alone, under its own title (above); the sync
      bar counts what is waiting meanwhile. With no follow-up list saved or
      read, the form says it could not check. */
-  if (picked !== undefined) {
+  if (open !== null) {
+    const { block, unit } = open;
     return (
       <BlockViews
-        blockId={picked.block.id}
-        known={picked.households}
-        rows={offlineRows(picked, records, outingId)}
+        blockId={block.block.id}
+        known={block.households}
+        rows={offlineRows(block, records, outingId)}
         sessionId={outingId}
         loadSession={loadSession}
         onRecorded={() => undefined}
@@ -398,9 +426,19 @@ function Recording({
         offline
         onDirtyChange={onDirtyChange}
         followUp={followUp ? { revisits, recheck } : null}
+        initialUnit={unit}
+        unitsNote={
+          block.savedAt === null
+            ? "This block was not opened with signal, so only its households on the list are saved on this phone."
+            : null
+        }
       />
     );
   }
+
+  const openBlock = (block: ShellBlock, unit: string) => {
+    onOpen({ block, unit });
+  };
 
   return (
     <>
@@ -412,24 +450,45 @@ function Recording({
         </p>
       </div>
 
-      <ul className="space-y-2" aria-label="Blocks saved on this phone">
-        {copy.blocks.map((entry) => (
-          <li key={entry.block.id}>
-            <button
-              type="button"
-              onClick={() => {
-                onPick(entry.block.id);
-              }}
-              className="flex min-h-16 w-full press flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
-            >
-              <span className="block text-title font-semibold">Blk {entry.block.name}</span>
-              <span className="block truncate text-caption text-foreground-muted">
-                {entry.block.street}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
+      {revisits === null ? (
+        <SavedBlocks blocks={copy.blocks} onOpen={openBlock} />
+      ) : (
+        <ShellRevisits
+          groups={shellList(copy.blocks, revisits)}
+          records={records}
+          sessionId={outingId}
+          onOpen={openBlock}
+        />
+      )}
     </>
+  );
+}
+
+function SavedBlocks({
+  blocks,
+  onOpen,
+}: {
+  blocks: readonly ShellBlock[];
+  onOpen: (block: ShellBlock, unit: string) => void;
+}) {
+  return (
+    <ul className="space-y-2" aria-label="Blocks saved on this phone">
+      {blocks.map((entry) => (
+        <li key={entry.block.id}>
+          <button
+            type="button"
+            onClick={() => {
+              onOpen(entry, "");
+            }}
+            className="flex min-h-16 w-full press flex-col justify-center rounded-xl border border-border bg-surface px-4 py-3 text-left"
+          >
+            <span className="block text-title font-semibold">Blk {entry.block.name}</span>
+            <span className="block truncate text-caption text-foreground-muted">
+              {entry.block.street}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

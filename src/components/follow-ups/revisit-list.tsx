@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OverdueBadge } from "@/components/follow-ups/follow-up-item";
+import { RevisitPill } from "@/components/follow-ups/revisit-pill";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { InterestChip } from "@/components/ui/interest-chip";
 import { UnitNumber } from "@/components/ui/unit-number";
@@ -134,11 +135,6 @@ export function RevisitList({
   );
 }
 
-const PILL: Record<"visited" | "done", { label: string; className: string }> = {
-  visited: { label: "Visited", className: "border-primary/60 bg-primary/10" },
-  done: { label: "Done", className: "border-interest-high bg-interest-high/20" },
-};
-
 function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () => void }) {
   const online = useOnline();
   const [now] = useState(() => new Date());
@@ -190,13 +186,7 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
           {entry.latestVisit === null ? null : (
             <InterestChip level={entry.latestVisit.interestLevel} />
           )}
-          {state === "to_visit" ? null : (
-            <span
-              className={`shrink-0 rounded-md border px-2 py-0.5 text-caption font-medium ${PILL[state].className}`}
-            >
-              {PILL[state].label}
-            </span>
-          )}
+          <RevisitPill state={state} />
         </span>
         <span className="block text-caption text-foreground-muted">
           {household.name ?? "Name not known"}

@@ -9,6 +9,7 @@ import {
   offlineRows,
   readCopy,
   replaceRevisits,
+  shellBlocks,
   usableCopy,
 } from "@/lib/offline/local-copy";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -333,9 +334,67 @@ describe("replaceRevisits", () => {
   });
 });
 
+describe("shellBlocks", () => {
+  it("is the blocks opened, with no list read", () => {
+    expect(shellBlocks(copyWithBlock())).toEqual(copyWithBlock().blocks);
+  });
+
+  it("is the list's blocks, a block never opened carrying its listed households alone", () => {
+    // The list was read on the session screen; no block was opened.
+    const [only] = shellBlocks(noteRevisits(null, ALICE, active(), revisits(), NOW));
+    const [listed] = revisits();
+    expect(only).toEqual({
+      block: block(BLK_123, "123"),
+      households: [
+        {
+          household: listed?.household,
+          visitCount: 1,
+          latestVisit: listed?.latestVisit,
+          outstandingFollowUps: 1,
+        },
+      ],
+      savedAt: null,
+    });
+  });
+
+  it("counts no visit for a listed household never visited, and only its owed notes", () => {
+    const [listed] = revisits();
+    if (listed === undefined) throw new Error("expected an entry");
+    const note = listed.notes[0];
+    if (note === undefined) throw new Error("expected a note");
+    const fresh = { ...listed, latestVisit: null, notes: [note, { ...note, doneAt: STAMP }] };
+    const [only] = shellBlocks({ blocks: [], revisits: [fresh] });
+    expect(only?.households.map((h) => [h.visitCount, h.outstandingFollowUps])).toEqual([[0, 1]]);
+  });
+
+  it("uses a block opened with signal whole, and leaves out one no longer on the list", () => {
+    const opened = noteBlock(
+      noteRevisits(null, ALICE, active(), revisits(), NOW),
+      ALICE,
+      active(),
+      BLK_123,
+      [household("#05-01"), household("#05-02")],
+      NOW,
+    );
+    const both = noteBlock(opened, ALICE, active(), BLK_456, [household("#01-01", BLK_456)], NOW);
+    if (both === null) throw new Error("expected a copy");
+    expect(shellBlocks(both)).toEqual([both.blocks[0]]);
+  });
+
+  it("offers nothing for an empty list", () => {
+    expect(shellBlocks({ ...copyWithBlock(), revisits: [] })).toEqual([]);
+  });
+});
+
 describe("usableCopy", () => {
   it("is the copy while it has an outing and a block", () => {
     const copy = copyWithBlock();
+    expect(usableCopy(copy, NOW)).toEqual(copy);
+  });
+
+  it("is the copy with a follow-up list read and no block opened", () => {
+    // The stairwell: the list was read on the session screen, then the signal went.
+    const copy = noteRevisits(null, ALICE, active(), revisits(), NOW);
     expect(usableCopy(copy, NOW)).toEqual(copy);
   });
 
@@ -343,6 +402,7 @@ describe("usableCopy", () => {
     ["no copy", null],
     ["no outing", noteOuting(copyWithBlock(), ALICE, null, NOW)],
     ["no block opened", noteOuting(null, ALICE, active(), NOW)],
+    ["an empty follow-up list", noteRevisits(copyWithBlock(), ALICE, active(), [], NOW)],
   ])("is null with %s", (_, copy) => {
     expect(usableCopy(copy, NOW)).toBeNull();
   });
@@ -399,5 +459,28 @@ describe("offlineRows", () => {
     const unknown = queued("#05-02", NOW + 1, { state: "synced", syncedAt: null });
     const rows = offlineRows(saved, [unknown], TONIGHT);
     expect(rows.map((r) => r.household.unitNumber)).toEqual(["#05-01"]);
+  });
+
+  it("lays every record sent in this session over a block known only from the list", () => {
+    const [listedOnly] = shellBlocks(noteRevisits(null, ALICE, active(), revisits(), NOW));
+    if (listedOnly === undefined) throw new Error("expected a block");
+    const rows = offlineRows(
+      listedOnly,
+      [
+        // Sent long before the list was read: its units were never read to hold it.
+        queued("#05-01", NOW - 9, { state: "synced", syncedAt: NOW - 8 }),
+        queued("#05-03", NOW - 9, { state: "synced", syncedAt: null }),
+        // Another session's, from last week.
+        {
+          ...queued("#05-04", NOW - 9, { state: "synced", syncedAt: NOW - 8 }),
+          item: { ...queued("#05-04", NOW - 9).item, sessionId: LAST_WEEK },
+        },
+      ],
+      TONIGHT,
+    );
+    expect(rows.map((r) => [r.household.unitNumber, r.pending?.state])).toEqual([
+      ["#05-01", "synced"],
+      ["#05-03", "synced"],
+    ]);
   });
 });

@@ -260,7 +260,13 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       </div>
 
       {session.kind === "follow_up" ? (
-        <SessionHouseholds session={session} tick={tick} onChanged={load} onCounted={setOnList} />
+        <SessionHouseholds
+          session={session}
+          blocks={blocks}
+          tick={tick}
+          onChanged={load}
+          onCounted={setOnList}
+        />
       ) : null}
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />

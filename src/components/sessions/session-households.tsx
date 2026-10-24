@@ -8,6 +8,7 @@ import { UnitNumber } from "@/components/ui/unit-number";
 import type {
   FollowUp,
   OutingSession,
+  SessionBlock,
   SessionHousehold,
   SessionHouseholdList,
 } from "@/generated/types.gen";
@@ -37,11 +38,15 @@ const failureText = (error: unknown, fallback: string) =>
  */
 export function SessionHouseholds({
   session,
+  blocks,
   tick,
   onChanged,
   onCounted,
 }: {
   session: OutingSession;
+  /* The session's blocks as the detail screen read them, with this
+     session's visits in each: a block holding some keeps its last pick. */
+  blocks: readonly SessionBlock[];
   /* Bumped by the detail screen's poll, so the list re-reads with it. */
   tick: number;
   /* Blocks follow households, so the screen re-reads them too. */
@@ -170,6 +175,7 @@ export function SessionHouseholds({
                   entry={entry}
                   entries={entries}
                   session={session}
+                  blocks={blocks}
                   onRemove={() => {
                     setRemoving(entry);
                   }}
@@ -220,16 +226,18 @@ function HouseholdRow({
   entry,
   entries,
   session,
+  blocks,
   onRemove,
 }: {
   entry: SessionHousehold;
   entries: readonly SessionHousehold[];
   session: OutingSession;
+  blocks: readonly SessionBlock[];
   onRemove: () => void;
 }) {
   const state = householdState(entry);
   const label = stateLabel(state, session.status);
-  const blocker = removeBlocker(entry, entries, session.status);
+  const blocker = removeBlocker(entry, entries, session.status, blocks);
   const door = `Blk ${entry.block.name} · ${entry.household.unitNumber}`;
 
   return (
@@ -246,6 +254,15 @@ function HouseholdRow({
           <span className="block truncate text-caption text-foreground-muted">
             {entry.household.name ?? "Name not known"}
           </span>
+          {/* What the visit is for, as the picker said: owed notes come first.
+              Off the follow-up list, what is left is no longer the reason. */}
+          {state === "off_list"
+            ? null
+            : entry.notes.slice(0, 1).map((note) => (
+                <span key={note.id} className="line-clamp-2 block text-body break-words">
+                  {note.note}
+                </span>
+              ))}
         </span>
         {label === null ? null : (
           <span className="shrink-0 rounded-md border border-border-strong px-2 py-0.5 text-caption font-medium">

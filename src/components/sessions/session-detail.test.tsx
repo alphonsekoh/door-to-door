@@ -15,18 +15,21 @@ vi.mock("@/lib/api-client", async () => {
 vi.mock("@/components/sessions/session-households", () => ({
   SessionHouseholds: ({
     session,
+    blocks,
     tick,
     onChanged,
     onCounted,
   }: {
     session: OutingSession;
+    blocks: readonly SessionBlock[];
     tick: number;
     onChanged: () => Promise<void>;
     onCounted: (onList: number) => void;
   }) => (
     <>
       <button type="button" onClick={() => void onChanged()}>
-        Households panel: {session.status}, read {String(tick)}
+        Households panel: {session.status}, read {String(tick)}, blocks{" "}
+        {blocks.map((entry) => `${entry.block.name} (${String(entry.visitCount)})`).join(", ")}
       </button>
       {[0, 2].map((count) => (
         <button
@@ -391,7 +394,7 @@ describe("a follow-up session", () => {
   function serveKind(kind: "regular" | "follow_up") {
     apiFetch.mockImplementation((path: string) =>
       path.endsWith("/blocks")
-        ? Promise.resolve([sessionBlock("b1", "123")])
+        ? Promise.resolve([sessionBlock("b1", "123", { visitCount: 2 })])
         : Promise.resolve({ ...session("draft"), kind }),
     );
   }
@@ -403,10 +406,13 @@ describe("a follow-up session", () => {
     expect(screen.getByText("Members can record only households on its list.")).toBeVisible();
   });
 
-  it("shows its households to revisit", async () => {
+  it("shows its households to revisit, fed the blocks and their visits", async () => {
+    // A block holding this session's visits keeps its last pick (block_in_use).
     serveKind("follow_up");
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByText(/Households panel: draft, read 0/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Households panel: draft, read 0, blocks 123 \(2\)/),
+    ).toBeInTheDocument();
   });
 
   it("reads its blocks again once the households change, since blocks follow them", async () => {

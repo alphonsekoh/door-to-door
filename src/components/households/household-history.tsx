@@ -96,7 +96,13 @@ export function HouseholdHistoryPanel({
       aria-label="What we know about this unit"
       className="rounded-xl border border-border bg-surface-muted p-4"
     >
-      <p className="text-body font-semibold">{household.name ?? "Nobody has answered here yet"}</p>
+      {/* A door that has answered without giving a name is not one nobody answered. */}
+      <p className="text-body font-semibold">
+        {household.name ??
+          (visits.some((visit) => visit.interestLevel !== "no_response")
+            ? "Name not known"
+            : "Nobody has answered here yet")}
+      </p>
       {household.contact === null ? null : (
         <p className="text-caption text-foreground-muted">{household.contact}</p>
       )}

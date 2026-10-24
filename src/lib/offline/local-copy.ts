@@ -7,6 +7,7 @@ import type {
   RevisitEntry,
 } from "@/generated/types.gen";
 import { zBlock, zHouseholdSummary, zOutingSession, zRevisitEntry } from "@/generated/zod.gen";
+import { groupByBlock } from "@/lib/follow-ups/revisits";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { type UnitRow, overlayQueued } from "@/lib/sync/unit-overlay";
 
@@ -154,11 +155,59 @@ export function noteBlock(
   };
 }
 
+/*
+ * A block the shell can open: as a block screen saved it, or, for a block
+ * on a follow-up session's list that was never opened with signal, only its
+ * households on the list, taken from the list (`savedAt` null, as its units
+ * were never read). Those are the only units a member may record there.
+ */
+export type ShellBlock = { block: Block; households: HouseholdSummary[]; savedAt: number | null };
+
+export type ShellGroup = { block: ShellBlock; entries: RevisitEntry[] };
+
+/*
+ * A follow-up session's list as the shell offers it: each of its blocks, in
+ * its order, with its households, whether or not the block was opened. The
+ * list is what a member taps to get to one.
+ */
+export function shellList(blocks: readonly LocalBlock[], revisits: RevisitEntry[]): ShellGroup[] {
+  return groupByBlock(revisits).map((group) => ({
+    block: blocks.find((saved) => saved.block.id === group.block.id) ?? {
+      block: group.block,
+      households: group.entries.map(listedSummary),
+      savedAt: null,
+    },
+    entries: group.entries,
+  }));
+}
+
+/*
+ * The blocks the shell offers: those opened, or, with a follow-up session's
+ * list saved, the list's alone, since a block saved but no longer on the
+ * list would refuse every unit.
+ */
+export function shellBlocks(copy: Pick<LocalCopy, "blocks" | "revisits">): ShellBlock[] {
+  if (copy.revisits === null) return copy.blocks;
+  return shellList(copy.blocks, copy.revisits).map((group) => group.block);
+}
+
+/* A household on the list, shaped as a block's units are. The list has no
+   visit count, and nothing on the shell reads one: at least one once a
+   visit is known. */
+function listedSummary(entry: RevisitEntry): HouseholdSummary {
+  return {
+    household: entry.household,
+    visitCount: entry.latestVisit === null ? 0 : 1,
+    latestVisit: entry.latestVisit,
+    outstandingFollowUps: entry.notes.filter((note) => note.doneAt === null).length,
+  };
+}
+
 /* Null when there is nothing the shell can record with. */
 export function usableCopy(copy: LocalCopy | null, now: number): UsableCopy | null {
   if (copy === null) return null;
   const { outing } = copy;
-  if (outing === null || copy.blocks.length === 0) return null;
+  if (outing === null || shellBlocks(copy).length === 0) return null;
   return now - copy.savedAt > LOCAL_COPY_TTL_MS ? null : { ...copy, outing };
 }
 
@@ -168,17 +217,22 @@ export function usableCopy(copy: LocalCopy | null, now: number): UsableCopy | nu
  * only laying unsent records over the server's rows. Records sent after
  * the copy was taken stay listed, and say so (D-77-13). Sent, not queued:
  * a record queued before a re-read but sent after it is not in that copy.
+ * A block known only from the list was never read whole, so every record
+ * this phone sent in this session stays laid over it.
  */
 export function offlineRows(
-  block: LocalBlock,
+  block: ShellBlock,
   records: readonly QueuedVisit[],
   sessionId: string | null,
 ): UnitRow[] {
+  const { savedAt } = block;
   return overlayQueued(
     block.households,
     records,
     block.block.id,
     sessionId,
-    (record) => record.state !== "synced" || (record.syncedAt ?? 0) > block.savedAt,
+    (record) =>
+      record.state !== "synced" ||
+      (savedAt === null ? record.item.sessionId === sessionId : (record.syncedAt ?? 0) > savedAt),
   );
 }

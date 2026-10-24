@@ -573,50 +573,55 @@ describe("the reconnect row", () => {
   });
 });
 
+const followUp: ActiveSession = { ...active, session: { ...active.session, kind: "follow_up" } };
+
+/* A household on the follow-up list, in Blk 123 unless another is named. */
+function onTheList(
+  unitNumber = "#05-01",
+  blockId = BLK_123,
+  note = "Bring the booklet",
+  name: string | null = "Mrs Lim",
+): RevisitEntry {
+  const id = `0190a000-0000-7000-8000-${unitNumber.replace(/\D/g, "").padStart(12, "0")}`;
+  const block = active.blocks.find((entry) => entry.block.id === blockId)?.block;
+  if (block === undefined) throw new Error("expected a block");
+  return {
+    household: { ...household.household, id, blockId, unitNumber, name },
+    block,
+    notes: [
+      {
+        id: `${id.slice(0, -2)}f1`,
+        householdId: id,
+        blockId,
+        blockName: block.name,
+        unitNumber,
+        visitId: null,
+        status: "listed",
+        author: { id: ALICE.id, name: "Admin", image: null },
+        note,
+        dueDate: null,
+        doneAt: null,
+        doneBy: null,
+        listedAt: STAMP,
+        listedBy: null,
+        deletedAt: null,
+        deletedBy: null,
+        deleteReason: null,
+        waitingSuggestionBy: null,
+        createdAt: STAMP,
+      },
+    ],
+    latestVisit: null,
+    visitedInSession: false,
+  };
+}
+
 describe("OfflineShell, in a follow-up session", () => {
-  const followUp: ActiveSession = { ...active, session: { ...active.session, kind: "follow_up" } };
   const followUpCopy = (withList: boolean): LocalCopy => {
     const one = noteBlock(null, ALICE, followUp, BLK_123, [household], NOW);
-    const saved = one?.blocks[0];
-    if (one === null || saved === undefined) throw new Error("expected a copy");
+    if (one === null) throw new Error("expected a copy");
     if (!withList) return one;
-    return noteRevisits(
-      one,
-      ALICE,
-      followUp,
-      [
-        {
-          household: household.household,
-          block: saved.block,
-          notes: [
-            {
-              id: "0190a000-0000-7000-8000-0000000000f1",
-              householdId: household.household.id,
-              blockId: BLK_123,
-              blockName: "123",
-              unitNumber: "#05-01",
-              visitId: null,
-              status: "listed",
-              author: { id: ALICE.id, name: "Admin", image: null },
-              note: "Bring the booklet",
-              dueDate: null,
-              doneAt: null,
-              doneBy: null,
-              listedAt: STAMP,
-              listedBy: null,
-              deletedAt: null,
-              deletedBy: null,
-              deleteReason: null,
-              waitingSuggestionBy: null,
-              createdAt: STAMP,
-            },
-          ],
-          latestVisit: null,
-          visitedInSession: false,
-        },
-      ],
-      NOW,
-    );
+    return noteRevisits(one, ALICE, followUp, [onTheList()], NOW);
   };
 
   it("offers the units on the list it saved, and refuses one that is not", async () => {
@@ -659,8 +664,15 @@ describe("OfflineShell, in a follow-up session", () => {
   });
 
   it("reads the list again once the server answers, and stops offering a unit taken off it", async () => {
-    mount({ copy: followUpCopy(true), readList: () => Promise.resolve([]) });
+    // The server answers once the block is open: with the list empty, the
+    // home would offer no block to open.
+    let answer: RevisitEntry[] | null = null;
+    mount({ copy: followUpCopy(true), readList: () => Promise.resolve(answer) });
     await openBlock("123");
+    answer = [];
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
     await waitFor(() => {
       expect(chips()).not.toBeInTheDocument();
     });
@@ -757,5 +769,162 @@ describe("OfflineShell, in a follow-up session", () => {
     });
     expect(readList).not.toHaveBeenCalled();
     expect(screen.queryByText(/Only units on the list/)).toBeNull();
+  });
+});
+
+/*
+ * The stairwell: a member read the list on the session screen with signal,
+ * then tapped a household in a block they had never opened, with none.
+ */
+describe("OfflineShell, from a follow-up session's list", () => {
+  const BLK_456_UNIT = "#11-90";
+  /* #05-01 answered last week; #11-90 never gave a name. */
+  const answered: RevisitEntry = {
+    ...onTheList(),
+    latestVisit: {
+      id: "0190a000-0000-7000-8000-0000000000e1",
+      householdId: household.household.id,
+      sessionId: "0190a000-0000-7000-8000-0000000000dd",
+      member: { id: ALICE.id, name: "Alice Tan", image: null },
+      team: null,
+      interestLevel: "medium",
+      description: "",
+      clientCreatedAt: STAMP,
+      createdAt: STAMP,
+      updatedAt: STAMP,
+    },
+  };
+  const listOnly = (
+    entries = [answered, onTheList(BLK_456_UNIT, BLK_456, "Ask about Sunday", null)],
+  ) => noteRevisits(null, ALICE, followUp, entries, NOW);
+  const list = () => screen.getByRole("region", { name: "Households to revisit" });
+  const unit = () => screen.getByLabelText("Unit number");
+
+  it("offers the list, grouped by block, with no block ever opened", async () => {
+    mount({ copy: listOnly() });
+    await continueAsAlice();
+    expect(within(list()).getByText("0 of 2 visited or done")).toBeInTheDocument();
+    expect(
+      within(list()).getByText("As last read with signal. Tap a household to record your visit."),
+    ).toBeInTheDocument();
+    expect(
+      within(list())
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "Open block, Blk 123",
+      "#05-01MediumMrs LimBring the booklet",
+      "Open block, Blk 456",
+      "#11-90Name not knownAsk about Sunday",
+    ]);
+    expect(screen.queryByRole("list", { name: "Blocks saved on this phone" })).toBeNull();
+  });
+
+  it("opens a household's block with its unit filled in, and says what is saved of it", async () => {
+    const { queue } = mount({ copy: listOnly() });
+    await continueAsAlice();
+    const u = user();
+    await u.click(within(list()).getByRole("button", { name: /^#11-90/ }));
+
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
+    expect(unit()).toHaveValue(BLK_456_UNIT);
+    await u.click(screen.getByRole("radio", { name: "High" }));
+    await u.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(pieced(`Saved ${BLK_456_UNIT} on this phone.`))).toBeVisible();
+    const [saved] = await queue.listAll();
+    expect(saved?.item).toMatchObject({
+      sessionId: OUTING,
+      blockId: BLK_456,
+      unitNumber: BLK_456_UNIT,
+    });
+
+    await u.click(screen.getByRole("tab", { name: /All units/ }));
+    expect(
+      screen.getByText(
+        "This block was not opened with signal, so only its households on the list are saved on this phone.",
+      ),
+    ).toBeInTheDocument();
+
+    // Back to the list, which counts the visit this phone holds.
+    await u.click(screen.getByRole("button", { name: "The list" }));
+    expect(within(list()).getByText("1 of 2 visited or done")).toBeInTheDocument();
+    expect(
+      within(within(list()).getByRole("button", { name: /^#11-90/ })).getByText("Visited"),
+    ).toBeInTheDocument();
+  });
+
+  it("opens a block whole when it was opened with signal, saying nothing of what is missing", async () => {
+    const opened = noteBlock(listOnly(), ALICE, followUp, BLK_123, [household], NOW);
+    mount({ copy: opened });
+    await continueAsAlice();
+    await user().click(within(list()).getByRole("button", { name: "Open block, Blk 123" }));
+    expect(unit()).toHaveValue("");
+    await user().click(screen.getByRole("tab", { name: /All units/ }));
+    expect(screen.queryByText(/was not opened with signal/)).toBeNull();
+  });
+
+  it("opens the household it was on its way to as the member continues", async () => {
+    location.pathname = `/blocks/${BLK_456}`;
+    location.search = `?unit=${encodeURIComponent(BLK_456_UNIT)}`;
+    mount({ copy: listOnly() });
+    await continueAsAlice();
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
+    expect(unit()).toHaveValue(BLK_456_UNIT);
+    expect(screen.getByText(/Only units on the list can be recorded\.$/)).toBeInTheDocument();
+  });
+
+  it("follows the list as read again: a household added shows, and none left says so", async () => {
+    let answer: RevisitEntry[] | null = [onTheList(), onTheList("#05-07", BLK_123, "New")];
+    const { readList } = mount({ copy: listOnly(), readList: () => Promise.resolve(answer) });
+    await continueAsAlice();
+    expect(await within(list()).findByRole("button", { name: /^#05-07/ })).toBeInTheDocument();
+    expect(within(list()).queryByRole("button", { name: /^#11-90/ })).toBeNull();
+
+    answer = [];
+    const before = readList.mock.calls.length;
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(
+      await screen.findByText("No households are on this session's list right now."),
+    ).toBeInTheDocument();
+    expect(readList.mock.calls.length).toBe(before + 1);
+  });
+
+  it("keeps a member's form open when a list read again drops its block", async () => {
+    let answer: RevisitEntry[] | null = null;
+    mount({ copy: listOnly(), readList: () => Promise.resolve(answer) });
+    await continueAsAlice();
+    await user().click(within(list()).getByRole("button", { name: /^#11-90/ }));
+    await user().click(screen.getByRole("radio", { name: "Low" }));
+
+    answer = [onTheList()];
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => {
+      expect(unit()).toHaveAccessibleDescription(/^#11-90 is not on this session's list/);
+    });
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Low" })).toBeChecked();
+  });
+});
+
+describe("OfflineShell, at the address it was going to", () => {
+  it("opens a saved block a reload there named, as the member continues", async () => {
+    location.pathname = `/blocks/${BLK_456}`;
+    mount();
+    await continueAsAlice();
+    expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("");
+    await user().click(screen.getByRole("button", { name: "All blocks" }));
+    expect(screen.getByRole("list", { name: "Blocks saved on this phone" })).toBeInTheDocument();
+  });
+
+  it("offers the blocks when the address names a block it has nothing saved for", async () => {
+    location.pathname = "/blocks/0190a000-0000-7000-8000-000000000999";
+    mount();
+    await continueAsAlice();
+    expect(screen.getByRole("list", { name: "Blocks saved on this phone" })).toBeInTheDocument();
   });
 });

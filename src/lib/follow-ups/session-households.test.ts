@@ -75,21 +75,56 @@ describe("stateLabel", () => {
 
 describe("removeBlocker", () => {
   const two = [entry(), entry({ household: { id: "h2" } as SessionHousehold["household"] })];
+  const elsewhere = entry({
+    household: { id: "h3" } as SessionHousehold["household"],
+    block: { id: "b2" } as SessionHousehold["block"],
+  });
+  /* This session's visits in each block, as the session page reads them. */
+  const visitsIn = (counts: Record<string, number>) =>
+    Object.entries(counts).map(([id, visitCount]) => ({
+      block: { id } as SessionHousehold["block"],
+      visitCount,
+    }));
 
   it("lets a household go while another stays and nobody has knocked", () => {
-    expect(removeBlocker(entry(), two, "active")).toBeNull();
+    expect(removeBlocker(entry(), two, "active", visitsIn({ b1: 0 }))).toBeNull();
   });
 
   it("refuses as the server would", () => {
-    expect(removeBlocker(entry(), two, "ended")).toBe("ended");
-    expect(removeBlocker(entry({ visitedInSession: true }), two, "draft")).toBe("visited");
-    expect(removeBlocker(entry(), [entry()], "draft")).toBe("last");
+    expect(removeBlocker(entry(), two, "ended", [])).toBe("ended");
+    expect(removeBlocker(entry({ visitedInSession: true }), two, "draft", [])).toBe("visited");
+    expect(removeBlocker(entry(), [entry()], "draft", [])).toBe("last");
+  });
+
+  it("says visited before last, in the server's order", () => {
+    expect(removeBlocker(entry({ visitedInSession: true }), [entry()], "active", [])).toBe(
+      "visited",
+    );
+  });
+
+  it("keeps the last pick in a block that holds this session's visits", () => {
+    // An admin recorded off the list in b1, at a door nobody picked.
+    expect(removeBlocker(entry(), [entry(), elsewhere], "active", visitsIn({ b1: 1 }))).toBe(
+      "block_in_use",
+    );
+  });
+
+  it("lets a pick go from a block with visits while another pick keeps the block", () => {
+    expect(removeBlocker(entry(), [...two, elsewhere], "active", visitsIn({ b1: 2 }))).toBeNull();
+  });
+
+  it("lets the last pick in a block go once its block has no visits, or is not read yet", () => {
+    expect(removeBlocker(entry(), [entry(), elsewhere], "active", visitsIn({ b2: 3 }))).toBeNull();
+    expect(removeBlocker(entry(), [entry(), elsewhere], "active", [])).toBeNull();
   });
 
   it("says why in words", () => {
     expect(REMOVE_BLOCKED.visited).toBe("Visited in this session, so it stays.");
     expect(REMOVE_BLOCKED.last).toBe(
       "A follow-up session needs at least one household, so the last one can't be removed.",
+    );
+    expect(REMOVE_BLOCKED.block_in_use).toBe(
+      "Its block has visits recorded in this session, so it stays.",
     );
   });
 });

@@ -76,7 +76,13 @@ const list = (units: string[], author: Author = BEN, teamId: string | null = nul
   pagination: { limit: 100, offset: 0, total: units.length, hasMore: false },
 });
 
-const active = { session: { id: "s1", title: "Tonight", kind: "regular" }, blocks: [] };
+const B1 = {
+  block: { id: "b1", name: "123", street: "Ang Mo Kio Ave 3", postalCode: null, createdAt: "" },
+  visitCount: 0,
+  householdCount: 0,
+  activeMembers: [],
+};
+const active = { session: { id: "s1", title: "Tonight", kind: "regular" }, blocks: [B1] };
 
 /* Routes by path so the two loads can differ, and so a test that breaks one
    does not silently satisfy the other. */
@@ -123,23 +129,7 @@ beforeEach(() => {
 
 describe("BlockScreen", () => {
   it("is named for its block once the outing says which one it is, with a way back", async () => {
-    serve(list([]), {
-      ...active,
-      blocks: [
-        {
-          block: {
-            id: "b1",
-            name: "123",
-            street: "Ang Mo Kio Ave 3",
-            postalCode: null,
-            createdAt: "",
-          },
-          visitCount: 0,
-          householdCount: 0,
-          activeMembers: [],
-        },
-      ],
-    });
+    serve(list([]));
     render(<BlockScreen blockId="b1" />);
     // Generic only until the outing answers.
     expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
@@ -148,13 +138,45 @@ describe("BlockScreen", () => {
     expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
   });
 
-  it("stays generic for a block the outing does not have", async () => {
-    serve(list([]));
+  it.each([
+    ["door-to-door", "regular", "Visits can be recorded only in the session's blocks."],
+    [
+      "follow-up",
+      "follow_up",
+      "Visits can be recorded only at the households on the session's list.",
+    ],
+  ])(
+    "says a block its %s session does not cover is not in it, and offers no form",
+    async (_, kind, rule) => {
+      // Opened from a bookmark or a stale tab.
+      serve(list(["#05-123"]), { ...active, session: { ...active.session, kind }, blocks: [] });
+      render(<BlockScreen blockId="b1" />);
+      const notice = await screen.findByRole("status");
+      expect(notice).toHaveTextContent("This block is not in the running session.");
+      expect(notice).toHaveTextContent(`${rule} Pick one on the Session screen.`);
+      expect(within(notice).getByRole("link", { name: "Go to Session" })).toHaveAttribute(
+        "href",
+        "/",
+      );
+      expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+      expect(screen.queryByText("One unit at a time.")).toBeNull();
+      expect(screen.queryByLabelText("Unit number")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    },
+  );
+
+  it("offers the form while no session is known, as a save asks again", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions/active")
+        ? Promise.reject(new ApiRequestError(404, undefined))
+        : Promise.resolve(list([])),
+    );
     render(<BlockScreen blockId="b1" />);
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Unit number")).toBeInTheDocument();
+    expect(screen.getByText("One unit at a time.")).toBeInTheDocument();
   });
 
   it("loads the units already recorded on this block", async () => {

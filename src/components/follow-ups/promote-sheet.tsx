@@ -4,12 +4,13 @@ import { useRef, useState } from "react";
 import { AlsoAddRow, useAlsoAdd } from "@/components/follow-ups/also-add";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 import { FollowUpDoor } from "@/components/ui/unit-number";
-import type { FollowUp, OutingSession } from "@/generated/types.gen";
+import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import {
   ADDED_TO_LIST,
-  addToSession,
-  addedMessage,
+  type AddOutcome,
+  type HalfAdded,
+  intoSession,
   listThenAdd,
   partialMessage,
 } from "@/lib/follow-ups/add-to-list";
@@ -45,7 +46,7 @@ export function PromoteSheet({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   /* Listed, but not added to the session: only that step is retried. */
-  const [partial, setPartial] = useState<OutingSession | null>(null);
+  const [partial, setPartial] = useState<HalfAdded | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
 
@@ -65,33 +66,31 @@ export function PromoteSheet({
     }
   }
 
+  /* What to say once done, or the half done, kept open to say why. */
+  const settle = (outcome: AddOutcome): string | null => {
+    if (outcome.status === "done") return outcome.message;
+    setPartial(outcome.half);
+    return null;
+  };
+
   function promote(): void {
-    void run(async () => {
-      const outcome = await listThenAdd(
-        () =>
-          apiFetch(`/follow-ups/${suggestion.id}`, {
-            method: "PATCH",
-            body: JSON.stringify({ status: "listed" }),
-          }),
-        suggestion.householdId,
-        also.chosen,
-      );
-      if (outcome.status === "done") return outcome.message;
-      setPartial(outcome.target);
-      return null;
-    });
+    void run(async () =>
+      settle(
+        await listThenAdd(
+          () =>
+            apiFetch(`/follow-ups/${suggestion.id}`, {
+              method: "PATCH",
+              body: JSON.stringify({ status: "listed" }),
+            }),
+          suggestion.householdId,
+          also.chosen,
+        ),
+      ),
+    );
   }
 
-  /* A second failure leaves the alert as it is. */
-  function retry(target: OutingSession): void {
-    void run(async () => {
-      try {
-        await addToSession(target, suggestion.householdId);
-      } catch {
-        return null;
-      }
-      return addedMessage(target);
-    });
+  function retry({ target }: HalfAdded): void {
+    void run(async () => settle(await intoSession(target, suggestion.householdId)));
   }
 
   const title = "Add to the follow-up list";
@@ -155,7 +154,7 @@ export function PromoteSheet({
           >
             {busy ? "Saving…" : "Add to list"}
           </button>
-        ) : (
+        ) : partial.refused === null ? (
           <button
             type="button"
             disabled={busy || !online}
@@ -164,7 +163,17 @@ export function PromoteSheet({
             }}
             className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold break-words"
           >
-            {busy ? "Saving…" : `Add to ${partial.title}`}
+            {busy ? "Saving…" : `Add to ${partial.target.title}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              onPromoted(ADDED_TO_LIST);
+            }}
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+          >
+            Done
           </button>
         )}
       </SheetActions>

@@ -511,6 +511,19 @@ describe("DELETE /api/sessions/{id}/households/{householdId}", () => {
     expect(await pickedIds(id)).toEqual([OWED_1, OWED_B]);
   });
 
+  it("says a lone household visited in this session was visited, as the page does", async () => {
+    const id = await followUp([OWED_1]);
+    await setStatus(id, "active");
+    await visit(id, OWED_1);
+    asAdmin();
+    const response = await remove(id, OWED_1);
+    expect(response.status).toBe(409);
+    expect(await failure(response)).toEqual({
+      code: "conflict",
+      message: "Someone has recorded a visit here in this session, so it stays in the session.",
+    });
+  });
+
   it("keeps a block holding an admin's visits off the list in this session", async () => {
     // Its block would leave the session with this session's work in it (D-18-3).
     const id = await followUp([OWED_1, OWED_B]);
@@ -528,9 +541,11 @@ describe("DELETE /api/sessions/{id}/households/{householdId}", () => {
     expect(await blockIds(id)).toEqual([BLOCK_A, BLOCK_B]);
   });
 
-  it("is 404 for a household the session did not pick", async () => {
+  it("is 404 for a household the session did not pick, before whether it has ended", async () => {
     const id = await followUp([OWED_1, OWED_2]);
     asAdmin();
+    expect((await remove(id, OWED_B)).status).toBe(404);
+    await setStatus(id, "ended");
     expect((await remove(id, OWED_B)).status).toBe(404);
   });
 
@@ -547,10 +562,10 @@ describe("DELETE /api/sessions/{id}/households/{householdId}", () => {
     expect(await pickedIds(id)).toEqual([OWED_1, OWED_2]);
   });
 
-  it("refuses a regular session", async () => {
+  it("is 404 for a regular session, which picks no households", async () => {
     asAdmin();
     const { id } = (await (await create({ title: "Door-to-door" })).json()) as { id: string };
-    expect((await remove(id, OWED_1)).status).toBe(409);
+    expect((await remove(id, OWED_1)).status).toBe(404);
   });
 
   it("refuses a member", async () => {

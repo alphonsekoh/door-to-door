@@ -6,6 +6,7 @@ import {
   listedUnitsIn,
   progress,
   revisitState,
+  stateOnPhone,
   unitGate,
 } from "@/lib/follow-ups/revisits";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -90,6 +91,50 @@ describe("revisitState and progress", () => {
     // One visited, one marked done without a knock: neither is still to visit.
     expect(progress(list)).toBe("2 of 3 visited or done");
     expect(progress([])).toBe("0 of 0 visited or done");
+  });
+});
+
+describe("stateOnPhone", () => {
+  /* A record this phone holds, as the offline shell's queue lists it. */
+  const recorded = (blockId: string, unitNumber: string, sessionId = "s1"): QueuedVisit =>
+    buildQueuedVisit(
+      {
+        blockId,
+        unitNumber,
+        interestLevel: "high",
+        description: "",
+        name: "",
+        contact: "",
+        religion: "",
+        sessionId,
+      },
+      "u1",
+      Date.parse(STAMP),
+    );
+
+  it("reads a household recorded on this phone in this session as visited", () => {
+    const [toVisit] = list;
+    if (toVisit === undefined) throw new Error("expected an entry");
+    // Typed loosely at the door, as the form allows.
+    expect(stateOnPhone(toVisit, [recorded("123", "01-01")], "s1")).toBe("visited");
+    expect(progress(list, (e) => stateOnPhone(e, [recorded("123", "#01-01")], "s1"))).toBe(
+      "3 of 3 visited or done",
+    );
+  });
+
+  it("goes by the list for any other record, or none", () => {
+    const [toVisit, , done] = list;
+    if (toVisit === undefined || done === undefined) throw new Error("expected entries");
+    expect(stateOnPhone(toVisit, [], "s1")).toBe("to_visit");
+    expect(
+      stateOnPhone(
+        toVisit,
+        [recorded("125", "#01-01"), recorded("123", "#02-02"), recorded("123", "#01-01", "s0")],
+        "s1",
+      ),
+    ).toBe("to_visit");
+    // Done stays done, whatever the phone holds.
+    expect(stateOnPhone(done, [recorded("125", "#01-01")], "s1")).toBe("done");
   });
 });
 

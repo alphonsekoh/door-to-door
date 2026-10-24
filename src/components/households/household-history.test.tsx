@@ -141,8 +141,22 @@ describe("what is known about the unit", () => {
   it("says plainly when nobody has ever answered", () => {
     // Better than a blank space, which reads as a loading bug.
     const unknown = history();
-    render(<Panel over={{ household: { ...unknown.household, name: null } }} />);
+    render(
+      <Panel
+        over={{
+          household: { ...unknown.household, name: null },
+          visits: [visit({ interestLevel: "no_response" })],
+        }}
+      />,
+    );
     expect(screen.getByText("Nobody has answered here yet")).toBeInTheDocument();
+  });
+
+  it("says only the name is not known once someone has answered", () => {
+    const unnamed = history();
+    render(<Panel over={{ household: { ...unnamed.household, name: null } }} />);
+    expect(screen.getByText("Name not known")).toBeInTheDocument();
+    expect(screen.queryByText("Nobody has answered here yet")).not.toBeInTheDocument();
   });
 
   it("shows a contact when there is one", () => {

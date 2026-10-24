@@ -1,4 +1,4 @@
-import type { OutingSession, SessionHousehold } from "@/generated/types.gen";
+import type { OutingSession, SessionBlock, SessionHousehold } from "@/generated/types.gen";
 
 /*
  * A follow-up session's picked households, as its admin page shows them:
@@ -41,23 +41,34 @@ export function stateLabel(state: PickState, status: OutingSession["status"]): s
   }
 }
 
-export type RemoveBlocker = "ended" | "visited" | "last";
+export type RemoveBlocker = "ended" | "visited" | "last" | "block_in_use";
 
-/* Why a pick cannot be taken out, as the server would refuse it, or null. */
+/*
+ * Why a pick cannot be taken out, as the server would refuse it and in its
+ * order, or null. The last pick in a block takes the block out with it, so
+ * it stays while that block holds this session's visits: an admin may
+ * record off the list there, at a door nobody picked.
+ */
 export function removeBlocker(
   entry: SessionHousehold,
   entries: readonly SessionHousehold[],
   status: OutingSession["status"],
+  blocks: readonly Pick<SessionBlock, "block" | "visitCount">[],
 ): RemoveBlocker | null {
   if (status === "ended") return "ended";
   if (entry.visitedInSession) return "visited";
   if (entries.length <= 1) return "last";
-  return null;
+  const shared = entries.some(
+    (other) => other.household.id !== entry.household.id && other.block.id === entry.block.id,
+  );
+  const visits = blocks.find((block) => block.block.id === entry.block.id)?.visitCount ?? 0;
+  return !shared && visits > 0 ? "block_in_use" : null;
 }
 
 export const REMOVE_BLOCKED: Record<Exclude<RemoveBlocker, "ended">, string> = {
   visited: "Visited in this session, so it stays.",
   last: "A follow-up session needs at least one household, so the last one can't be removed.",
+  block_in_use: "Its block has visits recorded in this session, so it stays.",
 };
 
 /*

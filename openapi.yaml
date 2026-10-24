@@ -1664,11 +1664,12 @@ paths:
         household's notes stay on the follow-up list for a later session. Its
         block leaves the session's blocks once no picked household is in it.
 
-        Refused with `409` when it would leave the session without a
-        household, when someone has recorded a visit at it in this session,
-        or when its block would leave the session while holding visits
-        recorded in this session (`block_in_use`, as D-18-3): history is never
-        orphaned by a UI action.
+        Refused, in this order: `404` for a household the session did not
+        pick (a door-to-door session picks none), then `409` for an ended
+        session, a household someone has recorded a visit at in this session,
+        the session's last household, and a block that would leave the
+        session while holding visits recorded in this session
+        (`block_in_use`, as D-18-3): history is never orphaned by a UI action.
       parameters:
         - $ref: "#/components/parameters/PathId"
         - name: householdId
@@ -1680,16 +1681,18 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: The session does not exist, or the household is not picked for it.
+          description: |
+            The session does not exist, or the household is not picked for
+            it, which is every household for a door-to-door session.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: |
-            `conflict`: a regular or ended session, the session's last
-            household, or a household visited in this session. `block_in_use`:
-            its block holds visits recorded in this session and no other
-            picked household.
+            `conflict`: an ended session, a household visited in this
+            session, or the session's last household. `block_in_use`: its
+            block holds visits recorded in this session and no other picked
+            household.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
