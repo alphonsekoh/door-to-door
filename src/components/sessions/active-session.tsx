@@ -7,6 +7,7 @@ import { KindBadge } from "@/components/sessions/kind-badge";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { OutingTeam } from "@/components/teams/outing-team";
 import { HintCard } from "@/components/ui/hint-card";
+import { PageHeader } from "@/components/ui/page-header";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/hooks/use-role";
@@ -22,7 +23,6 @@ type State =
   | { status: "error"; message: string };
 
 export function ActiveSessionScreen() {
-  const { isAdmin } = useRole();
   const [state, setState] = useState<State>({ status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   /* Tells the team card to re-read along with every load. */
@@ -71,9 +71,45 @@ export function ActiveSessionScreen() {
     else if (state.status === "none") noteOuting(null);
   }, [state, noteOuting]);
 
-  if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
-  }
+  /* The instruction depends on the kind of session, so it is said only
+     once the session is known. */
+  const header = (
+    <PageHeader
+      title="Active session"
+      subtitle={
+        state.status !== "ready"
+          ? undefined
+          : state.data.session.kind === "follow_up"
+            ? "Tap a household to record your visit."
+            : "Pick a block to start recording."
+      }
+    />
+  );
+
+  return (
+    <>
+      {header}
+      {state.status === "loading" ? (
+        <p className="text-body text-foreground-muted">Loading…</p>
+      ) : (
+        <SessionBody state={state} load={load} refreshing={refreshing} tick={tick} />
+      )}
+    </>
+  );
+}
+
+function SessionBody({
+  state,
+  load,
+  refreshing,
+  tick,
+}: {
+  state: Exclude<State, { status: "loading" }>;
+  load: (isRefresh?: boolean) => Promise<void>;
+  refreshing: boolean;
+  tick: number;
+}) {
+  const { isAdmin } = useRole();
 
   if (state.status === "error") {
     return (
@@ -124,17 +160,37 @@ export function ActiveSessionScreen() {
 
       {followUp ? (
         <>
+          {/* Two lines at phone width, and the hint under the list: on a
+              first visit both above it pushed the first household below
+              the fold. */}
           <p className="notice-info">
-            <span className="font-semibold">Follow-up session.</span> Tonight we go back to
-            households that showed interest. You can record visits only at the households listed
-            below.{isAdmin ? " As an admin you can also record any unit." : ""}
+            <span className="font-semibold">Follow-up session.</span> Visits can be recorded only at
+            the households below.
+            {isAdmin ? " As an admin you can record any unit in this session's blocks." : ""}
           </p>
+          {/* The list stands in for the block cards: each group opens its block. */}
+          <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
           <HintCard id="follow-up-session" title="How a follow-up session works">
             Tap a household to record your visit. When the follow-up is finished, tap Mark done. Met
             someone who should be on the list? Ask an admin.
           </HintCard>
-          {/* The list stands in for the block cards: each group opens its block. */}
-          <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
+          {/* The list shows only blocks with listed households, so an admin
+              recording elsewhere, as an admin may, starts from here. */}
+          {isAdmin && blocks.length > 0 ? (
+            <section aria-labelledby="session-blocks-heading" className="space-y-2">
+              <h2 id="session-blocks-heading" className="text-title font-semibold">
+                Blocks in this session
+              </h2>
+              <p className="text-caption text-foreground-muted">
+                For recording a unit that is not on the list.
+              </p>
+              <ul className="space-y-2">
+                {blocks.map((entry) => (
+                  <BlockCard key={entry.block.id} entry={entry} />
+                ))}
+              </ul>
+            </section>
+          ) : null}
         </>
       ) : blocks.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">

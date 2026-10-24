@@ -271,16 +271,56 @@ describe("a follow-up session", () => {
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("Follow-up")).toBeInTheDocument();
     expect(
-      screen.getByText(/You can record visits only at the households listed below\.$/),
+      screen.getByText(/Visits can be recorded only at the households below\.$/),
     ).toBeInTheDocument();
+    // Said at any hour: a session is not always in the evening.
+    expect(screen.queryByText(/Tonight/)).toBeNull();
   });
 
-  it("tells an admin they can still record any unit", async () => {
-    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+  it("asks a member to tap a household, not to pick a block", async () => {
+    // There are no block cards to pick in a follow-up session.
     apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
     render(<ActiveSessionScreen />);
-    expect(await screen.findByText(/As an admin you can also record any unit\./)).toBeVisible();
+    expect(await screen.findByText("Tap a household to record your visit.")).toBeVisible();
+    expect(screen.queryByText("Pick a block to start recording.")).toBeNull();
+  });
+
+  it("asks for a block in a door-to-door session, and nothing until the kind is known", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    render(<ActiveSessionScreen />);
+    expect(screen.getByRole("heading", { name: "Active session" })).toBeVisible();
+    expect(screen.queryByText(/Pick a block|Tap a household/)).toBeNull();
+    answer(session([block("123")]));
+    expect(await screen.findByText("Pick a block to start recording.")).toBeVisible();
+  });
+
+  it("tells an admin they can still record any unit, and where", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(session([block("123"), block("125")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(
+      await screen.findByText(/As an admin you can record any unit in this session's blocks\./),
+    ).toBeVisible();
     expect(screen.getByText(/admin true/)).toBeInTheDocument();
+    // A block with nobody on the list is still reachable from here.
+    const blocks = screen.getByRole("region", { name: "Blocks in this session" });
+    expect(within(blocks).getByRole("link", { name: /Blk 125/ })).toHaveAttribute(
+      "href",
+      "/blocks/b-125",
+    );
+  });
+
+  it("leaves the admin's block list out when the session has no blocks", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(session([], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/admin true/);
+    expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
   });
 
   it("drives the screen from the list of households, not the block cards", async () => {
@@ -288,6 +328,7 @@ describe("a follow-up session", () => {
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("revisits s1 tick 1 admin false")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Blk 123/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
     // The team card still works as in any session.
     expect(screen.getByText(/team card s1/)).toBeInTheDocument();
   });

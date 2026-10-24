@@ -26,6 +26,8 @@ export const ONE_OPEN_SUGGESTION = "follow_ups_one_open_suggestion_idx";
 
 const EXISTS_MESSAGE =
   "This household is already on the follow-up list or has a suggestion waiting.";
+const PENDING_MESSAGE =
+  "A member has suggested this household and it is waiting for review. Add that suggestion to the list instead.";
 
 export type ListFollowUpOptions = {
   householdId?: string | undefined;
@@ -104,8 +106,17 @@ export async function getFollowUp(db: Database, id: string): Promise<FollowUpRow
  * already asks for. A pending suggestion is the other open note; the partial
  * unique index refuses a second one, so two members suggesting at once
  * cannot both succeed and no read is needed for it.
+ *
+ * An admin's note beside a pending suggestion would leave that suggestion
+ * waiting for a household already listed, and dismissing it then tells its
+ * author it was declined when it was not. So the admin adds the suggestion
+ * instead.
  */
-async function hasOutstandingListedNote(db: Database, householdId: string): Promise<boolean> {
+async function hasOpenNote(
+  db: Database,
+  householdId: string,
+  status: FollowUpStatus,
+): Promise<boolean> {
   const found = await db
     .select({ id: followUps.id })
     .from(followUps)
@@ -113,7 +124,7 @@ async function hasOutstandingListedNote(db: Database, householdId: string): Prom
       and(
         eq(followUps.householdId, householdId),
         liveFollowUp,
-        eq(followUps.status, "listed"),
+        eq(followUps.status, status),
         isNull(followUps.doneAt),
       ),
     )
@@ -159,7 +170,10 @@ export async function createFollowUp(
   }
 
   const listed = actor.role === "admin";
-  if (!listed && (await hasOutstandingListedNote(db, input.householdId))) {
+  if (listed && (await hasOpenNote(db, input.householdId, "suggested"))) {
+    throw new ConflictError("follow_up_exists", PENDING_MESSAGE);
+  }
+  if (!listed && (await hasOpenNote(db, input.householdId, "listed"))) {
     throw new ConflictError("follow_up_exists", EXISTS_MESSAGE);
   }
 
@@ -247,13 +261,34 @@ async function assertMemberMayUpdate(
   }
 }
 
-export async function updateFollowUp(
+/*
+ * The note, read under a row lock held until the change commits. Who may
+ * change a note depends on its state, so a check must still hold when the
+ * write lands: an author withdrawing a suggestion while an admin lists it
+ * would otherwise remove a listed note, which only an admin may do. Whoever
+ * locks second reads what the first committed.
+ */
+async function lockFollowUp(tx: Database, id: string): Promise<FollowUpRow> {
+  await tx.select({ id: followUps.id }).from(followUps).where(eq(followUps.id, id)).for("update");
+  return getFollowUp(tx, id);
+}
+
+export function updateFollowUp(
   db: Database,
   id: string,
   changes: FollowUpChanges,
   actor: Actor,
 ): Promise<FollowUpRow> {
-  const existing = await getFollowUp(db, id);
+  return db.transaction((tx) => applyUpdate(tx, id, changes, actor));
+}
+
+async function applyUpdate(
+  db: Database,
+  id: string,
+  changes: FollowUpChanges,
+  actor: Actor,
+): Promise<FollowUpRow> {
+  const existing = await lockFollowUp(db, id);
 
   if (actor.role === "admin") {
     const promoting = changes.status === "listed";
@@ -291,10 +326,7 @@ export async function updateFollowUp(
     values["doneBy"] = null;
   }
 
-  await db
-    .update(followUps)
-    .set(values)
-    .where(and(eq(followUps.id, id), liveFollowUp));
+  await db.update(followUps).set(values).where(eq(followUps.id, id));
   return getFollowUp(db, id);
 }
 
@@ -303,31 +335,32 @@ export async function updateFollowUp(
  * the list; a member may only withdraw their own suggestion. The reason is
  * for the author, who is told a suggestion was declined.
  */
-export async function deleteFollowUp(
+export function deleteFollowUp(
   db: Database,
   id: string,
   actor: Actor,
   reason?: string,
 ): Promise<void> {
-  const existing = await getFollowUp(db, id);
+  return db.transaction(async (tx) => {
+    const existing = await lockFollowUp(tx, id);
 
-  if (actor.role !== "admin") {
-    if (existing.status === "listed") {
-      throw new ForbiddenError("Only an admin can take a household off the follow-up list.");
+    if (actor.role !== "admin") {
+      if (existing.status === "listed") {
+        throw new ForbiddenError("Only an admin can take a household off the follow-up list.");
+      }
+      if (existing.authorId !== actor.id) {
+        throw new ForbiddenError("You can only withdraw your own suggestions.");
+      }
     }
-    if (existing.authorId !== actor.id) {
-      throw new ForbiddenError("You can only withdraw your own suggestions.");
-    }
-  }
 
-  const trimmed = reason?.trim() ?? "";
-  // Only a live row, so when two remove at once the first one's who and why stand.
-  await db
-    .update(followUps)
-    .set({
-      deletedAt: new Date(),
-      deletedBy: actor.id,
-      deleteReason: trimmed === "" ? null : trimmed,
-    })
-    .where(and(eq(followUps.id, id), liveFollowUp));
+    const trimmed = reason?.trim() ?? "";
+    await tx
+      .update(followUps)
+      .set({
+        deletedAt: new Date(),
+        deletedBy: actor.id,
+        deleteReason: trimmed === "" ? null : trimmed,
+      })
+      .where(eq(followUps.id, id));
+  });
 }

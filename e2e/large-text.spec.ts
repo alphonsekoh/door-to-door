@@ -799,7 +799,7 @@ test.describe("a follow-up session", () => {
       "a unit off the follow-up list",
       memberPage.getByLabel("Unit number"),
     );
-    await expectTappable(memberPage.getByRole("button", { name: "Save and next" }), "Save");
+    await expectTappable(memberPage.getByRole("button", { name: "Save", exact: true }), "Save");
 
     const { session } = (await (await adminApi.get("/api/sessions/active")).json()) as {
       session: { id: string };

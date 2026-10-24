@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
+import {
+  OUTING_ASK_TIMEOUT_MS,
+  type OutingAnswer,
+  askOutingWithin,
+  within,
+} from "@/lib/sync/outing";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -34,5 +39,18 @@ describe("askOutingWithin", () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     await expect(answer).resolves.toEqual({ kind: "unknown" });
+  });
+});
+
+describe("within", () => {
+  it("gives the answer that comes in time, and leaves no timer behind", async () => {
+    await expect(within(Promise.resolve(["listed"]), null, 1_000)).resolves.toEqual(["listed"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("gives the fallback once the limit has passed", async () => {
+    const answer = within(new Promise<string[]>(() => undefined), null, 1_000);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await expect(answer).resolves.toBeNull();
   });
 });

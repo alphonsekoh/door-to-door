@@ -9,6 +9,7 @@ import {
   FollowUpSheet,
   SUGGESTION_SENT,
 } from "@/components/follow-ups/follow-up-sheet";
+import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { useSyncQueue } from "@/components/sync/sync-provider";
@@ -22,11 +23,26 @@ import type {
   Visit,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
-import { type RevisitState, listedUnitsIn, unitGate } from "@/lib/follow-ups/revisits";
-import { ADD_TO_LIST, SUGGEST, householdAction } from "@/lib/follow-ups/rights";
+import {
+  type RevisitState,
+  type UnitGate,
+  listedUnitsIn,
+  unitGate,
+} from "@/lib/follow-ups/revisits";
+import {
+  ADD_TO_LIST,
+  type HouseholdAction,
+  SUGGEST,
+  householdAction,
+} from "@/lib/follow-ups/rights";
 import { useRole } from "@/lib/hooks/use-role";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
-import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
+import {
+  OUTING_ASK_TIMEOUT_MS,
+  type OutingAnswer,
+  askOutingWithin,
+  within,
+} from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -78,14 +94,23 @@ type Saved = {
   householdId: string | null;
   unitNumber: string;
   noted: boolean;
+  /* What the household offered before the form was cleared for the next
+     door, so nothing is offered after the save that the server refuses. */
+  action: HouseholdAction;
 };
 
 /*
  * A follow-up session's rule for this form: a member records only at units
- * on its list. `revisits` is null when the list could not be read, which
- * leaves the server to hold an unlisted record until an admin adds it.
+ * on its list. `revisits` is undefined while the list is first read, and
+ * null when it could not be, which leaves the server to hold an unlisted
+ * record until an admin adds it. `recheck` reads it again: a refusal is never
+ * made against a list that may be stale, since the member was told to ask an
+ * admin to add the unit, and the admin may just have.
  */
-export type FollowUpRule = { revisits: RevisitEntry[] | null };
+export type FollowUpRule = {
+  revisits: RevisitEntry[] | null | undefined;
+  recheck?: () => Promise<RevisitEntry[] | null>;
+};
 
 export const OFF_THE_LIST = "Not saved. This unit is not on the follow-up list.";
 
@@ -160,6 +185,10 @@ export function RecordVisitForm({
   /* The summary beside Save belongs to a Save that was refused, not to a
      field left on blur. */
   const [refused, setRefused] = useState(false);
+  /* That Save was refused because the server's list, read again just then,
+     does not have the unit: held apart from the list on screen, which a
+     slower read may not have updated yet. */
+  const [offList, setOffList] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
@@ -171,6 +200,9 @@ export function RecordVisitForm({
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
   const top = useRef<HTMLDivElement>(null);
+  /* Synchronous, so two taps in one frame save one visit, even while the
+     first waits on the follow-up list (D-74-44). */
+  const sending = useRef(false);
   const savedId = saved?.visitId ?? null;
 
   /*
@@ -237,6 +269,7 @@ export function RecordVisitForm({
     setDetails(false);
     setErrors({});
     setRefused(false);
+    setOffList(false);
     setHistory(null);
   }, []);
 
@@ -256,7 +289,7 @@ export function RecordVisitForm({
     history !== null &&
     householdAction(history.followUps, { userId, isAdmin }).kind === "suggest";
   const blocked = refused
-    ? (blockedMessage(errors) ?? (gate === "unlisted" ? OFF_THE_LIST : null))
+    ? (blockedMessage(errors) ?? (offList && gate !== "ok" ? OFF_THE_LIST : null))
     : null;
 
   const dirty =
@@ -275,19 +308,49 @@ export function RecordVisitForm({
     [onDirtyChange],
   );
 
+  /*
+   * The list as the server holds it now, for a unit this screen would
+   * refuse or has not been able to judge yet. Within the save's limit: in
+   * weak signal the list on screen decides, or the server does once a
+   * record is queued.
+   */
+  async function judgeAgain(rule: FollowUpRule): Promise<UnitGate> {
+    const fresh =
+      rule.recheck === undefined ? null : await within(rule.recheck(), null, OUTING_ASK_TIMEOUT_MS);
+    return unitGate(unitNumber, blockId, fresh ?? rule.revisits ?? null, isAdmin);
+  }
+
   async function save(): Promise<void> {
+    if (sending.current) return;
     const found = validateVisit(unitNumber, interestLevel);
     setErrors(found);
-    if (Object.keys(found).length > 0 || interestLevel === null || gate === "unlisted") {
+    if (Object.keys(found).length > 0 || interestLevel === null) {
       setRefused(true);
       return;
     }
 
+    sending.current = true;
     setFailure(null);
+    setSaving(true);
+    const judged =
+      followUp !== null && (gate === "unlisted" || gate === "checking")
+        ? await judgeAgain(followUp)
+        : gate;
+    if (judged === "unlisted") {
+      setRefused(true);
+      setOffList(true);
+      setSaving(false);
+      sending.current = false;
+      return;
+    }
+
     setSaved(null);
     setSuggestSent(false);
-    setSaving(true);
     const unit = normaliseUnitNumber(unitNumber);
+    const action = householdAction(
+      history?.household.unitNumber === unit ? history.followUps : [],
+      { userId, isAdmin },
+    );
     /* In a follow-up session the next door is the next household on the
        list, not the next number along, so nothing is guessed. */
     const nextUnit = followUp === null ? nextUnitNumber(unitNumber) : null;
@@ -319,13 +382,21 @@ export function RecordVisitForm({
       if (outing.kind !== "running") {
         setFailure(outing.kind === "none" ? NO_OUTING : OUTING_UNKNOWN);
         setSaving(false);
+        sending.current = false;
         return;
       }
       try {
         const record = await sync.enqueue({ ...fields, sessionId: outing.id });
         reset(nextUnit);
-        setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
+        setSaved({
+          visitId: record.id,
+          householdId: null,
+          unitNumber: unit,
+          noted: false,
+          action,
+        });
         setSaving(false);
+        sending.current = false;
         return;
       } catch {
         // Falls through to the direct save.
@@ -347,6 +418,7 @@ export function RecordVisitForm({
         householdId: visit.householdId,
         unitNumber: unit,
         noted: false,
+        action,
       });
       onRecorded();
     } catch (error) {
@@ -359,6 +431,7 @@ export function RecordVisitForm({
       );
     } finally {
       setSaving(false);
+      sending.current = false;
     }
   }
 
@@ -374,9 +447,16 @@ export function RecordVisitForm({
     ) : (
       queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
     );
-  /* A member in a follow-up session records only listed doors, which already
-     have their follow-up; anywhere else the right action for the role. */
-  const noteLabel = isAdmin ? ADD_TO_LIST : followUp === null ? SUGGEST : null;
+  /* Only what the household offered: a door already listed, or waiting for
+     review, gets nothing a second note would be refused for. A member in a
+     follow-up session records only listed doors, which have their follow-up. */
+  const offer = saved?.action.kind;
+  const noteLabel =
+    offer === "add_to_list"
+      ? ADD_TO_LIST
+      : offer === "suggest" && followUp === null
+        ? SUGGEST
+        : null;
 
   return (
     <form
@@ -395,7 +475,7 @@ export function RecordVisitForm({
             className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
           >
             <span className="break-words">{status}</span>
-            {householdId === null || saved?.noted !== false || noteLabel === null ? null : (
+            {householdId === null || saved?.noted !== false ? null : noteLabel !== null ? (
               <button
                 type="button"
                 onClick={() => {
@@ -405,7 +485,16 @@ export function RecordVisitForm({
               >
                 {noteLabel}
               </button>
-            )}
+            ) : saved.action.kind === "promote" ? (
+              <PromoteButton
+                suggestionId={saved.action.suggestionId}
+                onPromoted={() => {
+                  setSaved({ ...saved, noted: true });
+                  setReloadKey((key) => key + 1);
+                }}
+                className="min-h-11 font-medium btn-text"
+              />
+            ) : null}
             {followUp === null ? null : (
               <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
                 Back to the list
@@ -425,6 +514,7 @@ export function RecordVisitForm({
               setUnitNumber(event.target.value);
               setSaved(null);
               setSuggestSent(false);
+              setOffList(false);
               // Cleared the moment it is fixed, so no red lingers while typing.
               if (event.target.value.trim() !== "") clearError("unitNumber");
             }}
@@ -440,7 +530,7 @@ export function RecordVisitForm({
             aria-describedby={
               errors.unitNumber !== undefined
                 ? "unit-error"
-                : gate === "ok"
+                : gate === "ok" || gate === "checking"
                   ? undefined
                   : "unit-gate"
             }
@@ -502,6 +592,7 @@ export function RecordVisitForm({
                       setSuggested(chip.unitNumber);
                       setSaved(null);
                       setSuggestSent(false);
+                      setOffList(false);
                       clearError("unitNumber");
                     }}
                     className={`min-h-11 press rounded-full border px-3 text-body tabular-nums ${
@@ -687,8 +778,9 @@ export function RecordVisitForm({
             {failure ?? blocked}
           </p>
         )}
-        {/* Named, since a DockHost moves the bar out of the form. */}
-        <SaveAndNext form={formId} saving={saving} />
+        {/* Named, since a DockHost moves the bar out of the form. In a
+            follow-up session no next unit is guessed, so it is only Save. */}
+        <SaveAndNext form={formId} saving={saving} next={followUp === null} />
       </DockedActions>
     </form>
   );
@@ -701,7 +793,15 @@ export function RecordVisitForm({
  * live; what can still be lost is text typed before then, which the
  * controlled unit field clears as React takes over (#113).
  */
-export function SaveAndNext({ form, saving = false }: { form?: string; saving?: boolean }) {
+export function SaveAndNext({
+  form,
+  saving = false,
+  next = true,
+}: {
+  form?: string;
+  saving?: boolean;
+  next?: boolean;
+}) {
   return (
     <button
       type={form === undefined ? "button" : "submit"}
@@ -709,7 +809,7 @@ export function SaveAndNext({ form, saving = false }: { form?: string; saving?: 
       disabled={saving}
       className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
     >
-      {saving ? "Saving…" : "Save and next"}
+      {saving ? "Saving…" : next ? "Save and next" : "Save"}
     </button>
   );
 }

@@ -75,7 +75,8 @@ export { expect };
  * field (#113), so a test types only after it.
  */
 export async function untilLive(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Save and next" })).toHaveAttribute(
+  /* Only Save in a follow-up session, where no next unit is guessed. */
+  await expect(page.getByRole("button", { name: /^Save( and next)?$/ })).toHaveAttribute(
     "type",
     "submit",
   );

@@ -6,6 +6,7 @@ import {
   FollowUpSheet,
   SUGGESTION_SENT,
 } from "@/components/follow-ups/follow-up-sheet";
+import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { BackLink } from "@/components/ui/back-link";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { VisitByline } from "@/components/visits/visit-byline";
@@ -127,6 +128,17 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
             >
               {action.kind === "add_to_list" ? ADD_TO_LIST : SUGGEST}
             </button>
+          ) : action.kind === "promote" ? (
+            /* The same as Add to list on the suggestion below: one door, one
+               note on the list, and its author is not told it was declined. */
+            <PromoteButton
+              suggestionId={action.suggestionId}
+              onPromoted={() => {
+                setSent(ADDED_TO_LIST);
+                reload();
+              }}
+              className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
+            />
           ) : (
             /* Said instead of offered: the server would refuse a second one. */
             <p className="inline-flex min-h-11 items-center rounded-lg bg-primary/10 px-3 text-caption font-medium">

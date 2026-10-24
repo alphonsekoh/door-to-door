@@ -16,6 +16,7 @@ import type {
   TeamList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { heldOffListKey } from "@/lib/follow-ups/revisits";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
@@ -32,8 +33,9 @@ export function BlockScreen({
   const { userId, isAdmin } = useRole();
   const { records, syncedVersion } = useSyncQueue();
   const { noteBlock, noteRevisits } = useLocalCopyWriter();
-  /* A follow-up session's list; null until read, and if it cannot be. */
-  const [revisits, setRevisits] = useState<RevisitEntry[] | null>(null);
+  /* A follow-up session's list: undefined until first read, null if that
+     read failed. A later failed read keeps the list already shown. */
+  const [revisits, setRevisits] = useState<RevisitEntry[] | null | undefined>(undefined);
   /* Null until the first answer, so the copy is never written with a list
      that was merely not loaded yet. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
@@ -98,29 +100,54 @@ export function BlockScreen({
   }, [syncedVersion, load]);
 
   /*
-   * In a follow-up session, which units may be recorded. Re-read with every
-   * answer about the session, newest answer only, and kept in the offline
-   * copy so the shell can tell a member the same thing in a dead spot.
+   * In a follow-up session, which units may be recorded, kept in the offline
+   * copy so the shell can tell a member the same thing in a dead spot. Only
+   * the newest answer lands on screen; the answer itself goes back to a save
+   * that asked, which judges the unit by it.
    */
   const followUpSession = active?.session.kind === "follow_up" ? active : null;
   const revisitsGeneration = useRef(0);
-  useEffect(() => {
-    if (followUpSession === null) return;
+  const readRevisits = useCallback(async (): Promise<RevisitEntry[] | null> => {
+    if (followUpSession === null) return null;
     const mine = ++revisitsGeneration.current;
-    apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`).then(
-      (list) => {
-        if (mine !== revisitsGeneration.current) return;
+    try {
+      const list = await apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`);
+      if (mine === revisitsGeneration.current) {
         setRevisits(list.data);
         noteRevisits(followUpSession, list.data);
-      },
-      () => {
-        if (mine === revisitsGeneration.current) setRevisits(null);
-      },
-    );
+      }
+      return list.data;
+    } catch {
+      if (mine === revisitsGeneration.current) setRevisits((current) => current ?? null);
+      return null;
+    }
+  }, [followUpSession, noteRevisits]);
+
+  /*
+   * Read with every answer about the session, and again whenever the list
+   * may have moved under the screen: a record reached the server, the server
+   * held one as off the list (so a unit an admin removed stops being offered),
+   * or the member comes back to the app after an admin was asked to add one.
+   */
+  const heldOffList = heldOffListKey(records);
+  useEffect(() => {
+    const timer = setTimeout(() => void readRevisits(), 0);
     return () => {
-      revisitsGeneration.current += 1;
+      clearTimeout(timer);
     };
-  }, [followUpSession, noteRevisits, syncedVersion]);
+  }, [readRevisits, syncedVersion, heldOffList]);
+
+  useEffect(() => {
+    const again = () => {
+      if (document.visibilityState === "visible") void readRevisits();
+    };
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, [readRevisits]);
 
   /* Whichever of the units and the session arrives second writes the block
      into the offline copy, and every re-read of the units writes it again. */
@@ -194,7 +221,7 @@ export function BlockScreen({
         loadSession={loadSession}
         onRecorded={() => void load()}
         teamIds={teamIds}
-        followUp={followUpSession === null ? null : { revisits }}
+        followUp={followUpSession === null ? null : { revisits, recheck: readRevisits }}
         active={active}
         initialUnit={initialUnit}
       />

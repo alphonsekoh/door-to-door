@@ -145,6 +145,19 @@ describe("AdminFollowUps", () => {
     });
   });
 
+  it("keeps a suggestion on Keep it, with nothing sent", async () => {
+    serve({ review: [note("1")] });
+    render(<AdminFollowUps />);
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Dismiss this suggestion?" }));
+    fireEvent.click(sheet.getByRole("button", { name: "Keep it" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(apiFetch).not.toHaveBeenCalledWith(expect.anything(), { method: "DELETE" });
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
+
   it("edits a suggestion in the sheet", async () => {
     serve({ review: [note("1")] });
     render(<AdminFollowUps />);

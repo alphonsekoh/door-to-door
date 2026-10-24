@@ -62,7 +62,7 @@ export function DeclinedNotice({ userId }: { userId: string }) {
                 markDeclinedSeen(note.id);
                 setDeclined((current) => current.filter((other) => other.id !== note.id));
               }}
-              className="mt-1 min-h-11 font-medium btn-text"
+              className="mt-1 min-h-11 min-w-11 font-medium btn-text"
             >
               Got it
             </button>

@@ -1,4 +1,5 @@
 import type { Block, RevisitEntry } from "@/generated/types.gen";
+import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber } from "@/lib/units/unit-number";
 
 /*
@@ -29,9 +30,11 @@ export function revisitState(
   return entry.visitedInSession ? "visited" : "to_visit";
 }
 
+/* Counted as the rows are labelled: a household marked done without a
+   knock reads Done, not Visited, and counts as dealt with. */
 export function progress(entries: readonly RevisitEntry[]): string {
-  const visited = entries.filter((entry) => revisitState(entry) !== "to_visit").length;
-  return `${String(visited)} of ${String(entries.length)} visited`;
+  const dealt = entries.filter((entry) => revisitState(entry) !== "to_visit").length;
+  return `${String(dealt)} of ${String(entries.length)} visited or done`;
 }
 
 export type ListedUnit = { householdId: string; unitNumber: string; state: RevisitState };
@@ -47,25 +50,44 @@ export function listedUnitsIn(entries: readonly RevisitEntry[], blockId: string)
 }
 
 /*
- * Whether the typed unit may be recorded in a follow-up session. `unknown`
- * when the list could not be read (offline with no copy): the record is then
+ * Whether the typed unit may be recorded in a follow-up session, against
+ * the list as last read: `undefined` while it is first read, `null` when it
+ * could not be. `checking` is that first read, which a save waits for.
+ * `unknown` is no list at all (offline with no copy): the record is then
  * queued, and held by the server if the unit is not listed. An admin is
  * never refused, but is told the unit is off the list.
  */
-export type UnitGate = "ok" | "unlisted" | "admin_override" | "unknown";
+export type UnitGate = "ok" | "unlisted" | "admin_override" | "unknown" | "checking";
 
 export function unitGate(
   unit: string,
   blockId: string,
-  revisits: readonly RevisitEntry[] | null,
+  revisits: readonly RevisitEntry[] | null | undefined,
   isAdmin: boolean,
 ): UnitGate {
   const typed = normaliseUnitNumber(unit);
   if (typed === "") return "ok";
-  if (revisits === null) return isAdmin ? "ok" : "unknown";
+  if (revisits == null) {
+    if (isAdmin) return "ok";
+    return revisits === undefined ? "checking" : "unknown";
+  }
   const listed = revisits.some(
     (entry) => entry.block.id === blockId && entry.household.unitNumber === typed,
   );
   if (listed) return "ok";
   return isAdmin ? "admin_override" : "unlisted";
+}
+
+const OFF_LIST = "not_on_follow_up_list";
+
+/*
+ * Changes whenever the server holds one of this phone's records because its
+ * unit is not on the follow-up list, and when one leaves that state. The
+ * server knew something the list on screen did not, so it is read again.
+ */
+export function heldOffListKey(records: readonly QueuedVisit[]): string {
+  return records
+    .filter((record) => record.state === "held" && record.lastError?.code === OFF_LIST)
+    .map((record) => record.id)
+    .join(" ");
 }

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { ApiRequestError } from "@/lib/api-client";
 import {
+  OFF_THE_LIST,
   RecordVisitForm,
   blockedMessage,
   validateVisit,
@@ -756,6 +757,74 @@ describe("a follow-up after saving", () => {
   });
 });
 
+describe("what a save offers for a household with a note already", () => {
+  const waiting: FollowUp = { ...owed, id: "s1", status: "suggested" };
+
+  /* Answers the unit's history with `notes`, and a save with its visit. */
+  const recordAt = async (notes: FollowUp[]) => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
+      Promise.resolve(
+        init?.method === undefined
+          ? history({ followUps: notes })
+          : path === "/visits"
+            ? { id: "v-new", householdId: "h1" }
+            : {},
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await screen.findByText("Mr Tan");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Saved #05-123.");
+    return { user, status };
+  };
+
+  it.each([
+    ["already on the list", [owed]],
+    ["waiting for review", [waiting]],
+  ])(
+    "offers a member no suggestion for a household %s, which the server would refuse",
+    async (_case, notes) => {
+      const { status } = await recordAt(notes);
+      expect(within(status).queryByRole("button")).toBeNull();
+    },
+  );
+
+  it("offers an admin nothing more for a household already on the list", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const { status } = await recordAt([owed]);
+    expect(within(status).queryByRole("button")).toBeNull();
+  });
+
+  it("has an admin list the waiting suggestion, not add a second note beside it", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const { user, status } = await recordAt([waiting]);
+    await user.click(within(status).getByRole("button", { name: "Add to follow-up list" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Saved #05-123. Added to the follow-up list.",
+      );
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups/s1", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "listed" }),
+    });
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
+  });
+});
+
 describe("validation and failure", () => {
   it("shows inline errors and does not call the API", async () => {
     const user = userEvent.setup();
@@ -1428,7 +1497,7 @@ describe("in a follow-up session", () => {
       "#05-124 is not on the follow-up list, so it can't be recorded in this session. Ask an admin to add it.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Not saved. This unit is not on the follow-up list.",
     );
@@ -1441,13 +1510,13 @@ describe("in a follow-up session", () => {
     mount();
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("alert")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "#05-123" }));
     expect(screen.queryByRole("alert")).toBeNull();
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
   });
 
@@ -1478,6 +1547,20 @@ describe("in a follow-up session", () => {
     });
   });
 
+  it("closes the suggestion from the refusal on Cancel, leaving it on offer", async () => {
+    apiFetch.mockResolvedValue(history({ household: summary("#05-124", "h9").household }));
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(screen.getByRole("button", { name: "Suggest a return visit" })).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
+  });
+
   it("offers no suggestion for a household already waiting for review", async () => {
     apiFetch.mockResolvedValue(
       history({
@@ -1502,7 +1585,7 @@ describe("in a follow-up session", () => {
       "Not on the follow-up list. You can still record it as an admin.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
   });
 
@@ -1516,7 +1599,7 @@ describe("in a follow-up session", () => {
       "Could not check the follow-up list. A visit to a unit not on it will wait on this phone until an admin adds it.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
   });
 
@@ -1526,7 +1609,7 @@ describe("in a follow-up session", () => {
     mount();
     await user.click(screen.getByRole("button", { name: "#05-123" }));
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Saved #05-123.");
     expect(within(status).getByRole("link", { name: "Back to the list" })).toHaveAttribute(
@@ -1536,6 +1619,8 @@ describe("in a follow-up session", () => {
     // The household is listed already: a member has nothing to suggest here.
     expect(within(status).queryByRole("button")).toBeNull();
     expect(screen.getByLabelText("Unit number")).toHaveValue("");
+    // Nothing comes next by itself, so the button promises no "next".
+    expect(screen.queryByRole("button", { name: "Save and next" })).toBeNull();
   });
 
   it("explains a refusal from the server in the same words", async () => {
@@ -1548,7 +1633,7 @@ describe("in a follow-up session", () => {
     mount();
     await user.click(screen.getByRole("button", { name: "#05-123" }));
     await user.click(screen.getByRole("radio", { name: "High" }));
-    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not saved. This unit is not on the follow-up list.",
     );
@@ -1570,5 +1655,155 @@ describe("in a follow-up session", () => {
     );
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
     expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  describe("with a list that may have moved on", () => {
+    const ADDED = [...LIST, revisit("#05-124")];
+
+    const mountWith = (
+      revisits: ReturnType<typeof revisit>[] | null | undefined,
+      recheck: () => Promise<ReturnType<typeof revisit>[] | null>,
+    ) =>
+      render(
+        <RecordVisitForm
+          sessionId={null}
+          loadSession={noSession}
+          blockId={BLOCK}
+          known={[]}
+          followUp={{ revisits, recheck }}
+          onRecorded={vi.fn()}
+        />,
+      );
+
+    const postedVisits = () => apiFetch.mock.calls.filter(([path]) => path === "/visits");
+
+    it("asks for the list again before refusing, and saves a unit an admin has just added", async () => {
+      // The refusal told the member to ask an admin; the admin did.
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-124" });
+      const recheck = vi.fn(() => Promise.resolve(ADDED));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(1);
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("refuses once the list read again still leaves the unit off", async () => {
+      const recheck = vi.fn(() => Promise.resolve(LIST));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(0);
+      expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+    });
+
+    it("judges by the list on screen when it cannot be read again", async () => {
+      const recheck = vi.fn(() => Promise.resolve(null));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(postedVisits()).toHaveLength(0);
+    });
+
+    it("does not ask again for a unit already on the list", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-123" });
+      const recheck = vi.fn(() => Promise.resolve(LIST));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.click(screen.getByRole("button", { name: "#05-123" }));
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+      expect(recheck).not.toHaveBeenCalled();
+    });
+
+    it("says nothing about the list while it is first read, and a save waits for it", async () => {
+      // An ordinary load on weak signal is not a failure to warn about.
+      let answer: (list: ReturnType<typeof revisit>[] | null) => void = () => undefined;
+      const recheck = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof revisit>[] | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
+      expect(screen.queryByText(/is not on the follow-up list/)).toBeNull();
+      expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
+
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+      expect(postedVisits()).toHaveLength(0);
+
+      answer(LIST);
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(postedVisits()).toHaveLength(0);
+    });
+
+    it("saves while the list is still unknown once it cannot be read, leaving the server to judge", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h9" });
+      const recheck = vi.fn(() => Promise.resolve(null));
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(postedVisits()).toHaveLength(1);
+    });
+
+    it("lets an admin save at once while the list is first read", async () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h9" });
+      const recheck = vi.fn(() => new Promise<null>(() => undefined));
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).not.toHaveBeenCalled();
+    });
+
+    it("saves one visit for two taps while the list is read again", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-124" });
+      let answer: (list: ReturnType<typeof revisit>[] | null) => void = () => undefined;
+      const recheck = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof revisit>[] | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      const form = screen.getByLabelText("Unit number").closest("form");
+      if (form === null) throw new Error("expected the form");
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      answer(ADDED);
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(1);
+    });
   });
 });

@@ -236,6 +236,50 @@ describe("HouseholdScreen", () => {
     expect(await screen.findByText("Added to the follow-up list.")).toBeInTheDocument();
   });
 
+  it("has an admin list a member's waiting suggestion from the header, not write a second note", async () => {
+    // A second note would leave Ben's waiting on a listed door, and
+    // dismissing it later would tell him it was declined.
+    useRole.mockReturnValue({ userId: "admin", isAdmin: true });
+    const waiting: FollowUp = {
+      ...owed,
+      id: "s7",
+      status: "suggested",
+      author: { id: "u2", name: "Ben Lim", image: null },
+    };
+    serve((call) => ({
+      ...history,
+      followUps: [call === 1 ? waiting : { ...waiting, status: "listed" }],
+    }));
+    render(<HouseholdScreen householdId="h1" />);
+    const add = await screen.findAllByRole("button", { name: "Add to follow-up list" });
+    // The header alone: no visit row offers a note beside the suggestion.
+    expect(add).toHaveLength(1);
+    const [header] = add;
+    if (header === undefined) throw new Error("expected the header action");
+    fireEvent.click(header);
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups/s7", {
+        method: "PATCH",
+        body: JSON.stringify({ status: "listed" }),
+      });
+    });
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
+    expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    // Re-read: the door is now on the list, and says so instead.
+    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Add to follow-up list" })).toBeNull();
+  });
+
+  it("tells an admin the household is already on the list rather than offering another note", async () => {
+    useRole.mockReturnValue({ userId: "admin", isAdmin: true });
+    serve(() => ({ ...history, followUps: [owed] }));
+    render(<HouseholdScreen householdId="h1" />);
+    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Add to follow-up list" })).toBeNull();
+  });
+
   it("says the household is on the list instead of offering a suggestion", async () => {
     serve(() => ({ ...history, followUps: [owed] }));
     render(<HouseholdScreen householdId="h1" />);

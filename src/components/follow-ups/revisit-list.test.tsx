@@ -191,7 +191,7 @@ describe("RevisitList", () => {
       ]),
     );
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
-    expect(await screen.findByText("2 of 3 visited")).toBeInTheDocument();
+    expect(await screen.findByText("2 of 3 visited or done")).toBeInTheDocument();
     expect(screen.getByText("Visited")).toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
     // Nothing left to mark on a household already done.

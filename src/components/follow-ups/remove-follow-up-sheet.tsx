@@ -77,8 +77,11 @@ export function RemoveFollowUpSheet({
   const title = suggestion ? "Dismiss this suggestion?" : "Remove from the follow-up list?";
   const tooLong = reason.trim().length > MAX_REASON_LENGTH;
 
+  /* One button in the docked bar, as in every sheet with a field: a second
+     one stood the bar so tall that the reason, typed with the keyboard up,
+     ran under it. Keep it is the header's way out instead. */
   return (
-    <Sheet label={title} title={title} onClose={onClose}>
+    <Sheet label={title} title={title} closeLabel="Keep it" onClose={onClose}>
       <p className="mt-1 text-body tabular-nums">
         <FollowUpDoor note={note} />
       </p>
@@ -134,13 +137,6 @@ export function RemoveFollowUpSheet({
           className="min-h-14 w-full btn-danger rounded-xl text-title font-semibold"
         >
           {busy ? "Working…" : suggestion ? "Dismiss suggestion" : "Remove from list"}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="mt-2 min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
-        >
-          Keep it
         </button>
       </SheetActions>
     </Sheet>

@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import type { RevisitEntry } from "@/generated/types.gen";
 import {
   groupByBlock,
+  heldOffListKey,
   listedUnitsIn,
   progress,
   revisitState,
   unitGate,
 } from "@/lib/follow-ups/revisits";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import type { QueuedVisit } from "@/lib/sync/types";
 
 const STAMP = "2026-10-20T18:00:00.000Z";
 
@@ -82,9 +85,10 @@ describe("revisitState and progress", () => {
     );
   });
 
-  it("counts visited and done households against the whole list", () => {
-    expect(progress(list)).toBe("2 of 3 visited");
-    expect(progress([])).toBe("0 of 0 visited");
+  it("counts visited and done households against the whole list, as the rows say", () => {
+    // One visited, one marked done without a knock: neither is still to visit.
+    expect(progress(list)).toBe("2 of 3 visited or done");
+    expect(progress([])).toBe("0 of 0 visited or done");
   });
 });
 
@@ -99,7 +103,7 @@ describe("listedUnitsIn", () => {
 });
 
 describe("unitGate", () => {
-  it.each<[string, string, string, RevisitEntry[] | null, boolean, string]>([
+  it.each<[string, string, string, RevisitEntry[] | null | undefined, boolean, string]>([
     ["a listed unit", "#01-01", "123", list, false, "ok"],
     ["a listed unit typed loosely", " 01-01 ", "123", list, false, "ok"],
     ["the same unit in another block", "#02-02", "125", list, false, "unlisted"],
@@ -107,8 +111,45 @@ describe("unitGate", () => {
     ["an unlisted unit, for an admin", "#09-09", "123", list, true, "admin_override"],
     ["a list that could not be read, for a member", "#09-09", "123", null, false, "unknown"],
     ["a list that could not be read, for an admin", "#09-09", "123", null, true, "ok"],
+    ["a list still being read, for a member", "#09-09", "123", undefined, false, "checking"],
+    ["a list still being read, for an admin", "#09-09", "123", undefined, true, "ok"],
     ["nothing typed yet", "  ", "123", list, false, "ok"],
   ])("%s", (_case, unit, blockId, revisits, isAdmin, expected) => {
     expect(unitGate(unit, blockId, revisits, isAdmin)).toBe(expected);
+  });
+});
+
+describe("heldOffListKey", () => {
+  const record = (id: string, state: QueuedVisit["state"], code: string | null): QueuedVisit => ({
+    ...buildQueuedVisit(
+      {
+        blockId: "123",
+        unitNumber: "#01-01",
+        interestLevel: "high",
+        description: "",
+        name: "",
+        contact: "",
+        religion: "",
+        sessionId: "s1",
+      },
+      "u1",
+      Date.parse(STAMP),
+      () => id,
+    ),
+    state,
+    lastError: code === null ? null : { code },
+  });
+
+  it("names only the records the server held as off the list", () => {
+    expect(
+      heldOffListKey([
+        record("a", "held", "not_on_follow_up_list"),
+        record("b", "held", "session_not_active"),
+        record("c", "queued", null),
+        record("d", "synced", null),
+        record("e", "held", "not_on_follow_up_list"),
+      ]),
+    ).toBe("a e");
+    expect(heldOffListKey([])).toBe("");
   });
 });

@@ -12,12 +12,16 @@ export default async function AdminSessionsPage() {
     <>
       <PageHeader title="Sessions" subtitle="Create, start, end and reopen." />
       {/* The admin landing page, so the place to see what waits for a
-          decision and what is overdue. Each hides itself when there is none. */}
-      <div className="mb-4 space-y-3 empty:hidden">
-        <ReviewCountCard />
-        <OverdueFollowUps />
-      </div>
-      <AdminSessions />
+          decision and what is overdue, under New session. Each hides itself
+          when there is none. */}
+      <AdminSessions
+        notices={
+          <div className="space-y-3 empty:hidden">
+            <ReviewCountCard />
+            <OverdueFollowUps />
+          </div>
+        }
+      />
     </>
   );
 }

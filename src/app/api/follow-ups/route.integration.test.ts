@@ -313,13 +313,33 @@ describe("suggesting a return visit", () => {
     expect(rows).toHaveLength(1);
   });
 
-  it("lets an admin list a household that already has an open note", async () => {
+  it("lets an admin add a second note to a household already on the list", async () => {
     // A household may carry several listed notes; only members are limited.
     await listed("First");
-    await suggested(asAlice, "Waiting", OTHER_HOUSEHOLD);
     asAdmin();
     expect((await create({ householdId: HOUSEHOLD, note: "Second" })).status).toBe(201);
-    expect((await create({ householdId: OTHER_HOUSEHOLD, note: "Listed too" })).status).toBe(201);
+  });
+
+  it("refuses an admin's own note while a suggestion for the household waits", async () => {
+    // Listed beside it, the suggestion would wait on a listed household, and
+    // dismissing it would tell Alice it was declined when it was not.
+    const id = await suggested(asAlice, "Waiting");
+    asAdmin();
+    const response = await create({ householdId: HOUSEHOLD, note: "Listed too" });
+    expect(response.status).toBe(409);
+    expect(await code(response)).toBe("follow_up_exists");
+    const { rows } = await pool.query<{ id: string; status: string }>(
+      `SELECT id, status FROM follow_ups WHERE household_id = $1`,
+      [HOUSEHOLD],
+    );
+    expect(rows).toEqual([{ id, status: "suggested" }]);
+  });
+
+  it("lets an admin add the household once the waiting suggestion is dismissed", async () => {
+    const id = await suggested(asAlice, "Waiting");
+    asAdmin();
+    await remove(id, "Not this time");
+    expect((await create({ householdId: HOUSEHOLD, note: "Listed after all" })).status).toBe(201);
   });
 });
 

@@ -2119,8 +2119,12 @@ paths:
         `409 follow_up_exists` when the household already has an open
         follow-up: an unresolved `listed` note, or any pending suggestion. The
         database holds the one-pending-suggestion rule, so two members
-        suggesting at once cannot both succeed. Removed notes never block a
-        new suggestion.
+        suggesting at once cannot both succeed. An admin is refused
+        `409 follow_up_exists` while the household has a pending suggestion:
+        the admin lists that suggestion instead (`PATCH` with
+        `status: listed`), so it never waits on a household already listed
+        and its author is never told it was declined. Removed notes never
+        block a new note.
       requestBody:
         required: true
         content:
@@ -2142,7 +2146,8 @@ paths:
         "409":
           description: |
             `follow_up_exists`: a member suggesting a household that is already
-            on the follow-up list or already has a suggestion waiting.
+            on the follow-up list or already has a suggestion waiting, or an
+            admin adding a household whose suggestion is waiting for review.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

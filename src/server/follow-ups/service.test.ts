@@ -3,11 +3,13 @@ import type { Database } from "@/db/client";
 import { ConflictError } from "@/server/http/errors";
 import { createFollowUp, ONE_OPEN_SUGGESTION } from "@/server/follow-ups/service";
 
-/* A database whose household lookup succeeds and whose insert fails with `failure`. */
+/* A database whose household lookup succeeds, which finds no open note, and
+   whose insert fails with `failure`. */
 function failingInsert(failure: Error): Database {
+  const answers: { id: string }[][] = [[{ id: "h1" }]];
   return {
     select: () => ({
-      from: () => ({ where: () => ({ limit: () => Promise.resolve([{ id: "h1" }]) }) }),
+      from: () => ({ where: () => ({ limit: () => Promise.resolve(answers.shift() ?? []) }) }),
     }),
     insert: () => ({ values: () => ({ returning: () => Promise.reject(failure) }) }),
   } as unknown as Database;
@@ -25,14 +27,15 @@ describe("createFollowUp", () => {
   });
 
   it("reads the one-pending-suggestion constraint as follow_up_exists", async () => {
+    // A member, whose note is a suggestion: only a suggestion can hit that index.
     const clash = Object.assign(new Error("Failed query"), {
       cause: { constraint: ONE_OPEN_SUGGESTION },
     });
     await expect(
-      createFollowUp(failingInsert(clash), input, { id: "u1", role: "admin" }),
+      createFollowUp(failingInsert(clash), input, { id: "u1", role: "member" }),
     ).rejects.toMatchObject({ code: "follow_up_exists", status: 409 });
     await expect(
-      createFollowUp(failingInsert(clash), input, { id: "u1", role: "admin" }),
+      createFollowUp(failingInsert(clash), input, { id: "u1", role: "member" }),
     ).rejects.toBeInstanceOf(ConflictError);
   });
 });

@@ -172,9 +172,24 @@ describe("followUpRights", () => {
 describe("householdAction", () => {
   const member = { userId: BEN.id, isAdmin: false };
 
-  it("always lets an admin list a household", () => {
-    expect(householdAction([note()], { userId: "admin", isAdmin: true })).toEqual({
-      kind: "add_to_list",
+  const admin = { userId: "admin", isAdmin: true };
+
+  it("lets an admin list a household with nothing open", () => {
+    expect(householdAction([], admin)).toEqual({ kind: "add_to_list" });
+    expect(householdAction([note({ doneAt: STARTED })], admin)).toEqual({ kind: "add_to_list" });
+  });
+
+  it("has an admin add a waiting suggestion rather than write a second note", () => {
+    expect(householdAction([note({ id: "s9", status: "suggested" })], admin)).toEqual({
+      kind: "promote",
+      suggestionId: "s9",
+    });
+  });
+
+  it("tells an admin the household is already on the list while a note is owed", () => {
+    expect(householdAction([note()], admin)).toEqual({ kind: "listed" });
+    expect(householdAction([note(), note({ status: "suggested" })], admin)).toEqual({
+      kind: "listed",
     });
   });
 

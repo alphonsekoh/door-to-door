@@ -77,29 +77,31 @@ export function followUpRights(
 
 export type HouseholdAction =
   | { kind: "add_to_list" }
+  /* An admin, at a household a member has suggested: listing it is adding
+     that suggestion, never a second note beside it. */
+  | { kind: "promote"; suggestionId: string }
   | { kind: "suggest" }
   | { kind: "waiting"; by: string }
   | { kind: "listed" };
 
 /*
- * What a household's header offers. An admin can always list it; a member
- * can suggest it unless it is already owed or already waiting for review,
- * when the header says so instead of offering a button the server refuses.
+ * What a household's header offers. A household already owed says so to
+ * everyone. Otherwise an admin lists it, by adding a waiting suggestion when
+ * there is one; a member suggests it, unless a suggestion already waits.
+ * Nothing is offered that the server would refuse.
  */
 export function householdAction(
-  notes: readonly Pick<FollowUp, "status" | "doneAt" | "author">[],
+  notes: readonly Pick<FollowUp, "id" | "status" | "doneAt" | "author">[],
   viewer: Viewer,
 ): HouseholdAction {
-  if (viewer.isAdmin) return { kind: "add_to_list" };
   if (notes.some((note) => note.status === "listed" && note.doneAt === null)) {
     return { kind: "listed" };
   }
   const waiting = notes.find((note) => note.status === "suggested");
-  if (waiting !== undefined) {
-    const own = viewer.userId !== undefined && waiting.author.id === viewer.userId;
-    return { kind: "waiting", by: own ? "you" : displayName(waiting.author.name) };
-  }
-  return { kind: "suggest" };
+  if (waiting === undefined) return { kind: viewer.isAdmin ? "add_to_list" : "suggest" };
+  if (viewer.isAdmin) return { kind: "promote", suggestionId: waiting.id };
+  const own = viewer.userId !== undefined && waiting.author.id === viewer.userId;
+  return { kind: "waiting", by: own ? "you" : displayName(waiting.author.name) };
 }
 
 /* The words for each action, the same on every screen that offers it. */

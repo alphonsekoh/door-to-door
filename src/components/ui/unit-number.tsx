@@ -11,9 +11,11 @@ export function UnitNumber({ value }: { value: string }) {
 
 /* The door a follow-up is for: "Blk 123 · #05-123". */
 export function FollowUpDoor({ note }: { note: Pick<FollowUp, "blockName" | "unitNumber"> }) {
+  /* One element, so a flex parent cannot make the text and the unit two
+     items and drop the space between them. */
   return (
-    <>
+    <span>
       Blk {note.blockName} · <UnitNumber value={note.unitNumber} />
-    </>
+    </span>
   );
 }

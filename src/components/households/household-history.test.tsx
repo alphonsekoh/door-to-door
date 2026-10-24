@@ -427,13 +427,27 @@ describe("acting on a note", () => {
     render(<Panel over={{ followUps: [note()] }} active={null} />);
     expect(screen.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
-    expect(screen.getByText("You can mark this done during a follow-up session.")).toBeVisible();
+    expect(
+      screen.getByText("You can mark this done during a follow-up session that includes Blk 123."),
+    ).toBeVisible();
   });
 
-  it("says the same about reopening a resolved note", () => {
+  it("names the block when the follow-up session running does not cover it", () => {
+    // One is running, so "during a follow-up session" alone would read as now.
+    const elsewhere = note({ blockId: "far", blockName: "125" });
+    render(<Panel over={{ followUps: [elsewhere] }} />);
+    expect(screen.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("You can mark this done during a follow-up session that includes Blk 125."),
+    ).toBeVisible();
+  });
+
+  it("sends a member to an admin to reopen a resolved note, never to a session", () => {
+    // Resolved before a session starts, a note is never on that session's list.
     const done = note({ doneAt: "2026-04-01T00:00:00.000Z" });
     render(<Panel over={{ followUps: [done] }} active={null} />);
-    expect(screen.getByText("You can reopen this during a follow-up session.")).toBeVisible();
+    expect(screen.getByText("Ask an admin if it needs reopening.")).toBeVisible();
+    expect(screen.queryByText(/during a follow-up session/)).not.toBeInTheDocument();
   });
 
   it("offers Edit to the author in the session", () => {

@@ -2254,7 +2254,8 @@ export type CreateFollowUpErrors = {
     404: Error;
     /**
      * `follow_up_exists`: a member suggesting a household that is already
-     * on the follow-up list or already has a suggestion waiting.
+     * on the follow-up list or already has a suggestion waiting, or an
+     * admin adding a household whose suggestion is waiting for review.
      *
      */
     409: Error;

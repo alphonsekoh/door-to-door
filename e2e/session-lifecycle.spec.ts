@@ -23,9 +23,21 @@ test.beforeAll(async ({ playwright, baseURL }) => {
 });
 
 test("an admin takes an outing from draft to reopened", async ({ adminPage }) => {
-  await adminPage.goto("/admin/sessions");
+  /* Once the landing page's cards have loaded, New session is in view and
+     clear of the bottom nav without a scroll: it sat under the nav on a
+     664px iPhone. */
+  await adminPage.goto("/admin/sessions", { waitUntil: "networkidle" });
+  const create = adminPage.getByRole("button", { name: "New session" });
+  await expect(create).toBeVisible();
+  expect(
+    await create.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const top = document.elementFromPoint(box.x + box.width / 2, box.bottom - 2);
+      return window.scrollY === 0 && top !== null && element.contains(top);
+    }),
+  ).toBe(true);
 
-  await adminPage.getByRole("button", { name: "New session" }).click();
+  await create.click();
   await adminPage.getByLabel("Name this session").fill(TITLE);
   await adminPage.getByRole("button", { name: "Create draft" }).click();
 

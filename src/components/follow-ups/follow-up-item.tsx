@@ -197,11 +197,14 @@ function FollowUpControls({
           ) : null}
         </div>
       ) : null}
+      {/* Named for the block, since a follow-up session may be running
+          elsewhere. A note resolved before a session starts is never on its
+          list, so no session will let a member reopen it. */}
       {rights.locked ? (
         <p className="mt-1 text-caption text-foreground-muted">
           {done
-            ? "You can reopen this during a follow-up session."
-            : "You can mark this done during a follow-up session."}
+            ? "Ask an admin if it needs reopening."
+            : `You can mark this done during a follow-up session that includes Blk ${note.blockName}.`}
         </p>
       ) : null}
       {offers && !online ? (

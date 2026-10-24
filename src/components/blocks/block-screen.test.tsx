@@ -679,4 +679,164 @@ describe("in a follow-up session", () => {
     });
     expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
   });
+
+  describe("when the list may have moved under the screen", () => {
+    const entry = (unitNumber: string) => ({
+      ...revisits.data[0],
+      household: { ...revisits.data[0]?.household, id: `h-${unitNumber}`, unitNumber },
+    });
+    const listOf = (...units: string[]) => ({ data: units.map(entry) });
+    const chipNames = () =>
+      within(screen.getByRole("list", { name: "On the list in this block" }))
+        .getAllByRole("button")
+        .map((chip) => chip.textContent);
+    const reads = () => apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1/revisits");
+
+    /* Answers each read of the list with the next of `answers`, the last for good. */
+    function serveLists(...answers: (() => Promise<unknown>)[]) {
+      let read = 0;
+      serveFollowUp(() => {
+        const answer = answers[Math.min(read, answers.length - 1)];
+        read += 1;
+        return answer === undefined ? Promise.resolve(revisits) : answer();
+      });
+    }
+
+    const held = (unitNumber: string, code: string): QueuedVisit => ({
+      ...buildQueuedVisit(
+        {
+          blockId: "b1",
+          unitNumber,
+          interestLevel: "high",
+          description: "",
+          name: "",
+          contact: "",
+          religion: "",
+          sessionId: "s1",
+        },
+        "u1",
+        Date.parse("2026-10-15T10:00:00.000Z"),
+      ),
+      state: "held",
+      lastError: { code },
+    });
+
+    it("stops offering a unit once the server holds a record there as off the list", async () => {
+      // An admin took #05-124 off the list after this screen read it.
+      serveLists(
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+        () => Promise.resolve(listOf("#05-123")),
+      );
+      const queue = { ...NO_QUEUE };
+      useSyncQueue.mockReturnValue(queue);
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      });
+
+      // Held for another reason, the list is not the question.
+      useSyncQueue.mockReturnValue({ ...queue, records: [held("#05-124", "session_not_active")] });
+      view.rerender(<BlockScreen blockId="b1" />);
+      expect(reads()).toHaveLength(1);
+
+      useSyncQueue.mockReturnValue({
+        ...queue,
+        records: [held("#05-124", "not_on_follow_up_list")],
+      });
+      view.rerender(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
+    });
+
+    it("reads the list again when the member comes back to the app", async () => {
+      // Asked to add a unit, the admin may have while the phone was away.
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+      );
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+
+      // Put away, nothing is read: nobody is looking.
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      Reflect.deleteProperty(document, "visibilityState");
+      expect(document.visibilityState).toBe("visible");
+      expect(reads()).toHaveLength(1);
+
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      });
+    });
+
+    it("keeps the list it has when a later read fails", async () => {
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.reject(new TypeError("offline")),
+      );
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await waitFor(() => {
+        expect(reads()).toHaveLength(2);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
+      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
+      expect(chipNames()).toEqual(["#05-123"]);
+    });
+
+    it("says nothing about the list while it is first read", async () => {
+      // The usual way in: a household tapped on the list, on weak signal.
+      serveLists(() => new Promise(() => undefined));
+      render(<BlockScreen blockId="b1" initialUnit="#05-124" />);
+      await screen.findByText(/Only units on the list can be recorded/);
+      await waitFor(() => {
+        expect(reads()).toHaveLength(1);
+      });
+      expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
+      expect(screen.queryByText(/is not on the follow-up list/)).toBeNull();
+    });
+
+    it("saves a unit an admin added since the list was read, and shows it on the list", async () => {
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+      );
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith(
+          "/visits",
+          expect.objectContaining({ method: "POST" }),
+        );
+      });
+      expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      expect(screen.queryByText(/Not saved/)).toBeNull();
+    });
+  });
 });
