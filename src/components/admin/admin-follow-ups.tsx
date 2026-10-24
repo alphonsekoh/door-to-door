@@ -29,6 +29,12 @@ const QUERY: Record<FollowUpTab, string> = {
   dismissed: "deleted=true",
 };
 
+const TAB_LABEL: Record<FollowUpTab, string> = {
+  review: "To review",
+  list: "On the list",
+  dismissed: "Dismissed",
+};
+
 const EMPTY: Record<FollowUpTab, { title: string; detail: string | null }> = {
   review: {
     title: "No suggestions to review.",
@@ -61,6 +67,8 @@ export function AdminFollowUps() {
   const [counts, setCounts] = useState<Counts>({ review: null, list: null });
   const [loadingMore, setLoadingMore] = useState(false);
   const [editing, setEditing] = useState<FollowUp | null>(null);
+  /* What a promotion said, kept until the next tab or change. */
+  const [notice, setNotice] = useState<string | null>(null);
   /* Switching tabs quickly must not let an older answer land last. */
   const generation = useRef(0);
 
@@ -114,50 +122,51 @@ export function AdminFollowUps() {
     void count();
   };
 
-  const label = (value: FollowUpTab): string => {
-    switch (value) {
-      case "review":
-        return counts.review === null ? "To review" : `To review (${String(counts.review)})`;
-      case "list":
-        return counts.list === null ? "On the list" : `On the list (${String(counts.list)})`;
-      case "dismissed":
-        return "Dismissed";
-    }
-  };
+  const tabCount = (value: FollowUpTab): number | null =>
+    value === "dismissed" ? null : counts[value];
 
   const empty = EMPTY[tab];
 
   return (
     <div className="space-y-4">
-      <HintCard id="admin-follow-ups" title="How the follow-up list works">
-        Members suggest households worth a return visit. You add the good ones to this list. Then
-        create a Follow-up session and attach their blocks; members can record visits only at listed
-        households.
-      </HintCard>
-
-      {/* Wraps onto rows at large text rather than overlap (D-111-25). */}
+      {/* The count sits under its label, so no tab wraps mid-word at phone
+          width; they still wrap onto rows at large text (D-111-25). */}
       <div role="group" aria-label="Follow-up list views" className="flex flex-wrap gap-2">
         {(["review", "list", "dismissed"] as const).map((value) => {
           const on = value === tab;
+          const total = tabCount(value);
           return (
             <button
               key={value}
               type="button"
               aria-pressed={on}
+              aria-label={
+                total === null ? TAB_LABEL[value] : `${TAB_LABEL[value]}, ${String(total)}`
+              }
               onClick={() => {
                 if (on) return;
                 setState({ status: "loading" });
+                setNotice(null);
                 router.replace(`/admin/follow-ups?tab=${value}`);
               }}
-              className={`min-h-11 flex-[1_1_9ch] press rounded-lg border px-2 text-body font-medium tabular-nums ${
+              className={`flex min-h-14 flex-[1_1_9ch] press flex-col items-center justify-center rounded-lg border px-2 py-1 text-body leading-tight font-medium ${
                 on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"
               }`}
             >
-              {label(value)}
+              <span>{TAB_LABEL[value]}</span>
+              {total === null ? null : (
+                <span className="text-caption tabular-nums">{String(total)}</span>
+              )}
             </button>
           );
         })}
       </div>
+
+      {notice === null ? null : (
+        <p role="status" className="notice-success">
+          {notice}
+        </p>
+      )}
 
       {state.status === "loading" ? (
         <p className="text-body text-foreground-muted">Loading…</p>
@@ -192,8 +201,12 @@ export function AdminFollowUps() {
                     now={now}
                     active={null}
                     showUnit
-                    onChanged={reload}
+                    onChanged={() => {
+                      setNotice(null);
+                      reload();
+                    }}
                     onEdit={setEditing}
+                    onPromoted={setNotice}
                   />
                 )}
               </li>
@@ -216,6 +229,14 @@ export function AdminFollowUps() {
           ) : null}
         </>
       )}
+
+      {/* Under the list, so the first Add to list or Dismiss is in view on a
+          first visit. */}
+      <HintCard id="admin-follow-ups" title="How the follow-up list works">
+        Members suggest households worth a return visit. You add the good ones to this list. Then
+        create a Follow-up session and pick which of them to visit; members can record visits only
+        at the households you pick.
+      </HintCard>
 
       <SheetPresence>
         {editing === null ? null : (

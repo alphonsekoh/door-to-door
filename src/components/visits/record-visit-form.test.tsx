@@ -113,6 +113,7 @@ const owed: FollowUp = {
   deletedAt: null,
   deletedBy: null,
   deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2025-11-02T10:00:00.000Z",
 };
 
@@ -136,6 +137,7 @@ const FOLLOW_UP: ActiveSession = {
       activeMembers: [],
     },
   ],
+  householdIds: ["h1"],
 };
 
 describe("validateVisit", () => {
@@ -832,7 +834,15 @@ describe("what a save offers for a household with a note already", () => {
     useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     const { user, status } = await recordAt([waiting]);
     await user.click(within(status).getByRole("button", { name: "Add to follow-up list" }));
-    expect(screen.queryByRole("dialog")).toBeNull();
+    // The suggestion is shown before it is listed, in its author's words.
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    await user.click(add);
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent(
         "Saved #05-123. Added to the follow-up list.",
@@ -1515,12 +1525,12 @@ describe("in a follow-up session", () => {
     mount();
     await user.type(screen.getByLabelText("Unit number"), "05-124");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      "#05-124 is not on the follow-up list, so it can't be recorded in this session. Ask an admin to add it.",
+      "#05-124 is not on this session's list, so it can't be recorded in this session. Ask an admin to add it.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Not saved. This unit is not on the follow-up list.",
+      "Not saved. This unit is not on this session's list.",
     );
     expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
   });
@@ -1553,7 +1563,7 @@ describe("in a follow-up session", () => {
     const suggest = await screen.findByRole("button", { name: "Suggest a return visit" });
     // One way to get it listed is offered, not "ask an admin" beside it.
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      "#05-124 is not on the follow-up list, so it can't be recorded in this session. Should it be? Suggest it for an admin to review. Suggest a return visit",
+      "#05-124 is not on this session's list, so it can't be recorded in this session. Should it be? Suggest it for an admin to review. Suggest a return visit",
     );
     await user.click(suggest);
     const sheet = within(screen.getByRole("dialog", { name: "Suggest a return visit, #05-124" }));
@@ -1604,13 +1614,28 @@ describe("in a follow-up session", () => {
     );
   });
 
+  it("says a household on the follow-up list needs adding to this session", async () => {
+    // Listed, but this session did not pick it: only an admin can add it.
+    apiFetch.mockResolvedValue(
+      history({ household: summary("#05-124", "h9").household, followUps: [owed] }),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(await screen.findByRole("list", { name: "On the follow-up list" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on this session's list, so it can't be recorded in this session. It is on the follow-up list; ask an admin to add it to this session.",
+    );
+  });
+
   it("says nothing of what to do while a known unit's history loads", async () => {
     apiFetch.mockReturnValue(new Promise(() => undefined));
     const user = userEvent.setup();
     mount(LIST, [summary("#05-124", "h9")]);
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      "#05-124 is not on the follow-up list, so it can't be recorded in this session.",
+      "#05-124 is not on this session's list, so it can't be recorded in this session.",
     );
   });
 
@@ -1645,7 +1670,7 @@ describe("in a follow-up session", () => {
     mount();
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      "Not on the follow-up list. You can still record it as an admin.",
+      "Not on this session's list. You can still record it as an admin.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -1659,7 +1684,7 @@ describe("in a follow-up session", () => {
     expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      "Could not check the follow-up list. A visit to a unit not on it will wait on this phone until an admin adds it.",
+      "Could not check this session's list. A visit to a unit not on it will wait on this phone until an admin adds it.",
     );
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -1698,7 +1723,7 @@ describe("in a follow-up session", () => {
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Not saved. This unit is not on the follow-up list.",
+      "Not saved. This unit is not on this session's list.",
     );
   });
 
@@ -1747,7 +1772,7 @@ describe("in a follow-up session", () => {
       const user = userEvent.setup();
       mountWith(LIST, recheck);
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
       await user.click(screen.getByRole("radio", { name: "High" }));
       await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -1807,8 +1832,8 @@ describe("in a follow-up session", () => {
       const user = userEvent.setup();
       mountWith(undefined, recheck);
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
-      expect(screen.queryByText(/is not on the follow-up list/)).toBeNull();
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(screen.queryByText(/is not on this session's list/)).toBeNull();
       expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
 
       await user.click(screen.getByRole("radio", { name: "High" }));

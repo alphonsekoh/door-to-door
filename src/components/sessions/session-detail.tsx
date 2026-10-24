@@ -7,7 +7,7 @@ import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import { PageHeader } from "@/components/ui/page-header";
 import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
-import { SessionRevisits } from "@/components/sessions/session-revisits";
+import { SessionHouseholds } from "@/components/sessions/session-households";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
@@ -124,6 +124,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   const { session, blocks } = state;
   const recorded = blocks.reduce((sum, entry) => sum + entry.visitCount, 0);
+  /* A follow-up session's blocks follow its households: read-only here. */
+  const byHand = session.kind === "regular";
 
   return (
     <div className="space-y-5">
@@ -171,17 +173,24 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       <div>
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
           <h2 className="text-title font-semibold">Blocks</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setNotice(null);
-              setAttaching(true);
-            }}
-            className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
-          >
-            Add blocks
-          </button>
+          {byHand ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNotice(null);
+                setAttaching(true);
+              }}
+              className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+            >
+              Add blocks
+            </button>
+          ) : null}
         </div>
+        {byHand ? null : (
+          <p className="mb-2 text-caption text-foreground-muted">
+            Blocks follow the households in this session.
+          </p>
+        )}
 
         {notice === null ? null : (
           <p role="status" className="mb-2 text-body text-foreground-muted">
@@ -226,15 +235,17 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                     ) : null}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetaching(entry);
-                    }}
-                    className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
-                  >
-                    Remove
-                  </button>
+                  {byHand ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetaching(entry);
+                      }}
+                      className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}
@@ -243,13 +254,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       </div>
 
       {session.kind === "follow_up" ? (
-        <SessionRevisits
-          sessionId={session.id}
-          ended={session.status === "ended"}
-          attachedIds={blocks.map((entry) => entry.block.id)}
-          tick={tick}
-          onAttached={load}
-        />
+        <SessionHouseholds session={session} tick={tick} onChanged={load} />
       ) : null}
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />

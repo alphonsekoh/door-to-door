@@ -104,7 +104,7 @@ describe("with blocks", () => {
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("6")).toBeInTheDocument();
     // This session's units, not the block's size.
-    expect(screen.getByText("visited tonight")).toBeInTheDocument();
+    expect(screen.getByText("visited in this session")).toBeInTheDocument();
     // Visits only shown when they exceed units, or it is noise.
     expect(screen.getByText("8 visits")).toBeInTheDocument();
   });
@@ -141,7 +141,7 @@ describe("with blocks", () => {
     apiFetch.mockResolvedValue(session([block("123", { householdCount: 1, visitCount: 1 })]));
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("1")).toBeInTheDocument();
-    expect(screen.getByText("visited tonight")).toBeInTheDocument();
+    expect(screen.getByText("visited in this session")).toBeInTheDocument();
   });
 });
 

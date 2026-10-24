@@ -104,7 +104,7 @@ test("a member records a unit and sees it in the block list", async ({ memberPag
   const row = memberPage.getByRole("button", { name: new RegExp(UNIT) });
   await expect(row).toBeVisible();
   await expect(row).toContainText("High");
-  await expect(row).toContainText("tonight");
+  await expect(row).toContainText("this session");
 });
 
 test("Save is on the first paint, above the nav, before any script has run", async ({

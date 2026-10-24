@@ -3,7 +3,8 @@ import type { Database } from "@/db/client";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { SessionKind, SessionStatus } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
-import { ConflictError, NotFoundError } from "@/server/http/errors";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
+import { blockHasSessionVisits, pickHouseholds } from "@/server/sessions/households";
 
 /*
  * Session lifecycle.
@@ -47,9 +48,12 @@ const sessionColumns = {
 
 export async function listSessions(
   db: Database,
-  options: { limit: number; offset: number; status?: SessionStatus },
+  options: { limit: number; offset: number; status?: SessionStatus; kind?: SessionKind },
 ): Promise<{ rows: SessionRow[]; total: number }> {
-  const filter = options.status ? eq(outingSessions.status, options.status) : undefined;
+  const filter = and(
+    options.status === undefined ? undefined : eq(outingSessions.status, options.status),
+    options.kind === undefined ? undefined : eq(outingSessions.kind, options.kind),
+  );
 
   const rows = await db
     .select(sessionColumns)
@@ -83,16 +87,44 @@ export async function getSession(db: Database, id: string): Promise<SessionRow> 
   return session;
 }
 
-export async function createSession(
-  db: Database,
-  input: { title: string; kind?: SessionKind; blockIds?: string[]; createdBy: string },
-): Promise<SessionRow> {
+export type NewSession = {
+  title: string;
+  kind: SessionKind;
+  blockIds?: string[] | undefined;
+  householdIds?: string[] | undefined;
+  createdBy: string;
+};
+
+/*
+ * A regular session takes blocks; a follow-up session takes the households
+ * it goes back to, at least one, and gets their blocks. Each refuses the
+ * other's, so a client cannot build a follow-up session block by block.
+ */
+function assertShape(input: NewSession): void {
+  const issue = (path: string, message: string) =>
+    new ValidationError("Invalid request body.", [{ path, message }]);
+  if (input.kind === "regular") {
+    if (input.householdIds !== undefined) {
+      throw issue("/householdIds", "Only a follow-up session has households.");
+    }
+    return;
+  }
+  if (input.blockIds !== undefined) {
+    throw issue("/blockIds", "A follow-up session's blocks come from its households.");
+  }
+  if (input.householdIds === undefined) {
+    throw issue("/householdIds", "Pick at least one household to visit.");
+  }
+}
+
+export async function createSession(db: Database, input: NewSession): Promise<SessionRow> {
+  assertShape(input);
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(outingSessions)
       .values({
         title: input.title,
-        kind: input.kind ?? "regular",
+        kind: input.kind,
         status: "draft",
         createdBy: input.createdBy,
       })
@@ -100,11 +132,24 @@ export async function createSession(
 
     const id = firstOrThrow(inserted, "the session insert").id;
 
+    if (input.householdIds !== undefined) {
+      await pickHouseholds(tx, id, input.householdIds);
+    }
     if (input.blockIds && input.blockIds.length > 0) {
       await attachBlocks(tx, id, input.blockIds);
     }
     return getSession(tx, id);
   });
+}
+
+/* A follow-up session's blocks follow its households, never a hand. */
+export function assertBlocksByHand(session: { kind: SessionKind }): void {
+  if (session.kind === "follow_up") {
+    throw new ConflictError(
+      "conflict",
+      "A follow-up session's blocks follow its households. Add or remove households instead.",
+    );
+  }
 }
 
 /* Rejects unknown blocks before attaching any, so the request is all or nothing. */
@@ -289,13 +334,7 @@ export async function detachBlock(db: Database, sessionId: string, blockId: stri
     throw new NotFoundError("That block is not attached to this session.");
   }
 
-  const recorded = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(visits)
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .where(and(eq(visits.sessionId, sessionId), eq(households.blockId, blockId)));
-
-  if (firstOrThrow(recorded, "the visit count").total > 0) {
+  if (await blockHasSessionVisits(db, sessionId, blockId)) {
     throw new ConflictError(
       "block_in_use",
       "That block has visits recorded in this session, so it cannot be detached.",

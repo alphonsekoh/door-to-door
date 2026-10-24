@@ -58,6 +58,6 @@ export const SESSION_KINDS: readonly KindSpec[] = [
   {
     value: "follow_up",
     label: "Follow-up",
-    hint: "Go back to households on the follow-up list. Members can record only those households.",
+    hint: "Go back to households you pick from the follow-up list. Members can record only those households.",
   },
 ];

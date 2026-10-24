@@ -311,7 +311,7 @@ describe("BlockScreen", () => {
 
     await user.click(screen.getByRole("tab", { name: "All units (1)" }));
     expect(screen.getByText("#05-123")).toBeInTheDocument();
-    expect(screen.queryByText("tonight")).not.toBeInTheDocument();
+    expect(screen.queryByText("this session")).not.toBeInTheDocument();
   });
 
   it("reloads the unit list after a visit is recorded", async () => {
@@ -657,6 +657,7 @@ describe("in a follow-up session", () => {
         activeMembers: [],
       },
     ],
+    householdIds: [],
   };
   const revisits = {
     data: [
@@ -711,7 +712,7 @@ describe("in a follow-up session", () => {
     await screen.findByText(/Only units on the list can be recorded/);
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^Could not check the follow-up list\./,
+      /^Could not check this session's list\./,
     );
     expect(noteRevisits).not.toHaveBeenCalled();
   });
@@ -834,7 +835,7 @@ describe("in a follow-up session", () => {
         expect(chipNames()).toEqual(["#05-123"]);
       });
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
     });
 
     it("reads the list again when the member comes back to the app", async () => {
@@ -882,8 +883,8 @@ describe("in a follow-up session", () => {
         expect(reads()).toHaveLength(2);
       });
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.getByText(/is not on the follow-up list/)).toBeVisible();
-      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
       expect(chipNames()).toEqual(["#05-123"]);
     });
 
@@ -896,8 +897,8 @@ describe("in a follow-up session", () => {
         expect(reads()).toHaveLength(1);
       });
       expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
-      expect(screen.queryByText(/Could not check the follow-up list/)).toBeNull();
-      expect(screen.queryByText(/is not on the follow-up list/)).toBeNull();
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(screen.queryByText(/is not on this session's list/)).toBeNull();
     });
 
     it("saves a unit an admin added since the list was read, and shows it on the list", async () => {

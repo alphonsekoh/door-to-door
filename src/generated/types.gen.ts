@@ -227,6 +227,13 @@ export type OutingSession = {
 export type ActiveSession = {
     session: OutingSession;
     blocks: Array<SessionBlock>;
+    /**
+     * The households an admin picked for a follow-up session, so a client
+     * can tell which listed notes are on its list without reading the
+     * list. Empty for a regular session.
+     *
+     */
+    householdIds: Array<string>;
 };
 
 export type Household = {
@@ -358,15 +365,27 @@ export type FollowUp = {
     deletedAt: string | null;
     /**
      * Who removed it: an admin, or the author withdrawing their own
-     * suggestion. A suggestion removed by anyone but its author was
-     * declined, and the author is told so.
+     * suggestion. A note removed by anyone but its author (a declined
+     * suggestion, or a note taken off the list) is shown to its author,
+     * with the reason.
      *
      */
     deletedBy: UserSummary | null;
     /**
-     * Optional, given when it was removed. Shown to the author.
+     * Why it was removed, given by whoever removed it. Shown to the author
+     * and to admins. Null while the note is not removed.
+     *
      */
     deleteReason: string | null;
+    /**
+     * On a listed, not removed note: the author of the suggestion waiting
+     * for review at the same household, or null. While one waits,
+     * reopening this note lists that suggestion when an admin does it,
+     * and is `409 follow_up_exists` for a member. Always null on a
+     * suggestion and on a removed note.
+     *
+     */
+    waitingSuggestionBy: UserSummary | null;
     /**
      * The household's block, so a list of notes can name the door without
      * a lookup per note.
@@ -412,10 +431,11 @@ export type HouseholdHistory = {
 };
 
 /**
- * One household on a follow-up session's list: it is in one of the
- * session's attached blocks and has at least one `listed`, not removed
- * note that is outstanding or was resolved after the session started.
- * This is the set a member may record visits at in that session.
+ * One household on a follow-up session's list: an admin picked it for
+ * the session, and it has at least one `listed`, not removed note that is
+ * outstanding or was resolved after the session started (a draft counts
+ * outstanding notes only). This is the set a member may record visits at
+ * in that session.
  *
  */
 export type RevisitEntry = {
@@ -444,6 +464,46 @@ export type RevisitList = {
     data: Array<RevisitEntry>;
 };
 
+/**
+ * A household an admin picked for a follow-up session. Picks change only
+ * when an admin adds or removes one, so they are the session's record of
+ * what it set out to do; `onList` says whether the household is on the
+ * session's list right now. A picked household drops off the list when
+ * its notes are resolved before the session started, or taken off the
+ * follow-up list, and returns when it is listed or reopened again.
+ *
+ */
+export type SessionHousehold = {
+    household: Household;
+    block: Block;
+    /**
+     * The household's `listed`, not removed notes, resolved or not:
+     * outstanding first (by due day, undated last), then resolved. Empty
+     * once every note was taken off the follow-up list.
+     *
+     */
+    notes: Array<FollowUp>;
+    /**
+     * On the session's list now (`GET /sessions/{id}/revisits`): members
+     * see it and may record there.
+     *
+     */
+    onList: boolean;
+    /**
+     * Someone has recorded a visit here during this session, so it can no
+     * longer be removed from the session.
+     *
+     */
+    visitedInSession: boolean;
+};
+
+export type SessionHouseholdList = {
+    /**
+     * Ordered by block name, then unit number.
+     */
+    data: Array<SessionHousehold>;
+};
+
 export type CreateSessionRequest = {
     title: string;
     /**
@@ -451,9 +511,19 @@ export type CreateSessionRequest = {
      */
     kind?: SessionKind;
     /**
-     * Blocks to attach immediately. More may be added later.
+     * A regular session only: blocks to attach immediately. More may be
+     * added later. Sent with `kind: follow_up` it is `400`, since a
+     * follow-up session's blocks come from its households.
+     *
      */
     blockIds?: Array<string>;
+    /**
+     * **Required for `kind: follow_up`**, and `400` for a regular
+     * session. The households to go back to, each with a `listed`, not
+     * removed, outstanding note; the session's blocks are theirs.
+     *
+     */
+    householdIds?: Array<string>;
 };
 
 export type CreateBlockRequest = {
@@ -470,6 +540,10 @@ export type UpdateBlockRequest = {
 
 export type AttachBlocksRequest = {
     blockIds: Array<string>;
+};
+
+export type AddSessionHouseholdsRequest = {
+    householdIds: Array<string>;
 };
 
 /**
@@ -629,7 +703,10 @@ export type UpdateFollowUpRequest = {
     dueDate?: string | null;
     /**
      * `true` marks it resolved and records who did so; `false` reopens it.
-     * Only a `listed` note can be resolved.
+     * Only a `listed` note can be resolved. Reopening while a suggestion
+     * waits at the household (`waitingSuggestionBy`) also lists that
+     * suggestion when an admin does it, and is `409 follow_up_exists` for
+     * a member.
      *
      */
     done?: boolean;
@@ -640,6 +717,21 @@ export type UpdateFollowUpRequest = {
      *
      */
     status?: 'listed';
+};
+
+/**
+ * Sent in the body, not the URL, so free text about a household never
+ * lands in a proxy or access log.
+ *
+ */
+export type RemoveFollowUpRequest = {
+    /**
+     * Why it is being removed. Required for every removal and shown to
+     * the note's author and to admins. Must contain something other than
+     * spaces; stored trimmed.
+     *
+     */
+    reason: string;
 };
 
 export type CreateUserRequest = {
@@ -847,6 +939,10 @@ export type ListSessionsData = {
         limit?: number;
         offset?: number;
         status?: SessionStatus;
+        /**
+         * Only sessions of this kind. Both when omitted.
+         */
+        kind?: SessionKind;
     };
     url: '/sessions';
 };
@@ -910,9 +1006,15 @@ export type CreateSessionErrors = {
      */
     403: Error;
     /**
-     * One of the supplied `blockIds` does not exist.
+     * One of the supplied `blockIds` or `householdIds` does not exist.
      */
     404: Error;
+    /**
+     * `not_on_follow_up_list`: one of the `householdIds` has no `listed`,
+     * not removed, outstanding note (a stale screen).
+     *
+     */
+    409: Error;
 };
 
 export type CreateSessionError = CreateSessionErrors[keyof CreateSessionErrors];
@@ -1202,6 +1304,10 @@ export type AttachSessionBlocksErrors = {
      * The session, or one of the blocks, does not exist.
      */
     404: Error;
+    /**
+     * `conflict`: the session is a follow-up session.
+     */
+    409: Error;
 };
 
 export type AttachSessionBlocksError = AttachSessionBlocksErrors[keyof AttachSessionBlocksErrors];
@@ -1245,7 +1351,9 @@ export type DetachSessionBlockErrors = {
      */
     404: Error;
     /**
-     * The block has visits recorded in this session.
+     * `block_in_use`: the block has visits recorded in this session.
+     * `conflict`: the session is a follow-up session.
+     *
      */
     409: Error;
 };
@@ -1305,6 +1413,153 @@ export type ListSessionRevisitsResponses = {
 };
 
 export type ListSessionRevisitsResponse = ListSessionRevisitsResponses[keyof ListSessionRevisitsResponses];
+
+export type ListSessionHouseholdsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/households';
+};
+
+export type ListSessionHouseholdsErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `conflict`: the session is a regular session.
+     */
+    409: Error;
+};
+
+export type ListSessionHouseholdsError = ListSessionHouseholdsErrors[keyof ListSessionHouseholdsErrors];
+
+export type ListSessionHouseholdsResponses = {
+    /**
+     * The picked households.
+     */
+    200: SessionHouseholdList;
+};
+
+export type ListSessionHouseholdsResponse = ListSessionHouseholdsResponses[keyof ListSessionHouseholdsResponses];
+
+export type AddSessionHouseholdsData = {
+    body: AddSessionHouseholdsRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/households';
+};
+
+export type AddSessionHouseholdsErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * The session, or one of the households, does not exist.
+     */
+    404: Error;
+    /**
+     * `conflict`: the session is a regular session, or has ended.
+     * `not_on_follow_up_list`: a household has no `listed`, not removed,
+     * outstanding note.
+     *
+     */
+    409: Error;
+};
+
+export type AddSessionHouseholdsError = AddSessionHouseholdsErrors[keyof AddSessionHouseholdsErrors];
+
+export type AddSessionHouseholdsResponses = {
+    /**
+     * The session's households after adding.
+     */
+    200: SessionHouseholdList;
+};
+
+export type AddSessionHouseholdsResponse = AddSessionHouseholdsResponses[keyof AddSessionHouseholdsResponses];
+
+export type RemoveSessionHouseholdData = {
+    body?: never;
+    path: {
+        id: string;
+        householdId: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/households/{householdId}';
+};
+
+export type RemoveSessionHouseholdErrors = {
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * The session does not exist, or the household is not picked for it.
+     */
+    404: Error;
+    /**
+     * `conflict`: a regular or ended session, the session's last
+     * household, or a household visited in this session. `block_in_use`:
+     * its block holds visits recorded in this session and no other
+     * picked household.
+     *
+     */
+    409: Error;
+};
+
+export type RemoveSessionHouseholdError = RemoveSessionHouseholdErrors[keyof RemoveSessionHouseholdErrors];
+
+export type RemoveSessionHouseholdResponses = {
+    /**
+     * Removed from the session.
+     */
+    204: void;
+};
+
+export type RemoveSessionHouseholdResponse = RemoveSessionHouseholdResponses[keyof RemoveSessionHouseholdResponses];
 
 export type ListParticipantsData = {
     body?: never;
@@ -2272,58 +2527,6 @@ export type CreateFollowUpResponses = {
 
 export type CreateFollowUpResponse = CreateFollowUpResponses[keyof CreateFollowUpResponses];
 
-export type DeleteFollowUpData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: {
-        /**
-         * Why it was removed, shown to the note's author. Trimmed; blank is
-         * stored as none.
-         *
-         */
-        reason?: string;
-    };
-    url: '/follow-ups/{id}';
-};
-
-export type DeleteFollowUpErrors = {
-    /**
-     * The request failed validation against this contract.
-     */
-    400: Error;
-    /**
-     * No valid session. Also returned for a valid token whose account no
-     * longer exists: the account is looked up on every request, so a deleted
-     * user's old cookie is treated as signed out.
-     *
-     */
-    401: Error;
-    /**
-     * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
-     *
-     */
-    403: Error;
-    /**
-     * No such resource, or not visible to this user.
-     */
-    404: Error;
-};
-
-export type DeleteFollowUpError = DeleteFollowUpErrors[keyof DeleteFollowUpErrors];
-
-export type DeleteFollowUpResponses = {
-    /**
-     * Removed.
-     */
-    204: void;
-};
-
-export type DeleteFollowUpResponse = DeleteFollowUpResponses[keyof DeleteFollowUpResponses];
-
 export type UpdateFollowUpData = {
     body: UpdateFollowUpRequest;
     path: {
@@ -2358,7 +2561,8 @@ export type UpdateFollowUpErrors = {
     /**
      * `conflict`: resolving a suggestion. `not_on_follow_up_list`: a member
      * changing a listed note outside the follow-up session whose list it
-     * is on.
+     * is on. `follow_up_exists`: a member reopening a listed note while a
+     * suggestion waits at its household.
      *
      */
     409: Error;
@@ -2374,6 +2578,51 @@ export type UpdateFollowUpResponses = {
 };
 
 export type UpdateFollowUpResponse = UpdateFollowUpResponses[keyof UpdateFollowUpResponses];
+
+export type RemoveFollowUpData = {
+    body: RemoveFollowUpRequest;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/follow-ups/{id}/remove';
+};
+
+export type RemoveFollowUpErrors = {
+    /**
+     * The reason is missing, blank or longer than 500 characters.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists: the account is looked up on every request, so a deleted
+     * user's old cookie is treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued.
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+};
+
+export type RemoveFollowUpError = RemoveFollowUpErrors[keyof RemoveFollowUpErrors];
+
+export type RemoveFollowUpResponses = {
+    /**
+     * Removed.
+     */
+    204: void;
+};
+
+export type RemoveFollowUpResponse = RemoveFollowUpResponses[keyof RemoveFollowUpResponses];
 
 export type ListHistoryData = {
     body?: never;

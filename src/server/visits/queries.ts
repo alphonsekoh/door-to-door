@@ -38,6 +38,10 @@ export type FollowUpRow = {
   deletedByName: string | null;
   deletedByImage: string | null;
   deleteReason: string | null;
+  waitingSuggestionId: string | null;
+  waitingById: string | null;
+  waitingByName: string | null;
+  waitingByImage: string | null;
 };
 
 export type HouseholdSummaryRow = {
@@ -196,12 +200,20 @@ const author = alias(users, "author");
 const resolver = alias(users, "resolver");
 const lister = alias(users, "lister");
 const remover = alias(users, "remover");
+/* A suggestion waiting at the same door, and who made it. */
+const pending = alias(followUps, "pending");
+const suggester = alias(users, "suggester");
 
 /*
  * The one SELECT every follow-up read goes through, so the list, a single
  * note and a household's history can never disagree on what a note carries.
  * Callers add their own filter and order, including whether removed notes
  * count (`liveFollowUp`).
+ *
+ * A listed, live note also carries the suggestion waiting at its household,
+ * if any, since reopening it would leave that suggestion beside an owed note.
+ * The partial unique index allows at most one, so the join never doubles a
+ * row; a suggestion or a removed note joins none.
  */
 export function selectFollowUps(db: Database) {
   return db
@@ -232,6 +244,10 @@ export function selectFollowUps(db: Database) {
       deletedByName: remover.name,
       deletedByImage: remover.image,
       deleteReason: followUps.deleteReason,
+      waitingSuggestionId: pending.id,
+      waitingById: suggester.id,
+      waitingByName: suggester.name,
+      waitingByImage: suggester.image,
     })
     .from(followUps)
     .innerJoin(households, eq(households.id, followUps.householdId))
@@ -239,7 +255,18 @@ export function selectFollowUps(db: Database) {
     .innerJoin(author, eq(author.id, followUps.authorId))
     .leftJoin(resolver, eq(resolver.id, followUps.doneBy))
     .leftJoin(lister, eq(lister.id, followUps.listedBy))
-    .leftJoin(remover, eq(remover.id, followUps.deletedBy));
+    .leftJoin(remover, eq(remover.id, followUps.deletedBy))
+    .leftJoin(
+      pending,
+      and(
+        eq(followUps.status, "listed"),
+        isNull(followUps.deletedAt),
+        eq(pending.householdId, followUps.householdId),
+        eq(pending.status, "suggested"),
+        isNull(pending.deletedAt),
+      ),
+    )
+    .leftJoin(suggester, eq(suggester.id, pending.authorId));
 }
 
 /* Listed notes and pending suggestions alike, so the next member sees both. */

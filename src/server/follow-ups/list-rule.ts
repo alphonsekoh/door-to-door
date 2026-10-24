@@ -1,7 +1,7 @@
 import { and, eq, gte, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role, SessionKind } from "@/db/schema";
-import { followUps, households, outingSessions, sessionBlocks } from "@/db/schema";
+import { followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
 import { ConflictError } from "@/server/http/errors";
 
 /*
@@ -20,9 +20,11 @@ export const liveFollowUp = isNull(followUps.deletedAt);
 export type RevisitSession = { id: string; kind: SessionKind; startedAt: Date | null };
 
 /*
- * Listed, not removed, still owed or resolved since the session started, and
- * in one of the session's blocks. A draft has no start, so only what is still
- * owed counts: a note resolved last month is not tonight's work.
+ * Picked for the session by an admin, and with a note that is listed, not
+ * removed, and still owed or resolved since the session started. A draft has
+ * no start, so only what is still owed counts: a note resolved last month is
+ * not this session's work. A pick whose notes have all left the list stays
+ * picked, and simply drops off the list until one is listed or reopened.
  */
 export function onRevisitList(db: Database, session: RevisitSession): SQL | undefined {
   return and(
@@ -34,10 +36,9 @@ export function onRevisitList(db: Database, session: RevisitSession): SQL | unde
     inArray(
       followUps.householdId,
       db
-        .select({ id: households.id })
-        .from(households)
-        .innerJoin(sessionBlocks, eq(sessionBlocks.blockId, households.blockId))
-        .where(eq(sessionBlocks.sessionId, session.id)),
+        .select({ id: sessionHouseholds.householdId })
+        .from(sessionHouseholds)
+        .where(eq(sessionHouseholds.sessionId, session.id)),
     ),
   );
 }
@@ -110,7 +111,7 @@ export async function assertMayRecordHere(
   if (!(await isUnitOnRevisitList(db, session, blockId, unitNumber))) {
     throw new ConflictError(
       "not_on_follow_up_list",
-      "This unit is not on the follow-up list for this session. Ask an admin to add it.",
+      "This unit is not on this session's list. Ask an admin to add it.",
     );
   }
 }

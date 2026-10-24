@@ -16,6 +16,7 @@ const pool = createTestPool();
 const ADMIN = "ffffffff-0000-4000-8000-000000000001";
 const MEMBER = "ffffffff-0000-4000-8000-000000000002";
 const BLOCK = "ffffffff-0000-4000-8001-000000000001";
+const HOUSEHOLD = "ffffffff-0000-4000-8003-000000000001";
 
 const asAdmin = () =>
   auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
@@ -35,7 +36,13 @@ async function newDraft(
   const response = await createSessionRoute(
     new Request(url(""), {
       method: "POST",
-      body: JSON.stringify({ title, ...(blockIds ? { blockIds } : {}), ...(kind ? { kind } : {}) }),
+      body: JSON.stringify({
+        title,
+        ...(blockIds ? { blockIds } : {}),
+        ...(kind ? { kind } : {}),
+        // A follow-up session is created with the households it goes back to.
+        ...(kind === "follow_up" ? { householdIds: [HOUSEHOLD] } : {}),
+      }),
       headers: { "content-type": "application/json" },
     }),
   );
@@ -50,6 +57,14 @@ beforeEach(async () => {
     [ADMIN, MEMBER],
   );
   await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1, '123', 'Test Ave')`, [BLOCK]);
+  await pool.query(
+    `INSERT INTO households (id, block_id, unit_number) VALUES ($1, $2, '#05-123')`,
+    [HOUSEHOLD, BLOCK],
+  );
+  await pool.query(
+    `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1, $2, 'Bring the flyer')`,
+    [HOUSEHOLD, ADMIN],
+  );
   vi.clearAllMocks();
 });
 

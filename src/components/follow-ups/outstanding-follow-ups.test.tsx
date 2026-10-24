@@ -22,6 +22,7 @@ function note(id: string, text: string, dueDate: string | null = null): FollowUp
     deletedAt: null,
     deletedBy: null,
     deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: "2026-03-14T10:00:00.000Z",
   };
 }

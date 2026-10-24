@@ -1,8 +1,16 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { FollowUp } from "@/generated/types.gen";
+import { AlsoAddRow, useAlsoAdd } from "@/components/follow-ups/also-add";
+import type { FollowUp, OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import {
+  ADDED_TO_LIST,
+  addToSession,
+  addedMessage,
+  listThenAdd,
+  partialMessage,
+} from "@/lib/follow-ups/add-to-list";
 import {
   FOLLOW_UP_OFFLINE_NOTE,
   MAX_NOTE_LENGTH,
@@ -29,7 +37,6 @@ export type FollowUpSheetMode =
 
 /* What a member is told once their suggestion is in, wherever they sent it. */
 export const SUGGESTION_SENT = "Suggestion sent. An admin will review it.";
-export const ADDED_TO_LIST = "Added to the follow-up list.";
 
 type Changes = { note?: string; dueDate?: string | null };
 
@@ -84,9 +91,12 @@ function copyFor(mode: FollowUpSheetMode, isAdmin: boolean) {
 }
 
 /*
- * Add or change one note. An admin's goes on the follow-up list; a member's
- * is a suggestion for an admin to review. Typed text survives a failed
- * request (D-25-8): a refusal must not cost anyone what they wrote at the door.
+ * Add or change one note. An admin's goes on the follow-up list, and may go
+ * into a follow-up session in the same tap; a member's is a suggestion for an
+ * admin to review. Typed text survives a failed request (D-25-8): a refusal
+ * must not cost anyone what they wrote at the door.
+ *
+ * `onSaved` is told what to say: the parent shows it once the sheet has gone.
  */
 export function FollowUpSheet({
   mode,
@@ -95,11 +105,17 @@ export function FollowUpSheet({
 }: {
   mode: FollowUpSheetMode;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (message: string) => void;
 }) {
   const online = useOnline();
   const { isAdmin } = useRole();
   const editing = mode.kind === "edit" ? mode.note : null;
+  const also = useAlsoAdd(isAdmin && mode.kind === "create");
+  /* Listed, but the session step failed: the note is saved, so only that
+     step is retried, and closing loses nothing. */
+  const [partial, setPartial] = useState<{ target: OutingSession; householdId: string } | null>(
+    null,
+  );
   const [text, setText] = useState(editing?.note ?? "");
   const [day, setDay] = useState(instantToDueDay(editing?.dueDate ?? null));
   const [busy, setBusy] = useState(false);
@@ -114,22 +130,25 @@ export function FollowUpSheet({
   /* Asked before a flick or a stray tap loses what was typed at the door.
      An edit asks about the changes: "this note" would read as deleting it. */
   const discard =
-    editing === null
-      ? text.trim() === "" && day === ""
-        ? undefined
-        : { title: "Discard this note?", detail: "What you typed has not been saved." }
-      : Object.keys(diffFollowUp(editing, text, day)).length === 0
-        ? undefined
-        : { title: "Discard your changes?", detail: "The note stays as it was." };
+    partial !== null
+      ? undefined
+      : editing === null
+        ? text.trim() === "" && day === ""
+          ? undefined
+          : { title: "Discard this note?", detail: "What you typed has not been saved." }
+        : Object.keys(diffFollowUp(editing, text, day)).length === 0
+          ? undefined
+          : { title: "Discard your changes?", detail: "The note stays as it was." };
 
-  async function send(request: () => Promise<unknown>): Promise<void> {
+  /* The request answers with what to tell the parent, or null to stay open. */
+  async function send(request: () => Promise<string | null>): Promise<void> {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
-      await request();
-      onSaved();
+      const message = await request();
+      if (message !== null) onSaved(message);
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
     } finally {
@@ -143,7 +162,7 @@ export function FollowUpSheet({
     setNoteError(problem);
     if (problem !== null) return;
     if (mode.kind === "create") {
-      void send(() =>
+      const create = () =>
         apiFetch("/follow-ups", {
           method: "POST",
           body: JSON.stringify({
@@ -152,8 +171,20 @@ export function FollowUpSheet({
             note: text.trim(),
             dueDate: dueDayToInstant(day),
           }),
-        }),
-      );
+        });
+      if (!isAdmin) {
+        void send(async () => {
+          await create();
+          return SUGGESTION_SENT;
+        });
+        return;
+      }
+      void send(async () => {
+        const outcome = await listThenAdd(create, mode.householdId, also.chosen);
+        if (outcome.status === "done") return outcome.message;
+        setPartial({ target: outcome.target, householdId: mode.householdId });
+        return null;
+      });
       return;
     }
     const changes = diffFollowUp(mode.note, text, day);
@@ -161,12 +192,26 @@ export function FollowUpSheet({
       onClose();
       return;
     }
-    void send(() =>
-      apiFetch(`/follow-ups/${mode.note.id}`, {
+    void send(async () => {
+      await apiFetch(`/follow-ups/${mode.note.id}`, {
         method: "PATCH",
         body: JSON.stringify(changes),
-      }),
-    );
+      });
+      return "Saved.";
+    });
+  }
+
+  /* Only the session step: the note is already on the list. A second
+     failure leaves the alert as it is. */
+  function retry({ target, householdId }: { target: OutingSession; householdId: string }): void {
+    void send(async () => {
+      try {
+        await addToSession(target, householdId);
+      } catch {
+        return null;
+      }
+      return addedMessage(target);
+    });
   }
 
   const unit = mode.kind === "create" ? mode.unitNumber : mode.note.unitNumber;
@@ -182,7 +227,13 @@ export function FollowUpSheet({
           </span>
         </>
       }
-      onClose={onClose}
+      onClose={
+        partial === null
+          ? onClose
+          : () => {
+              onSaved(ADDED_TO_LIST);
+            }
+      }
       discard={discard}
     >
       {copy.hint === null ? null : (
@@ -195,6 +246,11 @@ export function FollowUpSheet({
       {failure === null ? null : (
         <p role="alert" className="mt-3 notice-danger">
           {failure}
+        </p>
+      )}
+      {partial === null ? null : (
+        <p role="alert" className="mt-3 notice-danger">
+          {partialMessage(partial.target)}
         </p>
       )}
 
@@ -245,20 +301,35 @@ export function FollowUpSheet({
         />
       </div>
 
+      {partial === null ? <AlsoAddRow also={also} /> : null}
+
       <SheetActions>
         {online ? null : (
           <p className="mb-2 text-center text-caption text-foreground-muted">
             {FOLLOW_UP_OFFLINE_NOTE}
           </p>
         )}
-        <button
-          type="button"
-          disabled={busy || !online}
-          onClick={submit}
-          className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-        >
-          {busy ? "Saving…" : copy.submit}
-        </button>
+        {partial !== null ? (
+          <button
+            type="button"
+            disabled={busy || !online}
+            onClick={() => {
+              retry(partial);
+            }}
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold break-words"
+          >
+            {busy ? "Saving…" : `Add to ${partial.target.title}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy || !online || also.looking}
+            onClick={submit}
+            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+          >
+            {busy ? "Saving…" : copy.submit}
+          </button>
+        )}
       </SheetActions>
     </Sheet>
   );

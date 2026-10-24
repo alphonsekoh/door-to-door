@@ -25,6 +25,7 @@ export const GET = withContract(
       limit,
       offset,
       ...(query.status === undefined ? {} : { status: query.status }),
+      ...(query.kind === undefined ? {} : { kind: query.kind }),
     });
 
     return {
@@ -48,7 +49,8 @@ export const POST = withContract(
     const session = await createSession(getDatabase(), {
       title: body.title,
       kind: body.kind,
-      ...(body.blockIds === undefined ? {} : { blockIds: body.blockIds }),
+      blockIds: body.blockIds,
+      householdIds: body.householdIds,
       createdBy: admin.id,
     });
     return { status: 201, body: toOutingSession(session) };

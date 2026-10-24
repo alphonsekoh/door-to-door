@@ -49,6 +49,7 @@ function active(sessionId = TONIGHT, blockIds = [BLK_123, BLK_456]): ActiveSessi
       householdCount: 0,
       activeMembers: [],
     })),
+    householdIds: [],
   };
 }
 
@@ -107,6 +108,7 @@ function revisits(): RevisitEntry[] {
           deletedAt: null,
           deletedBy: null,
           deleteReason: null,
+          waitingSuggestionBy: null,
           createdAt: STAMP,
         },
       ],

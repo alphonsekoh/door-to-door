@@ -34,9 +34,12 @@ info:
 
     A session's `kind` is fixed when it is created. A `regular` session is
     door-to-door knocking: any unit in an attached block may be recorded. A
-    `follow_up` session goes back to households on the follow-up list: a member
-    may record a visit only at a household on that session's list (its
-    *revisits*), while an admin may record anywhere in its blocks.
+    `follow_up` session goes back to households an admin **picks** from the
+    follow-up list, at least one, always. Its blocks are the blocks of those
+    households, kept in step by the server; an admin never attaches or
+    detaches them by hand. A member may record a visit only at a household on
+    that session's list (its *revisits*: picked, and still on the follow-up
+    list), while an admin may record anywhere in its blocks.
 
     ## Offline
 
@@ -306,12 +309,19 @@ components:
       description: The active session together with the blocks a member can pick.
       type: object
       additionalProperties: false
-      required: [session, blocks]
+      required: [session, blocks, householdIds]
       properties:
         session: { $ref: "#/components/schemas/OutingSession" }
         blocks:
           type: array
           items: { $ref: "#/components/schemas/SessionBlock" }
+        householdIds:
+          type: array
+          description: |
+            The households an admin picked for a follow-up session, so a client
+            can tell which listed notes are on its list without reading the
+            list. Empty for a regular session.
+          items: { type: string, format: uuid }
 
     Household:
       type: object
@@ -460,6 +470,7 @@ components:
           deletedAt,
           deletedBy,
           deleteReason,
+          waitingSuggestionBy,
           createdAt,
         ]
       properties:
@@ -496,15 +507,28 @@ components:
         deletedBy:
           description: |
             Who removed it: an admin, or the author withdrawing their own
-            suggestion. A suggestion removed by anyone but its author was
-            declined, and the author is told so.
+            suggestion. A note removed by anyone but its author (a declined
+            suggestion, or a note taken off the list) is shown to its author,
+            with the reason.
           oneOf:
             - $ref: "#/components/schemas/UserSummary"
             - type: "null"
         deleteReason:
           type: [string, "null"]
           maxLength: 500
-          description: Optional, given when it was removed. Shown to the author.
+          description: |
+            Why it was removed, given by whoever removed it. Shown to the author
+            and to admins. Null while the note is not removed.
+        waitingSuggestionBy:
+          description: |
+            On a listed, not removed note: the author of the suggestion waiting
+            for review at the same household, or null. While one waits,
+            reopening this note lists that suggestion when an admin does it,
+            and is `409 follow_up_exists` for a member. Always null on a
+            suggestion and on a removed note.
+          oneOf:
+            - $ref: "#/components/schemas/UserSummary"
+            - type: "null"
         blockName:
           type: string
           description: |
@@ -554,10 +578,11 @@ components:
 
     RevisitEntry:
       description: |
-        One household on a follow-up session's list: it is in one of the
-        session's attached blocks and has at least one `listed`, not removed
-        note that is outstanding or was resolved after the session started.
-        This is the set a member may record visits at in that session.
+        One household on a follow-up session's list: an admin picked it for
+        the session, and it has at least one `listed`, not removed note that is
+        outstanding or was resolved after the session started (a draft counts
+        outstanding notes only). This is the set a member may record visits at
+        in that session.
       type: object
       additionalProperties: false
       required: [household, block, notes, latestVisit, visitedInSession]
@@ -590,6 +615,48 @@ components:
           description: Ordered by block name, then unit number.
           items: { $ref: "#/components/schemas/RevisitEntry" }
 
+    SessionHousehold:
+      description: |
+        A household an admin picked for a follow-up session. Picks change only
+        when an admin adds or removes one, so they are the session's record of
+        what it set out to do; `onList` says whether the household is on the
+        session's list right now. A picked household drops off the list when
+        its notes are resolved before the session started, or taken off the
+        follow-up list, and returns when it is listed or reopened again.
+      type: object
+      additionalProperties: false
+      required: [household, block, notes, onList, visitedInSession]
+      properties:
+        household: { $ref: "#/components/schemas/Household" }
+        block: { $ref: "#/components/schemas/Block" }
+        notes:
+          type: array
+          description: |
+            The household's `listed`, not removed notes, resolved or not:
+            outstanding first (by due day, undated last), then resolved. Empty
+            once every note was taken off the follow-up list.
+          items: { $ref: "#/components/schemas/FollowUp" }
+        onList:
+          type: boolean
+          description: |
+            On the session's list now (`GET /sessions/{id}/revisits`): members
+            see it and may record there.
+        visitedInSession:
+          type: boolean
+          description: |
+            Someone has recorded a visit here during this session, so it can no
+            longer be removed from the session.
+
+    SessionHouseholdList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      properties:
+        data:
+          type: array
+          description: Ordered by block name, then unit number.
+          items: { $ref: "#/components/schemas/SessionHousehold" }
+
     # ------------------------------------------------------------- requests
 
     CreateSessionRequest:
@@ -604,7 +671,19 @@ components:
           description: Fixed once created; there is no way to change it later.
         blockIds:
           type: array
-          description: Blocks to attach immediately. More may be added later.
+          description: |
+            A regular session only: blocks to attach immediately. More may be
+            added later. Sent with `kind: follow_up` it is `400`, since a
+            follow-up session's blocks come from its households.
+          items: { type: string, format: uuid }
+        householdIds:
+          type: array
+          description: |
+            **Required for `kind: follow_up`**, and `400` for a regular
+            session. The households to go back to, each with a `listed`, not
+            removed, outstanding note; the session's blocks are theirs.
+          minItems: 1
+          maxItems: 200
           items: { type: string, format: uuid }
 
     CreateBlockRequest:
@@ -634,6 +713,17 @@ components:
           type: array
           minItems: 1
           maxItems: 50
+          items: { type: string, format: uuid }
+
+    AddSessionHouseholdsRequest:
+      type: object
+      additionalProperties: false
+      required: [householdIds]
+      properties:
+        householdIds:
+          type: array
+          minItems: 1
+          maxItems: 200
           items: { type: string, format: uuid }
 
     HouseholdIdentity:
@@ -823,7 +913,10 @@ components:
           type: boolean
           description: |
             `true` marks it resolved and records who did so; `false` reopens it.
-            Only a `listed` note can be resolved.
+            Only a `listed` note can be resolved. Reopening while a suggestion
+            waits at the household (`waitingSuggestionBy`) also lists that
+            suggestion when an admin does it, and is `409 follow_up_exists` for
+            a member.
         status:
           type: string
           enum: [listed]
@@ -831,6 +924,24 @@ components:
             **Requires: admin.** Promotes a suggestion onto the follow-up list,
             recording who did so. Sending it for a note already listed changes
             nothing. There is no way back to `suggested`.
+
+    RemoveFollowUpRequest:
+      description: |
+        Sent in the body, not the URL, so free text about a household never
+        lands in a proxy or access log.
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          description: |
+            Why it is being removed. Required for every removal and shown to
+            the note's author and to admins. Must contain something other than
+            spaces; stored trimmed.
+          minLength: 1
+          maxLength: 500
+          pattern: "\\S"
 
     CreateUserRequest:
       type: object
@@ -1163,6 +1274,10 @@ paths:
         - name: status
           in: query
           schema: { $ref: "#/components/schemas/SessionStatus" }
+        - name: kind
+          in: query
+          description: Only sessions of this kind. Both when omitted.
+          schema: { $ref: "#/components/schemas/SessionKind" }
       responses:
         "200":
           description: Sessions matching the filter.
@@ -1180,6 +1295,12 @@ paths:
         **Requires: admin.** Created as a draft; starting it is a separate
         operation, so an admin can prepare an outing without opening it.
         `kind` defaults to `regular` and can never be changed afterwards.
+
+        A follow-up session is created with its households (`householdIds`,
+        at least one) and gets their blocks; it is `400 validation_failed`
+        without them, or with `blockIds`. A regular session sending
+        `householdIds` is `400` too. All or nothing: one unknown or unlisted
+        household creates nothing.
       requestBody:
         required: true
         content:
@@ -1195,7 +1316,14 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: One of the supplied `blockIds` does not exist.
+          description: One of the supplied `blockIds` or `householdIds` does not exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `not_on_follow_up_list`: one of the `householdIds` has no `listed`,
+            not removed, outstanding note (a stale screen).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1207,7 +1335,8 @@ paths:
       summary: Get the active session and its blocks
       description: |
         Available to all roles — this is the member landing screen. Poll or
-        refetch to pick up blocks an admin attaches mid-session.
+        refetch to pick up blocks an admin attaches mid-session, or the
+        households (and so blocks) an admin adds to a follow-up session.
       responses:
         "200":
           description: The active session.
@@ -1345,6 +1474,9 @@ paths:
         **Requires: admin.** Permitted while the session is active, which is the
         contingency path: an admin adds a block mid-outing and members see it on
         their next refresh. Attaching an already-attached block is idempotent.
+
+        A follow-up session's blocks follow its households, so attaching to
+        one is `409 conflict`: add households instead.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
         required: true
@@ -1367,6 +1499,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: "`conflict`: the session is a follow-up session."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /sessions/{id}/blocks/{blockId}:
     delete:
@@ -1376,6 +1513,8 @@ paths:
       description: |
         **Requires: admin.** Detaching a block that already has visits recorded
         returns `409 block_in_use` — history is never orphaned by a UI action.
+        A follow-up session's blocks follow its households, so detaching from
+        one is `409 conflict`: remove households instead.
       parameters:
         - $ref: "#/components/parameters/PathId"
         - name: blockId
@@ -1388,7 +1527,9 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: The block has visits recorded in this session.
+          description: |
+            `block_in_use`: the block has visits recorded in this session.
+            `conflict`: the session is a follow-up session.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -1399,11 +1540,12 @@ paths:
       operationId: listSessionRevisits
       summary: Households to revisit in a follow-up session
       description: |
-        The follow-up session's list: households in its attached blocks with a
-        `listed`, not removed note that is outstanding or was resolved after
-        the session started. This is the same rule that decides where a member
-        may record a visit in the session (`409 not_on_follow_up_list`), so the
-        list and the refusal cannot disagree.
+        The follow-up session's list: households an admin picked for it that
+        have a `listed`, not removed note that is outstanding or was resolved
+        after the session started. This is the same rule that decides where a
+        member may record a visit in the session (`409 not_on_follow_up_list`)
+        and whether a member may change a listed note, so the list and its
+        refusals cannot disagree.
 
         Members may read the active session's list; a draft or ended session is
         admin-only (`403` for a member), so an admin can check a draft's list
@@ -1421,6 +1563,110 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: "`conflict`: the session is a regular session."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /sessions/{id}/households:
+    get:
+      tags: [Sessions]
+      operationId: listSessionHouseholds
+      summary: Households picked for a follow-up session
+      description: |
+        **Requires: admin.** Every household picked for the session, in any
+        status, including those not on its list right now (`onList: false`),
+        so an admin sees what the session set out to do and can change it.
+        An ended session's picks are its record and never change. A regular
+        session has no households: `409 conflict`. Not paginated.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The picked households.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionHouseholdList" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`conflict`: the session is a regular session."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    post:
+      tags: [Sessions]
+      operationId: addSessionHouseholds
+      summary: Add households to a follow-up session
+      description: |
+        **Requires: admin.** While the session is a draft or running. Each
+        household must have a `listed`, not removed, outstanding note; its
+        block joins the session's blocks. A household already picked is left
+        as it is. All or nothing: one unknown or unlisted household adds none.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddSessionHouseholdsRequest" }
+      responses:
+        "200":
+          description: The session's households after adding.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionHouseholdList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: The session, or one of the households, does not exist.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `conflict`: the session is a regular session, or has ended.
+            `not_on_follow_up_list`: a household has no `listed`, not removed,
+            outstanding note.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /sessions/{id}/households/{householdId}:
+    delete:
+      tags: [Sessions]
+      operationId: removeSessionHousehold
+      summary: Remove a household from a follow-up session
+      description: |
+        **Requires: admin.** While the session is a draft or running. The
+        household's notes stay on the follow-up list for a later session. Its
+        block leaves the session's blocks once no picked household is in it.
+
+        Refused with `409` when it would leave the session without a
+        household, when someone has recorded a visit at it in this session,
+        or when its block would leave the session while holding visits
+        recorded in this session (`block_in_use`, as D-18-3): history is never
+        orphaned by a UI action.
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - name: householdId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Removed from the session. }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: The session does not exist, or the household is not picked for it.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `conflict`: a regular or ended session, the session's last
+            household, or a household visited in this session. `block_in_use`:
+            its block holds visits recorded in this session and no other
+            picked household.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2179,6 +2425,14 @@ paths:
         `doneAt` and `doneBy` keep the first resolution, so a stale screen
         cannot take the credit. Reopening clears `doneBy`.
 
+        **Reopening while a suggestion waits** at the household
+        (`waitingSuggestionBy` is set): an admin's reopen also lists that
+        suggestion in the same change (`listedBy` is the admin), so its author
+        sees it added, never declined. A member's is
+        `409 follow_up_exists`: an admin reviews the suggestion first. The
+        check is made under the household's lock, so a suggestion sent at the
+        same moment is either refused or listed with the reopen.
+
         A removed note is `404` to everyone. Refusals are checked in the order
         `404`, `403`, `409`.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
@@ -2207,34 +2461,45 @@ paths:
           description: |
             `conflict`: resolving a suggestion. `not_on_follow_up_list`: a member
             changing a listed note outside the follow-up session whose list it
-            is on.
+            is on. `follow_up_exists`: a member reopening a listed note while a
+            suggestion waits at its household.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-    delete:
+
+  /follow-ups/{id}/remove:
+    post:
       tags: [Follow-ups]
-      operationId: deleteFollowUp
+      operationId: removeFollowUp
       summary: Remove a follow-up
       description: |
         A soft delete: the note stays in the database with who removed it, when
-        and the optional `reason`, and is left out of every list, count,
+        and the required `reason`, and is left out of every list, count,
         duplicate check and the visit rule from then on. Admins read removed
-        notes with `GET /follow-ups?deleted=true`.
+        notes with `GET /follow-ups?deleted=true`; the author reads their own
+        the same way, and is shown any removal made by someone else.
 
         An admin may dismiss a suggestion or remove a listed note. A member may
         withdraw only their own suggestion, at any time; a listed note,
-        even their own, is `403`. A note already removed is `404`.
-      parameters:
-        - $ref: "#/components/parameters/PathId"
-        - name: reason
-          in: query
-          description: |
-            Why it was removed, shown to the note's author. Trimmed; blank is
-            stored as none.
-          schema: { type: string, maxLength: 500 }
+        even their own, is `403`. A note already removed is `404`. Removing a
+        listed note never changes which households a follow-up session
+        picked: the household just leaves those sessions' lists.
+
+        A `POST` with a body rather than a `DELETE` with a query, so the reason
+        never appears in a URL.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RemoveFollowUpRequest" }
       responses:
         "204": { description: Removed. }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400":
+          description: The reason is missing, blank or longer than 500 characters.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }

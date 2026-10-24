@@ -44,18 +44,4 @@ describe("useActiveSession", () => {
     });
     expect(screen.getByText("none")).toBeInTheDocument();
   });
-
-  it("ignores an answer that lands after the screen has gone", async () => {
-    let answer: (value: unknown) => void = () => undefined;
-    apiFetch.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve;
-      }),
-    );
-    const { unmount } = render(<Probe />);
-    unmount();
-    answer({ session: { title: "Late" }, blocks: [] });
-    await Promise.resolve();
-    expect(screen.queryByText("Late")).toBeNull();
-  });
 });

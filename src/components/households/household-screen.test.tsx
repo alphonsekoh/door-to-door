@@ -16,7 +16,7 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
-/* A follow-up session covering the unit's block, so a member may resolve. */
+/* A follow-up session that picked the unit, so a member may resolve. */
 const { useActiveSession } = vi.hoisted(() => ({ useActiveSession: vi.fn() }));
 vi.mock("@/lib/hooks/use-active-session", () => ({ useActiveSession }));
 const FOLLOW_UP = {
@@ -38,6 +38,7 @@ const FOLLOW_UP = {
       activeMembers: [],
     },
   ],
+  householdIds: ["h1"],
 };
 
 const AT = "2026-03-14T11:00:00.000Z";
@@ -89,6 +90,7 @@ const owed: FollowUp = {
   deletedAt: null,
   deletedBy: null,
   deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: AT,
 };
 
@@ -232,7 +234,11 @@ describe("HouseholdScreen", () => {
     fireEvent.change(sheet.getByLabelText("What should the next visit do?"), {
       target: { value: "Bring the flyer" },
     });
-    fireEvent.click(sheet.getByRole("button", { name: "Add to list" }));
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    fireEvent.click(add);
     expect(await screen.findByText("Added to the follow-up list.")).toBeInTheDocument();
   });
 
@@ -257,6 +263,16 @@ describe("HouseholdScreen", () => {
     const [header] = add;
     if (header === undefined) throw new Error("expected the header action");
     fireEvent.click(header);
+    // The suggestion is read in a sheet before it goes on the list.
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    expect(sheet.getByText("Bring the flyer.")).toBeVisible();
+    const confirm = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(confirm).toBeEnabled();
+    });
+    fireEvent.click(confirm);
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups/s7", {
@@ -266,7 +282,9 @@ describe("HouseholdScreen", () => {
     });
     expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
     expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
-    expect(screen.queryByRole("dialog")).toBeNull();
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
     // Re-read: the door is now on the list, and says so instead.
     expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Add to follow-up list" })).toBeNull();

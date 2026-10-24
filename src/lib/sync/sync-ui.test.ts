@@ -63,7 +63,7 @@ describe("recordReason", () => {
     );
     expect(
       recordReason(record({ state: "held", lastError: { code: "not_on_follow_up_list" } })),
-    ).toBe("Not on the follow-up list. Sends once an admin adds this unit.");
+    ).toBe("Not on this session's list. Sends once an admin adds this unit.");
     for (const code of ["conflict", "not_found", "unknown"]) {
       expect(recordReason(record({ state: "held", lastError: { code } }))).toBe(
         "The server would not accept this record. Ask an admin.",

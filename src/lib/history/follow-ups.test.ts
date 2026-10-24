@@ -4,7 +4,6 @@ import { ApiRequestError } from "@/lib/api-client";
 import {
   addedByline,
   buildTimeline,
-  declinedByline,
   describeFollowUpFailure,
   doneByline,
   dueDayToInstant,
@@ -38,6 +37,7 @@ function note(overrides: Partial<FollowUp> = {}): FollowUp {
     deletedAt: null,
     deletedBy: null,
     deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: "2026-03-03T04:00:00.000Z",
     ...overrides,
   };
@@ -223,17 +223,6 @@ describe("bylines", () => {
     expect(doneByline({ ...done, doneBy: null }, "u2")).toBe("Done by Someone · 9 Jun 2026");
   });
 
-  it("tells the author who declined their suggestion", () => {
-    const deletedAt = local(2026, 3, 5, 12).toISOString();
-    expect(declinedByline(note())).toBeNull();
-    expect(declinedByline(note({ deletedAt, deletedBy: admin }))).toBe(
-      "Declined by Admin · 5 Mar 2026",
-    );
-    expect(declinedByline(note({ deletedAt, deletedBy: null }))).toBe(
-      "Declined by Someone · 5 Mar 2026",
-    );
-  });
-
   it("says how a removed note left", () => {
     const deletedAt = local(2026, 3, 5, 12).toISOString();
     expect(removedByline(note())).toBeNull();
@@ -283,7 +272,7 @@ describe("describeFollowUpFailure", () => {
     [
       409,
       "not_on_follow_up_list",
-      "You can change this only during a follow-up session that includes its block.",
+      "You can mark this done during a follow-up session that includes this household.",
     ],
     [409, "conflict", "Add it to the follow-up list before marking it done."],
     [500, "internal_error", "Could not save the follow-up. Try again."],

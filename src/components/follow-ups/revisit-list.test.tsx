@@ -33,6 +33,7 @@ const ACTIVE = {
     createdAt: STAMP,
   },
   blocks: [],
+  householdIds: [],
 } satisfies ActiveSession;
 
 const block = (id: string, name: string) => ({
@@ -62,6 +63,7 @@ function note(id: string, over: Partial<FollowUp> = {}): FollowUp {
     deletedAt: null,
     deletedBy: null,
     deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: STAMP,
     ...over,
   };
@@ -234,7 +236,7 @@ describe("RevisitList", () => {
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
     fireEvent.click(await screen.findByRole("button", { name: "Mark done, #05-123" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "You can change this only during a follow-up session that includes its block.",
+      "You can mark this done during a follow-up session that includes this household.",
     );
   });
 
@@ -272,20 +274,17 @@ describe("RevisitList", () => {
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
     expect(await screen.findByText("No households on the list yet.")).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "An admin adds households to the follow-up list. Tap Refresh to check again.",
-      ),
+      screen.getByText("An admin adds households to this session. Tap Refresh to check again."),
     ).toBeInTheDocument();
     expect(screen.queryByText(/of 0 visited/)).toBeNull();
   });
 
-  it("takes an admin to the follow-up list instead", async () => {
+  it("takes an admin to the session's page to add households instead", async () => {
     apiFetch.mockResolvedValue(list([]));
     render(<RevisitList active={ACTIVE} tick={1} isAdmin />);
-    expect(await screen.findByRole("link", { name: "Open the follow-up list" })).toHaveAttribute(
-      "href",
-      "/admin/follow-ups?tab=list",
-    );
+    expect(
+      await screen.findByRole("link", { name: "Add households to this session" }),
+    ).toHaveAttribute("href", "/admin/sessions/s1");
   });
 
   it("keeps a failed read to itself, with a way to try again", async () => {

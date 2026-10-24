@@ -29,6 +29,7 @@ const note = (id: string): FollowUp => ({
   deletedAt: null,
   deletedBy: null,
   deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2019-12-01T00:00:00.000Z",
 });
 

@@ -142,7 +142,7 @@ describe("UnitList", () => {
       />,
     );
 
-    expect(screen.getByText("Tonight: 2 units on 1 floor, 1 answered")).toBeInTheDocument();
+    expect(screen.getByText("This session: 2 units on 1 floor, 1 answered")).toBeInTheDocument();
   });
 
   it("counts everything when the running session is unknown", () => {
@@ -159,7 +159,7 @@ describe("UnitList", () => {
         onAmended={vi.fn()}
       />,
     );
-    expect(screen.getAllByText("tonight")).toHaveLength(1);
+    expect(screen.getAllByText("this session")).toHaveLength(1);
   });
 
   it("shows the interest level in words", () => {
@@ -273,10 +273,10 @@ describe("UnitList", () => {
       expect(row).toHaveTextContent("Not sent");
       expect(row).toHaveTextContent("High");
       expect(row).toHaveTextContent("Mr Tan");
-      expect(row).toHaveTextContent("tonight");
+      expect(row).toHaveTextContent("this session");
       expect(screen.queryByRole("button", { name: /#05-02/ })).toBeNull();
       // Counted as tonight's work: the door was knocked.
-      expect(screen.getByText("Tonight: 2 units on 1 floor, 2 answered")).toBeInTheDocument();
+      expect(screen.getByText("This session: 2 units on 1 floor, 2 answered")).toBeInTheDocument();
     });
 
     it("marks a known unit with a newer unsent record, showing that record's interest", () => {

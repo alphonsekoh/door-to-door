@@ -5,7 +5,8 @@ import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
-import { createFollowUp, deleteFollowUp, updateFollowUp } from "@/server/follow-ups/service";
+import { createFollowUp, removeFollowUp, updateFollowUp } from "@/server/follow-ups/service";
+import { removeSessionHousehold } from "@/server/sessions/households";
 
 /*
  * A member's right to change a note depends on its state, and an admin can
@@ -25,6 +26,7 @@ const BLOCK = "7a7a7a7a-0000-4000-8001-000000000001";
 const HOUSEHOLD = "7a7a7a7a-0000-4000-8003-000000000001";
 const QUIET = "7a7a7a7a-0000-4000-8003-000000000002";
 const NOTE = "7a7a7a7a-0000-4000-8004-000000000001";
+const SESSION = "7a7a7a7a-0000-4000-8002-000000000001";
 const alice = { id: ALICE, role: "member" as const };
 const admin = { id: ADMIN, role: "admin" as const };
 
@@ -33,7 +35,7 @@ type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
 const POLL_BUDGET_MS = 4_000;
 vi.setConfig({ testTimeout: 15_000 });
 
-type Held = { table: "follow_ups" | "households"; id: string };
+type Held = { table: "follow_ups" | "households" | "outing_sessions"; id: string };
 const theNote: Held = { table: "follow_ups", id: NOTE };
 
 /*
@@ -46,6 +48,8 @@ async function parked(
   held: Held,
   start: () => Promise<unknown>,
   whileHeld: (query: Query) => Promise<void>,
+  /* How many requests must be seen waiting before the row is let go. */
+  waiters = 1,
 ): Promise<unknown> {
   const client = await controller.connect();
   const query: Query = (sql, params) => client.query(sql, params);
@@ -65,7 +69,7 @@ async function parked(
            AND pid <> pg_backend_pid() AND query ILIKE $1`,
         [`%${held.table}%`],
       );
-      if (rows.length > 0) break;
+      if (rows.length >= waiters) break;
       if (Date.now() - startedAt > POLL_BUDGET_MS) {
         throw new Error(`the request never waited on ${held.table}`);
       }
@@ -145,7 +149,11 @@ afterAll(async () => {
 
 describe("a member's change that raced an admin listing the suggestion", () => {
   it("does not withdraw a note that was listed while it waited", async () => {
-    const outcome = await parked(theNote, () => deleteFollowUp(db, NOTE, alice), promote);
+    const outcome = await parked(
+      theNote,
+      () => removeFollowUp(db, NOTE, alice, "Changed my mind"),
+      promote,
+    );
 
     expect(outcome).toMatchObject({ error: { status: 403 } });
     expect(await stored()).toMatchObject({ status: "listed", deleted_at: null });
@@ -165,7 +173,7 @@ describe("a member's change that raced an admin listing the suggestion", () => {
   it("still withdraws a suggestion nobody acted on", async () => {
     const outcome = await parked(
       theNote,
-      () => deleteFollowUp(db, NOTE, alice),
+      () => removeFollowUp(db, NOTE, alice, "Changed my mind"),
       () => Promise.resolve(),
     );
 
@@ -220,5 +228,91 @@ describe("two notes opened at one door at once", () => {
 
     expect(outcome).toMatchObject({ ok: { status: "listed" } });
     expect(await openNotes(HOUSEHOLD)).toEqual(["listed"]);
+  });
+});
+
+describe("an admin reopening while a member suggests the same door", () => {
+  /* The note listed and resolved, so reopening it owes the door again. */
+  const resolved = (q: Query) =>
+    q(
+      `UPDATE follow_ups SET status = 'listed', listed_at = now(), listed_by = $1, done_at = now()
+       WHERE id = $2`,
+      [ADMIN, NOTE],
+    ).then(() => undefined);
+
+  it("lists the suggestion that landed first, with the reopen", async () => {
+    await resolved((sql, params) => pool.query(sql, params));
+    // The member's suggestion takes the household first, as creating does.
+    const outcome = await parked(
+      { table: "households", id: HOUSEHOLD },
+      () => updateFollowUp(db, NOTE, { done: false }, admin),
+      (q) => suggest(q, HOUSEHOLD),
+    );
+
+    expect(outcome).toMatchObject({ ok: { doneAt: null, waitingSuggestionId: null } });
+    const { rows } = await pool.query<{ status: string; listed_by: string | null }>(
+      `SELECT status, listed_by FROM follow_ups WHERE household_id = $1 AND id <> $2`,
+      [HOUSEHOLD, NOTE],
+    );
+    expect(rows).toEqual([{ status: "listed", listed_by: ADMIN }]);
+    expect(await openNotes(HOUSEHOLD)).toEqual(["listed", "listed"]);
+  });
+
+  it("refuses the member's suggestion once the reopen landed first", async () => {
+    await resolved((sql, params) => pool.query(sql, params));
+    const outcome = await parked(
+      { table: "households", id: HOUSEHOLD },
+      () => createFollowUp(db, { householdId: HOUSEHOLD, note: "Again" }, alice),
+      (q) =>
+        q(`UPDATE follow_ups SET done_at = NULL, done_by = NULL WHERE id = $1`, [NOTE]).then(
+          () => undefined,
+        ),
+    );
+
+    expect(outcome).toMatchObject({ error: { code: "follow_up_exists", status: 409 } });
+    expect(await openNotes(HOUSEHOLD)).toEqual(["listed"]);
+  });
+});
+
+describe("two admins removing a follow-up session's last two households at once", () => {
+  it("lets exactly one through, so the session keeps a household", async () => {
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, kind, status, created_by)
+       VALUES ($1,'Follow-up','follow_up','draft',$2)`,
+      [SESSION, ADMIN],
+    );
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      SESSION,
+      BLOCK,
+    ]);
+    await pool.query(
+      `INSERT INTO session_households (session_id, household_id) VALUES ($1,$2), ($1,$3)`,
+      [SESSION, HOUSEHOLD, QUIET],
+    );
+
+    const outcome = await parked(
+      { table: "outing_sessions", id: SESSION },
+      () =>
+        Promise.allSettled([
+          removeSessionHousehold(db, SESSION, HOUSEHOLD),
+          removeSessionHousehold(db, SESSION, QUIET),
+        ]),
+      () => Promise.resolve(),
+      2,
+    );
+
+    const settled = (outcome as { ok: PromiseSettledResult<void>[] }).ok;
+    expect(settled.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(settled.find((result) => result.status === "rejected")).toMatchObject({
+      reason: { status: 409, code: "conflict" },
+    });
+    const { rows } = await pool.query(`SELECT 1 FROM session_households WHERE session_id = $1`, [
+      SESSION,
+    ]);
+    expect(rows).toHaveLength(1);
+    const blocks = await pool.query(`SELECT 1 FROM session_blocks WHERE session_id = $1`, [
+      SESSION,
+    ]);
+    expect(blocks.rows).toHaveLength(1);
   });
 });

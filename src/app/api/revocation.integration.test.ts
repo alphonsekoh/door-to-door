@@ -32,6 +32,7 @@ const household = await import("./households/[id]/route");
 const attention = await import("./households/attention/route");
 const visitRoute = await import("./visits/[id]/route");
 const followUp = await import("./follow-ups/[id]/route");
+const followUpRemove = await import("./follow-ups/[id]/remove/route");
 const mineSessions = await import("./history/mine/sessions/route");
 const sessionRoute = await import("./sessions/[id]/route");
 const start = await import("./sessions/[id]/start/route");
@@ -39,6 +40,8 @@ const end = await import("./sessions/[id]/end/route");
 const reopen = await import("./sessions/[id]/reopen/route");
 const sessionBlocks = await import("./sessions/[id]/blocks/route");
 const sessionBlock = await import("./sessions/[id]/blocks/[blockId]/route");
+const sessionHouseholds = await import("./sessions/[id]/households/route");
+const sessionHousehold = await import("./sessions/[id]/households/[householdId]/route");
 const activeSession = await import("./sessions/active/route");
 const userRoute = await import("./users/[id]/route");
 const participantsRoute = await import("./sessions/[id]/participants/route");
@@ -118,8 +121,12 @@ const extraMemberCalls: [string, Call][] = [
     () => followUp.PATCH(json("PATCH", `/follow-ups/${OTHER}`, { done: true }), withId(OTHER)),
   ],
   [
-    "DELETE /follow-ups/{id}",
-    () => followUp.DELETE(json("DELETE", `/follow-ups/${OTHER}`), withId(OTHER)),
+    "POST /follow-ups/{id}/remove",
+    () =>
+      followUpRemove.POST(
+        json("POST", `/follow-ups/${OTHER}/remove`, { reason: "Moved away" }),
+        withId(OTHER),
+      ),
   ],
   ["GET /history/mine/sessions", () => mineSessions.GET(json("GET", "/history/mine/sessions"))],
   ["GET /sessions/active", () => activeSession.GET(json("GET", "/sessions/active"))],
@@ -165,6 +172,25 @@ const extraAdminCalls: [string, Call][] = [
     () =>
       sessionBlock.DELETE(json("DELETE", `/sessions/${SESSION}/blocks/${BLOCK}`), {
         params: Promise.resolve({ id: SESSION, blockId: BLOCK }),
+      }),
+  ],
+  [
+    "GET /sessions/{id}/households",
+    () => sessionHouseholds.GET(json("GET", `/sessions/${SESSION}/households`), withId(SESSION)),
+  ],
+  [
+    "POST /sessions/{id}/households",
+    () =>
+      sessionHouseholds.POST(
+        json("POST", `/sessions/${SESSION}/households`, { householdIds: [OTHER] }),
+        withId(SESSION),
+      ),
+  ],
+  [
+    "DELETE /sessions/{id}/households/{householdId}",
+    () =>
+      sessionHousehold.DELETE(json("DELETE", `/sessions/${SESSION}/households/${OTHER}`), {
+        params: Promise.resolve({ id: SESSION, householdId: OTHER }),
       }),
   ],
   [

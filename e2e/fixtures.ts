@@ -5,7 +5,13 @@ import {
   type Page,
   type PlaywrightWorkerArgs,
 } from "@playwright/test";
-import { ADMIN_STATE, MEMBER_STATE, PARTNER_STATE, SEED_BLOCK } from "./accounts";
+import {
+  ADMIN_STATE,
+  MEMBER_STATE,
+  PARTNER_STATE,
+  SEED_BLOCK,
+  SEED_LISTED_HOUSEHOLD,
+} from "./accounts";
 
 /*
  * An API context carrying the admin's cookies. Shared rather than rebuilt in
@@ -106,6 +112,40 @@ async function startFreshSession(api: APIRequestContext): Promise<string> {
   });
   const { id } = (await created.json()) as { id: string };
   await api.post(`/api/sessions/${id}/start`);
+  return id;
+}
+
+/*
+ * The seeded #05-123 on the follow-up list, owed, whatever an earlier spec
+ * did to its note: a follow-up session can pick only a household that is.
+ */
+export async function listSeededHousehold(api: APIRequestContext): Promise<string> {
+  const owed = await api.get(
+    `/api/follow-ups?householdId=${SEED_LISTED_HOUSEHOLD}&status=listed&outstanding=true&limit=1`,
+  );
+  const { pagination } = (await owed.json()) as { pagination: { total: number } };
+  if (pagination.total === 0) {
+    const added = await api.post("/api/follow-ups", {
+      data: { householdId: SEED_LISTED_HOUSEHOLD, note: "Check the weekday timings" },
+    });
+    expect(added.status()).toBe(201);
+  }
+  return SEED_LISTED_HOUSEHOLD;
+}
+
+/* A follow-up session over the seeded listed unit, running, with nothing else running. */
+export async function startFollowUpSession(
+  api: APIRequestContext,
+  title = "Follow-up visits",
+): Promise<string> {
+  await endActiveSession(api);
+  const household = await listSeededHousehold(api);
+  const created = await api.post("/api/sessions", {
+    data: { title, kind: "follow_up", householdIds: [household] },
+  });
+  expect(created.status()).toBe(201);
+  const { id } = (await created.json()) as { id: string };
+  expect((await api.post(`/api/sessions/${id}/start`)).ok()).toBe(true);
   return id;
 }
 

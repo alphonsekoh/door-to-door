@@ -42,7 +42,7 @@ export function recordReason(record: QueuedVisit): string | null {
         case "session_not_active":
           return "The session has ended. Sends if an admin reopens it.";
         case "not_on_follow_up_list":
-          return "Not on the follow-up list. Sends once an admin adds this unit.";
+          return "Not on this session's list. Sends once an admin adds this unit.";
         default:
           return REFUSED;
       }

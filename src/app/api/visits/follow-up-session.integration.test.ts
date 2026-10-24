@@ -105,6 +105,11 @@ beforeEach(async () => {
       ($4,$5,'listed','Done last week', now() - interval '7 days', null)`,
     [LISTED, SUGGESTED, REMOVED, DONE_BEFORE, ADMIN, ALICE],
   );
+  /* Picked while each was owed; the suggestion never was. */
+  await pool.query(
+    `INSERT INTO session_households (session_id, household_id) VALUES ($1,$2), ($1,$3), ($1,$4)`,
+    [SESSION, LISTED, REMOVED, DONE_BEFORE],
+  );
   vi.clearAllMocks();
 });
 
@@ -125,7 +130,7 @@ describe("POST /api/visits in a follow-up session", () => {
     expect(response.status).toBe(409);
     expect(await error(response)).toEqual({
       code: "not_on_follow_up_list",
-      message: "This unit is not on the follow-up list for this session. Ask an admin to add it.",
+      message: "This unit is not on this session's list. Ask an admin to add it.",
     });
   });
 
@@ -166,13 +171,31 @@ describe("POST /api/visits/sync in a follow-up session", () => {
     expect(results[1]?.error?.error.code).toBe("not_on_follow_up_list");
   });
 
-  it("lets the same record through once an admin lists the unit", async () => {
+  it("lets the same record through once an admin lists the unit and adds it", async () => {
     const held = item("#02-02");
     asAlice();
     expect((await sync([held]))[0]?.status).toBe("rejected");
     await pool.query(`UPDATE follow_ups SET status = 'listed' WHERE household_id = $1`, [
       SUGGESTED,
     ]);
+    // Listed, but this session did not pick it: still held.
+    expect((await sync([held]))[0]?.status).toBe("rejected");
+    await pool.query(`INSERT INTO session_households (session_id, household_id) VALUES ($1,$2)`, [
+      SESSION,
+      SUGGESTED,
+    ]);
+    expect((await sync([held]))[0]?.status).toBe("applied");
+  });
+
+  it("lets a removed note's record through once it is listed again", async () => {
+    // Its household stayed picked when the note was removed.
+    const held = item("#03-03");
+    asAlice();
+    expect((await sync([held]))[0]?.status).toBe("rejected");
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Listed again')`,
+      [REMOVED, ADMIN],
+    );
     expect((await sync([held]))[0]?.status).toBe("applied");
   });
 

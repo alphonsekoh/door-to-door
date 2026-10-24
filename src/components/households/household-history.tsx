@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
-import {
-  ADDED_TO_LIST,
-  FollowUpSheet,
-  type FollowUpSheetMode,
-  SUGGESTION_SENT,
-} from "@/components/follow-ups/follow-up-sheet";
+import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { ADD_TO_LIST, SUGGEST, householdAction } from "@/lib/follow-ups/rights";
@@ -86,7 +81,14 @@ export function HouseholdHistoryPanel({
     });
   };
   const item = (note: FollowUp) => (
-    <FollowUpItem note={note} now={now} active={active} onChanged={onChanged} onEdit={edit} />
+    <FollowUpItem
+      note={note}
+      now={now}
+      active={active}
+      onChanged={onChanged}
+      onEdit={edit}
+      onPromoted={setSent}
+    />
   );
 
   return (
@@ -180,8 +182,8 @@ export function HouseholdHistoryPanel({
             onClose={() => {
               setSheet(null);
             }}
-            onSaved={() => {
-              if (sheet.kind === "create") setSent(isAdmin ? ADDED_TO_LIST : SUGGESTION_SENT);
+            onSaved={(message) => {
+              if (sheet.kind === "create") setSent(message);
               setSheet(null);
               onChanged();
             }}

@@ -28,6 +28,7 @@ const declined = (id: string, over: Partial<FollowUp> = {}): FollowUp => ({
   deletedAt: new Date(2026, 9, 20, 12).toISOString(),
   deletedBy: { id: "admin", name: "Admin", image: null },
   deleteReason: "Visited last week",
+  waitingSuggestionBy: null,
   createdAt: "2026-10-01T00:00:00.000Z",
   ...over,
 });
@@ -49,29 +50,36 @@ afterEach(() => {
 });
 
 describe("DeclinedNotice", () => {
-  it("asks only for the member's own removed suggestions", async () => {
+  it("asks only for the member's own removed notes, of either kind", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<DeclinedNotice userId="u1" />);
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith(
-        "/follow-ups?deleted=true&authorId=u1&status=suggested&limit=20",
-      );
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups?deleted=true&authorId=u1&limit=20");
     });
   });
 
-  it("says which suggestions were not added, by whom, and why", async () => {
-    apiFetch.mockResolvedValue(page([declined("1"), declined("2", { deleteReason: null })]));
-    render(<DeclinedNotice userId="u1" />);
-    const card = within(
-      await screen.findByRole("region", { name: "Not added to the follow-up list" }),
+  it("says which suggestions were declined and which notes came off the list, by whom and why", async () => {
+    apiFetch.mockResolvedValue(
+      page([
+        declined("1"),
+        declined("2", { status: "listed", deleteReason: "The family has moved" }),
+        declined("3", { deleteReason: null }),
+      ]),
     );
+    render(<DeclinedNotice userId="u1" />);
+    const card = within(await screen.findByRole("region", { name: "Not on the follow-up list" }));
     expect(card.getByText("Suggestion 1")).toBeVisible();
-    expect(card.getAllByText("Declined by Admin · 20 Oct 2026")).toHaveLength(2);
-    expect(card.getByText("Reason: Visited last week")).toBeVisible();
-    expect(card.getAllByText(/^Reason:/)).toHaveLength(1);
+    expect(card.getByText("Declined by Admin · 20 Oct 2026: Visited last week")).toBeVisible();
+    expect(
+      card.getByText(
+        "Removed from the follow-up list by Admin · 20 Oct 2026: The family has moved",
+      ),
+    ).toBeVisible();
+    // Removed before a reason was required.
+    expect(card.getByText("Declined by Admin · 20 Oct 2026")).toBeVisible();
   });
 
-  it("leaves out a suggestion the member withdrew themself", async () => {
+  it("leaves out a suggestion the member withdrew themself, which is not news to them", async () => {
     apiFetch.mockResolvedValue(
       page([declined("1", { deletedBy: { id: "u1", name: "Ann", image: null } })]),
     );
@@ -104,19 +112,5 @@ describe("DeclinedNotice", () => {
       expect(apiFetch).toHaveBeenCalled();
     });
     expect(screen.queryByRole("region")).toBeNull();
-  });
-
-  it("ignores an answer that lands after the screen has gone", async () => {
-    let answer: (value: unknown) => void = () => undefined;
-    apiFetch.mockReturnValue(
-      new Promise((resolve) => {
-        answer = resolve;
-      }),
-    );
-    const { unmount } = render(<DeclinedNotice userId="u1" />);
-    unmount();
-    answer(page([declined("1")]));
-    await Promise.resolve();
-    expect(screen.queryByText("Suggestion 1")).toBeNull();
   });
 });

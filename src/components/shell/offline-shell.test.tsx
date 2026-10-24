@@ -81,6 +81,7 @@ const active: ActiveSession = {
     householdCount: 0,
     activeMembers: [],
   })),
+  householdIds: [],
 };
 
 const household: HouseholdSummary = {
@@ -606,6 +607,7 @@ describe("OfflineShell, in a follow-up session", () => {
               deletedAt: null,
               deletedBy: null,
               deleteReason: null,
+              waitingSuggestionBy: null,
               createdAt: STAMP,
             },
           ],
@@ -624,7 +626,7 @@ describe("OfflineShell, in a follow-up session", () => {
     expect(chips.getByRole("button", { name: "#05-01" })).toBeInTheDocument();
     await user().type(screen.getByLabelText("Unit number"), "#05-02");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^#05-02 is not on the follow-up list/,
+      /^#05-02 is not on this session's list/,
     );
   });
 
@@ -633,7 +635,7 @@ describe("OfflineShell, in a follow-up session", () => {
     await openBlock("123");
     await user().type(screen.getByLabelText("Unit number"), "#05-02");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^Could not check the follow-up list\./,
+      /^Could not check this session's list\./,
     );
   });
 
@@ -664,7 +666,7 @@ describe("OfflineShell, in a follow-up session", () => {
     });
     await user().type(screen.getByLabelText("Unit number"), "#05-01");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^#05-01 is not on the follow-up list/,
+      /^#05-01 is not on this session's list/,
     );
     // And the copy a later reload opens says so too.
     const change = updateLocalCopy.mock.calls[0]?.[0];

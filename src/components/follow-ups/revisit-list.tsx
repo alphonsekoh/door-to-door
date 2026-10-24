@@ -92,16 +92,18 @@ export function RevisitList({
       ) : state.entries.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
           <p className="text-body font-medium">No households on the list yet.</p>
+          {/* Being on the follow-up list is not enough: an admin adds a
+              household to this session, on the session's own page. */}
           {isAdmin ? (
             <Link
-              href="/admin/follow-ups?tab=list"
+              href={`/admin/sessions/${sessionId}`}
               className="mt-1 inline-flex min-h-11 items-center text-body font-medium btn-text"
             >
-              Open the follow-up list
+              Add households to this session
             </Link>
           ) : (
             <p className="mt-1 text-body text-foreground-muted">
-              An admin adds households to the follow-up list. Tap Refresh to check again.
+              An admin adds households to this session. Tap Refresh to check again.
             </p>
           )}
         </div>

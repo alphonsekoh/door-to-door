@@ -29,6 +29,12 @@ const EXISTS_MESSAGE =
 const PENDING_MESSAGE =
   "A member has suggested this household and it is waiting for review. Add that suggestion to the list instead.";
 
+/* Said to a member whose reopen would leave a suggestion beside an owed note. */
+export function waitingMessage(by: string | null): string {
+  const whose = by === null ? "A suggestion" : `${by}'s suggestion`;
+  return `${whose} for this door is waiting for an admin. Ask an admin to review it.`;
+}
+
 export type ListFollowUpOptions = {
   householdId?: string | undefined;
   authorId?: string | undefined;
@@ -276,7 +282,7 @@ async function assertMemberMayUpdate(
   if (!(await isNoteOnActiveRevisitList(db, existing.id))) {
     throw new ConflictError(
       "not_on_follow_up_list",
-      "You can change this only during a follow-up session that includes its block.",
+      "You can change this only during a follow-up session that includes this household.",
     );
   }
 }
@@ -328,6 +334,25 @@ async function applyUpdate(
   }
 
   const now = new Date();
+  /*
+   * Reopening owes the door again, and an owed note beside a waiting
+   * suggestion is the state D-117-8 refuses: dismissing the suggestion would
+   * then tell its author it was declined when it was not. So an admin's
+   * reopen lists the suggestion with it, and a member's waits for an admin.
+   * Read under the household lock, so a suggestion sent at the same moment
+   * is either seen here or refused for the reopened note.
+   */
+  const reopening = changes.done === false && existing.doneAt !== null;
+  if (reopening && existing.waitingSuggestionId !== null) {
+    if (actor.role !== "admin") {
+      throw new ConflictError("follow_up_exists", waitingMessage(existing.waitingByName));
+    }
+    await db
+      .update(followUps)
+      .set({ status: "listed", listedAt: now, listedBy: actor.id, updatedAt: now })
+      .where(eq(followUps.id, existing.waitingSuggestionId));
+  }
+
   const values: Record<string, unknown> = { updatedAt: now };
   if (changes.note !== undefined) values["note"] = changes.note.trim();
   if (changes.dueDate !== undefined) {
@@ -361,13 +386,14 @@ async function applyUpdate(
 /*
  * Never removes the row. An admin dismisses a suggestion or takes a note off
  * the list; a member may only withdraw their own suggestion. The reason is
- * for the author, who is told a suggestion was declined.
+ * required (the contract refuses a blank one) and is shown to the author of
+ * a note someone else removed, and to admins.
  */
-export function deleteFollowUp(
+export function removeFollowUp(
   db: Database,
   id: string,
   actor: Actor,
-  reason?: string,
+  reason: string,
 ): Promise<void> {
   return db.transaction(async (tx) => {
     const existing = await lockFollowUp(tx, id);
@@ -381,14 +407,9 @@ export function deleteFollowUp(
       }
     }
 
-    const trimmed = reason?.trim() ?? "";
     await tx
       .update(followUps)
-      .set({
-        deletedAt: new Date(),
-        deletedBy: actor.id,
-        deleteReason: trimmed === "" ? null : trimmed,
-      })
+      .set({ deletedAt: new Date(), deletedBy: actor.id, deleteReason: reason.trim() })
       .where(eq(followUps.id, id));
   });
 }

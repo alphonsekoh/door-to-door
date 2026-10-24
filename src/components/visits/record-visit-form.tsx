@@ -4,11 +4,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import Link from "next/link";
 import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
-import {
-  ADDED_TO_LIST,
-  FollowUpSheet,
-  SUGGESTION_SENT,
-} from "@/components/follow-ups/follow-up-sheet";
+import { FollowUpSheet, SUGGESTION_SENT } from "@/components/follow-ups/follow-up-sheet";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
@@ -93,7 +89,8 @@ type Saved = {
   visitId: string;
   householdId: string | null;
   unitNumber: string;
-  noted: boolean;
+  /* What a note added after the save said, once one was. */
+  noted: string | null;
   /* What the household offered before the form was cleared for the next
      door, so nothing is offered after the save that the server refuses. */
   action: HouseholdAction;
@@ -112,7 +109,7 @@ export type FollowUpRule = {
   recheck?: () => Promise<RevisitEntry[] | null>;
 };
 
-export const OFF_THE_LIST = "Not saved. This unit is not on the follow-up list.";
+export const OFF_THE_LIST = "Not saved. This unit is not on this session's list.";
 
 const CHIP_STATE: Record<RevisitState, string> = {
   to_visit: "",
@@ -405,7 +402,7 @@ export function RecordVisitForm({
           visitId: record.id,
           householdId: null,
           unitNumber: unit,
-          noted: false,
+          noted: null,
           action,
         });
         setSaving(false);
@@ -430,7 +427,7 @@ export function RecordVisitForm({
         visitId: visit.id,
         householdId: visit.householdId,
         unitNumber: unit,
-        noted: false,
+        noted: null,
         action,
       });
       onRecorded();
@@ -455,7 +452,7 @@ export function RecordVisitForm({
     saved === null ? null : householdId !== null ? (
       <>
         Saved <UnitNumber value={saved.unitNumber} />.
-        {saved.noted ? ` ${isAdmin ? ADDED_TO_LIST : SUGGESTION_SENT}` : ""}
+        {saved.noted === null ? "" : ` ${saved.noted}`}
       </>
     ) : (
       queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
@@ -488,7 +485,7 @@ export function RecordVisitForm({
             className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
           >
             <span className="break-words">{status}</span>
-            {householdId === null || saved?.noted !== false ? null : noteLabel !== null ? (
+            {householdId === null || saved?.noted !== null ? null : noteLabel !== null ? (
               <button
                 type="button"
                 onClick={() => {
@@ -500,9 +497,9 @@ export function RecordVisitForm({
               </button>
             ) : saved.action.kind === "promote" ? (
               <PromoteButton
-                suggestionId={saved.action.suggestionId}
-                onPromoted={() => {
-                  setSaved({ ...saved, noted: true });
+                suggestion={saved.action.suggestion}
+                onPromoted={(message) => {
+                  setSaved({ ...saved, noted: message });
                   setReloadKey((key) => key + 1);
                 }}
                 className="min-h-11 font-medium btn-text"
@@ -557,7 +554,7 @@ export function RecordVisitForm({
           {gate === "unlisted" ? (
             <div id="unit-gate" className="mt-2 notice-info">
               <p className="break-words">
-                <UnitNumber value={typed} /> is not on the follow-up list, so it can&apos;t be
+                <UnitNumber value={typed} /> is not on this session&apos;s list, so it can&apos;t be
                 recorded in this session.
                 {suggestSent
                   ? null
@@ -565,9 +562,11 @@ export function RecordVisitForm({
                     ? " Should it be? Suggest it for an admin to review."
                     : unlistedAction === "waiting"
                       ? " A suggestion to add it is waiting for an admin to review."
-                      : unlistedAction === null
-                        ? null
-                        : " Ask an admin to add it."}
+                      : unlistedAction === "listed"
+                        ? " It is on the follow-up list; ask an admin to add it to this session."
+                        : unlistedAction === null
+                          ? null
+                          : " Ask an admin to add it."}
               </p>
               {suggestSent ? (
                 <p role="status" className="mt-1 font-medium">
@@ -587,12 +586,12 @@ export function RecordVisitForm({
             </div>
           ) : gate === "unknown" ? (
             <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
-              Could not check the follow-up list. A visit to a unit not on it will wait on this
-              phone until an admin adds it.
+              Could not check this session&apos;s list. A visit to a unit not on it will wait on
+              this phone until an admin adds it.
             </p>
           ) : gate === "admin_override" ? (
             <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
-              Not on the follow-up list. You can still record it as an admin.
+              Not on this session&apos;s list. You can still record it as an admin.
             </p>
           ) : null}
         </div>
@@ -656,9 +655,9 @@ export function RecordVisitForm({
             onClose={() => {
               setNoting(false);
             }}
-            onSaved={() => {
+            onSaved={(message) => {
               setNoting(false);
-              setSaved({ ...saved, noted: true });
+              setSaved({ ...saved, noted: message });
               setReloadKey((key) => key + 1);
             }}
           />

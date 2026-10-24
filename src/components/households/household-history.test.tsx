@@ -51,6 +51,7 @@ const FOLLOW_UP: ActiveSession = {
       activeMembers: [],
     },
   ],
+  householdIds: ["h1"],
 };
 
 const visit = (over: Partial<Visit> = {}): Visit => ({
@@ -85,6 +86,7 @@ const note = (over: Partial<FollowUp> = {}): FollowUp => ({
   deletedAt: null,
   deletedBy: null,
   deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2026-03-14T10:00:00.000Z",
   ...over,
 });
@@ -240,6 +242,15 @@ describe("waiting for review", () => {
     expect(waiting.getByRole("button", { name: "Edit" })).toBeInTheDocument();
     expect(waiting.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
     fireEvent.click(waiting.getByRole("button", { name: "Add to list" }));
+    // Read before it is owed, in a sheet of its own.
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    fireEvent.click(add);
     await waitFor(() => {
       expect(onChanged).toHaveBeenCalled();
     });
@@ -247,6 +258,7 @@ describe("waiting for review", () => {
       method: "PATCH",
       body: JSON.stringify({ status: "listed" }),
     });
+    expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
   });
 });
 
@@ -450,18 +462,47 @@ describe("acting on a note", () => {
     expect(screen.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(
-      screen.getByText("You can mark this done during a follow-up session that includes Blk 123."),
+      screen.getByText(
+        "You can mark this done during a follow-up session that includes this household.",
+      ),
     ).toBeVisible();
   });
 
-  it("names the block when the follow-up session running does not cover it", () => {
+  it("says so when the follow-up session running did not pick the household", () => {
     // One is running, so "during a follow-up session" alone would read as now.
-    const elsewhere = note({ blockId: "far", blockName: "125" });
+    const elsewhere = note({ householdId: "far" });
     render(<Panel over={{ followUps: [elsewhere] }} />);
     expect(screen.queryByRole("button", { name: "Mark done" })).not.toBeInTheDocument();
     expect(
-      screen.getByText("You can mark this done during a follow-up session that includes Blk 125."),
+      screen.getByText(
+        "You can mark this done during a follow-up session that includes this household.",
+      ),
     ).toBeVisible();
+  });
+
+  it("offers a member no Reopen while a suggestion waits at the door, and says why", () => {
+    const done = note({
+      doneAt: "2026-04-01T00:00:00.000Z",
+      waitingSuggestionBy: { id: "u2", name: "Ben Lim", image: null },
+    });
+    render(<Panel over={{ followUps: [done] }} />);
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Ben's suggestion for this door is waiting for an admin. Ask an admin to review it.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("tells an admin that reopening lists the waiting suggestion too", () => {
+    asViewer("admin", true);
+    const done = note({
+      doneAt: "2026-04-01T00:00:00.000Z",
+      waitingSuggestionBy: { id: "u2", name: "Ben Lim", image: null },
+    });
+    render(<Panel over={{ followUps: [done] }} active={null} />);
+    expect(screen.getByRole("button", { name: "Reopen" })).toBeEnabled();
+    expect(screen.getByText("Reopening also adds Ben's suggestion to the list.")).toBeVisible();
   });
 
   it("sends a member to an admin to reopen a resolved note, never to a session", () => {
@@ -560,7 +601,11 @@ describe("acting on a note", () => {
     fireEvent.change(within(sheet).getByLabelText("What should the next visit do?"), {
       target: { value: "Bring the flyer" },
     });
-    fireEvent.click(within(sheet).getByRole("button", { name: "Add to list" }));
+    const add = within(sheet).getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    fireEvent.click(add);
     expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
   });
 
@@ -602,7 +647,7 @@ describe("acting on a note", () => {
     render(<Panel over={{ followUps: [note()] }} />);
     fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "You can change this only during a follow-up session that includes its block.",
+      "You can mark this done during a follow-up session that includes this household.",
     );
   });
 });

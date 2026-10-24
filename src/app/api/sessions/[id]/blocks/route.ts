@@ -9,7 +9,12 @@ import {
 import { withContract } from "@/server/http/contract";
 import { currentUser } from "@/server/auth/session";
 import { toSessionBlock } from "@/server/sessions/serialise";
-import { attachBlocks, getSession, listSessionBlocks } from "@/server/sessions/service";
+import {
+  assertBlocksByHand,
+  attachBlocks,
+  getSession,
+  listSessionBlocks,
+} from "@/server/sessions/service";
 
 export const GET = withContract(
   {
@@ -41,7 +46,7 @@ export const POST = withContract(
      * Permitted while the session is active: this is the contingency path, an
      * admin adding a block mid-outing that members pick up on refresh.
      */
-    await getSession(db, path.id);
+    assertBlocksByHand(await getSession(db, path.id));
     await attachBlocks(db, path.id, body.blockIds);
     const blocks = await listSessionBlocks(db, path.id);
     return { status: 200, body: blocks.map(toSessionBlock) };

@@ -42,6 +42,7 @@ const active: ActiveSession = {
       activeMembers: [],
     },
   ],
+  householdIds: [],
 };
 
 function signedIn(user: { name?: string | null; email?: string | null } | null) {

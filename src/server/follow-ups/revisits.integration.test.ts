@@ -13,7 +13,8 @@ import { createVisit } from "@/server/visits/service";
 
 /*
  * The follow-up list rule, case by case, and proof that the list a member is
- * shown and the units they may record at are the same set.
+ * shown, the units they may record at and the notes they may change are the
+ * same set.
  */
 
 const pool = createTestPool();
@@ -39,6 +40,7 @@ const DONE_BEFORE = "f0f0f0f0-0000-4000-8003-000000000004";
 const DONE_TONIGHT = "f0f0f0f0-0000-4000-8003-000000000005";
 const OTHER_BLOCK = "f0f0f0f0-0000-4000-8003-000000000006";
 const NOT_ATTACHED = "f0f0f0f0-0000-4000-8003-000000000007";
+const NOT_PICKED = "f0f0f0f0-0000-4000-8003-000000000008";
 
 const STARTED = new Date(Date.now() - 60 * 60 * 1000);
 const session: RevisitSession = { id: FOLLOW_UP, kind: "follow_up", startedAt: STARTED };
@@ -72,8 +74,8 @@ beforeEach(async () => {
   ]);
   await pool.query(
     `INSERT INTO households (id, block_id, unit_number) VALUES
-      ($1,$8,'#01-01'), ($2,$8,'#02-02'), ($3,$8,'#03-03'), ($4,$8,'#04-04'),
-      ($5,$8,'#05-05'), ($6,$9,'#01-01'), ($7,$10,'#01-01')`,
+      ($1,$9,'#01-01'), ($2,$9,'#02-02'), ($3,$9,'#03-03'), ($4,$9,'#04-04'),
+      ($5,$9,'#05-05'), ($6,$10,'#01-01'), ($7,$11,'#01-01'), ($8,$9,'#06-06')`,
     [
       OWED,
       SUGGESTED,
@@ -82,6 +84,7 @@ beforeEach(async () => {
       DONE_TONIGHT,
       OTHER_BLOCK,
       NOT_ATTACHED,
+      NOT_PICKED,
       BLOCK_A,
       BLOCK_B,
       UNATTACHED,
@@ -89,16 +92,35 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO follow_ups (household_id, author_id, status, note, due_date, done_at, deleted_at, created_at) VALUES
-      ($1,$8,'listed','Undated', null, null, null, now() - interval '3 days'),
-      ($1,$8,'listed','Due soon', now() + interval '1 day', null, null, now() - interval '2 days'),
-      ($1,$8,'listed','Done tonight too', null, now() - interval '10 minutes', null, now() - interval '1 day'),
-      ($2,$9,'suggested','Only suggested', null, null, null, now()),
-      ($3,$8,'listed','Taken off the list', null, null, now(), now()),
-      ($4,$8,'listed','Resolved last week', null, now() - interval '7 days', null, now()),
-      ($5,$8,'listed','Resolved tonight', null, now() - interval '5 minutes', null, now()),
-      ($6,$8,'listed','Other block', null, null, null, now()),
-      ($7,$8,'listed','Not attached', null, null, null, now())`,
-    [OWED, SUGGESTED, REMOVED, DONE_BEFORE, DONE_TONIGHT, OTHER_BLOCK, NOT_ATTACHED, ADMIN, ALICE],
+      ($1,$9,'listed','Undated', null, null, null, now() - interval '3 days'),
+      ($1,$9,'listed','Due soon', now() + interval '1 day', null, null, now() - interval '2 days'),
+      ($1,$9,'listed','Done tonight too', null, now() - interval '10 minutes', null, now() - interval '1 day'),
+      ($2,$10,'suggested','Only suggested', null, null, null, now()),
+      ($3,$9,'listed','Taken off the list', null, null, now(), now()),
+      ($4,$9,'listed','Resolved last week', null, now() - interval '7 days', null, now()),
+      ($5,$9,'listed','Resolved tonight', null, now() - interval '5 minutes', null, now()),
+      ($6,$9,'listed','Other block', null, null, null, now()),
+      ($7,$9,'listed','Not attached', null, null, null, now()),
+      ($8,$9,'listed','Not picked', null, null, null, now())`,
+    [
+      OWED,
+      SUGGESTED,
+      REMOVED,
+      DONE_BEFORE,
+      DONE_TONIGHT,
+      OTHER_BLOCK,
+      NOT_ATTACHED,
+      NOT_PICKED,
+      ADMIN,
+      ALICE,
+    ],
+  );
+  /* Every household picked while it was owed, but the one left out on purpose
+     and the one in a block the session does not cover. */
+  await pool.query(
+    `INSERT INTO session_households (session_id, household_id)
+     SELECT $1, unnest($2::uuid[])`,
+    [FOLLOW_UP, [OWED, SUGGESTED, REMOVED, DONE_BEFORE, DONE_TONIGHT, OTHER_BLOCK]],
   );
   await pool.query(
     `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at) VALUES
@@ -118,7 +140,7 @@ const unitsOf = async (on: RevisitSession = session) =>
   (await listRevisits(db, on)).map((entry) => `${entry.block.name} ${entry.household.unitNumber}`);
 
 describe("the follow-up list", () => {
-  it("holds listed notes still owed or resolved tonight, in the session's blocks", async () => {
+  it("holds picks with listed notes still owed or resolved during the session", async () => {
     expect(await unitsOf()).toEqual(["123 #01-01", "123 #05-05", "125 #01-01"]);
   });
 
@@ -131,7 +153,7 @@ describe("the follow-up list", () => {
     ]);
   });
 
-  it("carries the latest visit anywhere and whether it was visited tonight", async () => {
+  it("carries the latest visit anywhere and whether it was visited in this session", async () => {
     const entries = await listRevisits(db, session);
     const byUnit = new Map(entries.map((e) => [`${e.block.name} ${e.household.unitNumber}`, e]));
     expect(byUnit.get("123 #01-01")).toMatchObject({
@@ -149,9 +171,17 @@ describe("the follow-up list", () => {
     expect(await unitsOf({ ...session, startedAt: null })).toEqual(["123 #01-01", "125 #01-01"]);
   });
 
-  it("is empty when nothing is listed in the session's blocks", async () => {
-    await pool.query(`DELETE FROM session_blocks WHERE session_id = $1`, [FOLLOW_UP]);
+  it("is empty when the session picked nothing", async () => {
+    await pool.query(`DELETE FROM session_households WHERE session_id = $1`, [FOLLOW_UP]);
     expect(await listRevisits(db, session)).toEqual([]);
+  });
+
+  it("takes a pick whose note was removed back once it is listed again", async () => {
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Listed again')`,
+      [REMOVED, ADMIN],
+    );
+    expect(await unitsOf()).toContain("123 #03-03");
   });
 
   it("costs a fixed number of queries however many households it holds", async () => {
@@ -163,33 +193,43 @@ describe("the follow-up list", () => {
     const few = await count();
     for (let i = 10; i < 30; i += 1) {
       await pool.query(
-        `WITH h AS (INSERT INTO households (block_id, unit_number) VALUES ($1, $2) RETURNING id)
-         INSERT INTO follow_ups (household_id, author_id, note) SELECT id, $3, 'More' FROM h`,
-        [BLOCK_A, `#${String(i)}-01`, ADMIN],
+        `WITH h AS (INSERT INTO households (block_id, unit_number) VALUES ($1, $2) RETURNING id),
+              f AS (INSERT INTO follow_ups (household_id, author_id, note) SELECT id, $3, 'More' FROM h)
+         INSERT INTO session_households (session_id, household_id) SELECT $4, id FROM h`,
+        [BLOCK_A, `#${String(i)}-01`, ADMIN, FOLLOW_UP],
       );
     }
+    expect((await listRevisits(db, session)).length).toBeGreaterThan(20);
     expect(await count()).toBe(few);
   });
 });
 
-describe("the list and the recording check agree", () => {
-  const cases: [string, string, string, boolean][] = [
-    ["a listed note still owed", BLOCK_A, "#01-01", true],
-    ["a note resolved tonight", BLOCK_A, "#05-05", true],
-    ["another attached block", BLOCK_B, "#01-01", true],
-    ["only a suggestion", BLOCK_A, "#02-02", false],
-    ["a removed note", BLOCK_A, "#03-03", false],
-    ["a note resolved before the session started", BLOCK_A, "#04-04", false],
-    ["a block not attached", UNATTACHED, "#01-01", false],
-    ["a unit nobody has visited", BLOCK_A, "#09-09", false],
+const noteOf = async (note: string) =>
+  (await pool.query<{ id: string }>(`SELECT id FROM follow_ups WHERE note = $1`, [note])).rows[0]
+    ?.id ?? "";
+
+describe("the list, the recording check and the note check agree", () => {
+  const cases: [string, string, string, string | null, boolean][] = [
+    ["a picked household still owed", BLOCK_A, "#01-01", "Due soon", true],
+    ["a note resolved during the session", BLOCK_A, "#05-05", "Resolved tonight", true],
+    ["a pick in another of its blocks", BLOCK_B, "#01-01", "Other block", true],
+    ["a pick with only a suggestion", BLOCK_A, "#02-02", "Only suggested", false],
+    ["a pick whose note was removed", BLOCK_A, "#03-03", "Taken off the list", false],
+    ["a note resolved before the session", BLOCK_A, "#04-04", "Resolved last week", false],
+    ["a listed household it did not pick", BLOCK_A, "#06-06", "Not picked", false],
+    ["a block the session does not cover", UNATTACHED, "#01-01", "Not attached", false],
+    ["a unit nobody has visited", BLOCK_A, "#09-09", null, false],
   ];
 
-  it.each(cases)("%s", async (_case, blockId, unit, onList) => {
+  it.each(cases)("%s", async (_case, blockId, unit, note, onList) => {
     const listed = (await listRevisits(db, session)).some(
       (entry) => entry.block.id === blockId && entry.household.unitNumber === unit,
     );
     expect(listed).toBe(onList);
     expect(await isUnitOnRevisitList(db, session, blockId, unit)).toBe(onList);
+    if (note !== null) {
+      expect(await isNoteOnActiveRevisitList(db, await noteOf(note))).toBe(onList);
+    }
 
     const recorded = createVisit(
       db,
@@ -200,7 +240,7 @@ describe("the list and the recording check agree", () => {
     if (onList) {
       await expect(recorded).resolves.toMatchObject({ memberId: ALICE });
     } else {
-      // An unattached block is refused for that first, before the list.
+      // A block the session does not cover is refused for that first, before the list.
       await expect(recorded).rejects.toMatchObject({
         code: blockId === UNATTACHED ? "conflict" : "not_on_follow_up_list",
       });
@@ -212,11 +252,26 @@ describe("the list and the recording check agree", () => {
   });
 });
 
-describe("whether a note is on the running session's list", () => {
-  const noteOf = async (note: string) =>
-    (await pool.query<{ id: string }>(`SELECT id FROM follow_ups WHERE note = $1`, [note])).rows[0]
-      ?.id ?? "";
+describe("a draft's list and its check agree", () => {
+  const draft: RevisitSession = { ...session, startedAt: null };
+  const cases: [string, string, string, boolean][] = [
+    ["a picked household still owed", BLOCK_A, "#01-01", true],
+    ["a pick in another block", BLOCK_B, "#01-01", true],
+    ["a note already resolved", BLOCK_A, "#05-05", false],
+    ["a pick whose note was removed", BLOCK_A, "#03-03", false],
+    ["a listed household it did not pick", BLOCK_A, "#06-06", false],
+  ];
 
+  it.each(cases)("%s", async (_case, blockId, unit, onList) => {
+    const listed = (await listRevisits(db, draft)).some(
+      (entry) => entry.block.id === blockId && entry.household.unitNumber === unit,
+    );
+    expect(listed).toBe(onList);
+    expect(await isUnitOnRevisitList(db, draft, blockId, unit)).toBe(onList);
+  });
+});
+
+describe("whether a note is on the running session's list", () => {
   it("is true for a note on the follow-up session's list", async () => {
     expect(await isNoteOnActiveRevisitList(db, await noteOf("Due soon"))).toBe(true);
   });

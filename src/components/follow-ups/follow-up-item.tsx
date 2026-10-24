@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
+import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
 import type { ActiveSession, FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { followUpRights } from "@/lib/follow-ups/rights";
+import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
 import {
   FOLLOW_UP_OFFLINE_NOTE,
   addedByline,
@@ -46,6 +47,7 @@ export function FollowUpItem({
   showUnit = false,
   onChanged,
   onEdit,
+  onPromoted,
 }: {
   note: FollowUp;
   now: Date;
@@ -54,6 +56,8 @@ export function FollowUpItem({
   showUnit?: boolean;
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
+  /* What to say once a suggestion is on the list, and maybe in a session. */
+  onPromoted?: (message: string) => void;
 }) {
   const { userId } = useRole();
   const overdue = isOverdue(note, now);
@@ -94,7 +98,13 @@ export function FollowUpItem({
         <p className="text-caption break-words text-foreground-muted">{resolved}</p>
       )}
 
-      <FollowUpControls note={note} active={active} onChanged={onChanged} onEdit={onEdit} />
+      <FollowUpControls
+        note={note}
+        active={active}
+        onChanged={onChanged}
+        onEdit={onEdit}
+        onPromoted={onPromoted}
+      />
     </div>
   );
 }
@@ -104,11 +114,13 @@ function FollowUpControls({
   active,
   onChanged,
   onEdit,
+  onPromoted,
 }: {
   note: FollowUp;
   active: ActiveSession | null;
   onChanged: (() => void) | undefined;
   onEdit: ((note: FollowUp) => void) | undefined;
+  onPromoted: ((message: string) => void) | undefined;
 }) {
   const online = useOnline();
   const { userId, isAdmin } = useRole();
@@ -116,6 +128,7 @@ function FollowUpControls({
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [promoting, setPromoting] = useState(false);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
   const done = note.doneAt !== null;
@@ -157,10 +170,12 @@ function FollowUpControls({
             <button
               type="button"
               disabled={busy || !online}
-              onClick={() => void change({ status: "listed" })}
+              onClick={() => {
+                setPromoting(true);
+              }}
               className="min-h-11 btn-primary rounded-lg px-4 text-body font-medium"
             >
-              {busy ? "Saving…" : "Add to list"}
+              Add to list
             </button>
           ) : null}
           {rights.canResolve ? (
@@ -200,20 +215,40 @@ function FollowUpControls({
           ) : null}
         </div>
       ) : null}
-      {/* Named for the block, since a follow-up session may be running
-          elsewhere. A note resolved before a session starts is never on its
-          list, so no session will let a member reopen it. */}
+      {/* A note resolved before a session starts is never on its list, so
+          no session will let a member reopen it. */}
       {rights.locked ? (
         <p className="mt-1 text-caption text-foreground-muted">
           {done
             ? "Ask an admin if it needs reopening."
-            : `You can mark this done during a follow-up session that includes Blk ${note.blockName}.`}
+            : "You can mark this done during a follow-up session that includes this household."}
         </p>
       ) : null}
+      {/* Said where Reopen would meet a suggestion waiting at the door. */}
+      {rights.waitingSuggestion === null ? null : (
+        <p className="mt-1 text-caption break-words text-foreground-muted">
+          {waitingCaption(rights.waitingSuggestion, isAdmin)}
+        </p>
+      )}
       {offers && !online ? (
         <p className="mt-1 text-caption text-foreground-muted">{FOLLOW_UP_OFFLINE_NOTE}</p>
       ) : null}
 
+      <SheetPresence>
+        {promoting ? (
+          <PromoteSheet
+            suggestion={note}
+            onClose={() => {
+              setPromoting(false);
+            }}
+            onPromoted={(message) => {
+              setPromoting(false);
+              onChanged?.();
+              onPromoted?.(message);
+            }}
+          />
+        ) : null}
+      </SheetPresence>
       <SheetPresence>
         {removing ? (
           <RemoveFollowUpSheet

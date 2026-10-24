@@ -35,6 +35,12 @@ const session = async (kind: "regular" | "follow_up", status: "draft" | "active"
     SESSION,
     BLOCK,
   ]);
+  if (kind === "follow_up") {
+    await pool.query(`INSERT INTO session_households (session_id, household_id) VALUES ($1,$2)`, [
+      SESSION,
+      HOUSEHOLD,
+    ]);
+  }
 };
 
 beforeEach(async () => {

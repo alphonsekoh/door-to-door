@@ -11,19 +11,19 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-/* The revisits panel has its own tests; here it only has to be placed and fed. */
-vi.mock("@/components/sessions/session-revisits", () => ({
-  SessionRevisits: ({
-    attachedIds,
+/* The households panel has its own tests; here it only has to be placed and fed. */
+vi.mock("@/components/sessions/session-households", () => ({
+  SessionHouseholds: ({
+    session,
     tick,
-    onAttached,
+    onChanged,
   }: {
-    attachedIds: string[];
+    session: OutingSession;
     tick: number;
-    onAttached: () => Promise<void>;
+    onChanged: () => Promise<void>;
   }) => (
-    <button type="button" onClick={() => void onAttached()}>
-      Revisits panel: {attachedIds.join(",")}, read {String(tick)}
+    <button type="button" onClick={() => void onChanged()}>
+      Households panel: {session.status}, read {String(tick)}
     </button>
   ),
 }));
@@ -388,22 +388,32 @@ describe("a follow-up session", () => {
     expect(screen.getByText("Members can record only households on its list.")).toBeVisible();
   });
 
-  it("shows its households to revisit, given the blocks it covers", async () => {
+  it("shows its households to revisit", async () => {
     serveKind("follow_up");
     render(<SessionDetail sessionId="s1" />);
-    expect(await screen.findByText(/Revisits panel: b1, read 0/)).toBeInTheDocument();
+    expect(await screen.findByText(/Households panel: draft, read 0/)).toBeInTheDocument();
   });
 
-  it("reads the session again once a block is added from the panel", async () => {
+  it("reads its blocks again once the households change, since blocks follow them", async () => {
     serveKind("follow_up");
     render(<SessionDetail sessionId="s1" />);
-    const calls = () => apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1").length;
-    await screen.findByText(/Revisits panel/);
+    const calls = () =>
+      apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1/blocks").length;
+    await screen.findByText(/Households panel/);
     const before = calls();
-    await userEvent.click(screen.getByRole("button", { name: /Revisits panel/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Households panel/ }));
     await waitFor(() => {
       expect(calls()).toBe(before + 1);
     });
+  });
+
+  it("shows its blocks read-only, saying they follow the households", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText("Blocks follow the households in this session.")).toBeVisible();
+    expect(screen.getByText("Blk 123")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add blocks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
   });
 
   it("has neither for a door-to-door session", async () => {
@@ -411,6 +421,8 @@ describe("a follow-up session", () => {
     render(<SessionDetail sessionId="s1" />);
     await screen.findByText("June outing");
     expect(screen.queryByText("Follow-up")).toBeNull();
-    expect(screen.queryByText(/Revisits panel/)).toBeNull();
+    expect(screen.queryByText(/Households panel/)).toBeNull();
+    expect(screen.queryByText("Blocks follow the households in this session.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add blocks" })).toBeInTheDocument();
   });
 });

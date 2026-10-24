@@ -125,12 +125,6 @@ export function doneByline(
   return `Done by ${who(note.doneBy, viewerId)} · ${formatDay(note.doneAt)}`;
 }
 
-/* What the author of a declined suggestion is told. */
-export function declinedByline(note: Pick<FollowUp, "deletedAt" | "deletedBy">): string | null {
-  if (note.deletedAt === null) return null;
-  return `Declined by ${displayName(note.deletedBy?.name ?? null)} · ${formatDay(note.deletedAt)}`;
-}
-
 /*
  * A change that got no answer may still have landed, so it never claims that
  * nothing happened (D-74-43). Raw server text is never shown.
@@ -149,7 +143,7 @@ export function describeFollowUpFailure(error: unknown): string {
     case "follow_up_exists":
       return "This household is already on the follow-up list or has a suggestion waiting.";
     case "not_on_follow_up_list":
-      return "You can change this only during a follow-up session that includes its block.";
+      return "You can mark this done during a follow-up session that includes this household.";
   }
   switch (error.status) {
     case 400:

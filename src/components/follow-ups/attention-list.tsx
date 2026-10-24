@@ -2,11 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ADDED_TO_LIST,
-  FollowUpSheet,
-  type FollowUpSheetMode,
-} from "@/components/follow-ups/follow-up-sheet";
+import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { InterestChip } from "@/components/ui/interest-chip";
 import type { HouseholdAttention, HouseholdAttentionList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -54,7 +50,7 @@ export function AttentionList() {
   const [state, setState] = useState<State>({ status: "loading" });
   const [wide, setWide] = useState(false);
   const [adding, setAdding] = useState<FollowUpSheetMode | null>(null);
-  const [added, setAdded] = useState(false);
+  const [added, setAdded] = useState<string | null>(null);
 
   const load = useCallback(async (includeMedium: boolean) => {
     try {
@@ -111,11 +107,11 @@ export function AttentionList() {
         {wide ? "High interest only" : "Include medium interest"}
       </button>
 
-      {added ? (
+      {added === null ? null : (
         <p role="status" className="notice-success">
-          {ADDED_TO_LIST}
+          {added}
         </p>
-      ) : null}
+      )}
 
       {state.rows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
@@ -156,7 +152,7 @@ export function AttentionList() {
                 <button
                   type="button"
                   onClick={() => {
-                    setAdded(false);
+                    setAdded(null);
                     setAdding(addMode(row));
                   }}
                   className="min-h-11 btn-secondary rounded-lg px-4 text-body font-medium"
@@ -176,9 +172,9 @@ export function AttentionList() {
             onClose={() => {
               setAdding(null);
             }}
-            onSaved={() => {
+            onSaved={(message) => {
               setAdding(null);
-              setAdded(true);
+              setAdded(message);
               // Listed now, so it leaves this list.
               void load(wide);
             }}

@@ -49,6 +49,7 @@ function entry(
       deletedAt: null,
       deletedBy: null,
       deleteReason: null,
+      waitingSuggestionBy: null,
       createdAt: STAMP,
     })),
     latestVisit: null,

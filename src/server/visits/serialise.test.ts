@@ -59,6 +59,10 @@ const followUp: FollowUpRow = {
   deletedByName: null,
   deletedByImage: null,
   deleteReason: null,
+  waitingSuggestionId: null,
+  waitingById: null,
+  waitingByName: null,
+  waitingByImage: null,
 };
 
 describe("toHousehold", () => {
@@ -165,6 +169,18 @@ describe("toFollowUp", () => {
       deletedBy: { id: "u3", name: "Admin", image: null },
       deleteReason: "Moved away",
     });
+  });
+
+  it("names who suggested the door while a suggestion waits there", () => {
+    const waiting = {
+      ...followUp,
+      waitingSuggestionId: "f2",
+      waitingById: "u2",
+      waitingByName: "Ben",
+      waitingByImage: null,
+    };
+    expect(toFollowUp(waiting).waitingSuggestionBy).toEqual({ id: "u2", name: "Ben", image: null });
+    expect(toFollowUp(followUp).waitingSuggestionBy).toBeNull();
   });
 
   it("leaves the removal fields null on a live note", () => {

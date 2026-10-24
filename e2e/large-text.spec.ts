@@ -1,7 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK } from "./accounts";
-import { endActiveSession, ensureActiveSession, expect, test, untilLive } from "./fixtures";
+import {
+  endActiveSession,
+  ensureActiveSession,
+  expect,
+  listSeededHousehold,
+  startFollowUpSession,
+  test,
+  untilLive,
+} from "./fixtures";
 
 /*
  * Every screen at the largest text the app draws: 32px, twice the base
@@ -469,15 +477,21 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
     page.getByRole("button", { name: "Remove from list" }).first(),
   );
 
-  /* The kind chooser's cards hold a long hint each. */
+  /* The kind chooser's cards hold a long hint each; a follow-up session
+     then lists the households to pick, with Create draft below them. */
+  await listSeededHousehold(adminApi);
   await page.goto("/admin/sessions");
   await atCap(page);
   await page.getByRole("button", { name: "New session" }).click();
+  const followUpKind = page.getByRole("radio", { name: /Follow-up/ });
+  await expectFits(page, "choosing a session's kind", followUpKind);
+  await followUpKind.click();
   await expectFits(
     page,
-    "choosing a session's kind",
-    page.getByRole("radio", { name: /Follow-up/ }),
+    "picking households",
+    page.getByRole("group", { name: "Households to visit" }).getByRole("checkbox").first(),
   );
+  await expectTappable(page.getByRole("button", { name: "Create draft" }), "Create draft");
 
   await page.goto("/admin/team");
   await atCap(page);
@@ -760,13 +774,7 @@ test.describe("without signal", () => {
  */
 test.describe("a follow-up session", () => {
   test.beforeEach(async ({ adminApi }) => {
-    await endActiveSession(adminApi);
-    const created = await adminApi.post("/api/sessions", {
-      data: { title: "Follow-up visits, Saturday", kind: "follow_up", blockIds: [SEED_BLOCK] },
-    });
-    expect(created.status()).toBe(201);
-    const { id } = (await created.json()) as { id: string };
-    expect((await adminApi.post(`/api/sessions/${id}/start`)).ok()).toBe(true);
+    await startFollowUpSession(adminApi, "Follow-up visits, Saturday");
   });
 
   test.afterEach(async ({ adminApi }) => {
@@ -811,5 +819,12 @@ test.describe("a follow-up session", () => {
       "a follow-up session's households",
       adminPage.getByRole("heading", { name: /^Households to revisit/ }),
     );
+    /* Its blocks follow its households: nothing to add or take away by hand. */
+    await expect(adminPage.getByRole("button", { name: "Add blocks" })).toHaveCount(0);
+    await adminPage.getByRole("button", { name: "Add households" }).click();
+    const adding = adminPage.getByRole("dialog", { name: "Add households" });
+    await expect(adding.getByRole("button", { name: /^Add \d+ household/ })).toBeVisible();
+    await expectFits(adminPage, "adding households", adding);
+    await adminPage.keyboard.press("Escape");
   });
 });

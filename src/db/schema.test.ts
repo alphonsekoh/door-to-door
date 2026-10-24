@@ -12,6 +12,7 @@ import {
   religionEnum,
   roleEnum,
   sessionBlocks,
+  sessionHouseholds,
   sessionKindEnum,
   sessionParticipants,
   sessionStatusEnum,
@@ -144,6 +145,26 @@ describe("session blocks", () => {
       session_id: "cascade",
       block_id: "restrict",
     });
+  });
+});
+
+describe("session households", () => {
+  it("keys on session plus household, so picking twice is impossible", () => {
+    expect(config(sessionHouseholds).primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
+      "session_id",
+      "household_id",
+    ]);
+  });
+
+  it("goes with its session or its household", () => {
+    expect(deleteActions(sessionHouseholds)).toEqual({
+      session_id: "cascade",
+      household_id: "cascade",
+    });
+  });
+
+  it("finds a household's sessions without a scan", () => {
+    expect(indexNames(sessionHouseholds)).toEqual(["session_households_household_idx"]);
   });
 });
 

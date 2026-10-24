@@ -19,7 +19,8 @@ export function createTestPool(): Pool {
 export async function truncateAll(pool: Pool): Promise<void> {
   await pool.query(`
     TRUNCATE follow_ups, visit_teammates, visits, session_team_members, session_teams,
-             session_participants, households, session_blocks, outing_sessions,
+             session_participants, session_households, households, session_blocks,
+             outing_sessions,
              accounts, auth_sessions, verification_tokens, blocks, users
     RESTART IDENTITY CASCADE
   `);

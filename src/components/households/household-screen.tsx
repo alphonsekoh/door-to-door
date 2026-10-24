@@ -1,11 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ADDED_TO_LIST,
-  FollowUpSheet,
-  SUGGESTION_SENT,
-} from "@/components/follow-ups/follow-up-sheet";
+import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { BackLink } from "@/components/ui/back-link";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
@@ -132,9 +128,9 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
             /* The same as Add to list on the suggestion below: one door, one
                note on the list, and its author is not told it was declined. */
             <PromoteButton
-              suggestionId={action.suggestionId}
-              onPromoted={() => {
-                setSent(ADDED_TO_LIST);
+              suggestion={action.suggestion}
+              onPromoted={(message) => {
+                setSent(message);
                 reload();
               }}
               className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
@@ -181,9 +177,9 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
             onClose={() => {
               setAdding(false);
             }}
-            onSaved={() => {
+            onSaved={(message) => {
               setAdding(false);
-              setSent(isAdmin ? ADDED_TO_LIST : SUGGESTION_SENT);
+              setSent(message);
               reload();
             }}
           />

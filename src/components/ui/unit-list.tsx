@@ -38,6 +38,12 @@ function PendingChip({ pending, sending }: { pending: QueuedVisit | null; sendin
   );
 }
 
+/* Recorded during the running session. Not "tonight": sessions run in the
+   daytime too. */
+function SessionMarker() {
+  return <span className="text-caption text-foreground-muted">this session</span>;
+}
+
 /* A unit's row. At large text its chips drop under the unit rather than
    squeeze the text beside them to a column too narrow for its words. */
 const ROW = "flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2";
@@ -61,11 +67,12 @@ function ServerRow({
   const content = (
     <>
       <span className={ROW_TEXT}>
-        <span className="flex items-center gap-2">
+        {/* The marker drops under the unit at large text rather than squeeze it. */}
+        <span className="flex flex-wrap items-center gap-x-2">
           <span className="text-body font-semibold tabular-nums">
             <UnitNumber value={household.unitNumber} />
           </span>
-          {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
+          {row.tonight ? <SessionMarker /> : null}
         </span>
         {household.name === null ? null : (
           <span className="block truncate text-caption text-foreground-muted">
@@ -108,11 +115,11 @@ function QueuedRow({ row, sending }: { row: Row; sending: boolean }) {
   return (
     <li className={`${ROW} border-b border-dashed border-border last:border-b-0`}>
       <span className={ROW_TEXT}>
-        <span className="flex items-center gap-2">
+        <span className="flex flex-wrap items-center gap-x-2">
           <span className="text-body font-semibold tabular-nums">
             <UnitNumber value={row.household.unitNumber} />
           </span>
-          {row.tonight ? <span className="text-caption text-foreground-muted">tonight</span> : null}
+          {row.tonight ? <SessionMarker /> : null}
         </span>
         {row.household.name === null ? null : (
           <span className="block truncate text-caption text-foreground-muted">
@@ -147,7 +154,7 @@ export function UnitList({
   return (
     <div className="space-y-4">
       <p className="text-body font-medium tabular-nums">
-        {progressLabel(progress, sessionId === null ? "On this block" : "Tonight")}
+        {progressLabel(progress, sessionId === null ? "On this block" : "This session")}
       </p>
 
       <div>

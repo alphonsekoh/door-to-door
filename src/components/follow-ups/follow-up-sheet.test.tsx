@@ -38,6 +38,7 @@ const existing: FollowUp = {
   deletedAt: null,
   deletedBy: null,
   deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2026-10-01T00:00:00.000Z",
 };
 
@@ -202,23 +203,72 @@ describe("a member suggesting a return visit", () => {
   });
 });
 
+/* A follow-up session as the lookup returns it. */
+const SESSION = {
+  id: "s1",
+  title: "Saturday revisits",
+  kind: "follow_up",
+  status: "active",
+  startedAt: "2026-10-20T09:00:00.000Z",
+  endedAt: null,
+  createdBy: { id: "admin", name: "Admin", image: null },
+  createdAt: "2026-10-20T08:00:00.000Z",
+};
+
+/* The sessions the lookup finds, and what the two writes answer. */
+function server({
+  running = [] as unknown[],
+  drafts = [] as unknown[],
+  lookup = true,
+  addToSession = () => Promise.resolve({}),
+}: {
+  running?: unknown[];
+  drafts?: unknown[];
+  lookup?: boolean;
+  addToSession?: () => Promise<unknown>;
+} = {}) {
+  apiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/sessions?")) {
+      if (!lookup) return Promise.reject(new TypeError("Failed to fetch"));
+      return Promise.resolve({ data: path.includes("status=active") ? running : drafts });
+    }
+    if (path === "/sessions/s1/households") return addToSession();
+    return Promise.resolve({});
+  });
+}
+
+const writes = () =>
+  apiFetch.mock.calls
+    .filter(([, init]) => (init as { method?: string } | undefined)?.method === "POST")
+    .map(([path, init]): [string, unknown] => [
+      String(path),
+      JSON.parse((init as { body: string }).body) as unknown,
+    ]);
+
 describe("an admin adding to the follow-up list", () => {
+  const addButton = () => sheet().getByRole("button", { name: "Add to list" });
+
   it("speaks of the list, not of a suggestion", async () => {
     asAdmin();
+    server();
     const onSaved = vi.fn();
     render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={onSaved} />);
     expect(
       screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
     ).not.toHaveTextContent("An admin reviews");
     type(WHAT, "Bring the flyer");
-    fireEvent.click(sheet().getByRole("button", { name: "Add to list" }));
     await waitFor(() => {
-      expect(onSaved).toHaveBeenCalled();
+      expect(addButton()).toBeEnabled();
+    });
+    fireEvent.click(addButton());
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list.");
     });
   });
 
   it("says why the household is here above an empty note, not in it", () => {
     asAdmin();
+    server();
     render(
       <FollowUpSheet
         mode={{ ...create, context: "Showed high interest on 3 Mar 2026." }}
@@ -228,6 +278,148 @@ describe("an admin adding to the follow-up list", () => {
     );
     expect(sheet().getByText("Showed high interest on 3 Mar 2026.")).toBeVisible();
     expect(sheet().getByLabelText(WHAT)).toHaveValue("");
+  });
+
+  it("waits to learn which follow-up session it could also go into", () => {
+    asAdmin();
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(sheet().getByRole("status")).toHaveTextContent("Looking for a follow-up session…");
+    type(WHAT, "Bring the flyer");
+    expect(addButton()).toBeDisabled();
+  });
+
+  it("offers the running follow-up session, ticked, and adds the door to it too", async () => {
+    asAdmin();
+    server({ running: [SESSION], drafts: [{ ...SESSION, id: "s2", status: "draft" }] });
+    const onSaved = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={onSaved} />);
+    const box = await sheet().findByRole("checkbox", { name: "Also add to Saturday revisits" });
+    expect(box).toBeChecked();
+    expect(box).toHaveAccessibleDescription("Running now. Members will see it on their list.");
+
+    type(WHAT, "Bring the flyer");
+    fireEvent.click(addButton());
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list and to Saturday revisits.");
+    });
+    expect(writes()).toEqual([
+      ["/follow-ups", { householdId: "h1", visitId: null, note: "Bring the flyer", dueDate: null }],
+      ["/sessions/s1/households", { householdIds: ["h1"] }],
+    ]);
+  });
+
+  it("offers a follow-up session that has not started when none is running", async () => {
+    asAdmin();
+    server({ drafts: [{ ...SESSION, status: "draft" }] });
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(
+      await sheet().findByRole("checkbox", { name: "Also add to Saturday revisits" }),
+    ).toHaveAccessibleDescription("A follow-up session that hasn't started yet.");
+  });
+
+  it("adds to the list alone once the box is unticked", async () => {
+    asAdmin();
+    server({ running: [SESSION] });
+    const onSaved = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={onSaved} />);
+    fireEvent.click(await sheet().findByRole("checkbox", { name: /Also add to/ }));
+    type(WHAT, "Bring the flyer");
+    fireEvent.click(addButton());
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list.");
+    });
+    expect(writes().map(([path]) => path)).toEqual(["/follow-ups"]);
+  });
+
+  it("offers nothing when there is no follow-up session, or it cannot tell", async () => {
+    asAdmin();
+    server({ lookup: false });
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHAT, "Bring the flyer");
+    await waitFor(() => {
+      expect(addButton()).toBeEnabled();
+    });
+    expect(sheet().queryByRole("checkbox")).toBeNull();
+  });
+
+  describe("when the door is listed but not added to the session", () => {
+    const failOnce = () => {
+      asAdmin();
+      let first = true;
+      server({
+        running: [SESSION],
+        addToSession: () => {
+          if (!first) return Promise.resolve({});
+          first = false;
+          return Promise.reject(new TypeError("Failed to fetch"));
+        },
+      });
+    };
+    const listOnce = async (onSaved = vi.fn(), onClose = vi.fn()) => {
+      render(<FollowUpSheet mode={create} onClose={onClose} onSaved={onSaved} />);
+      await sheet().findByRole("checkbox", { name: /Also add to/ });
+      type(WHAT, "Bring the flyer");
+      fireEvent.click(addButton());
+      return sheet().findByRole("alert");
+    };
+
+    it("says so, and retries only the session step", async () => {
+      failOnce();
+      const onSaved = vi.fn();
+      expect(await listOnce(onSaved)).toHaveTextContent(
+        "Added to the follow-up list, but not to Saturday revisits. Try again, or add it from the session's page.",
+      );
+      expect(onSaved).not.toHaveBeenCalled();
+      expect(sheet().queryByRole("checkbox")).toBeNull();
+
+      fireEvent.click(sheet().getByRole("button", { name: "Add to Saturday revisits" }));
+      await waitFor(() => {
+        expect(onSaved).toHaveBeenCalledWith(
+          "Added to the follow-up list and to Saturday revisits.",
+        );
+      });
+      expect(writes().map(([path]) => path)).toEqual([
+        "/follow-ups",
+        "/sessions/s1/households",
+        "/sessions/s1/households",
+      ]);
+    });
+
+    it("keeps saying so when the retry fails too", async () => {
+      asAdmin();
+      server({ running: [SESSION], addToSession: () => Promise.reject(new Error("down")) });
+      const onSaved = vi.fn();
+      await listOnce(onSaved);
+      fireEvent.click(sheet().getByRole("button", { name: "Add to Saturday revisits" }));
+      await waitFor(() => {
+        expect(sheet().getByRole("button", { name: "Add to Saturday revisits" })).toBeEnabled();
+      });
+      expect(sheet().getByRole("alert")).toHaveTextContent("but not to Saturday revisits");
+      expect(onSaved).not.toHaveBeenCalled();
+    });
+
+    it("closes without asking, since the note is saved", async () => {
+      failOnce();
+      const onSaved = vi.fn();
+      const onClose = vi.fn();
+      await listOnce(onSaved, onClose);
+      fireEvent.click(screen.getByRole("button", { name: "Close" }));
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list.");
+      expect(onClose).not.toHaveBeenCalled();
+    });
+  });
+
+  it("is never offered to a member suggesting a door", async () => {
+    const onSaved = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={onSaved} />);
+    type(WHY, "Call back");
+    fireEvent.click(sheet().getByRole("button", { name: "Send suggestion" }));
+    await waitFor(() => {
+      expect(onSaved).toHaveBeenCalledWith("Suggestion sent. An admin will review it.");
+    });
+    expect(apiFetch.mock.calls.map(([path]) => String(path))).toEqual(["/follow-ups"]);
   });
 });
 
@@ -295,7 +487,7 @@ describe("editing a note", () => {
     type(WHAT, "Changed");
     fireEvent.click(sheet().getByRole("button", { name: "Save changes" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "You can change this only during a follow-up session that includes its block.",
+      "You can mark this done during a follow-up session that includes this household.",
     );
   });
 

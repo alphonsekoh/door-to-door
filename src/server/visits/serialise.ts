@@ -71,6 +71,7 @@ export function toFollowUp(row: FollowUpRow): FollowUp {
     deletedAt: row.deletedAt?.toISOString() ?? null,
     deletedBy: userOrNull(row.deletedById, row.deletedByName, row.deletedByImage),
     deleteReason: row.deleteReason,
+    waitingSuggestionBy: userOrNull(row.waitingById, row.waitingByName, row.waitingByImage),
     createdAt: row.createdAt.toISOString(),
   };
 }

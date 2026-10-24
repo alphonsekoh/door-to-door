@@ -6,14 +6,14 @@ const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
 
 const { GET, POST } = await import("./route");
-const { PATCH, DELETE } = await import("./[id]/route");
+const { PATCH } = await import("./[id]/route");
+const { POST: REMOVE } = await import("./[id]/remove/route");
 
 const pool = createTestPool();
 const ADMIN = "aceaceac-0000-4000-8000-000000000001";
 const ALICE = "aceaceac-0000-4000-8000-000000000002";
 const BEN = "aceaceac-0000-4000-8000-000000000003";
 const BLOCK = "aceaceac-0000-4000-8001-000000000001";
-const FAR_BLOCK = "aceaceac-0000-4000-8001-000000000002";
 const HOUSEHOLD = "aceaceac-0000-4000-8003-000000000001";
 const OTHER_HOUSEHOLD = "aceaceac-0000-4000-8003-000000000002";
 const PAST = "aceaceac-0000-4000-8002-000000000001";
@@ -44,14 +44,17 @@ const patch = (id: string, body: unknown) =>
     }),
     { params: Promise.resolve({ id }) },
   );
-const remove = (id: string, reason?: string) =>
-  DELETE(
-    new Request(
-      url(`/${id}${reason === undefined ? "" : `?reason=${encodeURIComponent(reason)}`}`),
-      { method: "DELETE" },
-    ),
+/* Every removal gives a reason, in the body. */
+const removeWith = (id: string, body: unknown) =>
+  REMOVE(
+    new Request(url(`/${id}/remove`), {
+      method: "POST",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      headers: { "content-type": "application/json" },
+    }),
     { params: Promise.resolve({ id }) },
   );
+const remove = (id: string, reason = "No longer needed") => removeWith(id, { reason });
 const list = async (q = "") => {
   const response = await GET(new Request(url(q)));
   return {
@@ -74,6 +77,7 @@ type Note = {
   author: { name: string };
 };
 const read = async (response: Response) => (await response.json()) as Note;
+type Failure = { error: { code: string; message: string } };
 const code = async (response: Response) =>
   ((await response.json()) as { error: { code: string } }).error.code;
 
@@ -99,17 +103,22 @@ const alicesListed = async (note = "Alice's wording") => {
   return id;
 };
 
-/* A running session; a follow-up session covers the blocks given. */
-const run = async (kind: "regular" | "follow_up", blockIds: string[] = [BLOCK]) => {
+/* A running session; a follow-up session picked the households given. */
+const run = async (kind: "regular" | "follow_up", householdIds: string[] = [HOUSEHOLD]) => {
   await pool.query(
     `INSERT INTO outing_sessions (id, title, kind, status, started_at, created_by)
      VALUES ($1,'Tonight',$2,'active', now() - interval '1 hour', $3)`,
     [TONIGHT, kind, ADMIN],
   );
-  for (const blockId of blockIds) {
-    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+  await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+    TONIGHT,
+    BLOCK,
+  ]);
+  if (kind === "regular") return;
+  for (const householdId of householdIds) {
+    await pool.query(`INSERT INTO session_households (session_id, household_id) VALUES ($1,$2)`, [
       TONIGHT,
-      blockId,
+      householdId,
     ]);
   }
 };
@@ -130,10 +139,7 @@ beforeEach(async () => {
       ($1,'a@t.local','Admin','admin'), ($2,'alice@t.local','Alice','member'), ($3,'ben@t.local','Ben','member')`,
     [ADMIN, ALICE, BEN],
   );
-  await pool.query(
-    `INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave'), ($2,'125','Test Ave')`,
-    [BLOCK, FAR_BLOCK],
-  );
+  await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
   await pool.query(
     `INSERT INTO households (id, block_id, unit_number) VALUES ($1,$2,'#05-123'), ($3,$2,'#06-201')`,
     [HOUSEHOLD, BLOCK, OTHER_HOUSEHOLD],
@@ -459,8 +465,8 @@ describe("a member and a listed note outside its follow-up session", () => {
     expect(await code(await patch(id, { done: true }))).toBe("not_on_follow_up_list");
   });
 
-  it("refuses resolving it in a follow-up session that does not cover its block", async () => {
-    await run("follow_up", [FAR_BLOCK]);
+  it("refuses resolving it in a follow-up session that did not pick its household", async () => {
+    await run("follow_up", [OTHER_HOUSEHOLD]);
     const id = await listed("Bring the flyer");
     asAlice();
     expect(await code(await patch(id, { done: true }))).toBe("not_on_follow_up_list");
@@ -488,7 +494,7 @@ describe("a member and a listed note outside its follow-up session", () => {
 
 describe("a member and a listed note in its follow-up session", () => {
   beforeEach(async () => {
-    await run("follow_up");
+    await run("follow_up", [HOUSEHOLD, OTHER_HOUSEHOLD]);
   });
 
   it("lets any member resolve it, and records who did", async () => {
@@ -607,7 +613,7 @@ describe("an admin and a listed note", () => {
 });
 
 describe("removing a note", () => {
-  it("keeps the row, with who removed it, when and why", async () => {
+  it("keeps the row, with who removed it, when and why, trimmed", async () => {
     const id = await listed("Bring the flyer");
     asAdmin();
     expect((await remove(id, "  Moved away  ")).status).toBe(204);
@@ -617,17 +623,50 @@ describe("removing a note", () => {
     expect(row?.delete_reason).toBe("Moved away");
   });
 
-  it("stores a blank reason as none", async () => {
+  it.each<[string, unknown]>([
+    ["no body", undefined],
+    ["no reason", {}],
+    ["an empty reason", { reason: "" }],
+    ["a reason of spaces", { reason: "   " }],
+    ["a reason over 500 characters", { reason: "x".repeat(501) }],
+  ])("refuses %s with 400 and removes nothing", async (_case, body) => {
     const id = await suggested(asAlice, "Asked us back");
     asAdmin();
-    await remove(id, "   ");
-    expect((await stored(id))?.delete_reason).toBeNull();
+    const response = await removeWith(id, body);
+    expect(response.status).toBe(400);
+    expect(await code(response)).toBe("validation_failed");
+    expect((await stored(id))?.deleted_at).toBeNull();
   });
 
-  it("refuses a reason over 500 characters", async () => {
+  it("takes a reason of exactly 500 characters", async () => {
     const id = await listed("Bring the flyer");
     asAdmin();
-    expect((await remove(id, "x".repeat(501))).status).toBe(400);
+    expect((await remove(id, "x".repeat(500))).status).toBe(204);
+  });
+
+  it("asks for the reason in the body, never the address", async () => {
+    // Free text about a household must not land in a proxy or access log.
+    const id = await listed("Bring the flyer");
+    asAdmin();
+    const response = await REMOVE(
+      new Request(url(`/${id}/remove?reason=Moved`), { method: "POST" }),
+      { params: Promise.resolve({ id }) },
+    );
+    expect(response.status).toBe(400);
+    expect((await stored(id))?.deleted_at).toBeNull();
+  });
+
+  it("refuses a member removing a listed note, even their own", async () => {
+    const id = await alicesListed();
+    asAlice();
+    expect((await remove(id)).status).toBe(403);
+    expect((await stored(id))?.deleted_at).toBeNull();
+  });
+
+  it("refuses a member withdrawing another member's suggestion", async () => {
+    const id = await suggested(asAlice, "Alice's");
+    asBen();
+    expect((await remove(id)).status).toBe(403);
     expect((await stored(id))?.deleted_at).toBeNull();
   });
 
@@ -639,6 +678,15 @@ describe("removing a note", () => {
     expect((await remove(id)).status).toBe(404);
     asAlice();
     expect((await patch(id, { note: "Again" })).status).toBe(404);
+    expect((await remove(id)).status).toBe(404);
+  });
+
+  it("keeps the first removal's reason", async () => {
+    const id = await listed("Bring the flyer");
+    asAdmin();
+    await remove(id, "Moved away");
+    await remove(id, "Second thoughts");
+    expect((await stored(id))?.delete_reason).toBe("Moved away");
   });
 
   it("returns 404 for an unknown note", async () => {
@@ -650,6 +698,111 @@ describe("removing a note", () => {
     const id = await listed("x");
     auth.mockResolvedValue(null);
     expect((await remove(id)).status).toBe(401);
+  });
+});
+
+describe("a suggestion waiting at a door with a resolved listed note", () => {
+  /* Bring the flyer, listed and resolved in tonight's session, with Ben's
+     suggestion sent since. */
+  const setUp = async () => {
+    await run("follow_up");
+    const note = await listed("Bring the flyer");
+    asAlice();
+    expect((await patch(note, { done: true })).status).toBe(200);
+    const suggestion = await suggested(asBen, "Asked us back again");
+    return { note, suggestion };
+  };
+  type Waiting = { waitingSuggestionBy: { id: string; name: string } | null };
+  const noteOf = async (id: string) =>
+    (await list(`?householdId=${HOUSEHOLD}`)).body.data.find((n) => n.id === id) as
+      (Note & Waiting) | undefined;
+
+  it("is named on the listed note, and on nothing else", async () => {
+    const { note, suggestion } = await setUp();
+    asAlice();
+    expect((await noteOf(note))?.waitingSuggestionBy).toEqual({
+      id: BEN,
+      name: "Ben",
+      image: null,
+    });
+    expect((await noteOf(suggestion))?.waitingSuggestionBy).toBeNull();
+  });
+
+  it("is not named on a removed note", async () => {
+    const { note } = await setUp();
+    asAdmin();
+    await remove(note);
+    const { body } = await list(`?deleted=true&householdId=${HOUSEHOLD}`);
+    expect(body.data.map((n) => [n.id, n["waitingSuggestionBy"]])).toEqual([[note, null]]);
+  });
+
+  it("is null once the suggestion is listed", async () => {
+    const { note, suggestion } = await setUp();
+    asAdmin();
+    await patch(suggestion, { status: "listed" });
+    expect((await noteOf(note))?.waitingSuggestionBy).toBeNull();
+  });
+
+  it("is listed by an admin's reopen, in the same change", async () => {
+    const { note, suggestion } = await setUp();
+    asAdmin();
+    const response = await patch(note, { done: false });
+    expect(response.status).toBe(200);
+    expect((await read(response)).doneAt).toBeNull();
+    const listedNow = await noteOf(suggestion);
+    expect(listedNow).toMatchObject({ status: "listed", listedBy: { name: "Admin" } });
+    expect(listedNow?.listedAt).not.toBeNull();
+    // Off the review queue, so its author is never told it was declined.
+    expect((await list("?status=suggested")).body.data).toEqual([]);
+  });
+
+  it("refuses a member's reopen, says why, and changes nothing", async () => {
+    const { note, suggestion } = await setUp();
+    asAlice();
+    const response = await patch(note, { done: false });
+    expect(response.status).toBe(409);
+    expect(((await response.json()) as { error: unknown }).error).toEqual({
+      code: "follow_up_exists",
+      message: "Ben's suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    });
+    expect((await noteOf(note))?.doneAt).not.toBeNull();
+    expect((await noteOf(suggestion))?.status).toBe("suggested");
+  });
+
+  it("says a suggestion waits when its author has no name", async () => {
+    const { note } = await setUp();
+    await pool.query(`UPDATE users SET name = NULL WHERE id = $1`, [BEN]);
+    asAlice();
+    expect(((await (await patch(note, { done: false })).json()) as Failure).error.message).toBe(
+      "A suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    );
+  });
+
+  it("refuses the member as off the list first, outside the session", async () => {
+    const { note } = await setUp();
+    await pool.query(`UPDATE outing_sessions SET status = 'ended' WHERE id = $1`, [TONIGHT]);
+    asAlice();
+    expect(await code(await patch(note, { done: false }))).toBe("not_on_follow_up_list");
+  });
+
+  it("lets a member reopen when no suggestion waits", async () => {
+    const { note, suggestion } = await setUp();
+    asBen();
+    await remove(suggestion, "Changed my mind");
+    asAlice();
+    expect((await patch(note, { done: false })).status).toBe(200);
+  });
+
+  it("is left alone by a reopen of a note that is not resolved", async () => {
+    await run("follow_up");
+    const note = await listed("Bring the flyer");
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status) VALUES ($1,'Leftover',$2,'suggested')`,
+      [HOUSEHOLD, BEN],
+    );
+    asAlice();
+    expect((await patch(note, { done: false })).status).toBe(200);
+    expect((await list("?status=suggested")).body.data.map((n) => n.note)).toEqual(["Leftover"]);
   });
 });
 

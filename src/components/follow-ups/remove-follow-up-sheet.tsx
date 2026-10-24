@@ -3,26 +3,17 @@
 import { useRef, useState } from "react";
 import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { reasonNote, reasonProblem, removalCopy } from "@/lib/follow-ups/removal";
 import { FOLLOW_UP_OFFLINE_NOTE, describeFollowUpFailure } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
-import { firstName } from "@/lib/teams/team-ui";
-import { ConfirmDialog, Sheet, SheetActions } from "@/components/ui/sheet";
+import { Sheet, SheetActions } from "@/components/ui/sheet";
 import { FollowUpDoor } from "@/components/ui/unit-number";
 
-export const MAX_REASON_LENGTH = 500;
-
-/* Removal is soft: the note stays, with who removed it and why. */
-function removalPath(note: FollowUp, reason: string): string {
-  const trimmed = reason.trim();
-  return trimmed === ""
-    ? `/follow-ups/${note.id}`
-    : `/follow-ups/${note.id}?reason=${encodeURIComponent(trimmed)}`;
-}
-
 /*
- * Taking a note away. An admin dismisses a suggestion or removes a listed
- * note, with a reason the author sees; a member only ever withdraws their own
- * suggestion, which needs no reason and so is a plain confirmation.
+ * Taking a note away: an admin dismisses a suggestion or removes a listed
+ * note, and a member withdraws their own suggestion. Every one needs a
+ * reason, sent in the body so it never lands in a URL, and the sheet says
+ * who will read it. Removal is soft: the note stays, with who and why.
  */
 export function RemoveFollowUpSheet({
   note,
@@ -44,13 +35,19 @@ export function RemoveFollowUpSheet({
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
 
+  const copy = removalCopy(note, isAdmin, viewerId);
+  const problem = reasonProblem(reason);
+
   async function remove(): Promise<void> {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
-      await apiFetch(removalPath(note, isAdmin ? reason : ""), { method: "DELETE" });
+      await apiFetch(`/follow-ups/${note.id}/remove`, {
+        method: "POST",
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
       onRemoved();
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
@@ -60,44 +57,26 @@ export function RemoveFollowUpSheet({
     }
   }
 
-  if (!isAdmin) {
-    return (
-      <ConfirmDialog
-        title="Withdraw your suggestion?"
-        detail={failure ?? "Admins will no longer see it for review."}
-        confirmLabel="Withdraw"
-        cancelLabel="Keep it"
-        busy={busy}
-        onConfirm={() => void remove()}
-        onCancel={onClose}
-      />
-    );
-  }
-
-  const suggestion = note.status === "suggested";
-  const author = firstName(note.author.name);
-  /* The author can read the reason under their removed notes, so an admin
-     writing it is told who will. */
-  const readers =
-    suggestion || note.author.id !== viewerId
-      ? `${author}${suggestion ? "" : " and admins"} will see this.`
-      : "Admins see this under Dismissed.";
-  const title = suggestion ? "Dismiss this suggestion?" : "Remove from the follow-up list?";
-  const tooLong = reason.trim().length > MAX_REASON_LENGTH;
-
   /* One button in the docked bar, as in every sheet with a field: a second
      one stood the bar so tall that the reason, typed with the keyboard up,
-     ran under it. Keep it is the header's way out instead. */
+     ran under it. Keep it is the header's way out instead. A typed reason
+     is asked about before a stray tap on the backdrop throws it away. */
   return (
-    <Sheet label={title} title={title} closeLabel="Keep it" onClose={onClose}>
+    <Sheet
+      label={copy.title}
+      title={copy.title}
+      closeLabel="Keep it"
+      onClose={onClose}
+      discard={
+        reason.trim() === ""
+          ? undefined
+          : { title: "Discard this reason?", detail: "Nothing has been removed." }
+      }
+    >
       <p className="mt-1 text-body tabular-nums">
         <FollowUpDoor note={note} />
       </p>
-      <p className="mt-1 text-body text-foreground-muted">
-        {suggestion
-          ? `${author} will be told it was not added.`
-          : "It stops showing on the list and in sessions. Admins can still see it under Dismissed."}
-      </p>
+      <p className="mt-1 text-body text-foreground-muted">{copy.body}</p>
 
       {failure === null ? null : (
         <p role="alert" className="mt-3 notice-danger">
@@ -107,13 +86,14 @@ export function RemoveFollowUpSheet({
 
       <div className="mt-3">
         <label htmlFor="remove-reason" className="mb-1 block text-body font-medium">
-          Reason (optional)
+          {copy.label}
         </label>
         <textarea
           id="remove-reason"
           rows={2}
           value={reason}
-          aria-invalid={tooLong}
+          placeholder={copy.placeholder}
+          aria-invalid={problem === "too_long"}
           aria-describedby="remove-reason-note"
           onChange={(event) => {
             setReason(event.target.value);
@@ -122,9 +102,11 @@ export function RemoveFollowUpSheet({
         />
         <p
           id="remove-reason-note"
-          className={tooLong ? "mt-1 field-error" : "mt-1 text-caption text-foreground-muted"}
+          className={
+            problem === "too_long" ? "mt-1 field-error" : "mt-1 text-caption text-foreground-muted"
+          }
         >
-          {tooLong ? `Keep the reason to ${String(MAX_REASON_LENGTH)} characters.` : readers}
+          {reasonNote(problem, copy.readers)}
         </p>
       </div>
 
@@ -136,11 +118,12 @@ export function RemoveFollowUpSheet({
         )}
         <button
           type="button"
-          disabled={busy || !online || tooLong}
+          disabled={busy || !online || problem !== null}
+          aria-describedby="remove-reason-note"
           onClick={() => void remove()}
           className="min-h-14 w-full btn-danger rounded-xl text-title font-semibold"
         >
-          {busy ? "Working…" : suggestion ? "Dismiss suggestion" : "Remove from list"}
+          {busy ? "Working…" : copy.button}
         </button>
       </SheetActions>
     </Sheet>

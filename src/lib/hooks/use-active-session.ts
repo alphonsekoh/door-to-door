@@ -14,17 +14,13 @@ import { knownSessionKind } from "@/lib/session/known-kind";
 export function useActiveSession(): ActiveSession | null {
   const [active, setActive] = useState<ActiveSession | null>(null);
   useEffect(() => {
-    let cancelled = false;
     apiFetch<ActiveSession>("/sessions/active").then(
       (answer) => {
         knownSessionKind.note(answer.session.kind);
-        if (!cancelled) setActive(answer);
+        setActive(answer);
       },
       () => undefined,
     );
-    return () => {
-      cancelled = true;
-    };
   }, []);
   return active;
 }

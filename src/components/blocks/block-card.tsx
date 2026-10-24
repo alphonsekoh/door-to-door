@@ -32,8 +32,8 @@ export function BlockCard({ entry }: { entry: SessionBlock }) {
         <span className="ml-auto shrink-0 text-right">
           <span className="block text-title font-semibold tabular-nums">{householdCount}</span>
           {/* This session's units, not the block's: "units" alone read as
-              the size of the block. */}
-          <span className="block text-caption text-foreground-muted">visited tonight</span>
+              the size of the block. Sessions run in the daytime too. */}
+          <span className="block text-caption text-foreground-muted">visited in this session</span>
           {visitCount > householdCount ? (
             <span className="block text-caption text-foreground-muted tabular-nums">
               {visitCount} visits

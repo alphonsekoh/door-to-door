@@ -7,12 +7,12 @@ import { normaliseUnitNumber } from "@/lib/units/unit-number";
  * and for the recording form's check of where a member may record.
  */
 
-export type BlockGroup = { block: Block; entries: RevisitEntry[] };
+export type BlockGroup<T = RevisitEntry> = { block: Block; entries: T[] };
 
 /* Relies on the server's order, by block then unit, which keeps a block's
    entries together. */
-export function groupByBlock(entries: readonly RevisitEntry[]): BlockGroup[] {
-  const groups: BlockGroup[] = [];
+export function groupByBlock<T extends { block: Block }>(entries: readonly T[]): BlockGroup<T>[] {
+  const groups: BlockGroup<T>[] = [];
   for (const entry of entries) {
     const last = groups.at(-1);
     if (last?.block.id === entry.block.id) last.entries.push(entry);

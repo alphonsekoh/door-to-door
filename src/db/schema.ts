@@ -250,6 +250,30 @@ export const households = pgTable(
   ],
 );
 
+/*
+ * The households an admin picked for a follow-up session, at least one from
+ * creation on. The session's blocks are exactly these households' blocks,
+ * kept in step by the service, so a member never opens an empty block. Picks
+ * change only when an admin adds or removes one, so an ended session keeps a
+ * truthful record of what it set out to do.
+ */
+export const sessionHouseholds = pgTable(
+  "session_households",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "cascade" }),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.householdId] }),
+    index("session_households_household_idx").on(table.householdId),
+  ],
+);
+
 /* ----------------------------------------------------------------- visits */
 
 /*

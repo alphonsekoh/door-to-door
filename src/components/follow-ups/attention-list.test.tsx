@@ -226,6 +226,8 @@ describe("adding a door to the follow-up list", () => {
     const user = userEvent.setup();
     let added = false;
     apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      // No follow-up session to offer as well.
+      if (path.startsWith("/sessions?")) return Promise.resolve({ data: [] });
       if (init?.method === "POST") {
         added = true;
         return Promise.resolve({});
@@ -242,7 +244,11 @@ describe("adding a door to the follow-up list", () => {
     expect(sheet.getByText(whyHere(row("#05-123")))).toBeVisible();
     expect(sheet.getByLabelText("What should the next visit do?")).toHaveValue("");
     await user.type(sheet.getByLabelText("What should the next visit do?"), "Bring the booklet");
-    await user.click(sheet.getByRole("button", { name: "Add to list" }));
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    await user.click(add);
 
     expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
     expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
@@ -267,13 +273,15 @@ describe("adding a door to the follow-up list", () => {
 
   it("closes without a request on Cancel", async () => {
     const user = userEvent.setup();
-    apiFetch.mockResolvedValue(page([row("#05-123")]));
+    apiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith("/sessions?") ? { data: [] } : page([row("#05-123")])),
+    );
     render(<AttentionList />);
     await user.click(await screen.findByRole("button", { name: "Add to list" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
-    expect(apiFetch).toHaveBeenCalledTimes(1);
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
   });
 });

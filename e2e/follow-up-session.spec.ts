@@ -1,7 +1,14 @@
-import type { APIRequestContext, Locator } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK } from "./accounts";
-import { endActiveSession, expect, test, untilLive } from "./fixtures";
+import {
+  endActiveSession,
+  expect,
+  listSeededHousehold,
+  startFollowUpSession,
+  test,
+  untilLive,
+} from "./fixtures";
 
 /*
  * Follow-up sessions, end to end: what jsdom cannot show is that the list's
@@ -26,17 +33,6 @@ async function expectTappable(target: Locator): Promise<void> {
       }),
     )
     .toBe(true);
-}
-
-/* A follow-up session over the seeded block, running, with nothing else running. */
-async function startFollowUpSession(adminApi: APIRequestContext): Promise<void> {
-  await endActiveSession(adminApi);
-  const created = await adminApi.post("/api/sessions", {
-    data: { title: "Follow-up visits", kind: "follow_up", blockIds: [SEED_BLOCK] },
-  });
-  expect(created.status()).toBe(201);
-  const { id } = (await created.json()) as { id: string };
-  expect((await adminApi.post(`/api/sessions/${id}/start`)).ok()).toBe(true);
 }
 
 test.afterEach(async ({ adminApi }) => {
@@ -70,14 +66,14 @@ test("a member records only the households on a follow-up session's list", async
   /* A unit off the list is explained, and Save refuses it beside the button. */
   await unit.fill("#09-999");
   await expect(
-    memberPage.getByText("#09-999 is not on the follow-up list", { exact: false }),
+    memberPage.getByText("#09-999 is not on this session's list", { exact: false }),
   ).toBeVisible();
   await memberPage.getByRole("radio", { name: "High" }).click();
   const save = memberPage.getByRole("button", { name: "Save", exact: true });
   await expectTappable(save);
   await save.click();
   await expect(memberPage.getByRole("alert").filter({ hasText: "Not saved." })).toHaveText(
-    "Not saved. This unit is not on the follow-up list.",
+    "Not saved. This unit is not on this session's list.",
   );
 
   /* A listed unit, picked from the chips, saves; the form then points back
@@ -94,6 +90,45 @@ test("a member records only the households on a follow-up session's list", async
   await expect(status).toBeVisible();
   await expect(status.getByRole("link", { name: "Back to the list" })).toBeVisible();
   await expect(unit).toHaveValue("");
+});
+
+test("an admin picks the households for a follow-up session, and a member is sent to them", async ({
+  adminPage,
+  memberPage,
+  adminApi,
+}) => {
+  await endActiveSession(adminApi);
+  await listSeededHousehold(adminApi);
+  const title = `Revisits ${String(Date.now())}`;
+
+  await adminPage.goto("/admin/sessions");
+  await adminPage.getByRole("button", { name: "New session" }).click();
+  await adminPage.getByRole("radio", { name: /Follow-up/ }).click();
+  await adminPage.getByLabel("Name this session").fill(title);
+
+  /* Everything on the follow-up list starts ticked. */
+  const picker = adminPage.getByRole("group", { name: "Households to visit" });
+  const door = picker.getByRole("checkbox", { name: `Blk 123 · ${LISTED_UNIT}` });
+  await expect(door).toBeChecked();
+  await expect(picker.getByRole("status")).toContainText(/^(\d+) of \1 household/);
+
+  /* None ticked, Create draft waits and says why. */
+  await picker.getByRole("button", { name: "Untick all" }).click();
+  const create = adminPage.getByRole("button", { name: "Create draft" });
+  await expect(create).toBeDisabled();
+  await expect(create).toHaveAccessibleDescription("Tick at least one household to visit.");
+  await door.check();
+
+  /* Below a long list, Create draft is still what a tap lands on. */
+  await expectTappable(create);
+  await create.click();
+  const row = adminPage.getByRole("listitem").filter({ hasText: title });
+  await row.getByRole("button", { name: "Start session" }).click();
+  await expect(row).toContainText("Running now");
+
+  await memberPage.goto("/");
+  const list = memberPage.getByRole("region", { name: "Households to revisit" });
+  await expect(list.locator(`a[href*="?unit=${encodeURIComponent(LISTED_UNIT)}"]`)).toBeVisible();
 });
 
 test("a member's suggestion is reviewed by an admin, and the member is told it was declined", async ({
@@ -125,7 +160,7 @@ test("a member's suggestion is reviewed by an admin, and the member is told it w
   const phone = adminPage.viewportSize();
   if (phone === null) throw new Error("expected a phone viewport");
   await adminPage.setViewportSize({ width: phone.width, height: 400 });
-  const reason = dismiss.getByLabel("Reason (optional)");
+  const reason = dismiss.getByLabel("Why not add it?");
   await reason.fill("Visited last week\nNobody home twice since");
   await expect
     .poll(async () => {
@@ -142,10 +177,9 @@ test("a member's suggestion is reviewed by an admin, and the member is told it w
   await expect(item).toBeHidden();
 
   await memberPage.goto("/follow-ups");
-  const declined = memberPage.getByRole("region", { name: "Not added to the follow-up list" });
+  const declined = memberPage.getByRole("region", { name: "Not on the follow-up list" });
   const entry = declined.getByRole("listitem").filter({ hasText: note });
-  await expect(entry).toContainText("Declined by Admin User");
-  await expect(entry).toContainText("Reason: Visited last week");
+  await expect(entry).toContainText(/Declined by Admin User · .+: Visited last week/);
   await entry.getByRole("button", { name: "Got it" }).click();
   await expect(entry).toBeHidden();
 });
@@ -154,10 +188,11 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   memberPage,
   adminApi,
 }, testInfo) => {
-  await startFollowUpSession(adminApi);
+  const session = await startFollowUpSession(adminApi);
 
-  /* A door of this test's own, on the list. An admin may record anywhere in
-     a follow-up session, which is how it comes to exist. */
+  /* A door of this test's own, on the list and in the session. An admin may
+     record anywhere in a follow-up session's blocks, which is how it comes
+     to exist. */
   const unit = `#3${String(testInfo.project.name.length % 10)}-${String(Date.now()).slice(-5)}`;
   const visited = await adminApi.post("/api/visits", {
     data: { id: uuidv7(), blockId: SEED_BLOCK, unitNumber: unit, interestLevel: "medium" },
@@ -172,6 +207,10 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
     return ((await listed.json()) as { id: string }).id;
   };
   const first = await listIt();
+  const picked = await adminApi.post(`/api/sessions/${session}/households`, {
+    data: { householdIds: [householdId] },
+  });
+  expect(picked.status()).toBe(200);
 
   await memberPage.goto(`/blocks/${SEED_BLOCK}`);
   await untilLive(memberPage);
@@ -180,8 +219,13 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
     .getByRole("button", { name: unit });
   await expect(chip).toBeVisible();
 
-  /* Taken off the list after the member's screen read it. */
-  expect((await adminApi.delete(`/api/follow-ups/${first}`)).status()).toBe(204);
+  /* Taken off the list after the member's screen read it. The household
+     stays in the session, off its list. */
+  const removeNote = async (id: string) =>
+    (
+      await adminApi.post(`/api/follow-ups/${id}/remove`, { data: { reason: "Moved away" } })
+    ).status();
+  expect(await removeNote(first)).toBe(204);
   await chip.click();
   await memberPage.getByRole("radio", { name: "High" }).click();
   await memberPage.getByRole("button", { name: "Save", exact: true }).click();
@@ -193,7 +237,7 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   await expect(chip).toBeHidden();
   await memberPage.getByLabel("Unit number").fill(unit);
   await expect(
-    memberPage.getByText(`${unit} is not on the follow-up list`, { exact: false }),
+    memberPage.getByText(`${unit} is not on this session's list`, { exact: false }),
   ).toBeVisible();
 
   await bar.click();
@@ -201,10 +245,10 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   const sheet = memberPage.getByRole("dialog");
   await expect(sheet).toHaveAccessibleName("Records not sent");
   await expect(sheet).toContainText(
-    "Not on the follow-up list. Sends once an admin adds this unit.",
+    "Not on this session's list. Sends once an admin adds this unit.",
   );
 
-  /* Listed again, Retry sends it, once. */
+  /* Listed again, it is back on the session's list, and Retry sends it, once. */
   const second = await listIt();
   const retry = sheet.getByRole("button", { name: `Retry ${unit}` });
   await expectTappable(retry);
@@ -219,5 +263,5 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   expect(door.visits.map((visit) => visit.member.name)).toEqual(["Admin User", "Alice Tan"]);
 
   /* Left as it found the list. */
-  expect((await adminApi.delete(`/api/follow-ups/${second}`)).status()).toBe(204);
+  expect(await removeNote(second)).toBe(204);
 });

@@ -16,12 +16,13 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
-/* A follow-up session covering the notes' block, so a member may resolve. */
+/* A follow-up session that picked the notes' households, so a member may resolve. */
 const { useActiveSession } = vi.hoisted(() => ({ useActiveSession: vi.fn() }));
 vi.mock("@/lib/hooks/use-active-session", () => ({ useActiveSession }));
 const FOLLOW_UP = {
   session: { kind: "follow_up", startedAt: "2026-01-01T00:00:00.000Z" },
   blocks: [{ block: { id: "b1" } }],
+  householdIds: ["h-1", "h-2"],
 };
 
 /* Tested on its own; here it would only add a request to every count. */
@@ -54,6 +55,7 @@ function note(id: string, overrides: Partial<FollowUp> = {}): FollowUp {
     deletedAt: null,
     deletedBy: null,
     deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: "2026-03-14T10:00:00.000Z",
     ...overrides,
   };

@@ -44,6 +44,7 @@ function note(id: string, over: Partial<FollowUp> = {}): FollowUp {
     deletedAt: null,
     deletedBy: null,
     deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: "2026-10-01T04:00:00.000Z",
     ...over,
   };
@@ -54,10 +55,12 @@ const page = (data: FollowUp[], total = data.length): FollowUpList => ({
   pagination: { limit: 20, offset: 0, total, hasMore: data.length < total },
 });
 
-/* Counts are asked with limit=1; each tab's own page with limit=20. */
+/* Counts are asked with limit=1; each tab's own page with limit=20. No
+   follow-up session is found for "Also add to". */
 function serve(pages: Partial<Record<"review" | "list" | "dismissed", FollowUp[]>>) {
   apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method !== undefined) return Promise.resolve({});
+    if (path.startsWith("/sessions?")) return Promise.resolve({ data: [] });
     const which = path.includes("deleted=true")
       ? "dismissed"
       : path.includes("status=suggested")
@@ -90,14 +93,14 @@ describe("parseFollowUpTab", () => {
 });
 
 describe("AdminFollowUps", () => {
-  it("counts what waits in each tab", async () => {
+  it("counts what waits in each tab, on a line under its name", async () => {
     serve({ review: [note("1"), note("2")], list: [note("3", { status: "listed" })] });
     render(<AdminFollowUps />);
-    expect(await screen.findByRole("button", { name: "To review (2)" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
-    expect(screen.getByRole("button", { name: "On the list (1)" })).toBeInTheDocument();
+    const review = await screen.findByRole("button", { name: "To review, 2" });
+    expect(review).toHaveAttribute("aria-pressed", "true");
+    // Two lines, so the label never wraps mid-phrase at phone width.
+    expect([...review.children].map((line) => line.textContent)).toEqual(["To review", "2"]);
+    expect(screen.getByRole("button", { name: "On the list, 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismissed" })).toBeInTheDocument();
   });
 
@@ -113,10 +116,17 @@ describe("AdminFollowUps", () => {
     expect(screen.getByRole("button", { name: "On the list" })).toBeInTheDocument();
   });
 
-  it("adds a suggestion to the list, and both tabs re-read", async () => {
+  it("adds a suggestion to the list from a sheet, says so, and both tabs re-read", async () => {
     serve({ review: [note("1")] });
     render(<AdminFollowUps />);
     fireEvent.click(await screen.findByRole("button", { name: "Add to list" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Add to the follow-up list, #05-1" }));
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    fireEvent.click(add);
+    expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups/1", {
         method: "PATCH",
@@ -137,11 +147,14 @@ describe("AdminFollowUps", () => {
     render(<AdminFollowUps />);
     fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
     const sheet = within(screen.getByRole("dialog", { name: "Dismiss this suggestion?" }));
-    expect(sheet.getByText("Ann will be told it was not added.")).toBeVisible();
-    fireEvent.change(sheet.getByLabelText("Reason (optional)"), { target: { value: "Moved" } });
+    expect(sheet.getByText("Ann will be told it was not added, with your reason.")).toBeVisible();
+    fireEvent.change(sheet.getByLabelText("Why not add it?"), { target: { value: "Moved" } });
     fireEvent.click(sheet.getByRole("button", { name: "Dismiss suggestion" }));
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/follow-ups/1?reason=Moved", { method: "DELETE" });
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups/1/remove", {
+        method: "POST",
+        body: JSON.stringify({ reason: "Moved" }),
+      });
     });
   });
 
@@ -154,7 +167,7 @@ describe("AdminFollowUps", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
-    expect(apiFetch).not.toHaveBeenCalledWith(expect.anything(), { method: "DELETE" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups/1/remove", expect.anything());
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
 
@@ -305,11 +318,21 @@ describe("AdminFollowUps", () => {
     expect(screen.queryByText("Note 9")).toBeNull();
   });
 
+  it("explains how the list works under it, so the first door is in view", async () => {
+    serve({ review: [note("1")] });
+    render(<AdminFollowUps />);
+    const hint = await screen.findByRole("region", { name: "How the follow-up list works" });
+    expect(hint).toHaveTextContent(
+      "Then create a Follow-up session and pick which of them to visit; members can record visits only at the households you pick.",
+    );
+    const first = await screen.findByRole("button", { name: "Add to list" });
+    expect(first.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("explains how the list works, once", async () => {
     serve({});
     render(<AdminFollowUps />);
     const hint = await screen.findByRole("region", { name: "How the follow-up list works" });
-    expect(hint).toHaveTextContent("members can record visits only at listed households.");
     fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("region", { name: "How the follow-up list works" })).toBeNull();
   });
