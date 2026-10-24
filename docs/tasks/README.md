@@ -87,15 +87,15 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 15  | [Credentials sign-in](15-credentials.md)                | Done                                                                                          |
 | 16  | [Route guards](16-route-guards.md)                      | Done                                                                                          |
 | 17  | [Sessions API](17-sessions-api.md)                      | Done                                                                                          |
-| 18  | [Session-blocks API](18-session-blocks-api.md)          | Done                                                                                          |
+| 18  | [Session-blocks API](18-session-blocks-api.md)          | Done; D-18-1, D-18-2 refined, D-18-3 extended (#117)                                          |
 | 19  | [Blocks API](19-blocks-api.md)                          | Done                                                                                          |
 | 20  | [Households and visits API](20-visits-api.md)           | Done                                                                                          |
 | 21  | [Sync endpoint](21-sync-endpoint.md)                    | Done                                                                                          |
-| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done; D-22-2 partly superseded (#96), edit clause superseded (#117)                           |
+| 22  | [Follow-ups API](22-follow-ups-api.md)                  | Done; D-22-2 partly superseded (#96), edit clause superseded, D-22-4 refined (#117)           |
 | 23  | [History API](23-history-api.md)                        | Done                                                                                          |
 | 24  | [Active session screen](24-active-session-screen.md)    | Done; D-24-3 wording refined (#111); D-24-1 refined (#117)                                    |
 | 25  | [Recording form](25-recording-form.md)                  | Done; D-25-4, D-25-5 refined (#111); D-25-5 refined (#117)                                    |
-| 26  | [Block unit list](26-unit-list.md)                      | Done                                                                                          |
+| 26  | [Block unit list](26-unit-list.md)                      | Done; D-26-2 wording refined (#117)                                                           |
 | 27  | [Own history](27-own-history.md)                        | Done                                                                                          |
 | 28  | [Admin sessions](28-admin-sessions.md)                  | Done                                                                                          |
 | 29  | [Admin records](29-admin-records.md)                    | Done                                                                                          |
@@ -111,7 +111,7 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 74  | [Teams and own name](74-teams.md)                       | Done; D-74-47 refined, D-74-9 extended, D-74-36/56/57 wording (#111)                          |
 | 75  | [Config in YAML](75-config-yaml.md)                     | Done                                                                                          |
 | 76  | [Clock rules](76-clock-rules.md)                        | Done                                                                                          |
-| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); refined D-77-11 (#106), D-77-11, D-77-12, D-77-15 (#111), D-77-3 (#117)       |
+| 77  | [Offline recording screen](77-offline-recording.md)     | Done (PR #100); refined D-77-11 (#106), D-77-11, D-77-12, D-77-15 (#111), D-77-3/4/12 (#117)  |
 | 83  | [Per-request auth](83-per-request-auth.md)              | Done                                                                                          |
 | 85  | [Account gone message](85-account-gone-message.md)      | Done                                                                                          |
 | 87  | [Pool errors](87-pool-errors.md)                        | Done                                                                                          |
@@ -121,6 +121,6 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 105 | [Create first admin](105-create-admin.md)               | Done (PR #108)                                                                                |
 | 106 | [Standalone output](106-standalone-output.md)           | Done (PR #107)                                                                                |
 | 109 | [Private test config](109-private-test-config.md)       | Done (PR #110)                                                                                |
-| 111 | [Apple design pass](111-apple-design.md)                | Done (PR #112); D-111-50, D-111-52 rejected by the owner (D-33-12 kept)                       |
+| 111 | [Apple design pass](111-apple-design.md)                | Done (PR #112); D-111-50, D-111-52 rejected by the owner (D-33-12 kept); D-111-7/25 (#117)    |
 | 115 | [Domain folders](115-domain-folders.md)                 | Done (PR #116); D-115-1 extended (#117)                                                       |
-| 117 | [Follow-up sessions](117-follow-up-sessions.md)         | In review (PR #117)                                                                           |
+| 117 | [Follow-up sessions](117-follow-up-sessions.md)         | In review (PR #117); D-117-4 partly, D-117-14, D-117-23 superseded (round 3)                  |

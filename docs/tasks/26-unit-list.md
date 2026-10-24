@@ -12,7 +12,9 @@ Everything known on a block, grouped by floor, searchable, tappable to amend.
 
 - **D-26-1 · Record and Units are tabs, not one page.** _Why:_ keeps Save on screen (D-25-4).
 - **D-26-2 · The list shows the block's whole history; rows from the running outing are
-  marked `tonight`, and progress counts only those.**
+  marked `tonight`, and progress counts only those.** _Wording refined by D-117-49:_ the
+  marker reads "this session" and progress "This session: …", since sessions run in the
+  daytime too.
 - **D-26-3 · Progress is units, floors and answered — no percentage.** _Why:_ the app
   never knows how many units a block has.
 - **D-26-4 · Interest chips carry the word as well as the colour.** Relies on D-01-2.

@@ -53,7 +53,8 @@ round 8, and they are in the PR #112 body too.
   D-74-36, D-74-56 and D-74-57. _Why:_ the home tab said "Session" while everything
   inside said "outing"; the app should use one word, the nav's. A count of "0 units" read
   as the size of the block. _Refined by D-111-38 and D-111-39:_ every per-session count
-  says "visited", and "in this session".
+  says "visited", and "in this session". _Wording refined by D-117-49:_ the home card
+  reads "visited in this session", not "tonight".
 - **D-111-8 · The text follows the iOS text-size setting (owner).** It uses
   `font: -apple-system-body` on iOS touch devices only. Body text is never below 16px,
   and spacing scales with the text. A real-iPhone check at the default and the largest
@@ -216,7 +217,8 @@ round 8, and they are in the PR #112 body too.
   _Why:_ at 200%, "Medium" overlapped "High", and "Follow-ups" wrapped and pushed its
   icon out of line. _Refined by D-111-35 and D-111-36:_ the 12ch rule covers every row,
   and unit numbers never split. _Refined by D-111-54:_ the back column is 44px or the
-  chevron, whichever is more.
+  chevron, whichever is more. _Refined by D-117-50:_ a sheet title keeps 12ch measured in
+  body text, not the title's larger size, before Cancel drops under it.
 
 - **D-111-26 · A refused Save says why, beside Save.** It uses one line in D-33-29's
   `role="alert"` slot ("Not saved. Choose an interest level."). Field errors clear as

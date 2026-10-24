@@ -815,3 +815,25 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [MDN, `Storage.setItem`](https://developer.mozilla.org/en-US/docs/Web/API/Storage/setItem);
   not measured here
 - **Used by:** D-117-29
+
+### R-82 · `FOR KEY SHARE` conflicts only with `FOR UPDATE`
+
+- **Finding:** Of PostgreSQL's row-level locks, `FOR KEY SHARE` conflicts only with
+  `FOR UPDATE`, which a `DELETE` or an update of a key column also takes; it is
+  compatible with itself, `FOR SHARE` and `FOR NO KEY UPDATE`. So any number of visit writes can hold a session row at once,
+  while an admin's change to its households, or a transition, waits for them and they
+  for it. Verified by the parked-lock tests in
+  `src/server/follow-ups/races.integration.test.ts`, which hold a real lock from a
+  second connection.
+- **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS); #117
+- **Used by:** D-117-45
+
+### R-83 · A DELETE body has no defined meaning; a query string is logged
+
+- **Finding:** RFC 9110 gives content in a DELETE request no generally defined
+  semantics and warns some implementations may reject it. A query string is part of the
+  request target, which access logs record by default (nginx's `combined` format logs
+  `$request`, the whole request line). Not measured here.
+- **Source:** [RFC 9110 §9.3.5, DELETE](https://www.rfc-editor.org/rfc/rfc9110#section-9.3.5),
+  [nginx, `log_format`](https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format)
+- **Used by:** D-117-34

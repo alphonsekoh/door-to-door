@@ -27,12 +27,15 @@ Owner decisions are marked **(owner)**.
   Checked with the generated Zod on read; anything invalid is deleted. _Why:_ the shell
   shows what the online screen shows; one schema with the server; unlike a queued record
   (D-33-8) it is a disposable cache. _Refined by D-117-17:_ `v: 2` adds a follow-up
-  session's list; a `v: 1` copy is read as `v: 2` with no list, not deleted.
+  session's list; a `v: 1` copy is read as `v: 2` with no list, not deleted. _Refined by
+  D-117-48:_ the shell may build a block never opened from that list, with only its
+  listed households; the copy itself is unchanged.
 - **D-77-4 · Filled from the outing and block screens on success.** A `404` outing
   empties the blocks, another outing resets them, and a block no longer on the outing is
   dropped. A block screen notes the outing too, so a block opened from a link is kept.
   Other errors write nothing. _Why:_ "blocks opened tonight" means this outing's, and the
-  shell must not offer a block `/visits/sync` would refuse.
+  shell must not offer a block `/visits/sync` would refuse. _Refined by D-117-48:_ with a
+  follow-up session's list saved, the shell offers the list's blocks only.
 - **D-77-5 · Usable for 12 h from the last write (owner).** Exactly 12 h is usable.
   _Why:_ an evening's outing, inside D-33-9's 24 h, so sent records are still there to
   list.
@@ -68,7 +71,9 @@ Owner decisions are marked **(owner)**.
 - **D-77-12 · Blocks are in-page state; the bottom nav is hidden and `--nav-height` is
   0 on the shell.** _Why:_ every offline navigation reloads cold and drops the form.
   _Refined by D-111-63:_ an open block is the shell's inline title, with an in-page way
-  back to the blocks.
+  back to the blocks. _Refined by D-117-48:_ after "Continue as" the shell opens the
+  block (and unit) the failed address named; in a follow-up session the way back is "The
+  list".
 - **D-77-13 · Shell units cannot be tapped, and a record sent after its block's copy
   stays listed, marked "Sent".** Decided by `syncedAt`, not `enqueuedAt`. _Why:_ D-33-13;
   the shell cannot re-read the server, and a record queued before a re-read but sent

@@ -18,6 +18,9 @@ Create, list, amend, resolve and delete follow-up notes on a household.
   person at the door needs to read it.
 - **D-22-3 · A note may anchor only to a visit at the same household.**
 - **D-22-4 · Resolving records who closed it; a resolved note can be reopened.**
+  _Refined by D-117-32:_ while a suggestion waits at the door, an admin's reopen also
+  lists it and a member's is `409 follow_up_exists`. Deleting is now the soft
+  `POST /follow-ups/{id}/remove` (D-117-4, D-117-34).
 
 ## Open questions
 

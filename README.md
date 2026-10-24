@@ -37,16 +37,17 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Amend their own (and their team's) records while the session runs.
 - Review their own history, or their team's, with the blocks and sessions they worked.
 - Suggest a household for a return visit; an admin adds it to the follow-up list or
-  declines it, and the member is told which.
-- In a follow-up session, work through the households on the list and mark each
-  follow-up done. Members record only at listed households in such a session.
+  declines it, and the member is told which, and why.
+- In a follow-up session, work through the households on its list and mark each
+  follow-up done. Members record only at those households in such a session.
 
 **Admins**
 
-- Create a session, door-to-door or follow-up, attach blocks, start it, add blocks while
-  it runs, end it, and reopen one ended by mistake.
+- Create a door-to-door session and attach blocks, adding more while it runs; or a
+  follow-up session from households picked off the follow-up list (at least one), whose
+  blocks follow them. Start it, end it, and reopen one ended by mistake.
 - Decide the follow-up list: review members' suggestions, add households that showed
-  interest, take them off again (soft, with a reason the author sees).
+  interest, take them off again (soft, always with a reason the author sees).
 - View and amend every record, current and historical; see a unit's consolidated history.
 - Manage members (add, change role, deactivate, restore) and session teams.
 
@@ -144,7 +145,7 @@ first.
 3. **Account** → **Sign out**, then sign in as `alice@example.com` / `password123`.
 4. The **Session** tab lists the running session's blocks. Tap `Blk 456`.
 5. Type a unit number, e.g. `#04-12`, tap an interest level, then **Save and next**.
-6. The **All units** tab shows the unit with your record, marked "tonight". **History**
+6. The **All units** tab shows the unit with your record, marked "this session". **History**
    shows the session.
 
 The admin follows progress on the session screen and taps **End session** when done.
@@ -171,11 +172,12 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
   is one knock; its interest level and notes are never overwritten by a later visit, so
   the trajectory over time stays visible. Follow-ups attach to the household. A
   follow-up is on the list (`listed`, an admin's call) or `suggested` by a member, and
-  removing one is a soft delete.
+  removing one is a soft delete with a reason.
 - **Sessions** (`outing_sessions` in the schema, `/sessions` in the API) go
   `draft → active → ended` and can be reopened. At most one is active app-wide, enforced
-  by the database. A session is door-to-door or follow-up, fixed when it is created; in
-  a follow-up session members record only at households on its list.
+  by the database. A session is door-to-door or follow-up, fixed when it is created. A
+  follow-up session goes back to households an admin picked from the follow-up list,
+  and its blocks follow them; members record only at households on its list.
 - **Auth** is Auth.js v5 with email and password (argon2id), on JWT sessions. Every
   handler re-reads the user's role and deactivation from the database; the token's role
   is a UI hint only.
@@ -211,7 +213,7 @@ The least obvious part of the system. In short (details in
    | `unchanged`                         | Already stored: a replay of the same id (D-21-1)      | Marks it sent                         |
    | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)    | Marks it sent; the server's wins      |
    | `rejected`: `session_not_active`    | Its session has ended (D-21-4)                        | Holds it; a reopen lets it in         |
-   | `rejected`: `not_on_follow_up_list` | A new visit off a follow-up session's list (D-117-15) | Holds it; listing the unit lets it in |
+   | `rejected`: `not_on_follow_up_list` | A new visit off a follow-up session's list (D-117-15) | Holds it; picking the unit lets it in |
    | `rejected`: `clock_skew`            | Stamped in the future or before its session (D-76-4)  | Restamps and resends (D-33-3)         |
    | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit    | Holds it for a tap (D-33-16)          |
    | `rejected`: `internal_error`        | Something failed on the server                        | Retries with backoff (D-33-4)         |
@@ -530,7 +532,7 @@ docker run -p 3000:3000 \
 | `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
-| "This unit is not on the follow-up list"                        | A follow-up session: members record only listed households. An admin adds it on **Admin → Follow-up list**, or records it.      |
+| "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
 | A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
 | The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
 | The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |

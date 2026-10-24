@@ -63,6 +63,7 @@ users ─┐
        ├─< visits >── households >── blocks
 outing_sessions ─┘        │
        └─< session_blocks >┘
+outing_sessions ─< session_households >── households (a follow-up session's picks)
 households ─< follow_ups (optional visit_id, set null on delete; status; soft delete)
 outing_sessions ─< session_participants (never removed)
 outing_sessions ─< session_teams ─< session_team_members (unique per session+user)
@@ -75,16 +76,21 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   `id` is a client-generated UUIDv7 with no database default.
 - **Follow-up** attaches to the household, so it outlives the session. It is `listed`
   (on the follow-up list, which only an admin decides) or `suggested` (a member's
-  request, one pending per household by partial unique index). Removal is soft: the row
-  keeps who removed it, when and why, and leaves every list, count and check (D-117-4).
+  request, one pending per household by partial unique index). Removal is soft and
+  always has a reason: the row keeps who removed it, when and why, and leaves every
+  list, count and check (D-117-4, D-117-33).
   `dueDate` is a day (local midnight); overdue once that day has passed. Who may change
   a note is D-117-12; the first resolution sticks.
 - **Session** (`outing_sessions`): `draft → active → ended`, reopenable. At most one
   `active`, by partial unique index, whatever its `kind`: `regular` (door-to-door) or
-  `follow_up`, fixed at creation. A follow-up session's list is computed, never stored:
-  listed, live notes in its attached blocks, outstanding or resolved since it started
-  (`onRevisitList`, `src/server/follow-ups/list-rule.ts`). In it a member records only
-  at listed households; admins are exempt (D-117-14, D-117-15).
+  `follow_up`, fixed at creation. A follow-up session has households an admin picked
+  (`session_households`, at least one) and its blocks are exactly theirs, kept in step
+  by `src/server/sessions/households.ts`; nobody attaches them by hand (D-117-36 to
+  D-117-38). Its list is computed, never stored: picks with a listed, live note
+  outstanding or resolved since it started (`onRevisitList`,
+  `src/server/follow-ups/list-rule.ts`). In it a member records only at households on
+  the list; admins are exempt (D-117-40, D-117-15). Removing a note never changes picks
+  (D-117-41).
 - **Blocks** are shared across members and sessions, never locked.
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
@@ -145,15 +151,18 @@ authoritative, and a change to any of them needs the owner.
 - **Context.** Any member could write, resolve and reopen a note at any time (D-35-1),
   so the list of doors to revisit was whatever anyone had written.
 - **Decision (owner).** Only an admin puts a household on the list; a member's note is a
-  suggestion an admin adds or dismisses. Members change listed notes only during a
-  follow-up session that covers them, and record only at listed households in one.
-  Every removal is soft (D-117-3, D-117-4, D-117-12, D-117-15).
-- **Why.** A follow-up session needs a list someone chose, and a declined suggestion
-  must be explainable to its author.
+  suggestion an admin adds or dismisses. A follow-up session goes back to households an
+  admin picks from that list, at least one, and its blocks follow them. Members change
+  listed notes only during a follow-up session that picked them, and record only at its
+  picks. Every removal is soft and needs a reason (D-117-3, D-117-4, D-117-12, D-117-15,
+  D-117-33, D-117-36 to D-117-38).
+- **Why.** A follow-up session needs a list someone chose, a member must never open an
+  empty block, and a removal must be explainable to the note's author.
 - **Consequences.** One rule decides the list, the recording refusal and a member's
-  right to change a note, so they cannot disagree (D-117-14). An offline record for an
-  unlisted unit is held until an admin lists it (D-117-16). Removed notes stay in the
-  database for good.
+  right to change a note, so they cannot disagree (D-117-40). An offline record for a
+  unit off the list is held until an admin lists and picks it (D-117-16). Picks and
+  visit writes meet on the session row in one lock order (D-117-45). Removed notes stay
+  in the database for good.
 
 ### Serwist, not next-pwa
 
@@ -183,9 +192,12 @@ authoritative, and a change to any of them needs the owner.
    Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
    `500`, never allowed.
 4. The service does the work. Sync and `POST /visits` also run the clock rules
-   (`src/server/visits/clock-rules.ts`) before any write, and, in a follow-up session,
-   the list rule for a member's new visit (`assertMayRecordHere`, refused
-   `409 not_on_follow_up_list`). Constraint violations are recognised by name through
+   (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
+   transaction they lock the session row (`FOR KEY SHARE`) and judge the session, the
+   block and, in a follow-up session, the list rule for a member's new visit
+   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); changing a follow-up
+   session's households and transitions lock that row `FOR UPDATE` (D-117-45).
+   Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
    and is a logged `500` in production. Only the parsed value is sent.
@@ -299,12 +311,17 @@ Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
   mirrors the server (D-117-25). `/follow-ups` has On the list, Waiting for review
   (`?view=review`) and Mine (`?view=mine`). Admins review at `/admin/follow-ups`
   (`?tab=`), and `/admin/sessions` carries the review count and overdue cards.
+  Removals go through one reason sheet (`src/lib/follow-ups/removal.ts`); listing a door
+  offers "Also add to {session}" (`target-session.ts`, `add-to-list.ts`, D-117-46).
   Online-only, re-read from the server after each change.
-- Follow-up session: the session screen is "Households to revisit"
-  (`GET /sessions/{id}/revisits`, re-read on its 30s poll); the block screen shows listed
-  units as chips and reads the list again before refusing a unit. First-use hints and
-  the declined-suggestion notice are remembered in `localStorage`, per phone
-  (D-117-29).
+- Follow-up session: created with households picked from the follow-up list
+  (`household-picker.tsx`, `src/lib/follow-ups/pick.ts`); its admin page lists the picks
+  (`GET /sessions/{id}/households`, `session-households.tsx`) with read-only blocks. The
+  member's session screen is "Households to revisit" (`GET /sessions/{id}/revisits`,
+  re-read on its 30s poll); the block screen shows listed units as chips and reads the
+  list again before refusing a unit, and a block outside the running session offers no
+  form. First-use hints and the removal notice are remembered in `localStorage`, per
+  phone (D-117-29).
 - `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
   (`src/lib/teams/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
@@ -399,8 +416,12 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
 - The copy (`src/lib/offline/`, `v: 2`) holds the member, the session, each opened
   block's `HouseholdSummary[]` and a follow-up session's list, validated with the
   generated Zod on read (D-77-3, D-117-17). The shell reads the list again once the
-  server answers. The copy is cleared on sign-in, sign-out and by `LocalCopyKeeper` on a
-  member mismatch; never the queue (D-77-2, D-77-6).
+  server answers. A follow-up session's list alone makes the copy usable: the shell's
+  home is then the list, and a block never opened is built from it with only its listed
+  households (`shellList`, `shellBlocks`). After "Continue as" the shell opens the block
+  and unit the failed address named (`shell-target.ts`, D-117-48). The copy is cleared
+  on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; never the queue
+  (D-77-2, D-77-6).
 - While the shell is shown, `shellState` (not the path or session) decides the queue
   owner, the sync bar and the hidden nav (D-77-10, D-77-12). Sends still go through
   `sendAs`, so the cookie must name the owner.
@@ -409,7 +430,10 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   until "Continue as": while the copy loads, when there is none, and at the gate
   (D-106-8).
 
-**Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
+**Sync write path.** Each item runs in one transaction. It first locks its session's
+row `FOR KEY SHARE` and judges, under that lock, that the session is still active, the
+block is in it and, for a member's new visit in a follow-up session, the unit is on its
+list (D-117-45). Then `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
 snapshot and auto-join), otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
 (`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
