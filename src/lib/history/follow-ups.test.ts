@@ -285,9 +285,8 @@ describe("describeFollowUpFailure", () => {
     const error = new ApiRequestError(409, {
       error: { code: "follow_up_exists", message: "raw server text" },
     });
-    expect(describeFollowUpFailure(error, "reopen")).toBe(
-      "Not reopened. A suggestion for this door is now waiting for an admin.",
-    );
+    // The re-read that follows names whose suggestion it is, so the alert does not.
+    expect(describeFollowUpFailure(error, "reopen")).toBe("Not reopened.");
     expect(describeFollowUpFailure(error, "save")).toBe(
       "This household is already on the follow-up list or has a suggestion waiting.",
     );

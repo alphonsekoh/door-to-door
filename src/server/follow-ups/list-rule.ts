@@ -1,4 +1,4 @@
-import { and, asc, eq, gte, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role, SessionKind } from "@/db/schema";
 import { blocks, followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
@@ -25,6 +25,18 @@ export type RevisitSession = { id: string; kind: SessionKind; startedAt: Date | 
  * apart, and a screen grouping neighbouring rows by block meets each once.
  */
 export const byBlockThenUnit = [asc(blocks.name), asc(blocks.street), asc(households.unitNumber)];
+
+/*
+ * A household's notes on a session's list or picks: what is still owed, by
+ * due day with undated last, then what was resolved, most recently first.
+ * So the first note is the one the visit is for: the soonest owed, or, once
+ * all are done, the one resolved last, never an old one resolved long ago.
+ */
+export const byNoteOwedThenResolved = [
+  sql`${followUps.doneAt} desc nulls first`,
+  asc(followUps.dueDate),
+  asc(followUps.createdAt),
+];
 
 /*
  * Picked for the session by an admin, and with a note that is listed, not

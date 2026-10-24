@@ -3,6 +3,7 @@ import {
   HINTS_CHANGED,
   dismissHint,
   isHintDismissed,
+  markAllDeclinedSeen,
   markDeclinedSeen,
   seenDeclined,
 } from "@/lib/follow-ups/hints";
@@ -53,6 +54,15 @@ describe("declined suggestions already seen", () => {
     markDeclinedSeen("n1");
     markDeclinedSeen("n2");
     expect(seenDeclined()).toEqual(new Set(["n1", "n2"]));
+  });
+
+  it("remembers many at once, in one write, keeping those already seen", () => {
+    markDeclinedSeen("n1");
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    markAllDeclinedSeen(["n1", "n2", "n3"]);
+    expect(setItem).toHaveBeenCalledTimes(1);
+    expect(seenDeclined()).toEqual(new Set(["n1", "n2", "n3"]));
+    expect(JSON.parse(localStorage.getItem("d2d:declined-seen") ?? "[]")).toHaveLength(3);
   });
 
   it("ignores what it cannot read as a list of ids", () => {

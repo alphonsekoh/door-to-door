@@ -47,5 +47,10 @@ export function seenDeclined(): ReadonlySet<string> {
 }
 
 export function markDeclinedSeen(id: string): void {
-  write(SEEN_DECLINED, JSON.stringify([...seenDeclined(), id]));
+  markAllDeclinedSeen([id]);
+}
+
+/* One write for many, so "Got it to all" is one storage change. */
+export function markAllDeclinedSeen(ids: readonly string[]): void {
+  write(SEEN_DECLINED, JSON.stringify([...new Set([...seenDeclined(), ...ids])]));
 }

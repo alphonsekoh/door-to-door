@@ -7,7 +7,7 @@ import {
   zListFollowUpsResponse,
 } from "@/generated/zod.gen";
 import { requireUser, resolveMemberScope } from "@/server/auth/guards";
-import { ForbiddenError } from "@/server/http/errors";
+import { ForbiddenError, ValidationError } from "@/server/http/errors";
 import { createFollowUp, listFollowUps } from "@/server/follow-ups/service";
 import { withContract } from "@/server/http/contract";
 import { toFollowUp } from "@/server/visits/serialise";
@@ -19,6 +19,22 @@ export const GET = withContract(
     responses: { 200: zListFollowUpsResponse },
   },
   async ({ query }) => {
+    /*
+     * The removal filters narrow the removed-notes view and mean nothing
+     * without it. A bad request is 400 before anyone is asked who they are.
+     */
+    if (!query.deleted) {
+      const stray = (["removedByOthers", "deletedSince"] as const).filter(
+        (name) => query[name] !== undefined,
+      );
+      if (stray.length > 0) {
+        throw new ValidationError(
+          "Invalid query parameters.",
+          stray.map((name) => ({ path: `/${name}`, message: "Only with deleted=true." })),
+        );
+      }
+    }
+
     const session = await currentSession();
     const user = requireUser(session);
     const { limit, offset } = query;
@@ -50,6 +66,8 @@ export const GET = withContract(
       ...(query.outstanding === undefined ? {} : { outstanding: query.outstanding }),
       ...(query.dueBefore === undefined ? {} : { dueBefore: query.dueBefore }),
       deleted: query.deleted,
+      ...(query.removedByOthers === undefined ? {} : { removedByOthers: query.removedByOthers }),
+      ...(query.deletedSince === undefined ? {} : { deletedSince: query.deletedSince }),
     });
 
     return {

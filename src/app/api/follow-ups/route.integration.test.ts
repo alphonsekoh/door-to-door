@@ -769,12 +769,33 @@ describe("a suggestion waiting at a door with a resolved listed note", () => {
     expect((await noteOf(suggestion))?.status).toBe("suggested");
   });
 
-  it("says a suggestion waits when its author has no name", async () => {
+  /* As the screen says it: a first name, "Your" to the suggester, "Someone". */
+  const refusal = async (note: string) =>
+    ((await (await patch(note, { done: false })).json()) as Failure).error.message;
+
+  it("names the suggester by first name, as the screen does", async () => {
+    const { note } = await setUp();
+    await pool.query(`UPDATE users SET name = 'Ben Tan' WHERE id = $1`, [BEN]);
+    asAlice();
+    expect(await refusal(note)).toBe(
+      "Ben's suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    );
+  });
+
+  it("says Your to the member whose suggestion waits", async () => {
+    const { note } = await setUp();
+    asBen();
+    expect(await refusal(note)).toBe(
+      "Your suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    );
+  });
+
+  it("says Someone's when the suggester has no name", async () => {
     const { note } = await setUp();
     await pool.query(`UPDATE users SET name = NULL WHERE id = $1`, [BEN]);
     asAlice();
-    expect(((await (await patch(note, { done: false })).json()) as Failure).error.message).toBe(
-      "A suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    expect(await refusal(note)).toBe(
+      "Someone's suggestion for this door is waiting for an admin. Ask an admin to review it.",
     );
   });
 
@@ -981,5 +1002,163 @@ describe("reading removed notes", () => {
   it("refuses a member reading another member's removed notes", async () => {
     asBen();
     expect((await list(`?deleted=true&authorId=${ALICE}`)).status).toBe(403);
+  });
+});
+
+describe("reading the removals an author is told about", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const since = () => new Date(Date.now() - 30 * DAY).toISOString();
+
+  /*
+   * 105 of Alice's notes removed by the admin in the last month, one every
+   * five hours; 30 she withdrew herself, every 17 hours, so they fall
+   * between them; two the admin removed 40 days ago; one of Ben's.
+   */
+  const seed = async () => {
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status, deleted_at, deleted_by, delete_reason)
+       SELECT $1, 'Removed ' || i, $2, CASE WHEN i % 2 = 0 THEN 'listed' ELSE 'suggested' END::follow_up_status,
+              now() - i * interval '5 hours', $3, 'Reason ' || i
+       FROM generate_series(1, 105) AS i`,
+      [HOUSEHOLD, ALICE, ADMIN],
+    );
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status, deleted_at, deleted_by, delete_reason)
+       SELECT $1, 'Withdrawn ' || i, $2, 'suggested', now() - i * interval '17 hours', $2, 'Changed my mind'
+       FROM generate_series(1, 30) AS i`,
+      [HOUSEHOLD, ALICE],
+    );
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status, deleted_at, deleted_by, delete_reason)
+       SELECT $1, 'Long ago ' || i, $2, 'suggested', now() - interval '40 days', $3, 'Old'
+       FROM generate_series(1, 2) AS i`,
+      [HOUSEHOLD, ALICE, ADMIN],
+    );
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status, deleted_at, deleted_by, delete_reason)
+       VALUES ($1, 'Ben''s', $2, 'suggested', now() - interval '1 hour', $3, 'Visited')`,
+      [HOUSEHOLD, BEN, ADMIN],
+    );
+  };
+  const told = (extra = "") =>
+    `?deleted=true&authorId=${ALICE}&removedByOthers=true&deletedSince=${encodeURIComponent(since())}${extra}`;
+
+  it("pages through every removal by others in the window, and none of her own", async () => {
+    await seed();
+    asAlice();
+    const first = await list(told("&limit=100"));
+    expect(first.status).toBe(200);
+    expect(first.body.data).toHaveLength(100);
+    expect(first.body.pagination).toMatchObject({ total: 105, hasMore: true });
+
+    const second = await list(told("&limit=100&offset=100"));
+    expect(second.body.data).toHaveLength(5);
+    expect(second.body.pagination).toMatchObject({ total: 105, hasMore: false });
+
+    // Exactly the 105, newest removal first, each with who removed it and why.
+    const all = [...first.body.data, ...second.body.data];
+    expect(all.map((n) => n.note)).toEqual(
+      Array.from({ length: 105 }, (_, i) => `Removed ${String(i + 1)}`),
+    );
+    expect(new Set(all.map((n) => n.id)).size).toBe(105);
+    expect(all[1]).toMatchObject({
+      status: "listed",
+      deletedBy: { id: ADMIN, name: "Admin" },
+      deleteReason: "Reason 2",
+    });
+  });
+
+  it("counts removals older than the window only without it", async () => {
+    await seed();
+    asAlice();
+    const { body } = await list(`?deleted=true&authorId=${ALICE}&removedByOthers=true&limit=1`);
+    expect(body.pagination.total).toBe(107);
+  });
+
+  it("gives only the author's own withdrawals with removedByOthers=false", async () => {
+    await seed();
+    asAlice();
+    const { status, body } = await list(
+      `?deleted=true&authorId=${ALICE}&removedByOthers=false&limit=100`,
+    );
+    expect(status).toBe(200);
+    expect(body.pagination.total).toBe(30);
+    expect(body.data.every((n) => n.note.startsWith("Withdrawn "))).toBe(true);
+  });
+
+  it("gives an admin everyone's removals by others", async () => {
+    await seed();
+    asAdmin();
+    const { body } = await list(
+      `?deleted=true&removedByOthers=true&deletedSince=${encodeURIComponent(since())}&limit=1`,
+    );
+    expect(body.pagination.total).toBe(106);
+  });
+
+  it("tells the author of a backfilled listed note an admin removed it, and why", async () => {
+    // Written before suggestions existed: listed, by a member, with no lister.
+    const inserted = await pool.query<{ id: string }>(
+      `INSERT INTO follow_ups (household_id, note, author_id, status) VALUES ($1,'Bring the flyer',$2,'listed') RETURNING id`,
+      [HOUSEHOLD, ALICE],
+    );
+    const id = inserted.rows[0]?.id ?? "";
+    asAdmin();
+    expect((await remove(id, "The family has moved")).status).toBe(204);
+
+    asAlice();
+    for (const query of [`?deleted=true&authorId=${ALICE}`, told()]) {
+      const { status, body } = await list(query);
+      expect(status).toBe(200);
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]).toMatchObject({
+        id,
+        status: "listed",
+        listedBy: null,
+        author: { id: ALICE },
+        deletedBy: { id: ADMIN, name: "Admin" },
+        deleteReason: "The family has moved",
+      });
+    }
+  });
+
+  it.each([
+    ["removedByOthers", "?removedByOthers=true"],
+    ["deletedSince", `?deletedSince=${encodeURIComponent(new Date().toISOString())}`],
+    ["removedByOthers", "?deleted=false&removedByOthers=false"],
+  ])("refuses %s without deleted=true as a bad request", async (name, query) => {
+    asAdmin();
+    const response = await GET(new Request(url(query)));
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { error: unknown }).error).toEqual({
+      code: "validation_failed",
+      message: "Invalid query parameters.",
+      details: [{ path: `/${name}`, message: "Only with deleted=true." }],
+    });
+  });
+
+  it("is a bad request before it is a refusal, for a member asking about someone else", async () => {
+    asAlice();
+    const response = await GET(
+      new Request(
+        url(`?authorId=${BEN}&removedByOthers=true&deletedSince=${encodeURIComponent(since())}`),
+      ),
+    );
+    expect(response.status).toBe(400);
+    const details = ((await response.json()) as { error: { details: { path: string }[] } }).error
+      .details;
+    expect(details.map((detail) => detail.path)).toEqual(["/removedByOthers", "/deletedSince"]);
+  });
+
+  it("never widens what a member may read", async () => {
+    await seed();
+    asAlice();
+    expect((await list("?deleted=true&removedByOthers=true")).status).toBe(403);
+    expect(
+      (
+        await list(
+          `?deleted=true&authorId=${BEN}&removedByOthers=true&deletedSince=${encodeURIComponent(since())}`,
+        )
+      ).status,
+    ).toBe(403);
   });
 });

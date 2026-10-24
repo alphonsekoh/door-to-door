@@ -33,10 +33,13 @@ const declined = (id: string, over: Partial<FollowUp> = {}): FollowUp => ({
   ...over,
 });
 
-const page = (data: FollowUp[]) => ({
+const page = (data: FollowUp[], hasMore = false) => ({
   data,
-  pagination: { limit: 20, offset: 0, total: data.length, hasMore: false },
+  pagination: { limit: 100, offset: 0, total: data.length, hasMore },
 });
+
+/* Newest removal first, as the server sends them. */
+const five = ["1", "2", "3", "4", "5"].map((id) => declined(id));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -50,12 +53,38 @@ afterEach(() => {
 });
 
 describe("DeclinedNotice", () => {
-  it("asks only for the member's own removed notes, of either kind", async () => {
+  it("asks only for the member's own notes removed by others in the last thirty days", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<DeclinedNotice userId="u1" />);
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/follow-ups?deleted=true&authorId=u1&limit=20");
+      expect(apiFetch).toHaveBeenCalledWith(
+        `/follow-ups?deleted=true&authorId=u1&removedByOthers=true&deletedSince=${encodeURIComponent(
+          new Date(new Date(2026, 9, 23, 12).getTime() - 30 * 86_400_000).toISOString(),
+        )}&limit=100&offset=0`,
+      );
     });
+  });
+
+  it("reads every page, so no removal is left out", async () => {
+    apiFetch
+      .mockResolvedValueOnce(page([declined("1")], true))
+      .mockResolvedValueOnce(page([declined("2")]));
+    render(<DeclinedNotice userId="u1" />);
+    expect(await screen.findByText("Suggestion 2")).toBeVisible();
+    expect(screen.getByText("Suggestion 1")).toBeVisible();
+    expect(String(apiFetch.mock.calls[1]?.[0])).toContain("offset=1");
+  });
+
+  it("shows nothing when a later page cannot be read", async () => {
+    apiFetch
+      .mockResolvedValueOnce(page([declined("1")], true))
+      .mockRejectedValueOnce(new TypeError("offline"));
+    render(<DeclinedNotice userId="u1" />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(2);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByRole("region")).toBeNull();
   });
 
   it("says which suggestions were declined and which notes came off the list, by whom and why", async () => {
@@ -79,15 +108,70 @@ describe("DeclinedNotice", () => {
     expect(card.getByText("Declined by Admin · 20 Oct 2026")).toBeVisible();
   });
 
-  it("leaves out a suggestion the member withdrew themself, which is not news to them", async () => {
-    apiFetch.mockResolvedValue(
-      page([declined("1", { deletedBy: { id: "u1", name: "Ann", image: null } })]),
+  it("shows the newest three, and the rest on Show all", async () => {
+    apiFetch.mockResolvedValue(page(five));
+    render(<DeclinedNotice userId="u1" />);
+    const card = within(await screen.findByRole("region", { name: "Not on the follow-up list" }));
+    expect(card.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      expect.stringContaining("Suggestion 1"),
+      expect.stringContaining("Suggestion 2"),
+      expect.stringContaining("Suggestion 3"),
+    ]);
+    const toggle = card.getByRole("button", { name: "Show all (5)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(toggle);
+    expect(card.getAllByRole("listitem")).toHaveLength(5);
+    expect(card.getByText("Suggestion 5")).toBeVisible();
+    expect(card.getByRole("button", { name: "Show fewer" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
     );
+
+    fireEvent.click(card.getByRole("button", { name: "Show fewer" }));
+    expect(card.getAllByRole("listitem")).toHaveLength(3);
+  });
+
+  it("moves the next one up when one is acknowledged", async () => {
+    apiFetch.mockResolvedValue(page(five));
+    render(<DeclinedNotice userId="u1" />);
+    const [first] = await screen.findAllByRole("button", { name: "Got it" });
+    if (first === undefined) throw new Error("expected a notice");
+    fireEvent.click(first);
+    expect(screen.queryByText("Suggestion 1")).toBeNull();
+    expect(screen.getByText("Suggestion 4")).toBeVisible();
+    expect(screen.queryByText("Suggestion 5")).toBeNull();
+    expect(screen.getByRole("button", { name: "Show all (4)" })).toBeInTheDocument();
+  });
+
+  it("acknowledges them all at once on this phone with Got it to all", async () => {
+    apiFetch.mockResolvedValue(page(five));
+    const { unmount } = render(<DeclinedNotice userId="u1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Got it to all" }));
+    expect(screen.queryByRole("region")).toBeNull();
+
+    unmount();
     render(<DeclinedNotice userId="u1" />);
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalled();
+      expect(apiFetch).toHaveBeenCalledTimes(2);
     });
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(screen.queryByRole("region")).toBeNull();
+  });
+
+  it("offers neither Show all nor Got it to all for a single note", async () => {
+    apiFetch.mockResolvedValue(page([declined("1")]));
+    render(<DeclinedNotice userId="u1" />);
+    expect(await screen.findByRole("button", { name: "Got it" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Got it to all" })).toBeNull();
+  });
+
+  it("offers Got it to all but no Show all for two", async () => {
+    apiFetch.mockResolvedValue(page([declined("1"), declined("2")]));
+    render(<DeclinedNotice userId="u1" />);
+    expect(await screen.findByRole("button", { name: "Got it to all" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Show all/ })).toBeNull();
   });
 
   it("hides one for good on this phone with Got it", async () => {

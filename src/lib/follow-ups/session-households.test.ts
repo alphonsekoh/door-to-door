@@ -4,6 +4,7 @@ import {
   REMOVE_BLOCKED,
   householdState,
   membersSee,
+  pickNote,
   removeBlocker,
   startBlocker,
   stateLabel,
@@ -56,6 +57,46 @@ describe("householdState", () => {
     ],
   ])("%s", (_case, over, state) => {
     expect(householdState(entry(over))).toBe(state);
+  });
+});
+
+describe("pickNote", () => {
+  const note = (id: string, doneAt: string | null) => ({ id, doneAt }) as FollowUp;
+  /* Picked on 18 Oct, started on 19 Oct. */
+  const running = { startedAt: "2026-10-19T09:00:00.000Z" };
+  const march = note("march", "2026-03-28T10:00:00.000Z");
+  const pamphlet = note("pamphlet", "2026-10-21T10:00:00.000Z");
+
+  it("names the note still owed, ahead of any resolved", () => {
+    expect(pickNote(entry({ notes: [note("owed", null), pamphlet] }), running)?.id).toBe("owed");
+  });
+
+  it("names the note resolved today, never the one resolved in March", () => {
+    // The server's order: owed, then the most recently resolved first.
+    expect(pickNote(entry({ notes: [pamphlet, march] }), running)?.id).toBe("pamphlet");
+  });
+
+  it("names none when every note was resolved before the pick", () => {
+    expect(pickNote(entry({ notes: [march] }), running)).toBeNull();
+    expect(pickNote(entry({ notes: [] }), running)).toBeNull();
+  });
+
+  it("counts from the start when the household was added after it", () => {
+    const addedLater = entry({ addedAt: "2026-10-20T09:00:00.000Z" });
+    const doneAfterStart = note("since start", "2026-10-19T12:00:00.000Z");
+    expect(pickNote({ ...addedLater, notes: [doneAfterStart] }, running)?.id).toBe("since start");
+    const doneBeforeStart = note("before start", "2026-10-19T08:00:00.000Z");
+    expect(pickNote({ ...addedLater, notes: [doneBeforeStart] }, running)).toBeNull();
+  });
+
+  it("counts from the pick in a draft, which has no start", () => {
+    const draft = { startedAt: null };
+    expect(
+      pickNote(entry({ notes: [note("at the pick", "2026-10-18T09:00:00.000Z")] }), draft)?.id,
+    ).toBe("at the pick");
+    expect(
+      pickNote(entry({ notes: [note("before", "2026-10-18T08:59:00.000Z")] }), draft),
+    ).toBeNull();
   });
 });
 

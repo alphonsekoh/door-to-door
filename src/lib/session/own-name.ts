@@ -35,3 +35,14 @@ export function checkOwnName(raw: string): NameCheck {
   }
   return { ok: true, name };
 }
+
+export const NAME_FALLBACK = "Someone";
+
+/* A user with no name still has to be listed and tapped. */
+export function displayName(name: string | null): string {
+  return name === null || name.trim() === "" ? NAME_FALLBACK : name.trim();
+}
+
+export function firstName(name: string | null): string {
+  return displayName(name).replace(/\s.*$/, "");
+}

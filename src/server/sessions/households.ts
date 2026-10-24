@@ -14,6 +14,7 @@ import type { BlockRow } from "@/server/blocks/service";
 import { firstOrThrow } from "@/server/db-utils";
 import {
   byBlockThenUnit,
+  byNoteOwedThenResolved,
   liveFollowUp,
   onRevisitList,
   type RevisitSession,
@@ -198,16 +199,11 @@ export async function listSessionHouseholds(
     .where(eq(sessionHouseholds.sessionId, session.id))
     .orderBy(...byBlockThenUnit);
 
-  /* Outstanding first, by due day with undated last, then the resolved. */
   const notes = await selectFollowUps(db)
     .where(
       and(inArray(followUps.householdId, picked), eq(followUps.status, "listed"), liveFollowUp),
     )
-    .orderBy(
-      sql`${followUps.doneAt} asc nulls first`,
-      asc(followUps.dueDate),
-      asc(followUps.createdAt),
-    );
+    .orderBy(...byNoteOwedThenResolved);
 
   const onList = await db
     .selectDistinct({ householdId: followUps.householdId })

@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNotNull, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { FollowUpStatus, Role } from "@/db/schema";
 import { followUps, households, visits } from "@/db/schema";
+import { waitingSentence } from "@/lib/follow-ups/waiting";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { isNoteOnActiveRevisitList, liveFollowUp } from "@/server/follow-ups/list-rule";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
@@ -29,12 +30,6 @@ const EXISTS_MESSAGE =
 const PENDING_MESSAGE =
   "A member has suggested this household and it is waiting for review. Add that suggestion to the list instead.";
 
-/* Said to a member whose reopen would leave a suggestion beside an owed note. */
-export function waitingMessage(by: string | null): string {
-  const whose = by === null ? "A suggestion" : `${by}'s suggestion`;
-  return `${whose} for this door is waiting for an admin. Ask an admin to review it.`;
-}
-
 export type ListFollowUpOptions = {
   householdId?: string | undefined;
   authorId?: string | undefined;
@@ -42,6 +37,9 @@ export type ListFollowUpOptions = {
   outstanding?: boolean | undefined;
   dueBefore?: string | undefined;
   deleted?: boolean | undefined;
+  /* With `deleted` only: removed by someone else (true) or by the author (false). */
+  removedByOthers?: boolean | undefined;
+  deletedSince?: string | undefined;
   limit: number;
   offset: number;
 };
@@ -60,6 +58,13 @@ export async function listFollowUps(
     ...(options.dueBefore === undefined
       ? []
       : [lt(followUps.dueDate, new Date(options.dueBefore))]),
+    ...(options.removedByOthers === true
+      ? [isNotNull(followUps.deletedBy), ne(followUps.deletedBy, followUps.authorId)]
+      : []),
+    ...(options.removedByOthers === false ? [eq(followUps.deletedBy, followUps.authorId)] : []),
+    ...(options.deletedSince === undefined
+      ? []
+      : [gte(followUps.deletedAt, new Date(options.deletedSince))]),
   ];
   const filter = and(...conditions);
 
@@ -70,15 +75,17 @@ export async function listFollowUps(
    * which would sink every outstanding note below the resolved ones - exactly
    * backwards for the actionable list. dueDate keeps the default nulls-last,
    * so an undated note does not push a dated one down. The removed-notes view
-   * is an audit trail, so it reads newest removal first.
+   * is an audit trail, so it reads newest removal first. The id settles a
+   * tie, so a reader paging by offset never meets a row twice or misses one.
    */
   const order =
     options.deleted === true
-      ? [desc(followUps.deletedAt), asc(followUps.createdAt)]
+      ? [desc(followUps.deletedAt), asc(followUps.createdAt), asc(followUps.id)]
       : [
           sql`${followUps.doneAt} asc nulls first`,
           asc(followUps.dueDate),
           asc(followUps.createdAt),
+          asc(followUps.id),
         ];
 
   const rows = await selectFollowUps(db)
@@ -345,7 +352,13 @@ async function applyUpdate(
   const reopening = changes.done === false && existing.doneAt !== null;
   if (reopening && existing.waitingSuggestionId !== null) {
     if (actor.role !== "admin") {
-      throw new ConflictError("follow_up_exists", waitingMessage(existing.waitingByName));
+      throw new ConflictError(
+        "follow_up_exists",
+        waitingSentence({
+          name: existing.waitingByName,
+          mine: existing.waitingById === actor.id,
+        }),
+      );
     }
     await db
       .update(followUps)

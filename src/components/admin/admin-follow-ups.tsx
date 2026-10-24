@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
@@ -8,6 +9,7 @@ import { HintCard } from "@/components/ui/hint-card";
 import { FollowUpDoor } from "@/components/ui/unit-number";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { groupListedByHousehold, loadAllListed } from "@/lib/follow-ups/listed";
 import { removedByline } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
 import { displayName } from "@/lib/teams/team-ui";
@@ -23,9 +25,9 @@ export function parseFollowUpTab(params: URLSearchParams): FollowUpTab {
   return tab === "list" || tab === "dismissed" ? tab : "review";
 }
 
-const QUERY: Record<FollowUpTab, string> = {
+/* The list is read whole, as a session's picker reads it, so it is not here. */
+const QUERY: Record<Exclude<FollowUpTab, "list">, string> = {
   review: "status=suggested",
-  list: "status=listed&outstanding=true",
   dismissed: "deleted=true",
 };
 
@@ -72,21 +74,39 @@ export function AdminFollowUps() {
   /* Switching tabs quickly must not let an older answer land last. */
   const generation = useRef(0);
 
+  /*
+   * The list counts households, as the New session picker does, so the two
+   * agree when a household carries two listed notes. To review needs no
+   * grouping: a household has at most one suggestion waiting (D-117-7). On
+   * the list tab its own read gives the list's count.
+   */
   const count = useCallback(async () => {
     const total = async (query: string) =>
       (await apiFetch<FollowUpList>(`/follow-ups?${query}&limit=1`)).pagination.total;
     try {
-      const [review, list] = await Promise.all([total(QUERY.review), total(QUERY.list)]);
-      setCounts({ review, list });
+      if (tab === "list") {
+        const review = await total(QUERY.review);
+        setCounts((current) => ({ ...current, review }));
+        return;
+      }
+      const [review, listed] = await Promise.all([total(QUERY.review), loadAllListed()]);
+      setCounts({ review, list: groupListedByHousehold(listed).length });
     } catch {
       // The tabs read without numbers; the list below still says what failed.
     }
-  }, []);
+  }, [tab]);
 
   const load = useCallback(
     async (offset: number) => {
       const mine = ++generation.current;
       try {
+        if (tab === "list") {
+          const notes = await loadAllListed();
+          if (mine !== generation.current) return;
+          setState({ status: "ready", notes, total: notes.length });
+          setCounts((current) => ({ ...current, list: groupListedByHousehold(notes).length }));
+          return;
+        }
         const page = await apiFetch<FollowUpList>(
           `/follow-ups?${QUERY[tab]}&limit=${String(PAGE_SIZE)}&offset=${String(offset)}`,
         );
@@ -188,6 +208,34 @@ export function AdminFollowUps() {
             <p className="mt-1 text-body text-foreground-muted">{empty.detail}</p>
           )}
         </div>
+      ) : tab === "list" ? (
+        <ul className="space-y-4">
+          {groupListedByHousehold(state.notes).map((household) => (
+            <li key={household.householdId}>
+              <Link
+                href={`/households/${household.householdId}`}
+                className="inline-flex min-h-11 items-center text-body font-semibold btn-text tabular-nums"
+              >
+                <FollowUpDoor note={household} />
+              </Link>
+              <div className="space-y-2">
+                {household.notes.map((note) => (
+                  <FollowUpItem
+                    key={note.id}
+                    note={note}
+                    now={now}
+                    active={null}
+                    onChanged={() => {
+                      setNotice(null);
+                      reload();
+                    }}
+                    onEdit={setEditing}
+                  />
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
       ) : (
         <>
           <ul className="space-y-2">

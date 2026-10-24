@@ -23,6 +23,7 @@ import {
   type RevisitState,
   type UnitGate,
   listedUnitsIn,
+  nothingListedHere,
   unitGate,
 } from "@/lib/follow-ups/revisits";
 import {
@@ -283,6 +284,7 @@ export function RecordVisitForm({
   const next = followUp === null && guessNext;
   const gate = followUp === null ? "ok" : unitGate(unitNumber, blockId, followUp.revisits, isAdmin);
   const chips = followUp?.revisits == null ? [] : listedUnitsIn(followUp.revisits, blockId);
+  const nothingHere = followUp !== null && nothingListedHere(followUp.revisits, blockId, isAdmin);
   const typed = normaliseUnitNumber(unitNumber);
   /* The typed unit's own history: one still showing for the unit typed
      before must not decide what this one offers. */
@@ -512,6 +514,20 @@ export function RecordVisitForm({
             )}
           </div>
         )}
+
+        {/* The form stays: a re-read that empties the block must not throw
+            away a visit already half typed. */}
+        {nothingHere ? (
+          <div role="status" className="notice-info">
+            <p className="break-words">
+              Nothing in this block is on this session&apos;s list. Visits can be recorded only at
+              the households on the session&apos;s list.
+            </p>
+            <Link href="/" className="mt-1 inline-flex min-h-11 items-center font-medium btn-text">
+              Back to the list
+            </Link>
+          </div>
+        ) : null}
 
         <div>
           <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">

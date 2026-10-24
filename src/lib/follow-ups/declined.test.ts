@@ -1,6 +1,22 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FollowUp } from "@/generated/types.gen";
-import { DECLINED_WINDOW_MS, authorNoticeLine, removedForAuthor } from "@/lib/follow-ups/declined";
+import type * as ApiClientModule from "@/lib/api-client";
+import {
+  DECLINED_WINDOW_MS,
+  authorNoticeLine,
+  loadRemovalsForAuthor,
+  removedForAuthor,
+} from "@/lib/follow-ups/declined";
+
+const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+vi.mock("@/lib/api-client", async () => {
+  const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
+  return { ...actual, apiFetch };
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 const NOW = Date.parse("2026-10-23T10:00:00.000Z");
 const ALICE = { id: "alice", name: "Alice", image: null };
@@ -34,28 +50,67 @@ function removed(id: string, overrides: Partial<FollowUp> = {}): FollowUp {
 /* Local midday, so the day reads the same in any time zone the suite runs in. */
 const MARCH_3 = new Date(2026, 2, 3, 12).toISOString();
 
-describe("removedForAuthor", () => {
-  it("keeps the member's notes someone else removed, not yet acknowledged", () => {
-    const notes = [
-      removed("declined"),
-      removed("taken off the list", { status: "listed" }),
-      removed("withdrawn", { deletedBy: ALICE }),
-      removed("live", { deletedAt: null, deletedBy: null }),
-      removed("no remover", { deletedBy: null }),
-      removed("seen"),
-    ];
-    expect(removedForAuthor(notes, NOW, new Set(["seen"])).map((n) => n.id)).toEqual([
-      "declined",
-      "taken off the list",
-    ]);
+const page = (ids: string[], hasMore: boolean) => ({
+  data: ids.map((id) => removed(id)),
+  pagination: { limit: 2, offset: 0, total: 99, hasMore },
+});
+
+describe("loadRemovalsForAuthor", () => {
+  it("asks the server for removals by others in the last thirty days, page by page", async () => {
+    apiFetch
+      .mockResolvedValueOnce(page(["a", "b"], true))
+      .mockResolvedValueOnce(page(["c", "d"], true))
+      .mockResolvedValueOnce(page(["e"], false));
+    const notes = await loadRemovalsForAuthor("alice", NOW, 2);
+    expect(notes.map((note) => note.id)).toEqual(["a", "b", "c", "d", "e"]);
+
+    const since = new Date(NOW - DECLINED_WINDOW_MS).toISOString();
+    const asked = apiFetch.mock.calls.map(([path]) => new URL(String(path), "https://t.local"));
+    expect(asked.map((url) => url.pathname)).toEqual(["/follow-ups", "/follow-ups", "/follow-ups"]);
+    expect(asked.map((url) => Object.fromEntries(url.searchParams))).toEqual(
+      ["0", "2", "4"].map((offset) => ({
+        deleted: "true",
+        authorId: "alice",
+        removedByOthers: "true",
+        deletedSince: since,
+        limit: "2",
+        offset,
+      })),
+    );
   });
 
-  it("stops telling the member after thirty days", () => {
-    const edge = removed("edge", { deletedAt: new Date(NOW - DECLINED_WINDOW_MS).toISOString() });
-    const old = removed("old", {
-      deletedAt: new Date(NOW - DECLINED_WINDOW_MS - 1).toISOString(),
-    });
-    expect(removedForAuthor([edge, old], NOW, new Set()).map((n) => n.id)).toEqual(["edge"]);
+  it("reads a hundred at a time unless told otherwise", async () => {
+    apiFetch.mockResolvedValueOnce(page(["a"], false));
+    await loadRemovalsForAuthor("alice", NOW);
+    expect(String(apiFetch.mock.calls[0]?.[0])).toContain("limit=100&offset=0");
+  });
+
+  it("stops on an empty page, so a miscounting server cannot loop it", async () => {
+    apiFetch.mockResolvedValueOnce(page(["a"], true)).mockResolvedValueOnce(page([], true));
+    expect(await loadRemovalsForAuthor("alice", NOW)).toHaveLength(1);
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails as a whole when any page fails", async () => {
+    apiFetch
+      .mockResolvedValueOnce(page(["a"], true))
+      .mockRejectedValueOnce(new TypeError("offline"));
+    await expect(loadRemovalsForAuthor("alice", NOW)).rejects.toThrow("offline");
+  });
+});
+
+describe("removedForAuthor", () => {
+  it("keeps what this phone has not been told, in the server's order", () => {
+    const notes = [
+      removed("newest"),
+      removed("seen"),
+      removed("taken off the list", { status: "listed" }),
+      removed("live", { deletedAt: null, deletedBy: null }),
+    ];
+    expect(removedForAuthor(notes, new Set(["seen"])).map((n) => n.id)).toEqual([
+      "newest",
+      "taken off the list",
+    ]);
   });
 });
 

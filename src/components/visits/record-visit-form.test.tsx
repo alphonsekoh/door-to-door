@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -1725,6 +1725,66 @@ describe("in a follow-up session", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not saved. This unit is not on this session's list.",
     );
+  });
+
+  describe("in a block with nothing on the session's list", () => {
+    const ELSEWHERE = LIST.map((entry) => ({
+      ...entry,
+      block: { ...entry.block, id: "elsewhere" },
+    }));
+    const LINE = "Nothing in this block is on this session's list.";
+
+    it("tells a member so, with the way back to the list, and keeps the form", async () => {
+      const user = userEvent.setup();
+      mount(ELSEWHERE);
+      const line = screen.getByRole("status");
+      expect(line).toHaveTextContent(
+        `${LINE} Visits can be recorded only at the households on the session's list.`,
+      );
+      expect(within(line).getByRole("link", { name: "Back to the list" })).toHaveAttribute(
+        "href",
+        "/",
+      );
+      // Above the unit, and the form stays for what is already typed.
+      const unit = screen.getByLabelText("Unit number");
+      expect(line.compareDocumentPosition(unit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await user.type(unit, "#05-123");
+      expect(unit).toHaveValue("#05-123");
+    });
+
+    it("tells an empty list the same", () => {
+      mount([]);
+      expect(screen.getByRole("status")).toHaveTextContent(LINE);
+    });
+
+    it("says nothing to an admin, who may record anywhere", () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      mount(ELSEWHERE);
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
+
+    it("says nothing until the list is read, or when it cannot be", () => {
+      mount(null);
+      expect(screen.queryByText(LINE)).toBeNull();
+      cleanup();
+      render(
+        <RecordVisitForm
+          sessionId={null}
+          loadSession={noSession}
+          blockId={BLOCK}
+          known={[]}
+          followUp={{ revisits: undefined }}
+          onRecorded={vi.fn()}
+        />,
+      );
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
+
+    it("says nothing where the block has households on the list", () => {
+      mount();
+      expect(screen.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
   });
 
   it("arrives with a unit picked from the list, which counts as nothing typed", () => {

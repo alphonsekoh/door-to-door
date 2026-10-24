@@ -443,7 +443,8 @@ export type RevisitEntry = {
     block: Block;
     /**
      * The listed notes that put it on the list: outstanding first (by due
-     * day, undated last), then those resolved during the session.
+     * day, undated last), then those resolved during the session, most
+     * recently resolved first.
      *
      */
     notes: Array<FollowUp>;
@@ -488,9 +489,9 @@ export type SessionHousehold = {
     addedAt: string;
     /**
      * The household's `listed`, not removed notes, resolved or not:
-     * outstanding first (by due day, undated last), then resolved,
-     * including any resolved before it was picked. Removed notes are
-     * never here.
+     * outstanding first (by due day, undated last), then resolved, most
+     * recently resolved first, including any resolved before it was
+     * picked. Removed notes are never here.
      *
      */
     notes: Array<FollowUp>;
@@ -2463,6 +2464,21 @@ export type ListFollowUpsData = {
          *
          */
         deleted?: boolean;
+        /**
+         * With `deleted=true` only. `true` returns notes removed by someone
+         * other than their author (a suggestion declined, a listed note
+         * taken off the list); `false` returns those their author removed
+         * (a suggestion withdrawn). Both when omitted. Without
+         * `deleted=true`, `400`.
+         *
+         */
+        removedByOthers?: boolean;
+        /**
+         * With `deleted=true` only. Notes removed at or after this instant.
+         * Without `deleted=true`, `400`.
+         *
+         */
+        deletedSince?: string;
         /**
          * Rows per page.
          */

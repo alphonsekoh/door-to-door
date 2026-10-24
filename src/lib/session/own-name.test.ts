@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/session/own-name";
+import {
+  MAX_NAME_LENGTH,
+  NAME_FALLBACK,
+  checkOwnName,
+  displayName,
+  firstName,
+  nameLength,
+} from "@/lib/session/own-name";
 
 describe("checkOwnName", () => {
   it("trims what it accepts", () => {
@@ -40,5 +47,19 @@ describe("checkOwnName", () => {
   it("refuses a name with nothing readable in it", () => {
     expect(checkOwnName("---")).toMatchObject({ ok: false });
     expect(checkOwnName("!?")).toMatchObject({ ok: false });
+  });
+});
+
+describe("names as shown", () => {
+  it("takes the first word of a name", () => {
+    expect(firstName("Ann Tan")).toBe("Ann");
+    expect(firstName("  Ben  ")).toBe("Ben");
+  });
+
+  it("falls back for a person with no name", () => {
+    expect(displayName(null)).toBe(NAME_FALLBACK);
+    expect(displayName("   ")).toBe("Someone");
+    expect(displayName(" Ann Tan ")).toBe("Ann Tan");
+    expect(firstName(null)).toBe("Someone");
   });
 });

@@ -55,8 +55,8 @@ const page = (data: FollowUp[], total = data.length): FollowUpList => ({
   pagination: { limit: 20, offset: 0, total, hasMore: data.length < total },
 });
 
-/* Counts are asked with limit=1; each tab's own page with limit=20. No
-   follow-up session is found for "Also add to". */
+/* Counts are asked with limit=1; each tab's own page with limit=20, and the
+   list whole, 100 at a time. No follow-up session is found for "Also add to". */
 function serve(pages: Partial<Record<"review" | "list" | "dismissed", FollowUp[]>>) {
   apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
     if (init?.method !== undefined) return Promise.resolve({});
@@ -207,7 +207,104 @@ describe("AdminFollowUps", () => {
     expect(screen.getByRole("button", { name: "Remove from list" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add to list" })).toBeNull();
     expect(apiFetch).toHaveBeenCalledWith(
-      "/follow-ups?status=listed&outstanding=true&limit=20&offset=0",
+      "/follow-ups?status=listed&outstanding=true&limit=100&offset=0",
+    );
+  });
+
+  /* Five listed notes on four doors: #05-a carries two. */
+  const fiveOnFour = [
+    note("1", {
+      status: "listed",
+      householdId: "ha",
+      unitNumber: "#05-a",
+      note: "Bring the flyer",
+    }),
+    note("2", { status: "listed", householdId: "hb", unitNumber: "#05-b" }),
+    note("3", {
+      status: "listed",
+      householdId: "ha",
+      unitNumber: "#05-a",
+      note: "Ask for Mrs Lim",
+    }),
+    note("4", { status: "listed", householdId: "hc", unitNumber: "#05-c" }),
+    note("5", { status: "listed", householdId: "hd", unitNumber: "#05-d" }),
+  ];
+
+  it("counts households on the list, as the New session picker does, one row each", async () => {
+    search.value = "tab=list";
+    serve({ list: fiveOnFour });
+    render(<AdminFollowUps />);
+    expect(await screen.findByRole("button", { name: "On the list, 4" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    const doors = await screen.findAllByRole("link", { name: /^Blk 123 · #05-/ });
+    expect(doors.map((door) => door.getAttribute("href"))).toEqual([
+      "/households/ha",
+      "/households/hb",
+      "/households/hc",
+      "/households/hd",
+    ]);
+    const row = doors[0]?.closest("li");
+    if (!row) throw new Error("expected a row");
+    expect(within(row).getAllByRole("link")).toHaveLength(1);
+    expect(within(row).getByText("Bring the flyer")).toBeVisible();
+    expect(within(row).getByText("Ask for Mrs Lim")).toBeVisible();
+    expect(within(row).getAllByRole("button", { name: "Mark done" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+  });
+
+  it("reads the list and its count again once a note on it is marked done", async () => {
+    search.value = "tab=list";
+    serve({ list: fiveOnFour });
+    render(<AdminFollowUps />);
+    const [first] = await screen.findAllByRole("button", { name: "Mark done" });
+    if (first === undefined) throw new Error("expected a note");
+    fireEvent.click(first);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups/1", {
+        method: "PATCH",
+        body: JSON.stringify({ done: true }),
+      });
+    });
+    await waitFor(() => {
+      expect(
+        apiFetch.mock.calls.filter(
+          ([path]) => path === "/follow-ups?status=listed&outstanding=true&limit=100&offset=0",
+        ),
+      ).toHaveLength(2);
+    });
+  });
+
+  it("counts households on the list from another tab too", async () => {
+    serve({ review: [note("9")], list: fiveOnFour });
+    render(<AdminFollowUps />);
+    expect(await screen.findByRole("button", { name: "On the list, 4" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "To review, 1" })).toBeInTheDocument();
+  });
+
+  it("reads every page of the list before counting or showing it", async () => {
+    search.value = "tab=list";
+    apiFetch.mockImplementation((path: string) => {
+      if (path.includes("status=suggested")) return Promise.resolve(page([]));
+      if (path.startsWith("/sessions?")) return Promise.resolve({ data: [] });
+      return Promise.resolve(
+        path.endsWith("offset=0")
+          ? {
+              data: fiveOnFour.slice(0, 3),
+              pagination: { limit: 100, offset: 0, total: 5, hasMore: true },
+            }
+          : {
+              data: fiveOnFour.slice(3),
+              pagination: { limit: 100, offset: 3, total: 5, hasMore: false },
+            },
+      );
+    });
+    render(<AdminFollowUps />);
+    expect(await screen.findByRole("button", { name: "On the list, 4" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Blk 123 · #05-d" })).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/follow-ups?status=listed&outstanding=true&limit=100&offset=3",
     );
   });
 

@@ -1,4 +1,5 @@
 import type { ActiveSession, FollowUp } from "@/generated/types.gen";
+import { waitingSentence } from "@/lib/follow-ups/waiting";
 import { displayName, firstName } from "@/lib/teams/team-ui";
 
 /*
@@ -93,8 +94,7 @@ export function followUpRights(
 export function waitingCaption(waiting: { by: string; mine: boolean }, isAdmin: boolean): string {
   const whose = waiting.mine ? "your" : `${waiting.by}'s`;
   if (isAdmin) return `Reopening also adds ${whose} suggestion to the list.`;
-  const subject = waiting.mine ? "Your" : `${waiting.by}'s`;
-  return `${subject} suggestion for this door is waiting for an admin. Ask an admin to review it.`;
+  return waitingSentence({ name: waiting.by, mine: waiting.mine });
 }
 
 export type HouseholdAction =

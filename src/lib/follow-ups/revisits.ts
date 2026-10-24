@@ -60,6 +60,21 @@ export function progress(
   return `${String(dealt)} of ${String(entries.length)} visited or done`;
 }
 
+/*
+ * A member in a follow-up session's block holding nothing on its list, so
+ * no unit here can be saved: a bookmark, or a block whose only pick left
+ * the follow-up list. Not said while the list is unread or unreadable, nor
+ * to an admin, who may record anywhere.
+ */
+export function nothingListedHere(
+  revisits: readonly RevisitEntry[] | null | undefined,
+  blockId: string,
+  isAdmin: boolean,
+): boolean {
+  if (isAdmin || revisits == null) return false;
+  return !revisits.some((entry) => entry.block.id === blockId);
+}
+
 export type ListedUnit = { householdId: string; unitNumber: string; state: RevisitState };
 
 export function listedUnitsIn(entries: readonly RevisitEntry[], blockId: string): ListedUnit[] {

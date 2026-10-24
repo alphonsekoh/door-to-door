@@ -594,7 +594,8 @@ components:
           minItems: 1
           description: |
             The listed notes that put it on the list: outstanding first (by due
-            day, undated last), then those resolved during the session.
+            day, undated last), then those resolved during the session, most
+            recently resolved first.
           items: { $ref: "#/components/schemas/FollowUp" }
         latestVisit:
           description: The most recent visit here in any session, or null.
@@ -643,9 +644,9 @@ components:
           type: array
           description: |
             The household's `listed`, not removed notes, resolved or not:
-            outstanding first (by due day, undated last), then resolved,
-            including any resolved before it was picked. Removed notes are
-            never here.
+            outstanding first (by due day, undated last), then resolved, most
+            recently resolved first, including any resolved before it was
+            picked. Removed notes are never here.
           items: { $ref: "#/components/schemas/FollowUp" }
         onList:
           type: boolean
@@ -2335,7 +2336,10 @@ paths:
         returns only removed notes, most recently removed first. That audit
         view is admin-only, except that a member may read their own removed
         notes (`authorId` set to themself) to learn that a suggestion was not
-        added, and why.
+        added, and why. `removedByOthers` and `deletedSince` narrow that view
+        on the server, so `total` counts exactly the removals an author is
+        told about and paging never spends rows on their own withdrawals;
+        either one without `deleted=true` is `400`.
       parameters:
         - name: householdId
           in: query
@@ -2365,6 +2369,21 @@ paths:
             `true` returns removed notes only. **Requires: admin**, unless
             `authorId` is the caller's own id; otherwise `403`.
           schema: { type: boolean, default: false }
+        - name: removedByOthers
+          in: query
+          description: |
+            With `deleted=true` only. `true` returns notes removed by someone
+            other than their author (a suggestion declined, a listed note
+            taken off the list); `false` returns those their author removed
+            (a suggestion withdrawn). Both when omitted. Without
+            `deleted=true`, `400`.
+          schema: { type: boolean }
+        - name: deletedSince
+          in: query
+          description: |
+            With `deleted=true` only. Notes removed at or after this instant.
+            Without `deleted=true`, `400`.
+          schema: { type: string, format: date-time }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:

@@ -153,6 +153,21 @@ describe("the follow-up list", () => {
     ]);
   });
 
+  it("puts the note resolved most recently first among those resolved", async () => {
+    // A second note at the door resolved tonight, earlier than "Resolved tonight".
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, status, note, done_at, created_at)
+       VALUES ($1,$2,'listed','Resolved earlier tonight', now() - interval '30 minutes', now())`,
+      [DONE_TONIGHT, ADMIN],
+    );
+    const entries = await listRevisits(db, session);
+    const done = entries.find((entry) => entry.household.id === DONE_TONIGHT);
+    expect(done?.notes.map((note) => note.note)).toEqual([
+      "Resolved tonight",
+      "Resolved earlier tonight",
+    ]);
+  });
+
   it("carries the latest visit anywhere and whether it was visited in this session", async () => {
     const entries = await listRevisits(db, session);
     const byUnit = new Map(entries.map((e) => [`${e.block.name} ${e.household.unitNumber}`, e]));

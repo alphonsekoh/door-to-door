@@ -1,4 +1,9 @@
-import type { OutingSession, SessionBlock, SessionHousehold } from "@/generated/types.gen";
+import type {
+  FollowUp,
+  OutingSession,
+  SessionBlock,
+  SessionHousehold,
+} from "@/generated/types.gen";
 
 /*
  * A follow-up session's picked households, as its admin page shows them:
@@ -24,6 +29,26 @@ export function householdState(entry: SessionHousehold): PickState {
   }
   if (entry.notes.every((note) => note.doneAt !== null)) return "done";
   return entry.visitedInSession ? "visited" : "to_visit";
+}
+
+/*
+ * The note a pick was made for, as its row says it: the first still owed
+ * (the soonest due, as the picker showed it), else the one resolved most
+ * recently since the pick or the session's start, whichever came first.
+ * The server orders owed notes first and then the newest resolved, so it is
+ * the first that qualifies. A note resolved before both was never what the
+ * pick was for, so a pick with only those shows none.
+ */
+export function pickNote(
+  entry: Pick<SessionHousehold, "notes" | "addedAt">,
+  session: Pick<OutingSession, "startedAt">,
+): FollowUp | null {
+  const picked = Date.parse(entry.addedAt);
+  const since =
+    session.startedAt === null ? picked : Math.min(picked, Date.parse(session.startedAt));
+  return (
+    entry.notes.find((note) => note.doneAt === null || Date.parse(note.doneAt) >= since) ?? null
+  );
 }
 
 export function stateLabel(state: PickState, status: OutingSession["status"]): string | null {

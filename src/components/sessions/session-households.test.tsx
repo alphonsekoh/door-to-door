@@ -185,6 +185,39 @@ describe("the households a follow-up session goes back to", () => {
     expect(screen.getByRole("link", { name: /#h2/ })).not.toHaveTextContent("Visit h2");
   });
 
+  it("names the note the household was picked for once it is done, not one done long before", async () => {
+    // Oldest first, as the server once sent them: March's note was resolved
+    // long before the pick, so it is never what the row names.
+    server({
+      picks: () =>
+        Promise.resolve({
+          data: [
+            pick("h1", "123", {
+              notes: [
+                note("h1", {
+                  id: "march",
+                  note: "Asked about the March event",
+                  doneAt: "2026-03-28T10:00:00.000Z",
+                }),
+                note("h1", {
+                  id: "pamphlet",
+                  note: "Bring the Chinese pamphlet",
+                  doneAt: "2026-10-21T10:00:00.000Z",
+                }),
+              ],
+            }),
+            pick("h2", "123"),
+          ],
+        }),
+    });
+    mount();
+    const row = await screen.findByRole("link", { name: /#h1/ });
+    expect(row).toHaveTextContent("Bring the Chinese pamphlet");
+    expect(row).toHaveTextContent("Done");
+    expect(row).not.toHaveTextContent("Asked about the March event");
+    expect(row).not.toHaveTextContent(/Already done|Done before it started/);
+  });
+
   it("says where each stands", async () => {
     server({
       picks: () =>

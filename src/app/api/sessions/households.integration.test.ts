@@ -294,6 +294,33 @@ describe("GET /api/sessions/{id}/households", () => {
     ]);
   });
 
+  it("puts the note resolved since the pick ahead of one resolved before it", async () => {
+    const id = await followUp([OWED_1]);
+    await setStatus(id, "active");
+    // "Due later" is resolved during the session; "Done already" was resolved
+    // three days before the pick, and "Due soon" is still owed.
+    await pool.query(
+      `UPDATE follow_ups SET done_at = now() WHERE household_id = $1 AND note = 'Due later'`,
+      [OWED_1],
+    );
+    asAdmin();
+    expect((await read(id))[0]?.notes.map((note) => note.note)).toEqual([
+      "Due soon",
+      "Due later",
+      "Done already",
+    ]);
+    await pool.query(
+      `UPDATE follow_ups SET done_at = now() - interval '1 minute' WHERE household_id = $1 AND note = 'Due soon'`,
+      [OWED_1],
+    );
+    // All done: the newest resolved first, the one from before the pick last.
+    expect((await read(id))[0]?.notes.map((note) => note.note)).toEqual([
+      "Due later",
+      "Due soon",
+      "Done already",
+    ]);
+  });
+
   it("keeps two blocks that share a name apart, each block's households together", async () => {
     const OTHER_ROAD = "b5b5b5b5-0000-4000-8001-000000000003";
     const ELSEWHERE = "b5b5b5b5-0000-4000-8003-000000000007";

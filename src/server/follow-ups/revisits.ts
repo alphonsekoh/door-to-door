@@ -1,8 +1,13 @@
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import { blocks, followUps, households, users, visits } from "@/db/schema";
+import { blocks, households, users, visits } from "@/db/schema";
 import type { BlockRow } from "@/server/blocks/service";
-import { byBlockThenUnit, onRevisitList, type RevisitSession } from "@/server/follow-ups/list-rule";
+import {
+  byBlockThenUnit,
+  byNoteOwedThenResolved,
+  onRevisitList,
+  type RevisitSession,
+} from "@/server/follow-ups/list-rule";
 import { attachTeams } from "@/server/teams/access";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
@@ -23,14 +28,9 @@ export type RevisitRow = {
  * were visited in this session (D-20-3).
  */
 export async function listRevisits(db: Database, session: RevisitSession): Promise<RevisitRow[]> {
-  /* Outstanding first, by due day with undated last, then the resolved. */
   const notes = await selectFollowUps(db)
     .where(onRevisitList(db, session))
-    .orderBy(
-      sql`${followUps.doneAt} asc nulls first`,
-      asc(followUps.dueDate),
-      asc(followUps.createdAt),
-    );
+    .orderBy(...byNoteOwedThenResolved);
 
   if (notes.length === 0) {
     return [];

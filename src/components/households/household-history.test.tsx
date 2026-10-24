@@ -654,19 +654,37 @@ describe("acting on a note", () => {
     );
   });
 
-  it("says a stale Reopen met a suggestion, and re-reads so it is no longer offered", async () => {
+  it("says a stale Reopen met a suggestion once, and re-reads so it is no longer offered", async () => {
     // The screen was read before Ben suggested the door; the server knows better.
     apiFetch.mockRejectedValue(
       new ApiRequestError(409, { error: { code: "follow_up_exists", message: "raw" } }),
     );
-    const onChanged = vi.fn();
     const done = note({ doneAt: "2026-04-01T00:00:00.000Z" });
-    render(<Panel over={{ followUps: [done] }} onChanged={onChanged} />);
+    const onChanged = vi.fn(() => {
+      // The re-read: Ben's suggestion now waits at the door.
+      rerender(
+        <Panel
+          over={{
+            followUps: [
+              { ...done, waitingSuggestionBy: { id: "u2", name: "Ben Tan", image: null } },
+            ],
+          }}
+          onChanged={onChanged}
+        />,
+      );
+    });
+    const { rerender } = render(<Panel over={{ followUps: [done] }} onChanged={onChanged} />);
     fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Not reopened. A suggestion for this door is now waiting for an admin.",
-    );
+    expect((await screen.findByRole("alert")).textContent).toBe("Not reopened.");
     expect(onChanged).toHaveBeenCalledTimes(1);
+    expect(
+      screen
+        .getAllByText(/suggestion for this door is waiting for an admin/)
+        .map((n) => n.textContent),
+    ).toEqual([
+      "Ben's suggestion for this door is waiting for an admin. Ask an admin to review it.",
+    ]);
+    expect(screen.queryByRole("button", { name: "Reopen" })).toBeNull();
   });
 
   it("keeps the screen as it is after a refusal that changes nothing at the door", async () => {

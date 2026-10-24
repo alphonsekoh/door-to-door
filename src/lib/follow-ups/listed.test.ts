@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
-import { loadAllListed } from "@/lib/follow-ups/listed";
+import type { FollowUp } from "@/generated/types.gen";
+import { groupListedByHousehold, loadAllListed } from "@/lib/follow-ups/listed";
+import { groupForPicking, householdIdsOf } from "@/lib/follow-ups/pick";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -33,5 +35,42 @@ describe("loadAllListed", () => {
     apiFetch.mockResolvedValueOnce(page(["a"], true)).mockResolvedValueOnce(page([], true));
     expect(await loadAllListed()).toHaveLength(1);
     expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("groupListedByHousehold", () => {
+  const listed = (id: string, householdId: string, blockName = "123") =>
+    ({
+      id,
+      householdId,
+      blockId: `b-${blockName}`,
+      blockName,
+      unitNumber: `#0${householdId}`,
+    }) as FollowUp;
+  /* The server's order, soonest due first: h2 carries two listed notes. */
+  const notes = [
+    listed("n1", "h2"),
+    listed("n2", "h1"),
+    listed("n3", "h2"),
+    listed("n4", "h3", "9"),
+    listed("n5", "h4"),
+  ];
+
+  it("makes a household with two listed notes one entry, its notes in order", () => {
+    const groups = groupListedByHousehold(notes);
+    expect(groups.map((group) => [group.householdId, group.notes.map((note) => note.id)])).toEqual([
+      ["h2", ["n1", "n3"]],
+      ["h1", ["n2"]],
+      ["h3", ["n4"]],
+      ["h4", ["n5"]],
+    ]);
+    expect(groups[0]).toMatchObject({ blockName: "123", unitNumber: "#0h2" });
+  });
+
+  it("counts what the New session picker counts", () => {
+    expect(groupListedByHousehold(notes)).toHaveLength(
+      householdIdsOf(groupForPicking(notes)).length,
+    );
+    expect(groupListedByHousehold(notes)).toHaveLength(4);
   });
 });

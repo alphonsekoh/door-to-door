@@ -867,6 +867,8 @@ export const zListFollowUpsQuery = z.object({
     outstanding: z.boolean().optional(),
     dueBefore: z.iso.datetime().optional(),
     deleted: z.boolean().optional().default(false),
+    removedByOthers: z.boolean().optional(),
+    deletedSince: z.iso.datetime().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).optional().default(0)
 });

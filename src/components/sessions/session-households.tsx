@@ -20,6 +20,7 @@ import {
   REMOVE_BLOCKED,
   householdState,
   membersSee,
+  pickNote,
   removeBlocker,
   stateLabel,
 } from "@/lib/follow-ups/session-households";
@@ -237,6 +238,7 @@ function HouseholdRow({
 }) {
   const state = householdState(entry);
   const label = stateLabel(state, session.status);
+  const note = pickNote(entry, session);
   const blocker = removeBlocker(entry, entries, session.status, blocks);
   const door = `Blk ${entry.block.name} · ${entry.household.unitNumber}`;
 
@@ -254,15 +256,11 @@ function HouseholdRow({
           <span className="block truncate text-caption text-foreground-muted">
             {entry.household.name ?? "Name not known"}
           </span>
-          {/* What the visit is for, as the picker said: owed notes come first.
-              Off the follow-up list, what is left is no longer the reason. */}
-          {state === "off_list"
-            ? null
-            : entry.notes.slice(0, 1).map((note) => (
-                <span key={note.id} className="line-clamp-2 block text-body break-words">
-                  {note.note}
-                </span>
-              ))}
+          {/* What the visit is for, as the picker said, and still once it
+              is done; never an old note resolved before the pick. */}
+          {note === null ? null : (
+            <span className="line-clamp-2 block text-body break-words">{note.note}</span>
+          )}
         </span>
         {label === null ? null : (
           <span className="shrink-0 rounded-md border border-border-strong px-2 py-0.5 text-caption font-medium">
