@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { ActiveSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { knownSessionKind } from "@/lib/session/known-kind";
 
 /*
  * The running session, asked once, for screens whose controls depend on it
@@ -16,6 +17,7 @@ export function useActiveSession(): ActiveSession | null {
     let cancelled = false;
     apiFetch<ActiveSession>("/sessions/active").then(
       (answer) => {
+        knownSessionKind.note(answer.session.kind);
         if (!cancelled) setActive(answer);
       },
       () => undefined,

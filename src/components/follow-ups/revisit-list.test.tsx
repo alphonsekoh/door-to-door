@@ -194,8 +194,10 @@ describe("RevisitList", () => {
     expect(await screen.findByText("2 of 3 visited or done")).toBeInTheDocument();
     expect(screen.getByText("Visited")).toBeInTheDocument();
     expect(screen.getByText("Done")).toBeInTheDocument();
-    // Nothing left to mark on a household already done.
-    expect(screen.getAllByRole("button", { name: "Mark done" })).toHaveLength(2);
+    // Nothing left to mark on a household already done; each names its door.
+    expect(screen.getAllByRole("button", { name: /^Mark done/ }).map((b) => b.textContent)).toEqual(
+      ["Mark done, #05-123", "Mark done, #06-201"],
+    );
   });
 
   it("marks every outstanding note done with one tap's worth of requests, then re-reads", async () => {
@@ -204,7 +206,7 @@ describe("RevisitList", () => {
       Promise.resolve(init?.method === "PATCH" ? {} : list([owed])),
     );
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
-    const button = await screen.findByRole("button", { name: "Mark done" });
+    const button = await screen.findByRole("button", { name: "Mark done, #05-123" });
     act(() => {
       fireEvent.click(button);
       fireEvent.click(button);
@@ -230,17 +232,39 @@ describe("RevisitList", () => {
         : Promise.resolve(list([entry("#05-123")])),
     );
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Mark done, #05-123" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You can change this only during a follow-up session that includes its block.",
     );
+  });
+
+  it("re-reads the list when one of a household's notes closes and the next is refused", async () => {
+    // An admin removed the second note meanwhile: the first one is done all the same.
+    const owed = entry("#05-123", { notes: [note("a"), note("b")] });
+    const closed = entry("#05-123", { notes: [note("a", { doneAt: STAMP })] });
+    let reads = 0;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") {
+        return path === "/follow-ups/a"
+          ? Promise.resolve({})
+          : Promise.reject(new ApiRequestError(404, undefined));
+      }
+      reads += 1;
+      return Promise.resolve(list([reads === 1 ? owed : closed]));
+    });
+    render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Mark done, #05-123" }));
+
+    expect(await screen.findByText("1 of 1 visited or done")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mark done/ })).toBeNull();
+    expect(reads).toBe(2);
   });
 
   it("cannot mark anything done offline", async () => {
     useOnline.mockReturnValue(false);
     apiFetch.mockResolvedValue(list([entry("#05-123")]));
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
-    expect(await screen.findByRole("button", { name: "Mark done" })).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Mark done, #05-123" })).toBeDisabled();
   });
 
   it("tells a member who adds households, and how to check again", async () => {

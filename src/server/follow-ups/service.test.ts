@@ -3,16 +3,22 @@ import type { Database } from "@/db/client";
 import { ConflictError } from "@/server/http/errors";
 import { createFollowUp, ONE_OPEN_SUGGESTION } from "@/server/follow-ups/service";
 
-/* A database whose household lookup succeeds, which finds no open note, and
-   whose insert fails with `failure`. */
+/* A database whose household lock finds the household, which finds no open
+   note, and whose insert fails with `failure`. */
 function failingInsert(failure: Error): Database {
-  const answers: { id: string }[][] = [[{ id: "h1" }]];
-  return {
+  const fake = {
+    transaction: (run: (tx: unknown) => Promise<unknown>) => run(fake),
     select: () => ({
-      from: () => ({ where: () => ({ limit: () => Promise.resolve(answers.shift() ?? []) }) }),
+      from: () => ({
+        where: () => ({
+          for: () => Promise.resolve([{ id: "h1" }]),
+          limit: () => Promise.resolve([]),
+        }),
+      }),
     }),
     insert: () => ({ values: () => ({ returning: () => Promise.reject(failure) }) }),
-  } as unknown as Database;
+  };
+  return fake as unknown as Database;
 }
 
 describe("createFollowUp", () => {

@@ -99,6 +99,31 @@ describe("SessionRevisits", () => {
     expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/revisits");
   });
 
+  it("says an ended session's list is today's, not a record of that session", async () => {
+    serve([entry("#05-123")]);
+    render(
+      <SessionRevisits
+        sessionId="s1"
+        ended
+        attachedIds={["b1"]}
+        tick={0}
+        onAttached={vi.fn(() => Promise.resolve())}
+      />,
+    );
+    expect(
+      await screen.findByText(
+        "This session has ended. This is the follow-up list as it stands today, which members would see if it were reopened.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("says nothing of the sort while the session can still run", async () => {
+    serve([entry("#05-123")]);
+    mount();
+    await screen.findByRole("heading", { name: "Households to revisit (1)" });
+    expect(screen.queryByText(/This session has ended/)).toBeNull();
+  });
+
   it("says when its blocks hold nobody on the list", async () => {
     serve([]);
     mount();

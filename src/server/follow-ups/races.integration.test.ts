@@ -5,13 +5,14 @@ import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
-import { deleteFollowUp, updateFollowUp } from "@/server/follow-ups/service";
+import { createFollowUp, deleteFollowUp, updateFollowUp } from "@/server/follow-ups/service";
 
 /*
  * A member's right to change a note depends on its state, and an admin can
- * change that state in between. These hold the note's row from a second
- * connection so the member's request is provably parked while an admin
- * lists the suggestion, then released: no sleeps deciding the outcome.
+ * change that state in between; whether a new note may be written depends on
+ * the notes already at the door. These hold a row from a second connection
+ * so a request is provably parked while the other side acts, then released:
+ * no sleeps deciding the outcome.
  */
 
 const pool = createTestPool();
@@ -22,21 +23,27 @@ const ADMIN = "7a7a7a7a-0000-4000-8000-000000000001";
 const ALICE = "7a7a7a7a-0000-4000-8000-000000000002";
 const BLOCK = "7a7a7a7a-0000-4000-8001-000000000001";
 const HOUSEHOLD = "7a7a7a7a-0000-4000-8003-000000000001";
+const QUIET = "7a7a7a7a-0000-4000-8003-000000000002";
 const NOTE = "7a7a7a7a-0000-4000-8004-000000000001";
 const alice = { id: ALICE, role: "member" as const };
+const admin = { id: ADMIN, role: "admin" as const };
 
 type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
 
 const POLL_BUDGET_MS = 4_000;
 vi.setConfig({ testTimeout: 15_000 });
 
+type Held = { table: "follow_ups" | "households"; id: string };
+const theNote: Held = { table: "follow_ups", id: NOTE };
+
 /*
- * Locks the note on a second connection, starts the member's request, waits
- * until it is blocked on the note, lets `whileHeld` change things, then
- * commits. The request is awaited before returning whatever fails, so it can
- * never write into the next test.
+ * Locks the row on a second connection, starts the request, waits until it
+ * is blocked on that table, lets `whileHeld` change things, then commits. A
+ * request that never waits fails the test. It is awaited before returning
+ * whatever fails, so it can never write into the next test.
  */
 async function parked(
+  held: Held,
   start: () => Promise<unknown>,
   whileHeld: (query: Query) => Promise<void>,
 ): Promise<unknown> {
@@ -45,7 +52,7 @@ async function parked(
   let pending: Promise<unknown> | undefined;
   try {
     await client.query("BEGIN");
-    await client.query("SELECT 1 FROM follow_ups WHERE id = $1 FOR UPDATE", [NOTE]);
+    await client.query(`SELECT 1 FROM ${held.table} WHERE id = $1 FOR UPDATE`, [held.id]);
     pending = start().then(
       (value) => ({ ok: value }),
       (error: unknown) => ({ error }),
@@ -55,11 +62,12 @@ async function parked(
       const { rows } = await controller.query(
         `SELECT 1 FROM pg_stat_activity
          WHERE wait_event_type = 'Lock' AND datname = current_database()
-           AND pid <> pg_backend_pid() AND query ILIKE '%follow_ups%'`,
+           AND pid <> pg_backend_pid() AND query ILIKE $1`,
+        [`%${held.table}%`],
       );
       if (rows.length > 0) break;
       if (Date.now() - startedAt > POLL_BUDGET_MS) {
-        throw new Error("the request never reached the note");
+        throw new Error(`the request never waited on ${held.table}`);
       }
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
@@ -81,6 +89,28 @@ const promote = (q: Query) =>
     NOTE,
   ]).then(() => undefined);
 
+/* What an admin's create or a listing writes, done by the other side. */
+const suggest = (q: Query, household: string) =>
+  q(
+    `INSERT INTO follow_ups (household_id, note, author_id, status) VALUES ($1,'Worth a try',$2,'suggested')`,
+    [household, ALICE],
+  ).then(() => undefined);
+const list = (q: Query, household: string) =>
+  q(
+    `INSERT INTO follow_ups (household_id, note, author_id, status, listed_at, listed_by)
+     VALUES ($1,'Bring the flyer',$2,'listed',now(),$2)`,
+    [household, ADMIN],
+  ).then(() => undefined);
+
+const openNotes = async (household: string) =>
+  (
+    await pool.query<{ status: string }>(
+      `SELECT status FROM follow_ups
+       WHERE household_id = $1 AND deleted_at IS NULL AND done_at IS NULL ORDER BY status`,
+      [household],
+    )
+  ).rows.map((row) => row.status);
+
 const stored = async () =>
   (
     await pool.query<{ status: string; note: string; deleted_at: Date | null }>(
@@ -97,10 +127,10 @@ beforeEach(async () => {
     [ADMIN, ALICE],
   );
   await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Test Ave')`, [BLOCK]);
-  await pool.query(`INSERT INTO households (id, block_id, unit_number) VALUES ($1,$2,'#05-123')`, [
-    HOUSEHOLD,
-    BLOCK,
-  ]);
+  await pool.query(
+    `INSERT INTO households (id, block_id, unit_number) VALUES ($1,$3,'#05-123'), ($2,$3,'#05-125')`,
+    [HOUSEHOLD, QUIET, BLOCK],
+  );
   await pool.query(
     `INSERT INTO follow_ups (id, household_id, note, author_id, status)
      VALUES ($1,$2,'Asked us back',$3,'suggested')`,
@@ -115,7 +145,7 @@ afterAll(async () => {
 
 describe("a member's change that raced an admin listing the suggestion", () => {
   it("does not withdraw a note that was listed while it waited", async () => {
-    const outcome = await parked(() => deleteFollowUp(db, NOTE, alice), promote);
+    const outcome = await parked(theNote, () => deleteFollowUp(db, NOTE, alice), promote);
 
     expect(outcome).toMatchObject({ error: { status: 403 } });
     expect(await stored()).toMatchObject({ status: "listed", deleted_at: null });
@@ -123,6 +153,7 @@ describe("a member's change that raced an admin listing the suggestion", () => {
 
   it("does not reword a note listed while it waited, outside a follow-up session", async () => {
     const outcome = await parked(
+      theNote,
       () => updateFollowUp(db, NOTE, { note: "Changed my mind" }, alice),
       promote,
     );
@@ -133,11 +164,61 @@ describe("a member's change that raced an admin listing the suggestion", () => {
 
   it("still withdraws a suggestion nobody acted on", async () => {
     const outcome = await parked(
+      theNote,
       () => deleteFollowUp(db, NOTE, alice),
       () => Promise.resolve(),
     );
 
     expect(outcome).toEqual({ ok: undefined });
     expect((await stored())?.deleted_at).toBeInstanceOf(Date);
+  });
+});
+
+describe("two notes opened at one door at once", () => {
+  const quiet: Held = { table: "households", id: QUIET };
+
+  it("refuses an admin's note while a member's suggestion lands first", async () => {
+    const outcome = await parked(
+      quiet,
+      () => createFollowUp(db, { householdId: QUIET, note: "Bring the flyer" }, admin),
+      (q) => suggest(q, QUIET),
+    );
+
+    expect(outcome).toMatchObject({ error: { code: "follow_up_exists", status: 409 } });
+    expect(await openNotes(QUIET)).toEqual(["suggested"]);
+  });
+
+  it("refuses a member's suggestion while an admin's note lands first", async () => {
+    const outcome = await parked(
+      quiet,
+      () => createFollowUp(db, { householdId: QUIET, note: "Worth a try" }, alice),
+      (q) => list(q, QUIET),
+    );
+
+    expect(outcome).toMatchObject({ error: { code: "follow_up_exists", status: 409 } });
+    expect(await openNotes(QUIET)).toEqual(["listed"]);
+  });
+
+  it("refuses a member's suggestion at a door whose suggestion is being listed", async () => {
+    // The other side lists Alice's suggestion as listing does: household first.
+    const outcome = await parked(
+      { table: "households", id: HOUSEHOLD },
+      () => createFollowUp(db, { householdId: HOUSEHOLD, note: "Again" }, alice),
+      promote,
+    );
+
+    expect(outcome).toMatchObject({ error: { code: "follow_up_exists", status: 409 } });
+    expect(await openNotes(HOUSEHOLD)).toEqual(["listed"]);
+  });
+
+  it("lists a suggestion only once the door is free", async () => {
+    const outcome = await parked(
+      { table: "households", id: HOUSEHOLD },
+      () => updateFollowUp(db, NOTE, { status: "listed" }, admin),
+      () => Promise.resolve(),
+    );
+
+    expect(outcome).toMatchObject({ ok: { status: "listed" } });
+    expect(await openNotes(HOUSEHOLD)).toEqual(["listed"]);
   });
 });

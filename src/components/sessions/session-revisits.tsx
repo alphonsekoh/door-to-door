@@ -26,11 +26,13 @@ const STATE_LABEL = { to_visit: null, visited: "Visited", done: "Done" } as cons
  */
 export function SessionRevisits({
   sessionId,
+  ended = false,
   attachedIds,
   tick,
   onAttached,
 }: {
   sessionId: string;
+  ended?: boolean;
   attachedIds: readonly string[];
   /* Bumped by the detail screen's poll, so the panel re-reads with it. */
   tick: number;
@@ -94,6 +96,15 @@ export function SessionRevisits({
         Households to revisit
         {state.status === "ready" ? ` (${String(state.entries.length)})` : ""}
       </h2>
+      {/* The list is the live one, not a record of the session: what is owed
+          today, and what was done since it started. Reopened, this is what
+          members would get. */}
+      {ended ? (
+        <p className="text-caption text-foreground-muted">
+          This session has ended. This is the follow-up list as it stands today, which members would
+          see if it were reopened.
+        </p>
+      ) : null}
 
       {state.status === "loading" ? (
         <p className="text-body text-foreground-muted">Loading the list…</p>

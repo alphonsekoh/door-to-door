@@ -127,8 +127,10 @@ type Props = {
   followUp?: FollowUpRule | null;
   /* The running session, for what the history panel lets the member change. */
   active?: ActiveSession | null;
-  /* A unit chosen from the follow-up list, already filled in. */
   initialUnit?: string;
+  /* False while the session's kind is unknown: Save then promises, and
+     guesses, no next unit. A follow-up session never guesses one. */
+  guessNext?: boolean;
   /* The running session, so a queued record names the one it was saved in. */
   sessionId: string | null;
   /* Asks the server again which session is running, for a save made before
@@ -163,6 +165,7 @@ export function RecordVisitForm({
   followUp = null,
   active = null,
   initialUnit = "",
+  guessNext = true,
   sessionId,
   loadSession,
   onRecorded,
@@ -280,14 +283,24 @@ export function RecordVisitForm({
     });
   }
 
+  const next = followUp === null && guessNext;
   const gate = followUp === null ? "ok" : unitGate(unitNumber, blockId, followUp.revisits, isAdmin);
   const chips = followUp?.revisits == null ? [] : listedUnitsIn(followUp.revisits, blockId);
   const typed = normaliseUnitNumber(unitNumber);
-  /* Offered beside the refusal only when the server would take it. */
-  const canSuggestHere =
-    gate === "unlisted" &&
-    history !== null &&
-    householdAction(history.followUps, { userId, isAdmin }).kind === "suggest";
+  /* The typed unit's own history: one still showing for the unit typed
+     before must not decide what this one offers. */
+  const here = history !== null && history.household.id === matchId ? history : null;
+  /* What the refusal says can be done: a suggestion only where the server
+     would take one, and never "ask an admin" beside it. */
+  const unlistedAction =
+    gate !== "unlisted"
+      ? null
+      : here === null
+        ? matchId === null
+          ? "ask"
+          : null
+        : householdAction(here.followUps, { userId, isAdmin }).kind;
+  const canSuggestHere = unlistedAction === "suggest";
   const blocked = refused
     ? (blockedMessage(errors) ?? (offList && gate !== "ok" ? OFF_THE_LIST : null))
     : null;
@@ -353,7 +366,7 @@ export function RecordVisitForm({
     );
     /* In a follow-up session the next door is the next household on the
        list, not the next number along, so nothing is guessed. */
-    const nextUnit = followUp === null ? nextUnitNumber(unitNumber) : null;
+    const nextUnit = next ? nextUnitNumber(unitNumber) : null;
     const fields: VisitFields = {
       blockId,
       unitNumber: unit,
@@ -545,7 +558,16 @@ export function RecordVisitForm({
             <div id="unit-gate" className="mt-2 notice-info">
               <p className="break-words">
                 <UnitNumber value={typed} /> is not on the follow-up list, so it can&apos;t be
-                recorded in this session. Ask an admin to add it.
+                recorded in this session.
+                {suggestSent
+                  ? null
+                  : canSuggestHere
+                    ? " Should it be? Suggest it for an admin to review."
+                    : unlistedAction === "waiting"
+                      ? " A suggestion to add it is waiting for an admin to review."
+                      : unlistedAction === null
+                        ? null
+                        : " Ask an admin to add it."}
               </p>
               {suggestSent ? (
                 <p role="status" className="mt-1 font-medium">
@@ -644,13 +666,13 @@ export function RecordVisitForm({
       </SheetPresence>
 
       <SheetPresence>
-        {suggesting && history !== null ? (
+        {suggesting && here !== null ? (
           <FollowUpSheet
             mode={{
               kind: "create",
-              householdId: history.household.id,
+              householdId: here.household.id,
               visitId: null,
-              unitNumber: history.household.unitNumber,
+              unitNumber: here.household.unitNumber,
             }}
             onClose={() => {
               setSuggesting(false);
@@ -778,9 +800,8 @@ export function RecordVisitForm({
             {failure ?? blocked}
           </p>
         )}
-        {/* Named, since a DockHost moves the bar out of the form. In a
-            follow-up session no next unit is guessed, so it is only Save. */}
-        <SaveAndNext form={formId} saving={saving} next={followUp === null} />
+        {/* Named, since a DockHost moves the bar out of the form. */}
+        <SaveAndNext form={formId} saving={saving} next={next} />
       </DockedActions>
     </form>
   );

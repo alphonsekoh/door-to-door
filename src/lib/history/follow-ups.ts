@@ -76,6 +76,12 @@ export function buildTimeline(
   return entries.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }
 
+/* "you" to the person it names, as the header beside it says. */
+function who(user: { id: string; name: string | null } | null, viewerId?: string): string {
+  if (user !== null && viewerId !== undefined && user.id === viewerId) return "you";
+  return displayName(user?.name ?? null);
+}
+
 /*
  * Who put the note where it is. A member's words an admin listed say both,
  * so the list shows whose idea it was and who decided; a note listed before
@@ -83,8 +89,9 @@ export function buildTimeline(
  */
 export function addedByline(
   note: Pick<FollowUp, "author" | "createdAt" | "status" | "listedBy">,
+  viewerId?: string,
 ): string {
-  const by = `${displayName(note.author.name)} · ${formatDay(note.createdAt)}`;
+  const by = `${who(note.author, viewerId)} · ${formatDay(note.createdAt)}`;
   if (note.status === "suggested") return `Suggested by ${by} · Waiting for review`;
   return note.listedBy !== null && note.listedBy.id !== note.author.id
     ? `Suggested by ${by}`
@@ -93,10 +100,11 @@ export function addedByline(
 
 export function listedByline(
   note: Pick<FollowUp, "author" | "status" | "listedAt" | "listedBy">,
+  viewerId?: string,
 ): string | null {
   if (note.status !== "listed" || note.listedBy === null || note.listedAt === null) return null;
   if (note.listedBy.id === note.author.id) return null;
-  return `Added to the list by ${displayName(note.listedBy.name)} · ${formatDay(note.listedAt)}`;
+  return `Added to the list by ${who(note.listedBy, viewerId)} · ${formatDay(note.listedAt)}`;
 }
 
 /* How a removed note left, for the audit view and the author's notice. */
@@ -109,9 +117,12 @@ export function removedByline(
   return note.deletedBy?.id === note.author.id ? `Withdrawn by ${by}` : `Dismissed by ${by}`;
 }
 
-export function doneByline(note: Pick<FollowUp, "doneAt" | "doneBy">): string | null {
+export function doneByline(
+  note: Pick<FollowUp, "doneAt" | "doneBy">,
+  viewerId?: string,
+): string | null {
   if (note.doneAt === null) return null;
-  return `Done by ${displayName(note.doneBy?.name ?? null)} · ${formatDay(note.doneAt)}`;
+  return `Done by ${who(note.doneBy, viewerId)} · ${formatDay(note.doneAt)}`;
 }
 
 /* What the author of a declined suggestion is told. */

@@ -33,9 +33,9 @@ export function sinceLabel(days: number): string {
   return `${String(Math.floor(days / 30))} months ago`;
 }
 
-/* Where an admin's note starts: why the door is on this list at all. The
-   list holds only medium and high interest. */
-export function startingNote(row: HouseholdAttention): string {
+/* Why the door is on this list at all, for the admin writing what the next
+   visit should do. The list holds only medium and high interest. */
+export function whyHere(row: HouseholdAttention): string {
   const level = row.latestVisit.interestLevel === "medium" ? "medium" : "high";
   return `Showed ${level} interest on ${formatDay(row.latestVisit.createdAt)}.`;
 }
@@ -46,7 +46,7 @@ function addMode(row: HouseholdAttention): FollowUpSheetMode {
     householdId: row.household.id,
     visitId: row.latestVisit.id,
     unitNumber: row.household.unitNumber,
-    initialNote: startingNote(row),
+    context: whyHere(row),
   };
 }
 

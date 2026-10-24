@@ -129,7 +129,8 @@ test("Save is on the first paint, above the nav, before any script has run", asy
       });
     });
     await page.goto(`/blocks/${SEED_BLOCK}`);
-    const save = page.getByRole("button", { name: "Save and next" });
+    // Plain Save: the server's HTML cannot know whether a next unit follows.
+    const save = page.getByRole("button", { name: "Save", exact: true });
     await expect(save).toBeVisible();
     const bar = page.locator('[data-dock="nav"]');
     const [saveBox, navBox, barBox, unitBox] = await Promise.all([
@@ -617,7 +618,8 @@ test.describe("a save that cannot be queued", () => {
     await memberPage.evaluate(() => {
       window.scrollTo(0, document.documentElement.scrollHeight);
     });
-    const save = memberPage.getByRole("button", { name: "Save and next" });
+    /* Plain Save: with the session unknown, no next unit is promised. */
+    const save = memberPage.getByRole("button", { name: "Save", exact: true });
     await save.click();
 
     /* Not the route announcer, which is also an alert. */
@@ -638,6 +640,8 @@ test.describe("a save that cannot be queued", () => {
     await save.click();
     await expect(alert).toContainText("No session is running");
     await expect(alert).toBeInViewport({ ratio: 1 });
+    // Known now to be none, so the label says what a save would do again.
+    await expect(memberPage.getByRole("button", { name: "Save and next" })).toBeInViewport();
   });
 });
 

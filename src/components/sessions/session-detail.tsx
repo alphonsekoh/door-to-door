@@ -245,6 +245,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       {session.kind === "follow_up" ? (
         <SessionRevisits
           sessionId={session.id}
+          ended={session.status === "ended"}
           attachedIds={blocks.map((entry) => entry.block.id)}
           tick={tick}
           onAttached={load}

@@ -4,7 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { OfflineShell, PROBE_INTERVAL_MS } from "@/components/shell/offline-shell";
 import { SyncProvider } from "@/components/sync/sync-provider";
-import type { ActiveSession, HouseholdSummary, VisitSyncItem } from "@/generated/types.gen";
+import type {
+  ActiveSession,
+  HouseholdSummary,
+  RevisitEntry,
+  VisitSyncItem,
+} from "@/generated/types.gen";
 import {
   LOCAL_COPY_TTL_MS,
   type LocalCopy,
@@ -34,6 +39,15 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 vi.mock("@/lib/api-client", async (importOriginal) => ({
   ...(await importOriginal<typeof ApiClientModule>()),
   apiFetch,
+}));
+
+/* Every test hands the shell its copy; what it writes back is watched. */
+const { updateLocalCopy } = vi.hoisted(() => ({
+  updateLocalCopy: vi.fn((_: (copy: unknown) => unknown) => Promise.resolve()),
+}));
+vi.mock("@/lib/offline/local-copy-store", () => ({
+  loadLocalCopy: () => Promise.resolve(null),
+  updateLocalCopy,
 }));
 
 /* Real time: the queue purges records sent over 24 h ago by its own clock. */
@@ -99,6 +113,7 @@ type Setup = {
   probe?: () => Promise<SignedIn>;
   queue?: SyncQueue;
   send?: (items: VisitSyncItem[]) => Promise<SendOutcome>;
+  readList?: (outingId: string) => Promise<RevisitEntry[] | null>;
 };
 
 function mount({
@@ -107,20 +122,28 @@ function mount({
   probe = () => Promise.resolve({ kind: "unknown" }),
   queue = createMemoryQueue(),
   send = () => Promise.resolve({ kind: "network" }),
+  readList = () => Promise.resolve(null),
 }: Setup = {}) {
   const openQueue = vi.fn(() => Promise.resolve(queue));
   const navigate = vi.fn();
   const probeSpy = vi.fn(probe);
+  const readSpy = vi.fn(readList);
   const view = render(
     <SyncProvider
       openQueue={openQueue}
       send={send}
       signedIn={() => Promise.resolve({ kind: "member", id: ALICE.id })}
     >
-      <OfflineShell load={load} probe={probeSpy} navigate={navigate} now={() => NOW} />
+      <OfflineShell
+        load={load}
+        probe={probeSpy}
+        navigate={navigate}
+        now={() => NOW}
+        readList={readSpy}
+      />
     </SyncProvider>,
   );
-  return { view, openQueue, navigate, queue, probe: probeSpy };
+  return { view, openQueue, navigate, queue, probe: probeSpy, readList: readSpy };
 }
 
 const user = () => userEvent.setup();
@@ -612,5 +635,125 @@ describe("OfflineShell, in a follow-up session", () => {
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
       /^Could not check the follow-up list\./,
     );
+  });
+
+  it("says why only some units can be recorded, before any is typed", async () => {
+    mount({ copy: followUpCopy(true) });
+    await openBlock("123");
+    expect(screen.getByText(/Only units on the list can be recorded\.$/)).toBeInTheDocument();
+  });
+
+  const chips = () => screen.queryByRole("list", { name: "On the list in this block" });
+  const listed = () => followUpCopy(true).revisits ?? [];
+
+  it("keeps the saved list while the server cannot be read", async () => {
+    const { readList } = mount({ copy: followUpCopy(true) });
+    await openBlock("123");
+    await waitFor(() => {
+      expect(readList).toHaveBeenCalledWith(OUTING);
+    });
+    expect(chips()).toBeInTheDocument();
+    expect(updateLocalCopy).not.toHaveBeenCalled();
+  });
+
+  it("reads the list again once the server answers, and stops offering a unit taken off it", async () => {
+    mount({ copy: followUpCopy(true), readList: () => Promise.resolve([]) });
+    await openBlock("123");
+    await waitFor(() => {
+      expect(chips()).not.toBeInTheDocument();
+    });
+    await user().type(screen.getByLabelText("Unit number"), "#05-01");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /^#05-01 is not on the follow-up list/,
+    );
+    // And the copy a later reload opens says so too.
+    const change = updateLocalCopy.mock.calls[0]?.[0];
+    expect(change?.(followUpCopy(true))).toEqual({ ...followUpCopy(true), revisits: [] });
+  });
+
+  it("reads it again when the server holds a record as off the list", async () => {
+    let answer: RevisitEntry[] | null = null;
+    const { readList } = mount({
+      copy: followUpCopy(true),
+      readList: () => Promise.resolve(answer),
+      send: (items) => {
+        // Signal is back, and an admin took #05-01 off the list meanwhile.
+        answer = [];
+        return Promise.resolve({
+          kind: "ok",
+          results: items.map((item) => ({
+            id: item.id,
+            status: "rejected" as const,
+            error: { error: { code: "not_on_follow_up_list" as const, message: "Not listed." } },
+          })),
+        });
+      },
+    });
+    await openBlock("123");
+    const u = user();
+    await u.click(within(chips() ?? document.body).getByRole("button", { name: "#05-01" }));
+    await u.click(screen.getByRole("radio", { name: "High" }));
+    await u.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(chips()).not.toBeInTheDocument();
+    });
+    expect(readList.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("reads it again when the member comes back to the app", async () => {
+    const { readList } = mount({ copy: followUpCopy(true) });
+    await openBlock("123");
+    await waitFor(() => {
+      expect(readList).toHaveBeenCalled();
+    });
+    const before = readList.mock.calls.length;
+    readList.mockResolvedValueOnce([]);
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => {
+      expect(chips()).not.toBeInTheDocument();
+    });
+    expect(readList.mock.calls.length).toBe(before + 1);
+  });
+
+  it("lets only the newest read land", async () => {
+    let first: (list: RevisitEntry[] | null) => void = () => undefined;
+    let calls = 0;
+    mount({
+      copy: followUpCopy(true),
+      readList: () => {
+        calls += 1;
+        return calls === 1
+          ? new Promise((resolve) => {
+              first = resolve;
+            })
+          : Promise.resolve(listed());
+      },
+    });
+    await openBlock("123");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => {
+      expect(calls).toBe(2);
+    });
+    // The older read, from before the newest, says the list is empty.
+    await act(async () => {
+      first([]);
+      await Promise.resolve();
+    });
+    expect(chips()).toBeInTheDocument();
+  });
+
+  it("asks for no list in a door-to-door session", async () => {
+    const { readList } = mount();
+    await openBlock("123");
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+    expect(readList).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Only units on the list/)).toBeNull();
   });
 });

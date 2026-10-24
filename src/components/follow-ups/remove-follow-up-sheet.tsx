@@ -27,11 +27,13 @@ function removalPath(note: FollowUp, reason: string): string {
 export function RemoveFollowUpSheet({
   note,
   isAdmin,
+  viewerId,
   onClose,
   onRemoved,
 }: {
   note: FollowUp;
   isAdmin: boolean;
+  viewerId?: string | undefined;
   onClose: () => void;
   onRemoved: () => void;
 }) {
@@ -74,6 +76,12 @@ export function RemoveFollowUpSheet({
 
   const suggestion = note.status === "suggested";
   const author = firstName(note.author.name);
+  /* The author can read the reason under their removed notes, so an admin
+     writing it is told who will. */
+  const readers =
+    suggestion || note.author.id !== viewerId
+      ? `${author}${suggestion ? "" : " and admins"} will see this.`
+      : "Admins see this under Dismissed.";
   const title = suggestion ? "Dismiss this suggestion?" : "Remove from the follow-up list?";
   const tooLong = reason.trim().length > MAX_REASON_LENGTH;
 
@@ -116,11 +124,7 @@ export function RemoveFollowUpSheet({
           id="remove-reason-note"
           className={tooLong ? "mt-1 field-error" : "mt-1 text-caption text-foreground-muted"}
         >
-          {tooLong
-            ? `Keep the reason to ${String(MAX_REASON_LENGTH)} characters.`
-            : suggestion
-              ? `${author} will see this.`
-              : "Admins see this under Dismissed."}
+          {tooLong ? `Keep the reason to ${String(MAX_REASON_LENGTH)} characters.` : readers}
         </p>
       </div>
 

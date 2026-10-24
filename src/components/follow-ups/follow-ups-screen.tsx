@@ -115,15 +115,8 @@ export function FollowUpsScreen() {
 
   return (
     <div className="space-y-4">
-      <HintCard id="follow-ups" title="What are follow-ups?">
-        Households worth a return visit. Admins choose which go on the follow-up list. In a
-        follow-up session you visit them and mark each one done. Think a household should be
-        revisited? Open it and tap Suggest a return visit.
-      </HintCard>
-
-      {userId === undefined ? null : <DeclinedNotice userId={userId} />}
-
-      {/* Three short labels: they wrap onto two rows at large text rather
+      {/* First, so they are in reach on arrival whatever is said below them.
+          Three short labels: they wrap onto two rows at large text rather
           than cut a label (D-111-25). */}
       <div role="group" aria-label="Which follow-ups" className="flex flex-wrap gap-2">
         {VIEWS.map((option) => {
@@ -149,6 +142,8 @@ export function FollowUpsScreen() {
           );
         })}
       </div>
+
+      {userId === undefined ? null : <DeclinedNotice userId={userId} />}
 
       {state.status === "loading" ? (
         <p className="text-body text-foreground-muted">Loading…</p>
@@ -203,6 +198,14 @@ export function FollowUpsScreen() {
           ) : null}
         </>
       )}
+
+      {/* Under the list, as on the session screen: above it, with a declined
+          suggestion, it pushed the tabs under the nav on a first visit. */}
+      <HintCard id="follow-ups" title="What are follow-ups?">
+        Admins choose which households go on the follow-up list. In a follow-up session you visit
+        them and mark each one done. Think another household should be revisited? Tap Suggest a
+        return visit on its page, or after you record a visit there.
+      </HintCard>
 
       <SheetPresence>
         {editing === null ? null : (

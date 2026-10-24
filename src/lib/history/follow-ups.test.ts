@@ -207,6 +207,22 @@ describe("bylines", () => {
     expect(listedByline(note({ listedBy: admin }))).toBeNull();
   });
 
+  it("calls the viewer you, wherever they are named, and nobody else", () => {
+    const promoted = note({ status: "suggested", createdAt });
+    expect(addedByline(promoted, "u1")).toBe("Suggested by you · 3 Mar 2026 · Waiting for review");
+    expect(addedByline(promoted, "u2")).toMatch(/^Suggested by Alice Tan · /);
+
+    const listed = note({ createdAt, listedAt, listedBy: admin });
+    expect(listedByline(listed, "a1")).toBe("Added to the list by you · 4 Mar 2026");
+
+    const done = note({
+      doneAt: local(2026, 6, 9, 12).toISOString(),
+      doneBy: { id: "u2", name: "Ben Lim", image: null },
+    });
+    expect(doneByline(done, "u2")).toBe("Done by you · 9 Jun 2026");
+    expect(doneByline({ ...done, doneBy: null }, "u2")).toBe("Done by Someone · 9 Jun 2026");
+  });
+
   it("tells the author who declined their suggestion", () => {
     const deletedAt = local(2026, 3, 5, 12).toISOString();
     expect(declinedByline(note())).toBeNull();

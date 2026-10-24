@@ -26,13 +26,10 @@ export function onActiveList(note: Listable, active: ActiveSession | null): bool
 }
 
 export type FollowUpRights = {
-  /* Mark done, or reopen. */
   canResolve: boolean;
-  /* Change the words or the due date. */
   canEditText: boolean;
   /* Dismiss, remove from the list, or withdraw one's own suggestion. */
   canRemove: boolean;
-  /* Add a suggestion to the follow-up list. */
   canPromote: boolean;
   /* A member looking at a listed note they could resolve, but only during
      the follow-up session whose list it is on. */

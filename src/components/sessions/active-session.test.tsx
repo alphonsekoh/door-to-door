@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveSessionScreen } from "@/components/sessions/active-session";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { knownSessionKind } from "@/lib/session/known-kind";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -265,6 +266,30 @@ describe("the offline copy", () => {
   });
 });
 
+describe("what the next screen is told", () => {
+  it("is the kind of session running, so a block opens knowing it", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await waitFor(() => {
+      expect(knownSessionKind.getSnapshot()).toBe("follow_up");
+    });
+  });
+
+  it("is that none is running on a 404, and nothing after a failure", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
+    const view = render(<ActiveSessionScreen />);
+    await screen.findByText("No session is running.");
+    expect(knownSessionKind.getSnapshot()).toBeNull();
+    view.unmount();
+
+    knownSessionKind.forget();
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<ActiveSessionScreen />);
+    await screen.findByRole("alert");
+    expect(knownSessionKind.getSnapshot()).toBeUndefined();
+  });
+});
+
 describe("a follow-up session", () => {
   it("says what kind of session it is and what it allows", async () => {
     apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
@@ -346,6 +371,9 @@ describe("a follow-up session", () => {
     render(<ActiveSessionScreen />);
     const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
     expect(hint).toHaveTextContent("When the follow-up is finished, tap Mark done.");
+    // The same way to ask for a household as everywhere else.
+    expect(hint).toHaveTextContent("Type its unit in the block and tap Suggest a return visit");
+    expect(hint).not.toHaveTextContent(/ask an admin/i);
     fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("region", { name: "How a follow-up session works" })).toBeNull();
   });

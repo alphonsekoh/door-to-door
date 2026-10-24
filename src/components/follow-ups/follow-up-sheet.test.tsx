@@ -217,24 +217,17 @@ describe("an admin adding to the follow-up list", () => {
     });
   });
 
-  it("starts from words it was given, and asks only once they change", () => {
+  it("says why the household is here above an empty note, not in it", () => {
     asAdmin();
-    const onClose = vi.fn();
     render(
       <FollowUpSheet
-        mode={{ ...create, initialNote: "Showed high interest on 3 Mar 2026." }}
-        onClose={onClose}
+        mode={{ ...create, context: "Showed high interest on 3 Mar 2026." }}
+        onClose={vi.fn()}
         onSaved={vi.fn()}
       />,
     );
-    expect(sheet().getByLabelText(WHAT)).toHaveValue("Showed high interest on 3 Mar 2026.");
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(onClose).toHaveBeenCalledOnce();
-
-    type(WHAT, "Showed high interest on 3 Mar 2026. Bring the booklet.");
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(screen.getByRole("alertdialog", { name: "Discard this note?" })).toBeInTheDocument();
-    expect(onClose).toHaveBeenCalledOnce();
+    expect(sheet().getByText("Showed high interest on 3 Mar 2026.")).toBeVisible();
+    expect(sheet().getByLabelText(WHAT)).toHaveValue("");
   });
 });
 

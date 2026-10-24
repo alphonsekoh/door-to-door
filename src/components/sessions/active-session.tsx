@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { useRole } from "@/lib/hooks/use-role";
+import { knownSessionKind } from "@/lib/session/known-kind";
 
 /* Long enough not to drain a phone, short enough that a block added
  * mid-session appears without anyone being told to refresh. */
@@ -36,10 +37,12 @@ export function ActiveSessionScreen() {
       const data = await apiFetch<ActiveSession>("/sessions/active");
       setState({ status: "ready", data });
       setTick((current) => current + 1);
+      knownSessionKind.note(data.session.kind);
     } catch (error) {
       // No active session is an ordinary state, not a failure.
       if (error instanceof ApiRequestError && error.status === 404) {
         setState({ status: "none" });
+        knownSessionKind.note(null);
       } else {
         setState({
           status: "error",
@@ -171,8 +174,9 @@ function SessionBody({
           {/* The list stands in for the block cards: each group opens its block. */}
           <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
           <HintCard id="follow-up-session" title="How a follow-up session works">
-            Tap a household to record your visit. When the follow-up is finished, tap Mark done. Met
-            someone who should be on the list? Ask an admin.
+            Tap a household to record your visit. When the follow-up is finished, tap Mark done. A
+            door that should be on the list? Type its unit in the block and tap Suggest a return
+            visit; an admin reviews it.
           </HintCard>
           {/* The list shows only blocks with listed households, so an admin
               recording elsewhere, as an admin may, starts from here. */}

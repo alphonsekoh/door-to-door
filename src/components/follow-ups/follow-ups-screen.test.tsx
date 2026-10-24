@@ -146,9 +146,39 @@ describe("FollowUpsScreen", () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
     const hint = await screen.findByRole("region", { name: "What are follow-ups?" });
-    expect(hint).toHaveTextContent("Admins choose which go on the follow-up list.");
+    expect(hint).toHaveTextContent("Admins choose which households go on the follow-up list.");
+    // The one way to ask for a household, the same on every screen.
+    expect(hint).toHaveTextContent("Tap Suggest a return visit on its page");
+    expect(hint).not.toHaveTextContent(/ask an admin/i);
     fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("region", { name: "What are follow-ups?" })).toBeNull();
+  });
+
+  it("puts the views first and the explanation last, so a first visit still shows the list", async () => {
+    apiFetch.mockResolvedValue(page([note("1")]));
+    render(<FollowUpsScreen />);
+    const views = screen.getByRole("group", { name: "Which follow-ups" });
+    const declined = screen.getByText("declined notice for u1");
+    const first = await screen.findByText("Note 1");
+    const hint = screen.getByRole("region", { name: "What are follow-ups?" });
+    const before = (a: Element, b: Element) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(before(views, declined)).toBe(true);
+    expect(before(declined, first)).toBe(true);
+    expect(before(first, hint)).toBe(true);
+  });
+
+  it.each([
+    ["their own", { id: "u1", name: "Alice", image: null }],
+    ["another member's", { id: "u2", name: "Ben", image: null }],
+  ])("never offers a member a way to take %s listed note off the list", async (_, author) => {
+    apiFetch.mockResolvedValue(page([note("1", { author })]));
+    render(<FollowUpsScreen />);
+    // Mark done is there, so the session lets the member act on the note.
+    expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+    for (const name of ["Withdraw", "Remove from list", "Dismiss"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
   });
 
   it("waits for the viewer before asking for Mine", async () => {

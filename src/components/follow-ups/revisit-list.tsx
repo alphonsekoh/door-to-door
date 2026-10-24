@@ -149,7 +149,9 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
   const first = owed[0] ?? entry.notes[0];
   const { household, block } = entry;
 
-  /* Every note that put the household on the list, usually one. */
+  /* Every note that put the household on the list, usually one. The list
+     is read again whatever came of it: with one note closed and the next
+     refused, or a reply lost, only the server knows what is still owed. */
   async function markDone(): Promise<void> {
     if (sending.current) return;
     sending.current = true;
@@ -162,12 +164,12 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
           body: JSON.stringify({ done: true }),
         });
       }
-      onChanged();
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
     } finally {
       sending.current = false;
       setBusy(false);
+      onChanged();
     }
   }
 
@@ -223,7 +225,15 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
             onClick={() => void markDone()}
             className="min-h-11 btn-secondary rounded-lg px-4 text-body font-medium"
           >
-            {busy ? "Saving…" : "Mark done"}
+            {busy ? (
+              "Saving…"
+            ) : (
+              <>
+                Mark done
+                {/* Each row's button names its door to a screen reader. */}
+                <span className="sr-only">, {household.unitNumber}</span>
+              </>
+            )}
           </button>
         </div>
       )}

@@ -12,12 +12,16 @@ import {
   type LocalCopy,
   type UsableCopy,
   offlineRows,
+  replaceRevisits,
   usableCopy,
 } from "@/lib/offline/local-copy";
-import { loadLocalCopy } from "@/lib/offline/local-copy-store";
+import { loadLocalCopy, updateLocalCopy } from "@/lib/offline/local-copy-store";
+import { readRevisits } from "@/lib/offline/read-revisits";
 import { shellState } from "@/lib/offline/shell-state";
 import { type SignedIn, fetchSignedIn } from "@/lib/sync/signed-in";
 import type { OutingAnswer } from "@/lib/sync/outing";
+import type { RevisitEntry } from "@/generated/types.gen";
+import { heldOffListKey } from "@/lib/follow-ups/revisits";
 import { savedOnPhoneText } from "@/lib/sync/sync-ui";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -121,11 +125,13 @@ export function OfflineShell({
   probe = fetchSignedIn,
   navigate = goTo,
   now = Date.now,
+  readList = readRevisits,
 }: {
   load?: () => Promise<LocalCopy | null>;
   probe?: () => Promise<SignedIn>;
   navigate?: (path: string) => void;
   now?: () => number;
+  readList?: (outingId: string) => Promise<RevisitEntry[] | null>;
 }) {
   const sync = useSyncQueue();
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
@@ -274,6 +280,9 @@ export function OfflineShell({
           copy={phase.copy}
           picked={picked}
           records={sync.records}
+          syncedVersion={sync.syncedVersion}
+          reachable={reachable}
+          readList={readList}
           queueOpen={sync.enqueue !== null}
           onPick={setBlockId}
           onDirtyChange={setDirty}
@@ -305,6 +314,9 @@ function Recording({
   copy,
   picked,
   records,
+  syncedVersion,
+  reachable,
+  readList,
   queueOpen,
   onPick,
   onDirtyChange,
@@ -312,21 +324,67 @@ function Recording({
   copy: UsableCopy;
   picked: LocalBlock | undefined;
   records: ReturnType<typeof useSyncQueue>["records"];
+  syncedVersion: number;
+  reachable: boolean;
+  readList: (outingId: string) => Promise<RevisitEntry[] | null>;
   queueOpen: boolean;
   onPick: (id: string) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
   const outingId = copy.outing.id;
+  const followUp = copy.outing.kind === "follow_up";
   /* The copy's outing is the only one this page can know about. */
   const loadSession = useCallback(
     (): Promise<OutingAnswer> => Promise.resolve({ kind: "running", id: outingId }),
     [outingId],
   );
 
+  /*
+   * A follow-up session's list starts as the copy saved it and is read again
+   * once the server can answer, as the block screen does: when signal comes
+   * back, a record gets through, the server holds one as off the list (so a
+   * unit an admin removed stops being offered), or the member comes back to
+   * the app. A failed read keeps the list shown; only the newest answer lands.
+   */
+  const [revisits, setRevisits] = useState(copy.revisits);
+  const generation = useRef(0);
+  const recheck = useCallback(async (): Promise<RevisitEntry[] | null> => {
+    const mine = ++generation.current;
+    const list = await readList(outingId);
+    if (list !== null && mine === generation.current) {
+      setRevisits(list);
+      updateLocalCopy((current) => replaceRevisits(current, outingId, list)).catch(() => undefined);
+    }
+    return list;
+  }, [readList, outingId]);
+
+  /* A record held or sent proves the server answered, sooner than the
+     reconnect row may say so. */
+  const heldOffList = heldOffListKey(records);
+  useEffect(() => {
+    if (!followUp) return;
+    const timer = setTimeout(() => void recheck(), 0);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [followUp, reachable, recheck, syncedVersion, heldOffList]);
+
+  useEffect(() => {
+    if (!followUp) return;
+    const again = () => {
+      if (document.visibilityState === "visible") void recheck();
+    };
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, [followUp, recheck]);
+
   /* A block open is the form alone, under its own title (above); the sync
-     bar counts what is waiting meanwhile. In a follow-up session the list
-     saved with the copy says which units may be recorded; with none saved,
-     the form says it could not check. */
+     bar counts what is waiting meanwhile. With no follow-up list saved or
+     read, the form says it could not check. */
   if (picked !== undefined) {
     return (
       <BlockViews
@@ -339,7 +397,7 @@ function Recording({
         teamIds={NO_TEAM}
         offline
         onDirtyChange={onDirtyChange}
-        followUp={copy.outing.kind === "follow_up" ? { revisits: copy.revisits } : null}
+        followUp={followUp ? { revisits, recheck } : null}
       />
     );
   }

@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
 import { MotionGlobalConfig } from "motion/react";
 import { afterEach } from "vitest";
+import { knownSessionKind } from "@/lib/session/known-kind";
 
 /* Sheets still leave through AnimatePresence, a frame later, but no test
    waits out a spring. Tests about the motion itself set what they need. */
@@ -15,4 +16,7 @@ Element.prototype.scrollIntoView = function scrollIntoView() {
 
 afterEach(() => {
   cleanup();
+  /* What a screen heard of the session lives as long as the page, and each
+     test is a fresh page. */
+  knownSessionKind.forget();
 });

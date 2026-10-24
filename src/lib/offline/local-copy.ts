@@ -27,7 +27,8 @@ export type LocalBlock = { block: Block; households: HouseholdSummary[]; savedAt
 
 /*
  * v2 adds a follow-up session's list, so the shell can tell a member which
- * units they may record. A v1 copy fails to read and is thrown away once.
+ * units they may record. A v1 copy is read as a v2 one with no list, so a
+ * member offline when this ships can still open the session they saved.
  */
 export type LocalCopy = {
   v: 2;
@@ -53,10 +54,27 @@ const zLocalCopy = z.object({
   revisits: z.array(zRevisitEntry).nullable(),
 });
 
+/* As the build before session kinds wrote it. Its outing has a kind only
+   when the server it read was already newer than it. */
+const zLocalCopyV1 = zLocalCopy.omit({ v: true, revisits: true, outing: true }).extend({
+  v: z.literal(1),
+  outing: zOutingSession.partial({ kind: true }).nullable(),
+});
+
+type LocalCopyV1 = Omit<LocalCopy, "v" | "revisits" | "outing"> & {
+  v: 1;
+  outing: (Omit<OutingSession, "kind"> & Partial<Pick<OutingSession, "kind">>) | null;
+};
+
 export function readCopy(raw: unknown): LocalCopy | null {
   /* The value as stored, not zod's copy, whose optional fields do not fit
      the contract's types under exactOptionalPropertyTypes. */
-  return zLocalCopy.safeParse(raw).success ? (raw as LocalCopy) : null;
+  if (zLocalCopy.safeParse(raw).success) return raw as LocalCopy;
+  if (!zLocalCopyV1.safeParse(raw).success) return null;
+  const old = raw as LocalCopyV1;
+  /* Every session before kinds existed was door-to-door. */
+  const outing = old.outing === null ? null : { ...old.outing, kind: old.outing.kind ?? "regular" };
+  return { ...old, v: 2, outing, revisits: null };
 }
 
 /* Another member's copy is never built on: theirs is replaced, not merged. */
@@ -94,6 +112,19 @@ export function noteRevisits(
   now: number,
 ): LocalCopy {
   return { ...noteOuting(copy, member, active, now), revisits };
+}
+
+/*
+ * The list as the offline shell read it again once the server answered. Only
+ * onto the copy it was read for: the shell knows no other outing.
+ */
+export function replaceRevisits(
+  copy: LocalCopy | null,
+  outingId: string,
+  revisits: RevisitEntry[],
+): LocalCopy | null {
+  if (copy?.outing?.id !== outingId) return copy;
+  return { ...copy, revisits };
 }
 
 /*

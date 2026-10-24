@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { BlockScreen } from "@/components/blocks/block-screen";
 import { ApiRequestError } from "@/lib/api-client";
+import { knownSessionKind } from "@/lib/session/known-kind";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
@@ -75,7 +76,7 @@ const list = (units: string[], author: Author = BEN, teamId: string | null = nul
   pagination: { limit: 100, offset: 0, total: units.length, hasMore: false },
 });
 
-const active = { session: { id: "s1", title: "Tonight" }, blocks: [] };
+const active = { session: { id: "s1", title: "Tonight", kind: "regular" }, blocks: [] };
 
 /* Routes by path so the two loads can differ, and so a test that breaks one
    does not silently satisfy the other. */
@@ -168,7 +169,8 @@ describe("BlockScreen", () => {
     serve(list([]));
     const container = document.createElement("div");
     container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-    const first = within(container).getByRole("button", { name: "Save and next" });
+    // The server cannot know the kind of session, so it promises no next unit.
+    const first = within(container).getByRole("button", { name: "Save" });
     // At the end of the screen, where it can rise to the nav at any text
     // size; and, with no script yet to save, a tap must not reload the page.
     expect(container.querySelector("form")).not.toContainElement(first);
@@ -209,7 +211,86 @@ describe("BlockScreen", () => {
     render(<BlockScreen blockId="b1" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
-    expect(screen.getByRole("button", { name: "Save and next" })).toBeInTheDocument();
+    // Nor on the session: unknown, it is a plain Save.
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  describe("Save's promise of a next unit", () => {
+    const followUpSession = { ...active, session: { ...active.session, kind: "follow_up" } };
+
+    it("is not made until the session is known, then kept for door-to-door", async () => {
+      let answer: (value: unknown) => void = () => undefined;
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) {
+          return new Promise((resolve) => {
+            answer = resolve;
+          });
+        }
+        return Promise.resolve(path.startsWith("/households") ? list([]) : { data: [] });
+      });
+      render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (0)" });
+      expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("type", "submit");
+
+      act(() => {
+        answer(active);
+      });
+      expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
+    });
+
+    it("is never made in a follow-up session, from the server's HTML on", async () => {
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) return Promise.resolve(followUpSession);
+        return Promise.resolve(path.startsWith("/households") ? list([]) : { data: [] });
+      });
+      const container = document.createElement("div");
+      container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
+      expect(within(container).getByRole("button", { name: "Save" })).toHaveAttribute(
+        "type",
+        "button",
+      );
+
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/revisits");
+      });
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Save and next" })).toBeNull();
+    });
+
+    it.each([
+      ["a follow-up session", "follow_up", "Save"],
+      ["a door-to-door session", "regular", "Save and next"],
+      ["no session", null, "Save and next"],
+    ] as const)(
+      "is what the screen before it learnt, %s, from the first frame",
+      (_, kind, label) => {
+        knownSessionKind.note(kind);
+        apiFetch.mockReturnValue(new Promise(() => undefined));
+        render(<BlockScreen blockId="b1" />);
+        expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      },
+    );
+
+    it("tells the next screen what it learnt", async () => {
+      serve(list([]), followUpSession);
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(knownSessionKind.getSnapshot()).toBe("follow_up");
+      });
+    });
+
+    it("tells the next screen no session is running", async () => {
+      apiFetch.mockImplementation((path: string) =>
+        path.startsWith("/sessions/active")
+          ? Promise.reject(new ApiRequestError(404, undefined))
+          : Promise.resolve(list([])),
+      );
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(knownSessionKind.getSnapshot()).toBeNull();
+      });
+    });
   });
 
   it("copes with a non-Error failure", async () => {
@@ -438,24 +519,28 @@ describe("BlockScreen", () => {
       expect(screen.getByText("#05-124").closest("li")).toHaveTextContent("Not sent");
     });
 
-    /* Both refuse the save; only one is fixed by finding signal. */
+    /* Both refuse the save; only one is fixed by finding signal. Save makes
+       no promise of a next unit while the session is unknown. */
     it.each([
       [
         "the server says no outing is running",
         () => Promise.reject(new ApiRequestError(404, undefined)),
         "No session is running, so this visit is not saved yet.",
+        "Save and next",
       ],
       [
         "the outing cannot be loaded",
         () => Promise.reject(new TypeError("Failed to fetch")),
         "Could not load the session, so this visit is not saved yet. Check your signal",
+        "Save",
       ],
       [
         "the server fails",
         () => Promise.reject(new ApiRequestError(500, undefined)),
         "Could not load the session, so this visit is not saved yet. Check your signal",
+        "Save",
       ],
-    ])("refuses to queue a save when %s", async (_, outing, message) => {
+    ])("refuses to queue a save when %s", async (_, outing, message, label) => {
       const enqueue = vi.fn();
       useSyncQueue.mockReturnValue({ ...NO_QUEUE, enqueue });
       apiFetch.mockImplementation((path: string) =>
@@ -467,7 +552,7 @@ describe("BlockScreen", () => {
 
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
       await user.click(screen.getByRole("radio", { name: "Low" }));
-      await user.click(screen.getByRole("button", { name: "Save and next" }));
+      await user.click(screen.getByRole("button", { name: label }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
       expect(enqueue).not.toHaveBeenCalled();

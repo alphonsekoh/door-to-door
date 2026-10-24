@@ -5,7 +5,7 @@ import {
   AttentionList,
   daysSince,
   sinceLabel,
-  startingNote,
+  whyHere,
 } from "@/components/follow-ups/attention-list";
 import type { HouseholdAttention, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -208,12 +208,12 @@ describe("AttentionList", () => {
 });
 
 describe("adding a door to the follow-up list", () => {
-  it("starts the note from why the door is here", () => {
+  it("says why the door is here", () => {
+    expect(whyHere(row("#05-123", { lastVisitedAt: new Date(2026, 2, 3, 12).toISOString() }))).toBe(
+      "Showed high interest on 3 Mar 2026.",
+    );
     expect(
-      startingNote(row("#05-123", { lastVisitedAt: new Date(2026, 2, 3, 12).toISOString() })),
-    ).toBe("Showed high interest on 3 Mar 2026.");
-    expect(
-      startingNote(
+      whyHere(
         row("#05-123", {
           interestLevel: "medium",
           lastVisitedAt: new Date(2026, 2, 3, 12).toISOString(),
@@ -238,9 +238,10 @@ describe("adding a door to the follow-up list", () => {
     const sheet = within(
       screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
     );
-    expect(sheet.getByLabelText("What should the next visit do?")).toHaveValue(
-      startingNote(row("#05-123")),
-    );
+    // Why it is here is said, not saved as what the next visit should do.
+    expect(sheet.getByText(whyHere(row("#05-123")))).toBeVisible();
+    expect(sheet.getByLabelText("What should the next visit do?")).toHaveValue("");
+    await user.type(sheet.getByLabelText("What should the next visit do?"), "Bring the booklet");
     await user.click(sheet.getByRole("button", { name: "Add to list" }));
 
     expect(await screen.findByRole("status")).toHaveTextContent("Added to the follow-up list.");
@@ -249,7 +250,7 @@ describe("adding a door to the follow-up list", () => {
       body: JSON.stringify({
         householdId: "h-#05-123",
         visitId: "v-#05-123",
-        note: startingNote(row("#05-123")),
+        note: "Bring the booklet",
         dueDate: null,
       }),
     });

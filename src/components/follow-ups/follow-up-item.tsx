@@ -55,9 +55,10 @@ export function FollowUpItem({
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
 }) {
+  const { userId } = useRole();
   const overdue = isOverdue(note, now);
-  const resolved = doneByline(note);
-  const listed = listedByline(note);
+  const resolved = doneByline(note, userId);
+  const listed = listedByline(note, userId);
 
   return (
     <div className={`rounded-lg border p-3 ${followUpTone(note, now)}`}>
@@ -83,7 +84,9 @@ export function FollowUpItem({
           {note.status === "suggested" ? "Go back by" : "Due"} {formatDay(note.dueDate)}
         </p>
       )}
-      <p className="mt-1 text-caption break-words text-foreground-muted">{addedByline(note)}</p>
+      <p className="mt-1 text-caption break-words text-foreground-muted">
+        {addedByline(note, userId)}
+      </p>
       {listed === null ? null : (
         <p className="text-caption break-words text-foreground-muted">{listed}</p>
       )}
@@ -216,6 +219,7 @@ function FollowUpControls({
           <RemoveFollowUpSheet
             note={note}
             isAdmin={isAdmin}
+            viewerId={userId}
             onClose={() => {
               setRemoving(false);
             }}

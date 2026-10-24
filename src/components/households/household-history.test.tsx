@@ -165,7 +165,15 @@ describe("on the follow-up list", () => {
     // Scoped to the note itself: Alice also appears as the previous visitor.
     const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
     expect(owed.getByText("Bring the flyer.")).toBeInTheDocument();
-    expect(owed.getByText(/Added by Alice/)).toBeInTheDocument();
+    // Alice is reading her own note, as the header calls her.
+    expect(owed.getByText(/^Added by you · /)).toBeInTheDocument();
+  });
+
+  it("names the author to everyone else", () => {
+    asViewer("u2");
+    render(<Panel over={{ followUps: [note()] }} />);
+    const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
+    expect(owed.getByText(/^Added by Alice · /)).toBeInTheDocument();
   });
 
   it("hides notes that are already done", () => {
@@ -186,8 +194,22 @@ describe("on the follow-up list", () => {
       listedBy: { id: "admin", name: "Admin", image: null },
     });
     render(<Panel over={{ followUps: [promoted] }} />);
-    expect(screen.getByText(/^Suggested by Alice/)).toBeInTheDocument();
+    expect(screen.getByText(/^Suggested by you · /)).toBeInTheDocument();
     expect(screen.getByText("Added to the list by Admin · 20 Mar 2026")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["their own", "u1"],
+    ["another member's", "u2"],
+  ])("never offers a member a way to take %s listed note off the list", (_, viewer) => {
+    asViewer(viewer);
+    render(<Panel over={{ followUps: [note()] }} active={FOLLOW_UP} />);
+    const owed = within(screen.getByRole("list", { name: "On the follow-up list" }));
+    // Mark done is there, so the session lets the member act on the note.
+    expect(owed.getByRole("button", { name: "Mark done" })).toBeInTheDocument();
+    for (const name of ["Withdraw", "Remove from list", "Dismiss"]) {
+      expect(owed.queryByRole("button", { name })).toBeNull();
+    }
   });
 });
 

@@ -132,25 +132,45 @@ async function hasOpenNote(
   return found.length > 0;
 }
 
-export async function createFollowUp(
-  db: Database,
-  input: {
-    householdId: string;
-    visitId?: string | null | undefined;
-    note: string;
-    dueDate?: string | null | undefined;
-  },
-  actor: Actor,
-): Promise<FollowUpRow> {
-  const household = await db
+/*
+ * Held until the write commits. Every write that can open a note at a
+ * household takes it first, so what a check there finds still holds when the
+ * write lands. Without it an admin adding the household and a member
+ * suggesting it at once each find nothing and both write, leaving it listed
+ * with a suggestion waiting beside it.
+ */
+async function lockHousehold(tx: Database, householdId: string): Promise<void> {
+  const found = await tx
     .select({ id: households.id })
     .from(households)
-    .where(eq(households.id, input.householdId))
-    .limit(1);
-
-  if (household.length === 0) {
+    .where(eq(households.id, householdId))
+    .for("update");
+  if (found.length === 0) {
     throw new NotFoundError("No such household.");
   }
+}
+
+export type NewFollowUp = {
+  householdId: string;
+  visitId?: string | null | undefined;
+  note: string;
+  dueDate?: string | null | undefined;
+};
+
+export function createFollowUp(
+  db: Database,
+  input: NewFollowUp,
+  actor: Actor,
+): Promise<FollowUpRow> {
+  return db.transaction((tx) => insertFollowUp(tx, input, actor));
+}
+
+async function insertFollowUp(
+  db: Database,
+  input: NewFollowUp,
+  actor: Actor,
+): Promise<FollowUpRow> {
+  await lockHousehold(db, input.householdId);
 
   if (input.visitId != null) {
     const visit = await db
@@ -267,8 +287,16 @@ async function assertMemberMayUpdate(
  * write lands: an author withdrawing a suggestion while an admin lists it
  * would otherwise remove a listed note, which only an admin may do. Whoever
  * locks second reads what the first committed.
+ *
+ * Its household is locked first, as a new note's is, and always in that
+ * order so two writers never wait on each other: an admin listing a
+ * suggestion while a member suggests the same door again would otherwise
+ * leave it listed with a fresh suggestion waiting. A note never changes
+ * household, so where to lock can be read before locking.
  */
 async function lockFollowUp(tx: Database, id: string): Promise<FollowUpRow> {
+  const { householdId } = await getFollowUp(tx, id);
+  await lockHousehold(tx, householdId);
   await tx.select({ id: followUps.id }).from(followUps).where(eq(followUps.id, id)).for("update");
   return getFollowUp(tx, id);
 }

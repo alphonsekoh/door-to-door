@@ -130,8 +130,9 @@ describe("an admin removing a listed note", () => {
   it("says where it can still be found", async () => {
     render(
       <RemoveFollowUpSheet
-        note={note({ status: "listed" })}
+        note={note({ status: "listed", author: { id: "a1", name: "Admin", image: null } })}
         isAdmin
+        viewerId="a1"
         onClose={vi.fn()}
         onRemoved={vi.fn()}
       />,
@@ -149,6 +150,23 @@ describe("an admin removing a listed note", () => {
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups/f1", { method: "DELETE" });
     });
+  });
+});
+
+describe("an admin removing a member's listed note", () => {
+  it("says the member who wrote it will read the reason too", () => {
+    render(
+      <RemoveFollowUpSheet
+        note={note({ status: "listed" })}
+        isAdmin
+        viewerId="a1"
+        onClose={vi.fn()}
+        onRemoved={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Reason (optional)")).toHaveAccessibleDescription(
+      "Ann and admins will see this.",
+    );
   });
 });
 

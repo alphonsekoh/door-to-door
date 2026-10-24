@@ -21,8 +21,9 @@ export type FollowUpSheetMode =
       householdId: string;
       visitId: string | null;
       unitNumber: string;
-      /* Words to start from, such as why the household needs a visit. */
-      initialNote?: string;
+      /* Why the household needs a visit, shown above the note rather than
+         written into it: the note is what the next visit should do. */
+      context?: string;
     }
   | { kind: "edit"; note: FollowUp };
 
@@ -99,8 +100,7 @@ export function FollowUpSheet({
   const online = useOnline();
   const { isAdmin } = useRole();
   const editing = mode.kind === "edit" ? mode.note : null;
-  const initial = mode.kind === "create" ? (mode.initialNote ?? "") : mode.note.note;
-  const [text, setText] = useState(initial);
+  const [text, setText] = useState(editing?.note ?? "");
   const [day, setDay] = useState(instantToDueDay(editing?.dueDate ?? null));
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -111,12 +111,11 @@ export function FollowUpSheet({
 
   const copy = copyFor(mode, isAdmin);
   const length = text.trim().length;
-  /* Asked before a flick or a stray tap loses what was typed at the door,
-     judged against the words the sheet opened with. An edit asks about the
-     changes: "this note" would read as deleting it. */
+  /* Asked before a flick or a stray tap loses what was typed at the door.
+     An edit asks about the changes: "this note" would read as deleting it. */
   const discard =
     editing === null
-      ? text.trim() === initial.trim() && day === ""
+      ? text.trim() === "" && day === ""
         ? undefined
         : { title: "Discard this note?", detail: "What you typed has not been saved." }
       : Object.keys(diffFollowUp(editing, text, day)).length === 0
@@ -189,6 +188,9 @@ export function FollowUpSheet({
       {copy.hint === null ? null : (
         <p className="mt-2 text-body text-foreground-muted">{copy.hint}</p>
       )}
+      {mode.kind === "create" && mode.context !== undefined ? (
+        <p className="mt-2 text-body text-foreground-muted">{mode.context}</p>
+      ) : null}
 
       {failure === null ? null : (
         <p role="alert" className="mt-3 notice-danger">

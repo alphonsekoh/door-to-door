@@ -7,6 +7,7 @@ import { UnitList } from "@/components/ui/unit-list";
 import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { UnitRow } from "@/lib/sync/unit-overlay";
+import { useRole } from "@/lib/hooks/use-role";
 
 type Tab = "record" | "units";
 
@@ -26,6 +27,7 @@ type Props = {
   followUp?: FollowUpRule | null;
   active?: ActiveSession | null;
   initialUnit?: string;
+  guessNext?: boolean;
 };
 
 /* A block's two views, the form and its units, for the block screen and the
@@ -43,12 +45,23 @@ export function BlockViews({
   followUp = null,
   active = null,
   initialUnit = "",
+  guessNext = true,
 }: Props) {
   const { inFlight } = useSyncQueue();
+  const { isAdmin } = useRole();
   const [tab, setTab] = useState<Tab>("record");
 
   return (
     <>
+      {/* Online and in the offline shell alike, so the chips below never
+          turn up unexplained. */}
+      {followUp === null ? null : (
+        <p className="notice-info text-caption">
+          <span className="font-semibold">Follow-up session</span> · Only units on the list can be
+          recorded.{isAdmin ? " As an admin you can record any unit." : ""}
+        </p>
+      )}
+
       {/*
         Two views, one tap apart. The list must not push the recording form
         down the page: at a door the form is the whole job, and the list is
@@ -100,6 +113,7 @@ export function BlockViews({
             followUp={followUp}
             active={active}
             initialUnit={initialUnit}
+            guessNext={guessNext}
             sessionId={sessionId}
             loadSession={loadSession}
             onRecorded={onRecorded}

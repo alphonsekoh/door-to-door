@@ -270,6 +270,27 @@ describe("moving along a corridor", () => {
     });
   });
 
+  it("promises and guesses no next unit while the kind of session is not known", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        guessNext={false}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+    expect(screen.getByLabelText("Unit number")).toHaveValue("");
+  });
+
   it("clears the interest level so the next door starts fresh", async () => {
     const user = userEvent.setup();
     render(
@@ -1529,7 +1550,12 @@ describe("in a follow-up session", () => {
     const user = userEvent.setup();
     mount(LIST, [summary("#05-124", "h9")]);
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
-    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
+    const suggest = await screen.findByRole("button", { name: "Suggest a return visit" });
+    // One way to get it listed is offered, not "ask an admin" beside it.
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on the follow-up list, so it can't be recorded in this session. Should it be? Suggest it for an admin to review. Suggest a return visit",
+    );
+    await user.click(suggest);
     const sheet = within(screen.getByRole("dialog", { name: "Suggest a return visit, #05-124" }));
     await user.type(sheet.getByLabelText("Why should we go back?"), "Wants a visit");
     await user.click(sheet.getByRole("button", { name: "Send suggestion" }));
@@ -1573,6 +1599,43 @@ describe("in a follow-up session", () => {
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
     expect(await screen.findByRole("list", { name: "Waiting for review" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /A suggestion to add it is waiting for an admin to review\.$/,
+    );
+  });
+
+  it("says nothing of what to do while a known unit's history loads", async () => {
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on the follow-up list, so it can't be recorded in this session.",
+    );
+  });
+
+  it("never suggests the unit typed before, while the next one's history loads", async () => {
+    let later: (value: unknown) => void = () => undefined;
+    apiFetch
+      .mockResolvedValueOnce(history({ household: summary("#05-124", "h9").household }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          later = resolve;
+        }),
+      );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9"), summary("#05-125", "h10")]);
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#05-124");
+    expect(await screen.findByRole("button", { name: "Suggest a return visit" })).toBeVisible();
+
+    // Straight from one known unit to the next, as a chip or a paste does.
+    fireEvent.change(unit, { target: { value: "#05-125" } });
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    act(() => {
+      later(history({ household: summary("#05-125", "h10").household }));
+    });
+    expect(await screen.findByRole("button", { name: "Suggest a return visit" })).toBeVisible();
   });
 
   it("tells an admin the unit is off the list, and records it anyway", async () => {

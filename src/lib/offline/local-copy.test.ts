@@ -8,6 +8,7 @@ import {
   noteRevisits,
   offlineRows,
   readCopy,
+  replaceRevisits,
   usableCopy,
 } from "@/lib/offline/local-copy";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -263,8 +264,7 @@ describe("readCopy", () => {
   it.each([
     ["nothing", undefined],
     ["a string", "Alice"],
-    // Written before follow-up lists: thrown away once, and filled again online.
-    ["a copy from before follow-up lists", { ...copyWithBlock(), v: 1 }],
+    ["a copy of an unknown version", { ...copyWithBlock(), v: 3 }],
     ["no follow-up list field", { ...copyWithBlock(), revisits: undefined }],
     ["a bad follow-up list", { ...copyWithBlock(), revisits: [{ household: null }] }],
     ["no member", { ...copyWithBlock(), member: null }],
@@ -279,6 +279,55 @@ describe("readCopy", () => {
     ],
   ])("rejects %s", (_, raw) => {
     expect(readCopy(raw)).toBeNull();
+  });
+});
+
+/* As the build before follow-up sessions wrote it. */
+function v1Copy(): unknown {
+  const { revisits: _list, outing, ...rest } = copyWithBlock();
+  if (outing === null) throw new Error("expected an outing");
+  const { kind: _kind, ...before } = outing;
+  return { ...rest, v: 1, outing: before };
+}
+
+describe("readCopy, for a copy written before follow-up sessions", () => {
+  it("reads it as a door-to-door session with no list, so the shell still opens", () => {
+    expect(readCopy(v1Copy())).toEqual({ ...copyWithBlock(), revisits: null });
+  });
+
+  it("keeps a kind the server had already sent it", () => {
+    const raw = { ...(v1Copy() as LocalCopy), outing: { ...active().session, kind: "follow_up" } };
+    expect(readCopy(raw)?.outing?.kind).toBe("follow_up");
+  });
+
+  it("keeps a copy with no outing", () => {
+    expect(readCopy({ ...(v1Copy() as LocalCopy), outing: null })).toMatchObject({
+      v: 2,
+      outing: null,
+      revisits: null,
+    });
+  });
+
+  it.each([
+    ["a bad outing", { ...(v1Copy() as LocalCopy), outing: { id: TONIGHT } }],
+    ["a blank name", { ...(v1Copy() as LocalCopy), member: { id: ALICE.id, name: "" } }],
+  ])("still rejects %s", (_, raw) => {
+    expect(readCopy(raw)).toBeNull();
+  });
+});
+
+describe("replaceRevisits", () => {
+  it("puts the list read again onto the copy of that outing, keeping its age", () => {
+    const copy = copyWithBlock();
+    expect(replaceRevisits(copy, TONIGHT, revisits())).toEqual({ ...copy, revisits: revisits() });
+  });
+
+  it("leaves another outing's copy, or none, as it was", () => {
+    const copy = copyWithBlock();
+    expect(replaceRevisits(copy, LAST_WEEK, revisits())).toBe(copy);
+    expect(replaceRevisits(null, TONIGHT, revisits())).toBeNull();
+    const none = noteOuting(null, ALICE, null, NOW);
+    expect(replaceRevisits(none, TONIGHT, revisits())).toBe(none);
   });
 });
 

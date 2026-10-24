@@ -9,7 +9,8 @@ import { normaliseUnitNumber } from "@/lib/units/unit-number";
 
 export type BlockGroup = { block: Block; entries: RevisitEntry[] };
 
-/* In the server's order: by block, then unit. */
+/* Relies on the server's order, by block then unit, which keeps a block's
+   entries together. */
 export function groupByBlock(entries: readonly RevisitEntry[]): BlockGroup[] {
   const groups: BlockGroup[] = [];
   for (const entry of entries) {
@@ -22,7 +23,6 @@ export function groupByBlock(entries: readonly RevisitEntry[]): BlockGroup[] {
 
 export type RevisitState = "to_visit" | "visited" | "done";
 
-/* Done once every note that put it on the list is resolved. */
 export function revisitState(
   entry: Pick<RevisitEntry, "notes" | "visitedInSession">,
 ): RevisitState {

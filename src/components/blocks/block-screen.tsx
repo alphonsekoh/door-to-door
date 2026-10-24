@@ -21,16 +21,16 @@ import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
 import { useRole } from "@/lib/hooks/use-role";
+import { knownSessionKind, useKnownSessionKind } from "@/lib/session/known-kind";
 
 export function BlockScreen({
   blockId,
   initialUnit = "",
 }: {
   blockId: string;
-  /* A unit picked from the follow-up list, filled in on arrival. */
   initialUnit?: string;
 }) {
-  const { userId, isAdmin } = useRole();
+  const { userId } = useRole();
   const { records, syncedVersion } = useSyncQueue();
   const { noteBlock, noteRevisits } = useLocalCopyWriter();
   /* A follow-up session's list: undefined until first read, null if that
@@ -67,13 +67,16 @@ export function BlockScreen({
     try {
       const answer = await apiFetch<ActiveSession>("/sessions/active");
       setActive(answer);
+      knownSessionKind.note(answer.session.kind);
       return { kind: "running", id: answer.session.id };
     } catch (caught) {
       setActive(null);
       // The contract's 404 is the one answer that means no session is running.
-      return caught instanceof ApiRequestError && caught.status === 404
-        ? { kind: "none" }
-        : { kind: "unknown" };
+      if (caught instanceof ApiRequestError && caught.status === 404) {
+        knownSessionKind.note(null);
+        return { kind: "none" };
+      }
+      return { kind: "unknown" };
     }
   }, []);
 
@@ -186,10 +189,20 @@ export function BlockScreen({
      the next Save lands. Generic only until the session has answered. */
   const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
 
+  /*
+   * Save promises a next unit only once the session is known to be
+   * door-to-door: a follow-up session guesses none, and saying "and next"
+   * until its answer came back told a member in weak signal the wrong thing.
+   * The kind another screen learnt counts until this one's own answer.
+   */
+  const heard = useKnownSessionKind();
+  const kind = active === null ? heard : active.session.kind;
+  const guessNext = kind === "regular" || kind === null;
+
   /* The form's Save is docked at the end of the screen, so it is drawn
      there on the first paint too, before the form can move it. */
   return (
-    <DockHost className="space-y-5" standIn={<SaveAndNext />}>
+    <DockHost className="space-y-5" standIn={<SaveAndNext next={guessNext} />}>
       <PageHeader
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
         subtitle={here === undefined ? "One unit at a time." : here.street}
@@ -206,13 +219,6 @@ export function BlockScreen({
         </p>
       )}
 
-      {followUpSession === null ? null : (
-        <p className="notice-info text-caption">
-          <span className="font-semibold">Follow-up session</span> · Only units on the list can be
-          recorded.{isAdmin ? " As an admin you can record any unit." : ""}
-        </p>
-      )}
-
       <BlockViews
         blockId={blockId}
         known={units}
@@ -224,6 +230,7 @@ export function BlockScreen({
         followUp={followUpSession === null ? null : { revisits, recheck: readRevisits }}
         active={active}
         initialUnit={initialUnit}
+        guessNext={guessNext}
       />
     </DockHost>
   );
