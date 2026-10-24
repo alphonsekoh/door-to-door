@@ -11,15 +11,16 @@ recording form before knocking; overdue widget for admins.
 
 ## Decisions
 
-- **D-35-1 · Any member may resolve or reopen a note; text, due date and delete stay
+- ~~**D-35-1 · Any member may resolve or reopen a note; text, due date and delete stay
   with the author or an admin.** A body with `done` plus `note` or `dueDate` is judged
   as an edit (403 for a non-author). _Why:_ whether a promise was kept is a fact about
   the household, and `doneBy` keeps it attributable. Already shipped in 53349a6 (#22).
-  Supersedes D-22-2's resolve clause (owner agreed).
+  Supersedes D-22-2's resolve clause (owner agreed).~~ Superseded by D-117-12.
 - **D-35-2 · `FollowUp` carries `blockName` and `unitNumber` as flat required
   fields.** _Why:_ lists name the door without a lookup per note; flat keeps notes inside
   `HouseholdHistory` small. Supersedes D-27-7, which handed this to #35 (owner
-  confirmed).
+  confirmed). _Extended by D-117-6:_ also `blockId`, `status`, who listed and who
+  removed it.
 - **D-35-3 · One `selectFollowUps(db)` builder serves list, get, create, update and the
   household history.** _Why:_ the two copies had already drifted and would drift again
   on the new joins.
@@ -31,7 +32,8 @@ recording form before knocking; overdue widget for admins.
 - **D-35-6 · Outstanding notes are pinned above the timeline, sorted by due day
   (undated last), and appear only there; the timeline holds visits and resolved notes,
   oldest first.** _Why:_ repeating outstanding notes pushed the interest picker below
-  the fold at the door.
+  the fold at the door. _Refined by D-117-25:_ the pinned notes are two sections, "On
+  the follow-up list" and "Waiting for review".
 - **D-35-7 · At the door (recording form) a resolved note is one line with no controls;
   reopen and edit live on the unit screen.** _Why:_ resolved notes accumulate without
   limit.
@@ -43,14 +45,17 @@ recording form before knocking; overdue widget for admins.
   as D-74-19; the server stamps the resolver.
 - **D-35-10 · A note can be added from the unit header, a visit row (anchored), or right
   after an online save on the recording form (anchored to the saved visit).** _Why:_ the
-  server can only anchor to a visit it has stored (D-22-3).
+  server can only anchor to a visit it has stored (D-22-3). _Refined by D-117-26:_ the
+  action is worded by role, and only what the household allows is offered.
 - **D-35-11 · The admin overdue card sits on `/admin/sessions` and reuses
   `GET /follow-ups?outstanding=true&dueBefore=…&limit=5`; no new endpoint.** Hidden at
   zero; a failed load never blocks the outings list. _Why:_ no dashboard exists; that is
-  the admin landing page, and the existing filter answers the question.
+  the admin landing page, and the existing filter answers the question. _Refined by
+  D-117-21:_ listed notes only, beside the review count card under New session.
 - **D-35-12 · `/follow-ups` defaults to Everyone's outstanding notes; Mine is
   `?view=mine`.** _Why:_ the door matters more than the author (D-22-2 read rule); URL
-  state as D-74-55.
+  state as D-74-55. _Refined by D-117-27:_ the default is everyone's listed notes;
+  suggestions are `?view=review`.
 
 ## Relies on
 

@@ -64,7 +64,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
     correlated subquery silently compares against the wrong table.
   - `references()` callbacks are lazy.
 - **Source:** Integration tests in #17, #27, #31; schema tests in #7
-- **Used by:** D-17-3, D-27-2, D-31-3
+- **Used by:** D-17-3, D-27-2, D-31-3, D-117-7
 
 ### R-8 · Postgres NULL ordering
 
@@ -286,7 +286,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   real row lock from a second connection); the general rules are from the PostgreSQL
   docs.
 - **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
-- **Used by:** D-74-31, D-74-23
+- **Used by:** D-74-31, D-74-23, D-117-9
 
 ### R-36 · A fetch `TypeError` cannot tell "not sent" from "reply lost"
 
@@ -794,3 +794,24 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [ESLint, specifying files and ignores](https://eslint.org/docs/latest/use/configure/configuration-files#specifying-files-and-ignores);
   measured in PR #116
 - **Used by:** D-115-10
+
+### R-80 · `useSyncExternalStore` renders the server snapshot while hydrating
+
+- **Finding:** `getServerSnapshot` is used on the server and during hydration on the
+  client; React then re-renders with `getSnapshot` if it differs. So a value only the
+  phone knows (`localStorage`, what another screen heard) can differ from the server's
+  HTML without a hydration mismatch, and is drawn one render later.
+- **Source:** [React, `useSyncExternalStore`](https://react.dev/reference/react/useSyncExternalStore);
+  not measured here
+- **Used by:** D-117-19, D-117-29
+
+### R-81 · `localStorage` is per origin and can throw
+
+- **Finding:** Storage is per origin in one browser, so on a shared phone it belongs to
+  the phone, not the signed-in account. Reading `window.localStorage` throws
+  `SecurityError` where storage is blocked, and `setItem` throws `QuotaExceededError` when
+  the quota is used up.
+- **Source:** [MDN, `Window.localStorage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage),
+  [MDN, `Storage.setItem`](https://developer.mozilla.org/en-US/docs/Web/API/Storage/setItem);
+  not measured here
+- **Used by:** D-117-29

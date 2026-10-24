@@ -26,7 +26,8 @@ Owner decisions are marked **(owner)**.
   screen got them (name, contact, religion, latest visit with notes, follow-up count).
   Checked with the generated Zod on read; anything invalid is deleted. _Why:_ the shell
   shows what the online screen shows; one schema with the server; unlike a queued record
-  (D-33-8) it is a disposable cache.
+  (D-33-8) it is a disposable cache. _Refined by D-117-17:_ `v: 2` adds a follow-up
+  session's list; a `v: 1` copy is read as `v: 2` with no list, not deleted.
 - **D-77-4 · Filled from the outing and block screens on success.** A `404` outing
   empties the blocks, another outing resets them, and a block no longer on the outing is
   dropped. A block screen notes the outing too, so a block opened from a link is kept.
