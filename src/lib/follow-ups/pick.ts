@@ -61,9 +61,13 @@ export function moreNotes(household: PickHousehold): string | null {
 
 export type ListLoad = "loading" | "error" | "ready";
 
+/* The contract's cap on the households one request may pick. */
+export const MAX_PICK = 200;
+
 /*
  * Why Create draft cannot be pressed yet, said beside it, or null when it
- * can. A door-to-door session needs no households.
+ * can. A door-to-door session needs no households. Everything on the list
+ * starts ticked, so a long list can start over the cap.
  */
 export function createBlocker(
   kind: SessionKind,
@@ -74,7 +78,18 @@ export function createBlocker(
   if (kind === "regular") return null;
   if (load === "loading") return "Loading the follow-up list…";
   if (load === "error") return "Could not load the follow-up list.";
-  if (available === 0) return "Add households to the follow-up list first.";
+  // The Follow-up card above already says to add households first.
+  if (available === 0) return "Nothing on the follow-up list yet.";
   if (ticked === 0) return "Tick at least one household to visit.";
+  if (ticked > MAX_PICK) {
+    return `Tick ${String(MAX_PICK)} households or fewer. You can add more once it is created.`;
+  }
+  return null;
+}
+
+/* Why Add households cannot be pressed yet, or null when it can. */
+export function addBlocker(ticked: number): string | null {
+  if (ticked === 0) return "Tick the households to add.";
+  if (ticked > MAX_PICK) return `Tick ${String(MAX_PICK)} households or fewer at a time.`;
   return null;
 }

@@ -127,9 +127,14 @@ export function doneByline(
 
 /*
  * A change that got no answer may still have landed, so it never claims that
- * nothing happened (D-74-43). Raw server text is never shown.
+ * nothing happened (D-74-43). Raw server text is never shown. A reopen meets
+ * `follow_up_exists` only when a suggestion has reached the door since the
+ * screen was read; the re-read that follows names whose it is.
  */
-export function describeFollowUpFailure(error: unknown): string {
+export function describeFollowUpFailure(
+  error: unknown,
+  action: "save" | "reopen" = "save",
+): string {
   if (error instanceof TypeError) {
     return "Could not confirm. Refresh to see whether it went through.";
   }
@@ -141,7 +146,9 @@ export function describeFollowUpFailure(error: unknown): string {
   }
   switch (error.code) {
     case "follow_up_exists":
-      return "This household is already on the follow-up list or has a suggestion waiting.";
+      return action === "reopen"
+        ? "Not reopened. A suggestion for this door is now waiting for an admin."
+        : "This household is already on the follow-up list or has a suggestion waiting.";
     case "not_on_follow_up_list":
       return "You can mark this done during a follow-up session that includes this household.";
   }

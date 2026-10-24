@@ -12,7 +12,12 @@ import {
 } from "@/db/schema";
 import type { BlockRow } from "@/server/blocks/service";
 import { firstOrThrow } from "@/server/db-utils";
-import { liveFollowUp, onRevisitList, type RevisitSession } from "@/server/follow-ups/list-rule";
+import {
+  byBlockThenUnit,
+  liveFollowUp,
+  onRevisitList,
+  type RevisitSession,
+} from "@/server/follow-ups/list-rule";
 import { ConflictError, NotFoundError } from "@/server/http/errors";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 import type { HouseholdRow } from "@/server/visits/service";
@@ -23,10 +28,15 @@ import type { HouseholdRow } from "@/server/visits/service";
  * every add and remove keeps the two in step, so a member never opens an
  * empty block, and nobody attaches or detaches one by hand.
  *
- * Writes here lock the session row and nothing else, while follow-up writes
- * lock the household and then the note. No path takes both, so the two can
- * never wait on each other; the session lock is what makes "never remove the
- * last household" hold when two admins remove the last two at once.
+ * Writes here lock the session row first (FOR UPDATE), then touch
+ * households only through foreign keys. Recording a visit locks the same
+ * session row first too (FOR KEY SHARE, which only these writes and a
+ * transition conflict with), then the household, so the two always meet in
+ * one order and never deadlock: a remove either waits for a visit and sees
+ * it, or the visit waits and re-checks the session's blocks and list after
+ * it. Follow-up writes lock the household and then the note, never a
+ * session. The session lock is also what makes "never remove the last
+ * household" hold when two admins remove the last two at once.
  */
 
 export type LockedSession = RevisitSession & { status: SessionStatus };
@@ -159,6 +169,7 @@ export async function listPickedIds(db: Database, sessionId: string): Promise<st
 export type SessionHouseholdRow = {
   household: HouseholdRow;
   block: BlockRow;
+  addedAt: Date;
   notes: FollowUpRow[];
   onList: boolean;
   visitedInSession: boolean;
@@ -180,12 +191,12 @@ export async function listSessionHouseholds(
     .where(eq(sessionHouseholds.sessionId, session.id));
 
   const places = await db
-    .select({ household: households, block: blocks })
+    .select({ household: households, block: blocks, addedAt: sessionHouseholds.addedAt })
     .from(sessionHouseholds)
     .innerJoin(households, eq(households.id, sessionHouseholds.householdId))
     .innerJoin(blocks, eq(blocks.id, households.blockId))
     .where(eq(sessionHouseholds.sessionId, session.id))
-    .orderBy(asc(blocks.name), asc(households.unitNumber));
+    .orderBy(...byBlockThenUnit);
 
   /* Outstanding first, by due day with undated last, then the resolved. */
   const notes = await selectFollowUps(db)
@@ -211,9 +222,10 @@ export async function listSessionHouseholds(
   const onListIds = new Set(onList.map((row) => row.householdId));
   const visitedIds = new Set(visited.map((row) => row.householdId));
 
-  return places.map(({ household, block }) => ({
+  return places.map(({ household, block, addedAt }) => ({
     household,
     block,
+    addedAt,
     notes: notes.filter((note) => note.householdId === household.id),
     onList: onListIds.has(household.id),
     visitedInSession: visitedIds.has(household.id),

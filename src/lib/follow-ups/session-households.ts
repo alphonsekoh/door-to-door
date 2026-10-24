@@ -8,12 +8,20 @@ import type { OutingSession, SessionHousehold } from "@/generated/types.gen";
 export type PickState = "to_visit" | "visited" | "done" | "done_before" | "off_list";
 
 /*
- * The server says whether a pick is on the list now. Off it, a pick has no
- * listed notes left (they were taken off the follow-up list), or every one
- * was resolved before the session started, which for a draft is any time.
+ * The server says whether a pick is on the list now. Off it, either a note
+ * owed when it was picked was resolved before the session started (for a
+ * draft, at any time since), or the notes it was picked for were taken off
+ * the follow-up list. A note resolved before the pick was never what it was
+ * picked for, so it says nothing about which.
  */
 export function householdState(entry: SessionHousehold): PickState {
-  if (!entry.onList) return entry.notes.length === 0 ? "off_list" : "done_before";
+  if (!entry.onList) {
+    const picked = Date.parse(entry.addedAt);
+    const resolvedSince = entry.notes.some(
+      (note) => note.doneAt !== null && Date.parse(note.doneAt) >= picked,
+    );
+    return resolvedSince ? "done_before" : "off_list";
+  }
   if (entry.notes.every((note) => note.doneAt !== null)) return "done";
   return entry.visitedInSession ? "visited" : "to_visit";
 }
@@ -51,3 +59,35 @@ export const REMOVE_BLOCKED: Record<Exclude<RemoveBlocker, "ended">, string> = {
   visited: "Visited in this session, so it stays.",
   last: "A follow-up session needs at least one household, so the last one can't be removed.",
 };
+
+/*
+ * What members see of these picks, once that differs from the count beside
+ * the heading: a pick done before the start, or taken off the follow-up
+ * list, stays picked but is not on their list.
+ */
+export function membersSee(
+  entries: readonly SessionHousehold[],
+  status: OutingSession["status"],
+): string | null {
+  const seen = entries.filter((entry) => entry.onList).length;
+  if (status === "ended" || seen === entries.length) return null;
+  if (status === "draft") {
+    return seen === 0
+      ? "Members would see none of these."
+      : `Members will see ${String(seen)} of these.`;
+  }
+  return seen === 0
+    ? "Members see none of these right now."
+    : `Members see ${String(seen)} of these.`;
+}
+
+/*
+ * Why Start waits, as the server would refuse it: nothing picked is still
+ * owed, so members would open an empty list. Null while the picks are
+ * unread, so a slow read never holds a start the server would take.
+ */
+export function startBlocker(onList: number | null): string | null {
+  return onList === 0
+    ? "Every household here is done or off the follow-up list, so members would find nothing to visit. Add households to start it."
+    : null;
+}

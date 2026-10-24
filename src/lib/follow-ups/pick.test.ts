@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { FollowUp } from "@/generated/types.gen";
 import {
+  addBlocker,
   createBlocker,
   groupForPicking,
   householdIdsOf,
@@ -87,10 +88,24 @@ describe("createBlocker", () => {
   it("says why a follow-up session cannot be created yet", () => {
     expect(createBlocker("follow_up", "loading", 0, 0)).toBe("Loading the follow-up list…");
     expect(createBlocker("follow_up", "error", 0, 0)).toBe("Could not load the follow-up list.");
-    expect(createBlocker("follow_up", "ready", 0, 0)).toBe(
-      "Add households to the follow-up list first.",
-    );
+    expect(createBlocker("follow_up", "ready", 0, 0)).toBe("Nothing on the follow-up list yet.");
     expect(createBlocker("follow_up", "ready", 4, 0)).toBe("Tick at least one household to visit.");
     expect(createBlocker("follow_up", "ready", 4, 1)).toBeNull();
+  });
+
+  it("holds a list longer than one request may pick, and says how to go on", () => {
+    expect(createBlocker("follow_up", "ready", 230, 200)).toBeNull();
+    expect(createBlocker("follow_up", "ready", 230, 201)).toBe(
+      "Tick 200 households or fewer. You can add more once it is created.",
+    );
+  });
+});
+
+describe("addBlocker", () => {
+  it("asks for a tick, then holds more than one request may add", () => {
+    expect(addBlocker(0)).toBe("Tick the households to add.");
+    expect(addBlocker(1)).toBeNull();
+    expect(addBlocker(200)).toBeNull();
+    expect(addBlocker(201)).toBe("Tick 200 households or fewer at a time.");
   });
 });

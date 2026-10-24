@@ -1,10 +1,24 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
+import {
+  blocks,
+  followUps,
+  households,
+  outingSessions,
+  sessionBlocks,
+  users,
+  visits,
+} from "@/db/schema";
 import type { SessionKind, SessionStatus } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
+import { onRevisitList } from "@/server/follow-ups/list-rule";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
-import { blockHasSessionVisits, pickHouseholds } from "@/server/sessions/households";
+import {
+  type LockedSession,
+  blockHasSessionVisits,
+  lockSession,
+  pickHouseholds,
+} from "@/server/sessions/households";
 
 /*
  * Session lifecycle.
@@ -187,45 +201,77 @@ const STATE: Record<SessionStatus, string> = {
   ended: "has already ended",
 };
 
-export async function transitionSession(
+const NOTHING_OWED =
+  "Every household in this session is done or off the follow-up list, so members would find nothing to visit. Add households before starting it.";
+
+/*
+ * Whether a follow-up draft has anything on its list: a picked household
+ * with a listed note still owed. Picks are sticky, so a draft whose notes
+ * were all resolved or removed since keeps picks with nothing on them, and
+ * starting it would open members onto an empty list: what "at least one
+ * household" at creation exists to prevent.
+ */
+async function hasSomethingOwed(db: Database, session: LockedSession): Promise<boolean> {
+  const found = await db
+    .select({ id: followUps.id })
+    .from(followUps)
+    .where(onRevisitList(db, session))
+    .limit(1);
+  return found.length > 0;
+}
+
+/*
+ * Under the session's row lock, which household changes and visit writes
+ * also take, so what a start checks still holds when it lands.
+ */
+export function transitionSession(
   db: Database,
   id: string,
   transition: Transition,
 ): Promise<SessionRow> {
   const { from, to, done } = TRANSITIONS[transition];
-  const current = await getSession(db, id);
+  return db.transaction(async (tx) => {
+    const current = await lockSession(tx, id);
 
-  if (current.status !== from) {
-    throw new ConflictError(
-      "conflict",
-      `This session ${STATE[current.status]}, so it cannot be ${done}.`,
-    );
-  }
-
-  const now = new Date();
-  const values =
-    to === "active"
-      ? { status: to, updatedAt: now, startedAt: current.startedAt ?? now, endedAt: null }
-      : { status: to, updatedAt: now, endedAt: now };
-
-  try {
-    await db.update(outingSessions).set(values).where(eq(outingSessions.id, id));
-  } catch (error) {
-    if (isActiveSessionClash(error)) {
-      /*
-       * Reopen hits this whenever another session is active. It is the
-       * recovery path for a session ended by mistake, so the message has to
-       * say what to do rather than surface a constraint name.
-       */
+    if (current.status !== from) {
       throw new ConflictError(
-        "session_already_active",
-        "Another session is already active. End it before starting or reopening this one.",
+        "conflict",
+        `This session ${STATE[current.status]}, so it cannot be ${done}.`,
       );
     }
-    throw error;
-  }
+    if (
+      transition === "start" &&
+      current.kind === "follow_up" &&
+      !(await hasSomethingOwed(tx, current))
+    ) {
+      throw new ConflictError("conflict", NOTHING_OWED);
+    }
 
-  return getSession(db, id);
+    const now = new Date();
+    const values =
+      to === "active"
+        ? { status: to, updatedAt: now, startedAt: current.startedAt ?? now, endedAt: null }
+        : { status: to, updatedAt: now, endedAt: now };
+
+    try {
+      await tx.update(outingSessions).set(values).where(eq(outingSessions.id, id));
+    } catch (error) {
+      if (isActiveSessionClash(error)) {
+        /*
+         * Reopen hits this whenever another session is active. It is the
+         * recovery path for a session ended by mistake, so the message has to
+         * say what to do rather than surface a constraint name.
+         */
+        throw new ConflictError(
+          "session_already_active",
+          "Another session is already active. End it before starting or reopening this one.",
+        );
+      }
+      throw error;
+    }
+
+    return getSession(tx, id);
+  });
 }
 
 export type SessionBlockMember = { id: string; name: string | null; image: string | null };

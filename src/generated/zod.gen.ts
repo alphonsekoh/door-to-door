@@ -273,6 +273,7 @@ export const zRevisitList = z.object({
 export const zSessionHousehold = z.object({
     household: zHousehold,
     block: zBlock,
+    addedAt: z.iso.datetime(),
     notes: z.array(zFollowUp),
     onList: z.boolean(),
     visitedInSession: z.boolean()

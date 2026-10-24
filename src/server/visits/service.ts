@@ -112,6 +112,12 @@ export const visitColumns = {
   memberImage: users.image,
 };
 
+/*
+ * Locks the active session's row (FOR KEY SHARE) before anything else, as
+ * changing a follow-up session's households does (FOR UPDATE), so a record
+ * and a household change wait for each other in one order. The checks that
+ * follow then read what a remove committed, and a remove sees this visit.
+ */
 async function requireActiveSessionWithBlock(
   db: Database,
   blockId: string,
@@ -124,7 +130,8 @@ async function requireActiveSessionWithBlock(
     })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
-    .limit(1);
+    .limit(1)
+    .for("key share");
 
   const session = active[0];
   if (!session) {
@@ -200,15 +207,16 @@ export async function createVisit(
     throw new NotFoundError("No such member.");
   }
 
-  const session = await requireActiveSessionWithBlock(db, input.blockId);
-  await assertMayRecordHere(db, actor, session, input.blockId, input.unitNumber);
-  const sessionId = session.id;
-
   /*
    * One transaction, so a duplicate id rolls the household upsert back and a
-   * visit never exists without the stamp and snapshot that describe it.
+   * visit never exists without the stamp and snapshot that describe it. Where
+   * it may be recorded is judged inside it, under the session lock.
    */
   await db.transaction(async (tx) => {
+    const session = await requireActiveSessionWithBlock(tx, input.blockId);
+    await assertMayRecordHere(tx, actor, session, input.blockId, input.unitNumber);
+    const sessionId = session.id;
+
     const household = await upsertHousehold(tx, {
       blockId: input.blockId,
       unitNumber: input.unitNumber,

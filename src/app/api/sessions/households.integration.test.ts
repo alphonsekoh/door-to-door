@@ -12,6 +12,7 @@ const { DELETE: unpick } = await import("./[id]/households/[householdId]/route")
 const { POST: attach } = await import("./[id]/blocks/route");
 const { DELETE: detach } = await import("./[id]/blocks/[blockId]/route");
 const { POST: removeNote } = await import("../follow-ups/[id]/remove/route");
+const { POST: startRoute } = await import("./[id]/start/route");
 
 /*
  * A follow-up session's households: an admin picks them, at least one, and
@@ -58,6 +59,10 @@ const add = (id: string, householdIds: unknown) =>
   picks.POST(json("POST", `/${id}/households`, { householdIds }), ctx({ id }));
 const remove = (id: string, householdId: string) =>
   unpick(json("DELETE", `/${id}/households/${householdId}`), ctx({ id, householdId }));
+const start = (id: string) => startRoute(json("POST", `/${id}/start`), ctx({ id }));
+const statusOf = async (id: string) =>
+  (await pool.query<{ status: string }>(`SELECT status FROM outing_sessions WHERE id = $1`, [id]))
+    .rows[0]?.status;
 
 /* A follow-up draft over the households given, created as an admin would. */
 async function followUp(householdIds: string[] = [OWED_1]): Promise<string> {
@@ -265,7 +270,8 @@ describe("GET /api/sessions/active", () => {
 describe("GET /api/sessions/{id}/households", () => {
   type Entry = {
     household: { id: string; unitNumber: string };
-    block: { name: string };
+    block: { name: string; street: string };
+    addedAt: string;
     notes: { note: string }[];
     onList: boolean;
     visitedInSession: boolean;
@@ -286,6 +292,41 @@ describe("GET /api/sessions/{id}/households", () => {
       "Due later",
       "Done already",
     ]);
+  });
+
+  it("keeps two blocks that share a name apart, each block's households together", async () => {
+    const OTHER_ROAD = "b5b5b5b5-0000-4000-8001-000000000003";
+    const ELSEWHERE = "b5b5b5b5-0000-4000-8003-000000000007";
+    await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Other Rd')`, [
+      OTHER_ROAD,
+    ]);
+    // Its unit sorts between Test Ave's two, which a sort by name alone interleaves.
+    await pool.query(`INSERT INTO households (id, block_id, unit_number) VALUES ($1,$2,'#01-50')`, [
+      ELSEWHERE,
+      OTHER_ROAD,
+    ]);
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, status, note) VALUES ($1,$2,'listed','Other road')`,
+      [ELSEWHERE, ADMIN],
+    );
+    const id = await followUp([OWED_1, OWED_2, ELSEWHERE]);
+    asAdmin();
+    expect(
+      (await read(id)).map((e) => `${e.block.name} ${e.block.street} ${e.household.unitNumber}`),
+    ).toEqual(["123 Other Rd #01-50", "123 Test Ave #01-01", "123 Test Ave #02-02"]);
+  });
+
+  it("says when each was picked", async () => {
+    const id = await followUp([OWED_1]);
+    await pool.query(
+      `UPDATE session_households SET added_at = '2026-10-18T09:00:00Z' WHERE session_id = $1`,
+      [id],
+    );
+    asAdmin();
+    expect((await add(id, [OWED_2])).status).toBe(200);
+    const entries = await read(id);
+    expect(entries[0]?.addedAt).toBe("2026-10-18T09:00:00.000Z");
+    expect(Date.parse(entries[1]?.addedAt ?? "")).toBeGreaterThan(Date.parse("2026-10-19"));
   });
 
   it("says which picks are on the list now, and which were visited in this session", async () => {
@@ -573,5 +614,53 @@ describe("a pick whose note leaves the follow-up list", () => {
       (await (await list(id)).json()) as { data: { onList: boolean; notes: unknown[] }[] }
     ).data;
     expect(entries).toEqual([expect.objectContaining({ onList: false, notes: [] })]);
+  });
+});
+
+describe("starting a follow-up session", () => {
+  it("starts while a household it picked is still owed a visit", async () => {
+    const id = await followUp([OWED_1, OWED_2]);
+    await pool.query(`UPDATE follow_ups SET done_at = now() WHERE household_id = $1`, [OWED_2]);
+    asAdmin();
+    expect((await start(id)).status).toBe(200);
+    expect(await statusOf(id)).toBe("active");
+  });
+
+  it("refuses once every pick was resolved since, so members never open an empty list", async () => {
+    const id = await followUp([OWED_2]);
+    await pool.query(`UPDATE follow_ups SET done_at = now() WHERE household_id = $1`, [OWED_2]);
+    asAdmin();
+    const response = await start(id);
+    expect(response.status).toBe(409);
+    expect(await failure(response)).toEqual({
+      code: "conflict",
+      message:
+        "Every household in this session is done or off the follow-up list, so members would find nothing to visit. Add households before starting it.",
+    });
+    expect(await statusOf(id)).toBe("draft");
+  });
+
+  it("refuses once every pick's note was taken off the follow-up list", async () => {
+    const id = await followUp([OWED_2]);
+    await pool.query(`UPDATE follow_ups SET deleted_at = now() WHERE household_id = $1`, [OWED_2]);
+    asAdmin();
+    expect((await start(id)).status).toBe(409);
+    expect(await statusOf(id)).toBe("draft");
+  });
+
+  it("starts once a household still owed is added", async () => {
+    const id = await followUp([OWED_2]);
+    await pool.query(`UPDATE follow_ups SET done_at = now() WHERE household_id = $1`, [OWED_2]);
+    asAdmin();
+    expect((await start(id)).status).toBe(409);
+    expect((await add(id, [OWED_B])).status).toBe(200);
+    expect((await start(id)).status).toBe(200);
+  });
+
+  it("is never asked of a door-to-door session, which starts with no households", async () => {
+    asAdmin();
+    const created = await create({ title: "Saturday", kind: "regular" });
+    const { id } = (await created.json()) as { id: string };
+    expect((await start(id)).status).toBe(200);
   });
 });

@@ -184,6 +184,33 @@ describe("the follow-up list", () => {
     expect(await unitsOf()).toContain("123 #03-03");
   });
 
+  it("keeps two blocks that share a name apart, each block's households together", async () => {
+    const OTHER_ROAD = "f0f0f0f0-0000-4000-8001-000000000004";
+    await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'123','Other Rd')`, [
+      OTHER_ROAD,
+    ]);
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      FOLLOW_UP,
+      OTHER_ROAD,
+    ]);
+    // Its unit sorts between Test Ave's, which ordering by name alone interleaves.
+    await pool.query(
+      `WITH h AS (INSERT INTO households (block_id, unit_number) VALUES ($1,'#03-50') RETURNING id),
+            f AS (INSERT INTO follow_ups (household_id, author_id, note) SELECT id, $2, 'Other road' FROM h)
+       INSERT INTO session_households (session_id, household_id) SELECT $3, id FROM h`,
+      [OTHER_ROAD, ADMIN, FOLLOW_UP],
+    );
+    const entries = await listRevisits(db, session);
+    expect(
+      entries.map((e) => `${e.block.name} ${e.block.street} ${e.household.unitNumber}`),
+    ).toEqual([
+      "123 Other Rd #03-50",
+      "123 Test Ave #01-01",
+      "123 Test Ave #05-05",
+      "125 Test Ave #01-01",
+    ]);
+  });
+
   it("costs a fixed number of queries however many households it holds", async () => {
     const count = async () => {
       queryCount = 0;

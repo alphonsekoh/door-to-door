@@ -1,7 +1,7 @@
-import { and, eq, gte, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role, SessionKind } from "@/db/schema";
-import { followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
+import { blocks, followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
 import { ConflictError } from "@/server/http/errors";
 
 /*
@@ -18,6 +18,13 @@ import { ConflictError } from "@/server/http/errors";
 export const liveFollowUp = isNull(followUps.deletedAt);
 
 export type RevisitSession = { id: string; kind: SessionKind; startedAt: Date | null };
+
+/*
+ * How the list and an admin's picks are read: by block, then unit. Only
+ * (name, street) is unique, so the street keeps two blocks that share a name
+ * apart, and a screen grouping neighbouring rows by block meets each once.
+ */
+export const byBlockThenUnit = [asc(blocks.name), asc(blocks.street), asc(households.unitNumber)];
 
 /*
  * Picked for the session by an admin, and with a note that is listed, not

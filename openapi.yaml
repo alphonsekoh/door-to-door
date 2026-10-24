@@ -612,7 +612,9 @@ components:
       properties:
         data:
           type: array
-          description: Ordered by block name, then unit number.
+          description: |
+            Ordered by block name, then street (two blocks may share a name),
+            then unit number, so a block's households are always together.
           items: { $ref: "#/components/schemas/RevisitEntry" }
 
     SessionHousehold:
@@ -625,16 +627,25 @@ components:
         follow-up list, and returns when it is listed or reopened again.
       type: object
       additionalProperties: false
-      required: [household, block, notes, onList, visitedInSession]
+      required: [household, block, addedAt, notes, onList, visitedInSession]
       properties:
         household: { $ref: "#/components/schemas/Household" }
         block: { $ref: "#/components/schemas/Block" }
+        addedAt:
+          type: string
+          format: date-time
+          description: |
+            When an admin picked it for this session. A pick needs a note that
+            is still owed, so a note resolved before this was not the reason
+            for the pick: off the list with no note resolved since, the
+            household's owed notes were taken off the follow-up list.
         notes:
           type: array
           description: |
             The household's `listed`, not removed notes, resolved or not:
-            outstanding first (by due day, undated last), then resolved. Empty
-            once every note was taken off the follow-up list.
+            outstanding first (by due day, undated last), then resolved,
+            including any resolved before it was picked. Removed notes are
+            never here.
           items: { $ref: "#/components/schemas/FollowUp" }
         onList:
           type: boolean
@@ -654,7 +665,9 @@ components:
       properties:
         data:
           type: array
-          description: Ordered by block name, then unit number.
+          description: |
+            Ordered by block name, then street (two blocks may share a name),
+            then unit number, so a block's households are always together.
           items: { $ref: "#/components/schemas/SessionHousehold" }
 
     # ------------------------------------------------------------- requests
@@ -1381,6 +1394,11 @@ paths:
         active returns `409 session_already_active` — never a silent takeover.
         The constraint is enforced in the database, so concurrent requests
         cannot both succeed.
+
+        A follow-up session starts only while at least one of its households
+        is on its list (a `listed`, not removed note still owed), so members
+        never open it to an empty list. Checked under the session's row lock,
+        so it holds against an admin removing a household at the same moment.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       responses:
         "200":
@@ -1392,7 +1410,12 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Another session is active, or this one is not a draft.
+          description: |
+            `session_already_active`: another session is active. `conflict`:
+            this one is not a draft, or it is a follow-up session none of whose
+            households is still owed a visit (each was resolved or taken off
+            the follow-up list since it was picked), so members would open an
+            empty list.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

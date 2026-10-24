@@ -225,6 +225,21 @@ describe("creating a follow-up session", () => {
     expect(create()).not.toHaveAccessibleDescription();
   });
 
+  it("holds more households than one session may be created with, and says what to do", async () => {
+    const long = Array.from({ length: 201 }, (_, index) =>
+      listed(`x${String(index)}`, "130", `#${String(index).padStart(3, "0")}`, "Go back"),
+    );
+    server({ list: () => Promise.resolve(page(long)) });
+    const user = await followUp();
+    expect(await picker().findByRole("status")).toHaveTextContent("201 of 201 households ticked");
+    expect(create()).toBeDisabled();
+    expect(create()).toHaveAccessibleDescription(
+      "Tick 200 households or fewer. You can add more once it is created.",
+    );
+    await user.click(picker().getByRole("checkbox", { name: "Blk 130 · #000" }));
+    expect(create()).toBeEnabled();
+  });
+
   it("waits for the follow-up list before it can be created", async () => {
     server({ list: () => new Promise(() => undefined) });
     await followUp();
@@ -260,7 +275,9 @@ describe("creating a follow-up session", () => {
     await user.type(screen.getByLabelText("Name this session"), "Revisits");
     expect(screen.queryByRole("group", { name: "Households to visit" })).toBeNull();
     expect(create()).toBeDisabled();
-    expect(create()).toHaveAccessibleDescription("Add households to the follow-up list first.");
+    // Shorter beside the button: the card above already says what to do.
+    expect(create()).toHaveAccessibleDescription("Nothing on the follow-up list yet.");
+    expect(screen.getAllByText("Add households to the follow-up list first.")).toHaveLength(1);
 
     // A door-to-door session needs nothing from the list.
     await user.click(screen.getByRole("radio", { name: /Door-to-door/ }));

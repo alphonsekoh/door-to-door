@@ -186,7 +186,6 @@ async function applyItem(
 
   // A stored visit keeps its own outing even when the item names none.
   const session = await resolveSession(db, stored?.sessionId ?? item.sessionId);
-  const sessionId = session.id;
 
   /*
    * After the session check, so an ended session still reports itself first.
@@ -195,29 +194,18 @@ async function applyItem(
   assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
   assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
 
-  const attached = await db
-    .select({ blockId: sessionBlocks.blockId })
-    .from(sessionBlocks)
-    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, item.blockId)))
-    .limit(1);
-
-  if (attached.length === 0) {
-    throw new ConflictError("conflict", "That block is not part of the session.");
-  }
-
-  /*
-   * Only a new record is judged against the follow-up list: an amend corrects
-   * a visit already stored, wherever it was allowed at the time. The caller's
-   * role decides here, though canAmend above still asks the member question.
-   */
-  if (!stored) {
-    await assertMayRecordHere(db, caller, session, item.blockId, item.unitNumber);
-  }
-
   const write = {
     item,
     memberId,
-    sessionId,
+    caller,
+    session,
+    /*
+     * Only a new record is judged against the follow-up list: an amend
+     * corrects a visit already stored, wherever it was allowed at the time.
+     * The caller's role decides there, though canAmend above still asks the
+     * member question.
+     */
+    judgeList: !stored,
     createdAt: incomingCreatedAt,
     updatedAt: incomingUpdatedAt,
   };
@@ -240,10 +228,49 @@ async function applyItem(
 type Write = {
   item: SyncItem;
   memberId: string;
-  sessionId: string;
+  caller: SyncCaller;
+  session: ResolvedSession;
+  judgeList: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/*
+ * The first thing a write does: lock its session's row (FOR KEY SHARE), as
+ * changing a follow-up session's households does (FOR UPDATE), then judge
+ * where the item may land. So a record and a household change always wait
+ * for each other in one order, and whichever goes second sees what the
+ * other committed: a remove sees this visit, or this sees the remove.
+ */
+async function assertMayLand(
+  tx: Database,
+  { item, caller, session, judgeList }: Write,
+): Promise<void> {
+  const locked = await tx
+    .select({ status: outingSessions.status })
+    .from(outingSessions)
+    .where(eq(outingSessions.id, session.id))
+    .for("key share");
+  if (firstOrThrow(locked, "the session lock").status !== "active") {
+    throw new ConflictError(
+      "session_not_active",
+      "That session has ended. Ask an admin to reopen it.",
+    );
+  }
+
+  const attached = await tx
+    .select({ blockId: sessionBlocks.blockId })
+    .from(sessionBlocks)
+    .where(and(eq(sessionBlocks.sessionId, session.id), eq(sessionBlocks.blockId, item.blockId)))
+    .limit(1);
+  if (attached.length === 0) {
+    throw new ConflictError("conflict", "That block is not part of the session.");
+  }
+
+  if (judgeList) {
+    await assertMayRecordHere(tx, caller, session, item.blockId, item.unitNumber);
+  }
+}
 
 /* Thrown inside the transaction to roll its writes back without failing the item. */
 class NotApplied extends Error {
@@ -254,8 +281,9 @@ class NotApplied extends Error {
 
 /*
  * Writes one item atomically. The checks in applyItem ran on a read that other
- * requests may have outdated, so the decisive ones are repeated here in SQL:
+ * requests may have outdated, so the decisive ones are made or repeated here:
  *
+ * - Where it may land (assertMayLand) is judged first, under the session lock.
  * - INSERT ... ON CONFLICT DO NOTHING says whether this call created the row,
  *   which is what decides who writes the teammate snapshot when two flushes
  *   race. Only one inserts.
@@ -267,12 +295,12 @@ class NotApplied extends Error {
  * Author, session, team, household and clientCreatedAt are set at insert and
  * never in the UPDATE (D-29-2, D-74-16).
  */
-async function persist(
-  db: Database,
-  { item, memberId, sessionId, createdAt, updatedAt }: Write,
-): Promise<"applied" | "unchanged" | "stale"> {
+async function persist(db: Database, write: Write): Promise<"applied" | "unchanged" | "stale"> {
+  const { item, memberId, session, createdAt, updatedAt } = write;
+  const sessionId = session.id;
   try {
     await db.transaction(async (tx) => {
+      await assertMayLand(tx, write);
       const household = await upsertHousehold(tx, {
         blockId: item.blockId,
         unitNumber: item.unitNumber,

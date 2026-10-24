@@ -17,14 +17,29 @@ vi.mock("@/components/sessions/session-households", () => ({
     session,
     tick,
     onChanged,
+    onCounted,
   }: {
     session: OutingSession;
     tick: number;
     onChanged: () => Promise<void>;
+    onCounted: (onList: number) => void;
   }) => (
-    <button type="button" onClick={() => void onChanged()}>
-      Households panel: {session.status}, read {String(tick)}
-    </button>
+    <>
+      <button type="button" onClick={() => void onChanged()}>
+        Households panel: {session.status}, read {String(tick)}
+      </button>
+      {[0, 2].map((count) => (
+        <button
+          key={count}
+          type="button"
+          onClick={() => {
+            onCounted(count);
+          }}
+        >
+          Read {String(count)} on the list
+        </button>
+      ))}
+    </>
   ),
 }));
 
@@ -414,6 +429,24 @@ describe("a follow-up session", () => {
     expect(screen.getByText("Blk 123")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Add blocks" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+  });
+
+  it("holds Start once nothing picked is on the list, and says why", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    const start = await screen.findByRole("button", { name: "Start session" });
+    // Unread is not refused: the server decides.
+    expect(start).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Read 0 on the list" }));
+    expect(start).toBeDisabled();
+    expect(start).toHaveAccessibleDescription(
+      "Every household here is done or off the follow-up list, so members would find nothing to visit. Add households to start it.",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Read 2 on the list" }));
+    expect(start).toBeEnabled();
+    expect(start).not.toHaveAccessibleDescription();
   });
 
   it("has neither for a door-to-door session", async () => {

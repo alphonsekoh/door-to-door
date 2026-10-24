@@ -640,6 +640,32 @@ describe("acting on a note", () => {
     );
   });
 
+  it("says a stale Reopen met a suggestion, and re-reads so it is no longer offered", async () => {
+    // The screen was read before Ben suggested the door; the server knows better.
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, { error: { code: "follow_up_exists", message: "raw" } }),
+    );
+    const onChanged = vi.fn();
+    const done = note({ doneAt: "2026-04-01T00:00:00.000Z" });
+    render(<Panel over={{ followUps: [done] }} onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole("button", { name: "Reopen" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not reopened. A suggestion for this door is now waiting for an admin.",
+    );
+    expect(onChanged).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the screen as it is after a refusal that changes nothing at the door", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(403, { error: { code: "forbidden", message: "raw" } }),
+    );
+    const onChanged = vi.fn();
+    render(<Panel over={{ followUps: [note()] }} onChanged={onChanged} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+    await screen.findByRole("alert");
+    expect(onChanged).not.toHaveBeenCalled();
+  });
+
   it("explains a refusal outside the note's session", async () => {
     apiFetch.mockRejectedValue(
       new ApiRequestError(409, { error: { code: "not_on_follow_up_list", message: "raw" } }),

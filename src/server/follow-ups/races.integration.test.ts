@@ -7,6 +7,8 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 import { createFollowUp, removeFollowUp, updateFollowUp } from "@/server/follow-ups/service";
 import { removeSessionHousehold } from "@/server/sessions/households";
+import { createVisit } from "@/server/visits/service";
+import { syncVisits } from "@/server/visits/sync";
 
 /*
  * A member's right to change a note depends on its state, and an admin can
@@ -44,6 +46,30 @@ const theNote: Held = { table: "follow_ups", id: NOTE };
  * request that never waits fails the test. It is awaited before returning
  * whatever fails, so it can never write into the next test.
  */
+/* Until `waiters` requests are blocked on a lock in a statement like `pattern`. */
+async function waitingOn(pattern: string, waiters = 1): Promise<void> {
+  const startedAt = Date.now();
+  for (;;) {
+    const { rows } = await controller.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE wait_event_type = 'Lock' AND datname = current_database()
+         AND pid <> pg_backend_pid() AND query ILIKE $1`,
+      [pattern],
+    );
+    if (rows.length >= waiters) return;
+    if (Date.now() - startedAt > POLL_BUDGET_MS) {
+      throw new Error(`no request waited on ${pattern}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+const settle = (request: Promise<unknown>) =>
+  request.then(
+    (value) => ({ ok: value }),
+    (error: unknown) => ({ error }),
+  );
+
 async function parked(
   held: Held,
   start: () => Promise<unknown>,
@@ -57,24 +83,8 @@ async function parked(
   try {
     await client.query("BEGIN");
     await client.query(`SELECT 1 FROM ${held.table} WHERE id = $1 FOR UPDATE`, [held.id]);
-    pending = start().then(
-      (value) => ({ ok: value }),
-      (error: unknown) => ({ error }),
-    );
-    const startedAt = Date.now();
-    for (;;) {
-      const { rows } = await controller.query(
-        `SELECT 1 FROM pg_stat_activity
-         WHERE wait_event_type = 'Lock' AND datname = current_database()
-           AND pid <> pg_backend_pid() AND query ILIKE $1`,
-        [`%${held.table}%`],
-      );
-      if (rows.length >= waiters) break;
-      if (Date.now() - startedAt > POLL_BUDGET_MS) {
-        throw new Error(`the request never waited on ${held.table}`);
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    pending = settle(start());
+    await waitingOn(`%${held.table}%`, waiters);
     await whileHeld(query);
     await client.query("COMMIT");
     return await pending;
@@ -314,5 +324,138 @@ describe("two admins removing a follow-up session's last two households at once"
       SESSION,
     ]);
     expect(blocks.rows).toHaveLength(1);
+  });
+});
+
+describe("a visit recorded while an admin changes the session's households", () => {
+  const clock = { now: new Date(), toleranceMs: 300_000 };
+  let visitSeq = 0;
+  const nextVisitId = () =>
+    `01960000-0000-7000-8000-${(0x7a00 + (visitSeq += 1)).toString(16).padStart(12, "0")}`;
+  const record = () =>
+    createVisit(
+      db,
+      {
+        id: nextVisitId(),
+        blockId: BLOCK,
+        unitNumber: "#05-125",
+        interestLevel: "low",
+        memberId: ALICE,
+      },
+      clock,
+      alice,
+    );
+  const visitsAtQuiet = async () =>
+    (await pool.query(`SELECT 1 FROM visits WHERE household_id = $1`, [QUIET])).rows.length;
+  /* What removing #05-125 commits: another pick keeps the block in the session. */
+  const unpickQuiet = (q: Query) =>
+    q(`DELETE FROM session_households WHERE session_id = $1 AND household_id = $2`, [
+      SESSION,
+      QUIET,
+    ]).then(() => undefined);
+
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, kind, status, started_at, created_by)
+       VALUES ($1,'Follow-up','follow_up','active', now() - interval '1 hour', $2)`,
+      [SESSION, ADMIN],
+    );
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      SESSION,
+      BLOCK,
+    ]);
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, note, author_id, status) VALUES
+        ($1,'Bring the flyer',$3,'listed'), ($2,'Ask about Sunday',$3,'listed')`,
+      [HOUSEHOLD, QUIET, ADMIN],
+    );
+    await pool.query(
+      `INSERT INTO session_households (session_id, household_id) VALUES ($1,$2), ($1,$3)`,
+      [SESSION, HOUSEHOLD, QUIET],
+    );
+  });
+
+  it("judges the record after a removal it waited for, and stores nothing", async () => {
+    const outcome = await parked({ table: "outing_sessions", id: SESSION }, record, unpickQuiet);
+
+    expect(outcome).toMatchObject({ error: { code: "not_on_follow_up_list", status: 409 } });
+    expect(await visitsAtQuiet()).toBe(0);
+  });
+
+  it("holds a removal until the record lands, which then keeps the household", async () => {
+    // The record locks the session, then waits on the household held here.
+    const client = await controller.connect();
+    let recording: Promise<unknown> | undefined;
+    let removing: Promise<unknown> | undefined;
+    try {
+      await client.query("BEGIN");
+      await client.query(`SELECT 1 FROM households WHERE id = $1 FOR UPDATE`, [QUIET]);
+      recording = settle(record());
+      await waitingOn(`%insert into "households"%`);
+      removing = settle(removeSessionHousehold(db, SESSION, QUIET));
+      await waitingOn(`%from "outing_sessions"%for update%`);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+      await Promise.all([recording, removing]);
+    }
+
+    expect(await recording).toMatchObject({ ok: { memberId: ALICE } });
+    expect(await removing).toMatchObject({
+      error: {
+        code: "conflict",
+        message: "Someone has recorded a visit here in this session, so it stays in the session.",
+      },
+    });
+    const { rows } = await pool.query(
+      `SELECT 1 FROM session_households WHERE session_id = $1 AND household_id = $2`,
+      [SESSION, QUIET],
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  const item = () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    return {
+      id: nextVisitId(),
+      blockId: BLOCK,
+      unitNumber: "#05-125",
+      sessionId: SESSION,
+      interestLevel: "low" as const,
+      clientCreatedAt: at,
+      updatedAt: at,
+    };
+  };
+
+  it("judges a synced record after a removal it waited for, and holds it", async () => {
+    const outcome = await parked(
+      { table: "outing_sessions", id: SESSION },
+      () => syncVisits(db, [item()], alice, clock),
+      unpickQuiet,
+    );
+
+    expect(outcome).toMatchObject({
+      ok: [{ status: "rejected", error: { code: "not_on_follow_up_list" } }],
+    });
+    expect(await visitsAtQuiet()).toBe(0);
+  });
+
+  it("refuses a synced record whose session ended while it waited", async () => {
+    const outcome = await parked(
+      { table: "outing_sessions", id: SESSION },
+      () => syncVisits(db, [item()], alice, clock),
+      (q) =>
+        q(`UPDATE outing_sessions SET status = 'ended', ended_at = now() WHERE id = $1`, [
+          SESSION,
+        ]).then(() => undefined),
+    );
+
+    expect(outcome).toMatchObject({
+      ok: [{ status: "rejected", error: { code: "session_not_active" } }],
+    });
+    expect(await visitsAtQuiet()).toBe(0);
   });
 });

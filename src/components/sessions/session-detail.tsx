@@ -10,6 +10,7 @@ import { SessionActionButton } from "@/components/sessions/session-action-button
 import { SessionHouseholds } from "@/components/sessions/session-households";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { startBlocker } from "@/lib/follow-ups/session-households";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -32,6 +33,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   /* Bumped by the poll so the team panel re-reads on the same beat. */
   const [tick, setTick] = useState(0);
+  /* A follow-up session's households on members' list, once read. */
+  const [onList, setOnList] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -166,6 +169,9 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           key={spec.action}
           sessionId={session.id}
           spec={spec}
+          blocked={
+            spec.action === "start" && session.kind === "follow_up" ? startBlocker(onList) : null
+          }
           onDone={() => void load()}
         />
       ))}
@@ -254,7 +260,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       </div>
 
       {session.kind === "follow_up" ? (
-        <SessionHouseholds session={session} tick={tick} onChanged={load} />
+        <SessionHouseholds session={session} tick={tick} onChanged={load} onCounted={setOnList} />
       ) : null}
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />

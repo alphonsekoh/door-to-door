@@ -281,6 +281,18 @@ describe("describeFollowUpFailure", () => {
     expect(describeFollowUpFailure(error)).toBe(message);
   });
 
+  it("says a reopen met a suggestion that reached the door meanwhile", () => {
+    const error = new ApiRequestError(409, {
+      error: { code: "follow_up_exists", message: "raw server text" },
+    });
+    expect(describeFollowUpFailure(error, "reopen")).toBe(
+      "Not reopened. A suggestion for this door is now waiting for an admin.",
+    );
+    expect(describeFollowUpFailure(error, "save")).toBe(
+      "This household is already on the follow-up list or has a suggestion waiting.",
+    );
+  });
+
   it("falls back for anything else thrown", () => {
     expect(describeFollowUpFailure(new Error("boom"))).toBe(
       "Could not save the follow-up. Try again.",

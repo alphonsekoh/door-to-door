@@ -22,6 +22,7 @@ function toSessionHousehold(row: SessionHouseholdRow) {
   return {
     household: toHousehold(row.household),
     block: toBlock(row.block),
+    addedAt: row.addedAt.toISOString(),
     notes: row.notes.map(toFollowUp),
     onList: row.onList,
     visitedInSession: row.visitedInSession,

@@ -17,6 +17,8 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 const AT = "2026-10-20T08:00:00.000Z";
+/* Picked the day before AT, so a note resolved at AT was resolved since. */
+const PICKED = "2026-10-19T08:00:00.000Z";
 
 function session(status: SessionStatus = "active"): OutingSession {
   return {
@@ -79,6 +81,7 @@ function pick(
       postalCode: null,
       createdAt: AT,
     },
+    addedAt: PICKED,
     notes: [note(id)],
     onList: true,
     visitedInSession: false,
@@ -114,10 +117,16 @@ function server({
 }
 
 const mount = (status: SessionStatus = "active", onChanged = vi.fn(() => Promise.resolve())) => {
+  const onCounted = vi.fn();
   const view = render(
-    <SessionHouseholds session={session(status)} tick={0} onChanged={onChanged} />,
+    <SessionHouseholds
+      session={session(status)}
+      tick={0}
+      onChanged={onChanged}
+      onCounted={onCounted}
+    />,
   );
-  return { ...view, onChanged };
+  return { ...view, onChanged, onCounted };
 };
 
 const reads = () =>
@@ -169,6 +178,51 @@ describe("the households a follow-up session goes back to", () => {
     expect(await row("h5")).not.toHaveTextContent(/Visited|Done|Off the/);
   });
 
+  it("calls a pick whose owed note was taken off the list off it, whatever was done before", async () => {
+    // Its note from March was resolved long before the pick; the owed one was removed.
+    server({
+      picks: () =>
+        Promise.resolve({
+          data: [
+            pick("h1", "123", {
+              notes: [note("h1", { doneAt: "2026-03-28T10:00:00.000Z" })],
+              onList: false,
+              visitedInSession: true,
+            }),
+            pick("h2", "123"),
+          ],
+        }),
+    });
+    mount();
+    const row = (await screen.findByRole("link", { name: /#h1/ })).closest("li");
+    expect(row).toHaveTextContent("Off the follow-up list");
+    expect(row).toHaveTextContent("Members don't see it.");
+    expect(row).not.toHaveTextContent("Done before it started");
+  });
+
+  it("says how many members see, and tells the page after every read", async () => {
+    server({
+      picks: () =>
+        Promise.resolve({
+          data: [
+            pick("h1", "123"),
+            pick("h2", "123", { notes: [], onList: false }),
+            pick("h3", "125", { notes: [note("h3", { doneAt: AT })], onList: false }),
+          ],
+        }),
+    });
+    const { onCounted } = mount();
+    expect(await screen.findByText("Members see 1 of these.")).toBeVisible();
+    expect(onCounted).toHaveBeenLastCalledWith(1);
+  });
+
+  it("says nothing more while members see every pick", async () => {
+    const { onCounted } = mount();
+    await screen.findByRole("heading", { name: "Households to revisit (3)" });
+    expect(screen.queryByText(/^Members (see|will see|would see)/)).toBeNull();
+    expect(onCounted).toHaveBeenLastCalledWith(3);
+  });
+
   it("calls a note resolved before a draft starts already done", async () => {
     server({
       picks: () =>
@@ -188,7 +242,9 @@ describe("the households a follow-up session goes back to", () => {
   it("re-reads with the screen's poll", async () => {
     const { rerender } = mount();
     await screen.findByRole("heading", { name: "Households to revisit (3)" });
-    rerender(<SessionHouseholds session={session()} tick={1} onChanged={vi.fn()} />);
+    rerender(
+      <SessionHouseholds session={session()} tick={1} onChanged={vi.fn()} onCounted={vi.fn()} />,
+    );
     await waitFor(() => {
       expect(reads()).toBe(2);
     });
@@ -461,6 +517,21 @@ describe("adding households", () => {
     fireEvent.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
     fireEvent.click(sheet.getByRole("button", { name: "Add 1 household" }));
     expect(await sheet.findByRole("alert")).toHaveTextContent("Could not add those households.");
+  });
+
+  it("holds more than one request may add, and says so beside the button", async () => {
+    const many = Array.from({ length: 201 }, (_, index) =>
+      note(`x${String(index)}`, { blockName: "130" }),
+    );
+    server({ listed: () => Promise.resolve(listedPage(many)) });
+    mount();
+    const sheet = await openSheet();
+    fireEvent.click(await sheet.findByRole("button", { name: "Tick all" }));
+    const add = sheet.getByRole("button", { name: "Add 201 households" });
+    expect(add).toBeDisabled();
+    expect(add).toHaveAccessibleDescription("Tick 200 households or fewer at a time.");
+    fireEvent.click(sheet.getByRole("checkbox", { name: "Blk 130 · #x0" }));
+    expect(sheet.getByRole("button", { name: "Add 200 households" })).toBeEnabled();
   });
 
   it("closes on Cancel with nothing added", async () => {

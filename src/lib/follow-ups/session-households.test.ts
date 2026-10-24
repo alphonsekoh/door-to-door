@@ -3,17 +3,22 @@ import type { FollowUp, SessionHousehold } from "@/generated/types.gen";
 import {
   REMOVE_BLOCKED,
   householdState,
+  membersSee,
   removeBlocker,
+  startBlocker,
   stateLabel,
 } from "@/lib/follow-ups/session-households";
 
 const owed = { doneAt: null } as FollowUp;
 const done = { doneAt: "2026-10-20T10:00:00.000Z" } as FollowUp;
+/* Resolved in March, months before the household was picked. */
+const doneLongAgo = { doneAt: "2026-03-28T10:00:00.000Z" } as FollowUp;
 
 function entry(over: Partial<SessionHousehold> = {}): SessionHousehold {
   return {
     household: { id: "h1" } as SessionHousehold["household"],
     block: { id: "b1" } as SessionHousehold["block"],
+    addedAt: "2026-10-18T09:00:00.000Z",
     notes: [owed],
     onList: true,
     visitedInSession: false,
@@ -27,8 +32,28 @@ describe("householdState", () => {
     ["visited in this session", { visitedInSession: true }, "visited"],
     ["every note done in this session", { notes: [done], visitedInSession: true }, "done"],
     ["one note done, one still owed", { notes: [done, owed] }, "to_visit"],
-    ["every note done before it started", { notes: [done], onList: false }, "done_before"],
+    [
+      "its note done after the pick, before it started",
+      { notes: [done], onList: false },
+      "done_before",
+    ],
+    [
+      "done the moment it was picked",
+      { notes: [{ doneAt: "2026-10-18T09:00:00.000Z" } as FollowUp], onList: false },
+      "done_before",
+    ],
     ["every note taken off the follow-up list", { notes: [], onList: false }, "off_list"],
+    [
+      // The owed note was removed; an old resolved one is not why it was picked.
+      "its owed note taken off the list, an older one long done",
+      { notes: [doneLongAgo], onList: false },
+      "off_list",
+    ],
+    [
+      "an old done note beside the one done since the pick",
+      { notes: [done, doneLongAgo], onList: false },
+      "done_before",
+    ],
   ])("%s", (_case, over, state) => {
     expect(householdState(entry(over))).toBe(state);
   });
@@ -65,6 +90,33 @@ describe("removeBlocker", () => {
     expect(REMOVE_BLOCKED.visited).toBe("Visited in this session, so it stays.");
     expect(REMOVE_BLOCKED.last).toBe(
       "A follow-up session needs at least one household, so the last one can't be removed.",
+    );
+  });
+});
+
+describe("membersSee", () => {
+  const on = entry();
+  const off = entry({ onList: false, notes: [] });
+
+  it("says nothing while members see every pick, or once it has ended", () => {
+    expect(membersSee([on, on], "active")).toBeNull();
+    expect(membersSee([on, off], "ended")).toBeNull();
+  });
+
+  it("counts what members see of the picks", () => {
+    expect(membersSee([on, off, off], "active")).toBe("Members see 1 of these.");
+    expect(membersSee([off], "active")).toBe("Members see none of these right now.");
+    expect(membersSee([on, off], "draft")).toBe("Members will see 1 of these.");
+    expect(membersSee([off], "draft")).toBe("Members would see none of these.");
+  });
+});
+
+describe("startBlocker", () => {
+  it("holds Start only once the picks are read and none is owed", () => {
+    expect(startBlocker(null)).toBeNull();
+    expect(startBlocker(2)).toBeNull();
+    expect(startBlocker(0)).toBe(
+      "Every household here is done or off the follow-up list, so members would find nothing to visit. Add households to start it.",
     );
   });
 });

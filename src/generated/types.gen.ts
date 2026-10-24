@@ -459,7 +459,9 @@ export type RevisitEntry = {
 
 export type RevisitList = {
     /**
-     * Ordered by block name, then unit number.
+     * Ordered by block name, then street (two blocks may share a name),
+     * then unit number, so a block's households are always together.
+     *
      */
     data: Array<RevisitEntry>;
 };
@@ -477,9 +479,18 @@ export type SessionHousehold = {
     household: Household;
     block: Block;
     /**
+     * When an admin picked it for this session. A pick needs a note that
+     * is still owed, so a note resolved before this was not the reason
+     * for the pick: off the list with no note resolved since, the
+     * household's owed notes were taken off the follow-up list.
+     *
+     */
+    addedAt: string;
+    /**
      * The household's `listed`, not removed notes, resolved or not:
-     * outstanding first (by due day, undated last), then resolved. Empty
-     * once every note was taken off the follow-up list.
+     * outstanding first (by due day, undated last), then resolved,
+     * including any resolved before it was picked. Removed notes are
+     * never here.
      *
      */
     notes: Array<FollowUp>;
@@ -499,7 +510,9 @@ export type SessionHousehold = {
 
 export type SessionHouseholdList = {
     /**
-     * Ordered by block name, then unit number.
+     * Ordered by block name, then street (two blocks may share a name),
+     * then unit number, so a block's households are always together.
+     *
      */
     data: Array<SessionHousehold>;
 };
@@ -1132,7 +1145,12 @@ export type StartSessionErrors = {
      */
     404: Error;
     /**
-     * Another session is active, or this one is not a draft.
+     * `session_already_active`: another session is active. `conflict`:
+     * this one is not a draft, or it is a follow-up session none of whose
+     * households is still owed a visit (each was resolved or taken off
+     * the follow-up list since it was picked), so members would open an
+     * empty list.
+     *
      */
     409: Error;
 };

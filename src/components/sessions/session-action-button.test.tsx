@@ -41,6 +41,22 @@ describe("SessionActionButton", () => {
     expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/start", { method: "POST" });
   });
 
+  it("is not offered while the server would refuse it, and says why beside it", async () => {
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={start}
+        blocked="Add households to start it."
+        onDone={vi.fn()}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Start session" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("Add households to start it.");
+    await userEvent.setup().click(button);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
   it("reopens without asking, because that is the recovery path", async () => {
     // An admin racing to unlock a member mid-amendment must not meet a dialog.
     apiFetch.mockResolvedValue({ id: "s1" });

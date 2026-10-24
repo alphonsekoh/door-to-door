@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { blocks, followUps, households, users, visits } from "@/db/schema";
 import type { BlockRow } from "@/server/blocks/service";
-import { onRevisitList, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { byBlockThenUnit, onRevisitList, type RevisitSession } from "@/server/follow-ups/list-rule";
 import { attachTeams } from "@/server/teams/access";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
@@ -42,7 +42,7 @@ export async function listRevisits(db: Database, session: RevisitSession): Promi
     .from(households)
     .innerJoin(blocks, eq(blocks.id, households.blockId))
     .where(inArray(households.id, ids))
-    .orderBy(asc(blocks.name), asc(households.unitNumber));
+    .orderBy(...byBlockThenUnit);
 
   const latest = await attachTeams(
     db,

@@ -5,7 +5,7 @@ import { useRef, useState } from "react";
 import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
 import type { ActiveSession, FollowUp } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
 import {
   FOLLOW_UP_OFFLINE_NOTE,
@@ -133,7 +133,7 @@ function FollowUpControls({
   const sending = useRef(false);
   const done = note.doneAt !== null;
 
-  async function change(body: Record<string, unknown>): Promise<void> {
+  async function change(body: { done: boolean }): Promise<void> {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
@@ -142,7 +142,10 @@ function FollowUpControls({
       await apiFetch(`/follow-ups/${note.id}`, { method: "PATCH", body: JSON.stringify(body) });
       onChanged?.();
     } catch (error) {
-      setFailure(describeFollowUpFailure(error));
+      setFailure(describeFollowUpFailure(error, body.done ? "save" : "reopen"));
+      /* A 409 means the note's door changed under this screen: read it again,
+         so what is offered matches what the server would now allow. */
+      if (error instanceof ApiRequestError && error.status === 409) onChanged?.();
     } finally {
       sending.current = false;
       setBusy(false);

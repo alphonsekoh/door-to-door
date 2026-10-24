@@ -13,11 +13,12 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { loadAllListed } from "@/lib/follow-ups/listed";
-import { groupForPicking } from "@/lib/follow-ups/pick";
+import { addBlocker, groupForPicking } from "@/lib/follow-ups/pick";
 import { groupByBlock } from "@/lib/follow-ups/revisits";
 import {
   REMOVE_BLOCKED,
   householdState,
+  membersSee,
   removeBlocker,
   stateLabel,
 } from "@/lib/follow-ups/session-households";
@@ -38,12 +39,15 @@ export function SessionHouseholds({
   session,
   tick,
   onChanged,
+  onCounted,
 }: {
   session: OutingSession;
   /* Bumped by the detail screen's poll, so the list re-reads with it. */
   tick: number;
   /* Blocks follow households, so the screen re-reads them too. */
   onChanged: () => Promise<void>;
+  /* How many are on members' list, after each read: Start waits on it. */
+  onCounted: (onList: number) => void;
 }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [adding, setAdding] = useState(false);
@@ -61,11 +65,13 @@ export function SessionHouseholds({
     const mine = ++generation.current;
     try {
       const list = await apiFetch<SessionHouseholdList>(`/sessions/${sessionId}/households`);
-      if (mine === generation.current) setState({ status: "ready", entries: list.data });
+      if (mine !== generation.current) return;
+      setState({ status: "ready", entries: list.data });
+      onCounted(list.data.filter((entry) => entry.onList).length);
     } catch {
       if (mine === generation.current) setState({ status: "error" });
     }
-  }, [sessionId]);
+  }, [sessionId, onCounted]);
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
@@ -96,6 +102,7 @@ export function SessionHouseholds({
   }
 
   const entries = state.status === "ready" ? state.entries : [];
+  const seen = state.status === "ready" ? membersSee(entries, session.status) : null;
 
   return (
     <section aria-labelledby="session-households" className="space-y-2">
@@ -124,6 +131,7 @@ export function SessionHouseholds({
           today.
         </p>
       ) : null}
+      {seen === null ? null : <p className="text-caption text-foreground-muted">{seen}</p>}
 
       {notice === null ? null : (
         <p role="status" className="text-body text-foreground-muted">
@@ -317,6 +325,7 @@ function AddHouseholdsSheet({
     .flatMap((group) => group.households)
     .filter((household) => ticked.has(household.householdId))
     .map((household) => household.householdId);
+  const blocker = addBlocker(chosen.length);
 
   async function add(): Promise<void> {
     if (sending.current) return;
@@ -389,18 +398,18 @@ function AddHouseholdsSheet({
       </div>
 
       <SheetActions>
-        {chosen.length === 0 ? (
+        {blocker === null ? null : (
           <p
             id="add-households-note"
             className="mb-2 text-center text-caption text-foreground-muted"
           >
-            Tick the households to add.
+            {blocker}
           </p>
-        ) : null}
+        )}
         <button
           type="button"
-          disabled={busy || chosen.length === 0}
-          aria-describedby={chosen.length === 0 ? "add-households-note" : undefined}
+          disabled={busy || blocker !== null}
+          aria-describedby={blocker === null ? undefined : "add-households-note"}
           onClick={() => void add()}
           className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
         >
