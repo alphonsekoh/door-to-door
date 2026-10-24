@@ -31,10 +31,10 @@ describe("loadAllListed", () => {
     ]);
   });
 
-  it("stops on an empty page, so a miscounting server cannot loop it", async () => {
-    apiFetch.mockResolvedValueOnce(page(["a"], true)).mockResolvedValueOnce(page([], true));
-    expect(await loadAllListed()).toHaveLength(1);
-    expect(apiFetch).toHaveBeenCalledTimes(2);
+  it("reads a hundred at a time unless told otherwise", async () => {
+    apiFetch.mockResolvedValueOnce(page(["a"], false));
+    await loadAllListed();
+    expect(String(apiFetch.mock.calls[0]?.[0])).toContain("limit=100&offset=0");
   });
 });
 

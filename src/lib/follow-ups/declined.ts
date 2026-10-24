@@ -1,5 +1,5 @@
-import type { FollowUp, FollowUpList } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import type { FollowUp } from "@/generated/types.gen";
+import { loadAllFollowUps } from "@/lib/follow-ups/pages";
 import { formatDay } from "@/lib/history/dates";
 import { displayName } from "@/lib/teams/team-ui";
 
@@ -14,30 +14,23 @@ export const NOTICE_FIRST = 3;
  * suggestion declined or a note removed from the follow-up list, newest
  * first. The server leaves out what the author withdrew themself, which is
  * not news to them, so no page is spent on it; and every page is read, as
- * the author is owed every reason (D-74-61). Stops on the server's say-so or
- * an empty page, so a miscounting server cannot loop it. A failed page fails
- * the whole read.
+ * D-74-61 does for users, since the author is owed every reason (D-117-28,
+ * D-117-35).
  */
 export async function loadRemovalsForAuthor(
   userId: string,
   now: number,
   pageSize = 100,
 ): Promise<FollowUp[]> {
-  const since = new Date(now - DECLINED_WINDOW_MS).toISOString();
-  const notes: FollowUp[] = [];
-  for (;;) {
-    const params = new URLSearchParams({
+  return loadAllFollowUps(
+    {
       deleted: "true",
       authorId: userId,
       removedByOthers: "true",
-      deletedSince: since,
-      limit: String(pageSize),
-      offset: String(notes.length),
-    });
-    const page = await apiFetch<FollowUpList>(`/follow-ups?${params.toString()}`);
-    notes.push(...page.data);
-    if (!page.pagination.hasMore || page.data.length === 0) return notes;
-  }
+      deletedSince: new Date(now - DECLINED_WINDOW_MS).toISOString(),
+    },
+    pageSize,
+  );
 }
 
 export type RemovedNote = FollowUp & { deletedAt: string };

@@ -35,6 +35,20 @@ async function expectTappable(target: Locator): Promise<void> {
     .toBe(true);
 }
 
+/* Where the page opens, before any scroll, and what a tap there lands on. */
+async function expectInViewOnArrival(target: Locator): Promise<void> {
+  await expect
+    .poll(() =>
+      target.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        if (box.top < 0 || box.bottom > window.innerHeight) return false;
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+        return top !== null && (element.contains(top) || top.contains(element));
+      }),
+    )
+    .toBe(true);
+}
+
 test.afterEach(async ({ adminApi }) => {
   await endActiveSession(adminApi);
 });
@@ -134,8 +148,23 @@ test("an admin picks the households for a follow-up session, and a member is sen
 test("a member's suggestion is reviewed by an admin, and the member is told it was declined", async ({
   memberPage,
   adminPage,
+  adminApi,
 }) => {
-  const note = `Asked us back after 7pm (${String(Date.now())})`;
+  const stamp = String(Date.now());
+  const note = `Asked us back after 7pm (${stamp})`;
+
+  /* Earlier removals, so the notice has more than it shows at first. */
+  for (const n of [1, 2, 3, 4]) {
+    const suggested = await memberPage.request.post("/api/follow-ups", {
+      data: { householdId: QUIET_HOUSEHOLD, note: `Earlier suggestion ${String(n)} (${stamp})` },
+    });
+    expect(suggested.status()).toBe(201);
+    const { id } = (await suggested.json()) as { id: string };
+    const removed = await adminApi.post(`/api/follow-ups/${id}/remove`, {
+      data: { reason: "Visited already" },
+    });
+    expect(removed.status()).toBe(204);
+  }
 
   await memberPage.goto(`/households/${QUIET_HOUSEHOLD}`);
   await memberPage.getByRole("button", { name: "Suggest a return visit" }).first().click();
@@ -178,10 +207,25 @@ test("a member's suggestion is reviewed by an admin, and the member is told it w
 
   await memberPage.goto("/follow-ups");
   const declined = memberPage.getByRole("region", { name: "Not on the follow-up list" });
+  /* How many there are, and Got it to all, are in view where the page opens,
+     not under the bottom nav below three notes. */
+  const showAll = declined.getByRole("button", { name: /^Show all \(\d+\)$/ });
+  await expectInViewOnArrival(showAll);
+  await expectInViewOnArrival(declined.getByRole("button", { name: "Got it to all" }));
+
   const entry = declined.getByRole("listitem").filter({ hasText: note });
   await expect(entry).toContainText(/Declined by Admin User · .+: Visited last week/);
   await entry.getByRole("button", { name: "Got it" }).click();
   await expect(entry).toBeHidden();
+
+  const left = Number(/\((\d+)\)/.exec((await showAll.textContent()) ?? "")?.[1]);
+  await showAll.click();
+  await expect(declined.getByRole("listitem")).toHaveCount(left);
+  await expect(
+    declined.getByRole("listitem").filter({ hasText: `Earlier suggestion 1 (${stamp})` }),
+  ).toBeVisible();
+  await declined.getByRole("button", { name: "Got it to all" }).click();
+  await expect(declined).toBeHidden();
 });
 
 test("a visit to a unit taken off the list waits on the phone, and is sent once when it is listed again", async ({

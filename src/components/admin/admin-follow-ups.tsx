@@ -73,6 +73,8 @@ export function AdminFollowUps() {
   const [notice, setNotice] = useState<string | null>(null);
   /* Switching tabs quickly must not let an older answer land last. */
   const generation = useRef(0);
+  /* Nor an older count: two quick changes on To review each read the whole list. */
+  const counting = useRef(0);
 
   /*
    * The list counts households, as the New session picker does, so the two
@@ -81,16 +83,19 @@ export function AdminFollowUps() {
    * the list tab its own read gives the list's count.
    */
   const count = useCallback(async () => {
+    const mine = ++counting.current;
     const total = async (query: string) =>
       (await apiFetch<FollowUpList>(`/follow-ups?${query}&limit=1`)).pagination.total;
     try {
       if (tab === "list") {
         const review = await total(QUERY.review);
-        setCounts((current) => ({ ...current, review }));
+        if (mine === counting.current) setCounts((current) => ({ ...current, review }));
         return;
       }
       const [review, listed] = await Promise.all([total(QUERY.review), loadAllListed()]);
-      setCounts({ review, list: groupListedByHousehold(listed).length });
+      if (mine === counting.current) {
+        setCounts({ review, list: groupListedByHousehold(listed).length });
+      }
     } catch {
       // The tabs read without numbers; the list below still says what failed.
     }

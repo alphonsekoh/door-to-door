@@ -132,6 +132,20 @@ describe("DeclinedNotice", () => {
     expect(card.getAllByRole("listitem")).toHaveLength(3);
   });
 
+  it("says how many there are, and offers Got it to all, above the notes", async () => {
+    apiFetch.mockResolvedValue(page(five));
+    render(<DeclinedNotice userId="u1" />);
+    const card = within(await screen.findByRole("region", { name: "Not on the follow-up list" }));
+    const [firstNote] = card.getAllByRole("listitem");
+    if (firstNote === undefined) throw new Error("expected a note");
+    for (const control of [
+      card.getByRole("button", { name: "Show all (5)" }),
+      card.getByRole("button", { name: "Got it to all" }),
+    ]) {
+      expect(control.compareDocumentPosition(firstNote)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  });
+
   it("moves the next one up when one is acknowledged", async () => {
     apiFetch.mockResolvedValue(page(five));
     render(<DeclinedNotice userId="u1" />);

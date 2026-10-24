@@ -283,6 +283,31 @@ describe("AdminFollowUps", () => {
     expect(screen.getByRole("button", { name: "To review, 1" })).toBeInTheDocument();
   });
 
+  it("lets only the newest count of the list land", async () => {
+    let late: (value: FollowUpList) => void = () => undefined;
+    let listReads = 0;
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+      if (init?.method !== undefined) return Promise.resolve({});
+      if (path.startsWith("/sessions?")) return Promise.resolve({ data: [] });
+      if (path.includes("status=suggested")) return Promise.resolve(page([note("9")]));
+      listReads += 1;
+      if (listReads > 1) return Promise.resolve(page(fiveOnFour.slice(0, 2)));
+      return new Promise((resolve) => {
+        late = resolve;
+      });
+    });
+    render(<AdminFollowUps />);
+    fireEvent.click(await screen.findByRole("button", { name: "Dismiss" }));
+    const sheet = within(screen.getByRole("dialog", { name: "Dismiss this suggestion?" }));
+    fireEvent.change(sheet.getByLabelText("Why not add it?"), { target: { value: "Moved" } });
+    fireEvent.click(sheet.getByRole("button", { name: "Dismiss suggestion" }));
+    expect(await screen.findByRole("button", { name: "On the list, 2" })).toBeInTheDocument();
+
+    late(page(fiveOnFour));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.getByRole("button", { name: "On the list, 2" })).toBeInTheDocument();
+  });
+
   it("reads every page of the list before counting or showing it", async () => {
     search.value = "tab=list";
     apiFetch.mockImplementation((path: string) => {

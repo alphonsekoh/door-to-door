@@ -76,7 +76,7 @@ export async function listFollowUps(
    * backwards for the actionable list. dueDate keeps the default nulls-last,
    * so an undated note does not push a dated one down. The removed-notes view
    * is an audit trail, so it reads newest removal first. The id settles a
-   * tie, so a reader paging by offset never meets a row twice or misses one.
+   * tie, so rows that sort alike keep one order from page to page.
    */
   const order =
     options.deleted === true

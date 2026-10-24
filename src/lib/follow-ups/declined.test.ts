@@ -84,19 +84,6 @@ describe("loadRemovalsForAuthor", () => {
     await loadRemovalsForAuthor("alice", NOW);
     expect(String(apiFetch.mock.calls[0]?.[0])).toContain("limit=100&offset=0");
   });
-
-  it("stops on an empty page, so a miscounting server cannot loop it", async () => {
-    apiFetch.mockResolvedValueOnce(page(["a"], true)).mockResolvedValueOnce(page([], true));
-    expect(await loadRemovalsForAuthor("alice", NOW)).toHaveLength(1);
-    expect(apiFetch).toHaveBeenCalledTimes(2);
-  });
-
-  it("fails as a whole when any page fails", async () => {
-    apiFetch
-      .mockResolvedValueOnce(page(["a"], true))
-      .mockRejectedValueOnce(new TypeError("offline"));
-    await expect(loadRemovalsForAuthor("alice", NOW)).rejects.toThrow("offline");
-  });
 });
 
 describe("removedForAuthor", () => {

@@ -44,31 +44,11 @@ export function DeclinedNotice({ userId }: { userId: string }) {
       <h2 id="declined-heading" className="text-body font-semibold">
         Not on the follow-up list
       </h2>
-      <ul id="declined-list" className="mt-2 space-y-3">
-        {shown.map((note) => (
-          <li key={note.id} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
-            <p className="text-body font-medium tabular-nums">
-              <FollowUpDoor note={note} />
-            </p>
-            <p className="text-body break-words">{note.note}</p>
-            <p className="text-caption break-words text-foreground-muted">
-              {authorNoticeLine(note)}
-            </p>
-            <button
-              type="button"
-              onClick={() => {
-                markDeclinedSeen(note.id);
-                setRemoved((current) => current.filter((other) => other.id !== note.id));
-              }}
-              className="mt-1 min-h-11 min-w-11 font-medium btn-text"
-            >
-              Got it
-            </button>
-          </li>
-        ))}
-      </ul>
+      {/* Above the notes, as a notification stack keeps Show all and Clear:
+          under three notes they sat below the bottom nav on arrival, and how
+          many more there were went unseen. */}
       {removed.length < 2 ? null : (
-        <div className="mt-2 flex flex-wrap gap-x-5 border-t border-border pt-1">
+        <div className="flex flex-wrap gap-x-5">
           {removed.length > NOTICE_FIRST ? (
             <button
               type="button"
@@ -94,6 +74,32 @@ export function DeclinedNotice({ userId }: { userId: string }) {
           </button>
         </div>
       )}
+      <ul
+        id="declined-list"
+        className={`space-y-3 ${removed.length < 2 ? "mt-2" : "mt-1 border-t border-border pt-3"}`}
+      >
+        {shown.map((note) => (
+          <li key={note.id} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
+            <p className="text-body font-medium tabular-nums">
+              <FollowUpDoor note={note} />
+            </p>
+            <p className="text-body break-words">{note.note}</p>
+            <p className="text-caption break-words text-foreground-muted">
+              {authorNoticeLine(note)}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                markDeclinedSeen(note.id);
+                setRemoved((current) => current.filter((other) => other.id !== note.id));
+              }}
+              className="mt-1 min-h-11 min-w-11 font-medium btn-text"
+            >
+              Got it
+            </button>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
