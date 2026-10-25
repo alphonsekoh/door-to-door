@@ -115,12 +115,13 @@ beforeEach(async () => {
       ALICE,
     ],
   );
-  /* Every household picked while it was owed, but the one left out on purpose
-     and the one in a block the session does not cover. */
+  /* Every household picked in the draft, the day before it started, while it
+     was owed, but the one left out on purpose and the one in a block the
+     session does not cover. */
   await pool.query(
-    `INSERT INTO session_households (session_id, household_id)
-     SELECT $1, unnest($2::uuid[])`,
-    [FOLLOW_UP, [OWED, SUGGESTED, REMOVED, DONE_BEFORE, DONE_TONIGHT, OTHER_BLOCK]],
+    `INSERT INTO session_households (session_id, household_id, added_at)
+     SELECT $1, unnest($2::uuid[]), $3::timestamptz - interval '1 day'`,
+    [FOLLOW_UP, [OWED, SUGGESTED, REMOVED, DONE_BEFORE, DONE_TONIGHT, OTHER_BLOCK], STARTED],
   );
   await pool.query(
     `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at) VALUES
@@ -291,6 +292,60 @@ describe("the list, the recording check and the note check agree", () => {
 
   it("matches the unit number as recording stores it, trimmed", async () => {
     expect(await isUnitOnRevisitList(db, session, BLOCK_A, "  #01-01 ")).toBe(true);
+  });
+});
+
+describe("a household added to the session once it was running", () => {
+  /* Started an hour ago; each door added 30 minutes ago, for a note still owed then. */
+  const OFF_SINCE_ADDED = "f0f0f0f0-0000-4000-8003-000000000011";
+  const DONE_SINCE_ADDED = "f0f0f0f0-0000-4000-8003-000000000012";
+
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO households (id, block_id, unit_number) VALUES ($1,$3,'#11-11'), ($2,$3,'#12-12')`,
+      [OFF_SINCE_ADDED, DONE_SINCE_ADDED, BLOCK_A],
+    );
+    // Done during the session, ten minutes before its door was added for
+    // another note, which an admin then took off the follow-up list.
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, status, note, done_at, deleted_at) VALUES
+        ($1,$3,'listed','Done before it was added', now() - interval '40 minutes', null),
+        ($1,$3,'listed','Removed after it was added', null, now() - interval '5 minutes'),
+        ($2,$3,'listed','Done since it was added', now() - interval '10 minutes', null)`,
+      [OFF_SINCE_ADDED, DONE_SINCE_ADDED, ADMIN],
+    );
+    await pool.query(
+      `INSERT INTO session_households (session_id, household_id, added_at)
+       SELECT $1, unnest($2::uuid[]), now() - interval '30 minutes'`,
+      [FOLLOW_UP, [OFF_SINCE_ADDED, DONE_SINCE_ADDED]],
+    );
+  });
+
+  it.each<[string, string, string, boolean]>([
+    ["not for a note resolved before it was added", "#11-11", "Done before it was added", false],
+    ["for a note resolved since it was added", "#12-12", "Done since it was added", true],
+  ])("is on the list %s", async (_case, unit, note, onList) => {
+    const entry = (await listRevisits(db, session)).find(
+      (candidate) => candidate.household.unitNumber === unit,
+    );
+    expect(entry?.notes.map((n) => n.note)).toEqual(onList ? [note] : undefined);
+    expect(await isUnitOnRevisitList(db, session, BLOCK_A, unit)).toBe(onList);
+    expect(await isNoteOnActiveRevisitList(db, await noteOf(note))).toBe(onList);
+    const recorded = createVisit(
+      db,
+      {
+        id: nextVisitId(),
+        blockId: BLOCK_A,
+        unitNumber: unit,
+        interestLevel: "low",
+        memberId: ALICE,
+      },
+      { now: new Date(), toleranceMs: 300_000 },
+      { role: "member" },
+    );
+    await (onList
+      ? expect(recorded).resolves.toMatchObject({ memberId: ALICE })
+      : expect(recorded).rejects.toMatchObject({ code: "not_on_follow_up_list" }));
   });
 });
 

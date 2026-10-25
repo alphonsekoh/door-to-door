@@ -507,10 +507,16 @@ export function RecordVisitForm({
                 className="min-h-11 font-medium btn-text"
               />
             ) : null}
+            {/* On a row of its own: beside the line, it fitted "Sending…"
+                but not "Saved … on this phone.", so the line grew just after
+                Save scrolled it into view, and the browser, holding the unit
+                field still, pushed it up under the pinned count. */}
             {followUp === null ? null : (
-              <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
-                Back to the list
-              </Link>
+              <div className="basis-full">
+                <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
+                  Back to the list
+                </Link>
+              </div>
             )}
           </div>
         )}

@@ -309,19 +309,32 @@ components:
       description: The active session together with the blocks a member can pick.
       type: object
       additionalProperties: false
-      required: [session, blocks, householdIds]
+      required: [session, blocks, picks]
       properties:
         session: { $ref: "#/components/schemas/OutingSession" }
         blocks:
           type: array
           items: { $ref: "#/components/schemas/SessionBlock" }
-        householdIds:
+        picks:
           type: array
           description: |
-            The households an admin picked for a follow-up session, so a client
-            can tell which listed notes are on its list without reading the
-            list. Empty for a regular session.
-          items: { type: string, format: uuid }
+            The households an admin picked for a follow-up session, and when,
+            so a client can tell which listed notes are on its list without
+            reading the list. Empty for a regular session.
+          items: { $ref: "#/components/schemas/SessionPick" }
+
+    SessionPick:
+      type: object
+      additionalProperties: false
+      required: [householdId, addedAt]
+      properties:
+        householdId: { type: string, format: uuid }
+        addedAt:
+          type: string
+          format: date-time
+          description: |
+            When an admin picked it. A note resolved before this, or before the
+            session started, was not this session's work at this household.
 
     Household:
       type: object
@@ -580,9 +593,9 @@ components:
       description: |
         One household on a follow-up session's list: an admin picked it for
         the session, and it has at least one `listed`, not removed note that is
-        outstanding or was resolved after the session started (a draft counts
-        outstanding notes only). This is the set a member may record visits at
-        in that session.
+        outstanding or was resolved after both the session started and the
+        household was picked (a draft counts outstanding notes only). This is
+        the set a member may record visits at in that session.
       type: object
       additionalProperties: false
       required: [household, block, notes, latestVisit, visitedInSession]
@@ -594,8 +607,8 @@ components:
           minItems: 1
           description: |
             The listed notes that put it on the list: outstanding first (by due
-            day, undated last), then those resolved during the session, most
-            recently resolved first.
+            day, undated last), then those resolved since the later of the
+            session's start and the pick, most recently resolved first.
           items: { $ref: "#/components/schemas/FollowUp" }
         latestVisit:
           description: The most recent visit here in any session, or null.
@@ -1566,7 +1579,9 @@ paths:
       description: |
         The follow-up session's list: households an admin picked for it that
         have a `listed`, not removed note that is outstanding or was resolved
-        after the session started. This is the same rule that decides where a
+        after both the session started and the household was picked, so a
+        household added to a running session does not bring along a note
+        resolved before it was added. This is the same rule that decides where a
         member may record a visit in the session (`409 not_on_follow_up_list`)
         and whether a member may change a listed note, so the list and its
         refusals cannot disagree.

@@ -679,7 +679,7 @@ describe("in a follow-up session", () => {
         activeMembers: [],
       },
     ],
-    householdIds: [],
+    picks: [],
   };
   const revisits = {
     data: [

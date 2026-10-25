@@ -81,7 +81,7 @@ const active: ActiveSession = {
     householdCount: 0,
     activeMembers: [],
   })),
-  householdIds: [],
+  picks: [],
 };
 
 const household: HouseholdSummary = {

@@ -51,7 +51,7 @@ const FOLLOW_UP: ActiveSession = {
       activeMembers: [],
     },
   ],
-  householdIds: ["h1"],
+  picks: [{ householdId: "h1", addedAt: "2025-12-31T00:00:00.000Z" }],
 };
 
 const visit = (over: Partial<Visit> = {}): Visit => ({

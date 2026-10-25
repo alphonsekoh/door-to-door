@@ -62,41 +62,39 @@ describe("householdState", () => {
 
 describe("pickNote", () => {
   const note = (id: string, doneAt: string | null) => ({ id, doneAt }) as FollowUp;
-  /* Picked on 18 Oct, started on 19 Oct. */
-  const running = { startedAt: "2026-10-19T09:00:00.000Z" };
+  /* Picked on 18 Oct 09:00. */
   const march = note("march", "2026-03-28T10:00:00.000Z");
   const pamphlet = note("pamphlet", "2026-10-21T10:00:00.000Z");
 
   it("names the note still owed, ahead of any resolved", () => {
-    expect(pickNote(entry({ notes: [note("owed", null), pamphlet] }), running)?.id).toBe("owed");
+    expect(pickNote(entry({ notes: [note("owed", null), pamphlet] }))?.id).toBe("owed");
   });
 
   it("names the note resolved today, never the one resolved in March", () => {
     // The server's order: owed, then the most recently resolved first.
-    expect(pickNote(entry({ notes: [pamphlet, march] }), running)?.id).toBe("pamphlet");
+    expect(pickNote(entry({ notes: [pamphlet, march] }))?.id).toBe("pamphlet");
   });
 
   it("names none when every note was resolved before the pick", () => {
-    expect(pickNote(entry({ notes: [march] }), running)).toBeNull();
-    expect(pickNote(entry({ notes: [] }), running)).toBeNull();
+    expect(pickNote(entry({ notes: [march] }))).toBeNull();
+    expect(pickNote(entry({ notes: [] }))).toBeNull();
   });
 
-  it("counts from the start when the household was added after it", () => {
-    const addedLater = entry({ addedAt: "2026-10-20T09:00:00.000Z" });
-    const doneAfterStart = note("since start", "2026-10-19T12:00:00.000Z");
-    expect(pickNote({ ...addedLater, notes: [doneAfterStart] }, running)?.id).toBe("since start");
-    const doneBeforeStart = note("before start", "2026-10-19T08:00:00.000Z");
-    expect(pickNote({ ...addedLater, notes: [doneBeforeStart] }, running)).toBeNull();
+  it("counts from the pick, to the minute", () => {
+    expect(pickNote(entry({ notes: [note("at the pick", "2026-10-18T09:00:00.000Z")] }))?.id).toBe(
+      "at the pick",
+    );
+    expect(pickNote(entry({ notes: [note("before", "2026-10-18T08:59:00.000Z")] }))).toBeNull();
   });
 
-  it("counts from the pick in a draft, which has no start", () => {
-    const draft = { startedAt: null };
-    expect(
-      pickNote(entry({ notes: [note("at the pick", "2026-10-18T09:00:00.000Z")] }), draft)?.id,
-    ).toBe("at the pick");
-    expect(
-      pickNote(entry({ notes: [note("before", "2026-10-18T08:59:00.000Z")] }), draft),
-    ).toBeNull();
+  it("never names a note resolved in the session before the household was added to it", () => {
+    // Started 19 Oct; note A done 20 Oct; the door added 21 Oct for note B,
+    // which an admin then took off the follow-up list.
+    const addedMidway = entry({ addedAt: "2026-10-21T09:00:00.000Z" });
+    const doneBeforeAdded = note("A", "2026-10-20T12:00:00.000Z");
+    expect(pickNote({ ...addedMidway, notes: [doneBeforeAdded] })).toBeNull();
+    const doneSince = note("B", "2026-10-21T12:00:00.000Z");
+    expect(pickNote({ ...addedMidway, notes: [doneSince, doneBeforeAdded] })?.id).toBe("B");
   });
 });
 

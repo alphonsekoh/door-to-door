@@ -137,7 +137,7 @@ const FOLLOW_UP: ActiveSession = {
       activeMembers: [],
     },
   ],
-  householdIds: ["h1"],
+  picks: [{ householdId: "h1", addedAt: "2024-12-31T00:00:00.000Z" }],
 };
 
 describe("validateVisit", () => {

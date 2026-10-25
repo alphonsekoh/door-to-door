@@ -265,6 +265,29 @@ describe("the households a follow-up session goes back to", () => {
     expect(row).not.toHaveTextContent("Done before it started");
   });
 
+  it("never names a note done in the session before the household was added to it", async () => {
+    // Started at AT. Note A was done that noon; the door was added the next
+    // day for another note, which an admin then took off the follow-up list.
+    server({
+      picks: () =>
+        Promise.resolve({
+          data: [
+            pick("h1", "123", {
+              addedAt: "2026-10-21T09:00:00.000Z",
+              notes: [note("h1", { note: "Note A", doneAt: "2026-10-20T12:00:00.000Z" })],
+              onList: false,
+            }),
+            pick("h2", "123"),
+          ],
+        }),
+    });
+    mount();
+    const row = (await screen.findByRole("link", { name: /#h1/ })).closest("li");
+    expect(row).toHaveTextContent("Off the follow-up list");
+    expect(row).not.toHaveTextContent("Note A");
+    expect(row).not.toHaveTextContent(/Done/);
+  });
+
   it("says how many members see, and tells the page after every read", async () => {
     server({
       picks: () =>

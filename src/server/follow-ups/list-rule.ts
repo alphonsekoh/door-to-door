@@ -1,4 +1,5 @@
 import { and, asc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
 import type { Role, SessionKind } from "@/db/schema";
 import { blocks, followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
@@ -38,27 +39,47 @@ export const byNoteOwedThenResolved = [
   asc(followUps.createdAt),
 ];
 
+/* The list's own notes, apart from whichever follow-ups a caller reads. */
+const listed = alias(followUps, "listed_note");
+
 /*
  * Picked for the session by an admin, and with a note that is listed, not
- * removed, and still owed or resolved since the session started. A draft has
- * no start, so only what is still owed counts: a note resolved last month is
- * not this session's work. A pick whose notes have all left the list stays
- * picked, and simply drops off the list until one is listed or reopened.
+ * removed, and still owed or resolved since both the session started and the
+ * household was picked. A note resolved before either was not this session's
+ * work there: last month's, or one done before an admin added the door to a
+ * running session for another note. A draft has no start, so only what is
+ * still owed counts. A pick whose notes have all left the list stays picked,
+ * and simply drops off the list until one is listed or reopened.
+ *
+ * The set of notes on the list, uncorrelated, so each note is held to its
+ * own pick's time and never compared with a caller's same-named column.
  */
-export function onRevisitList(db: Database, session: RevisitSession): SQL | undefined {
-  return and(
-    eq(followUps.status, "listed"),
-    liveFollowUp,
-    session.startedAt === null
-      ? isNull(followUps.doneAt)
-      : or(isNull(followUps.doneAt), gte(followUps.doneAt, session.startedAt)),
-    inArray(
-      followUps.householdId,
-      db
-        .select({ id: sessionHouseholds.householdId })
-        .from(sessionHouseholds)
-        .where(eq(sessionHouseholds.sessionId, session.id)),
-    ),
+export function onRevisitList(db: Database, session: RevisitSession): SQL {
+  const { startedAt } = session;
+  return inArray(
+    followUps.id,
+    db
+      .select({ id: listed.id })
+      .from(listed)
+      .innerJoin(
+        sessionHouseholds,
+        and(
+          eq(sessionHouseholds.householdId, listed.householdId),
+          eq(sessionHouseholds.sessionId, session.id),
+        ),
+      )
+      .where(
+        and(
+          eq(listed.status, "listed"),
+          isNull(listed.deletedAt),
+          startedAt === null
+            ? isNull(listed.doneAt)
+            : or(
+                isNull(listed.doneAt),
+                and(gte(listed.doneAt, startedAt), gte(listed.doneAt, sessionHouseholds.addedAt)),
+              ),
+        ),
+      ),
   );
 }
 

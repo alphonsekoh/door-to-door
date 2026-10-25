@@ -34,20 +34,15 @@ export function householdState(entry: SessionHousehold): PickState {
 /*
  * The note a pick was made for, as its row says it: the first still owed
  * (the soonest due, as the picker showed it), else the one resolved most
- * recently since the pick or the session's start, whichever came first.
- * The server orders owed notes first and then the newest resolved, so it is
- * the first that qualifies. A note resolved before both was never what the
- * pick was for, so a pick with only those shows none.
+ * recently since the pick. The server orders owed notes first and then the
+ * newest resolved, so it is the first that qualifies. A note resolved before
+ * the pick was never what it was for, even one resolved after the session
+ * started, so a pick with only those shows none.
  */
-export function pickNote(
-  entry: Pick<SessionHousehold, "notes" | "addedAt">,
-  session: Pick<OutingSession, "startedAt">,
-): FollowUp | null {
+export function pickNote(entry: Pick<SessionHousehold, "notes" | "addedAt">): FollowUp | null {
   const picked = Date.parse(entry.addedAt);
-  const since =
-    session.startedAt === null ? picked : Math.min(picked, Date.parse(session.startedAt));
   return (
-    entry.notes.find((note) => note.doneAt === null || Date.parse(note.doneAt) >= since) ?? null
+    entry.notes.find((note) => note.doneAt === null || Date.parse(note.doneAt) >= picked) ?? null
   );
 }
 

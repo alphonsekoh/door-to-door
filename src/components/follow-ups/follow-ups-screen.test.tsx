@@ -22,7 +22,10 @@ vi.mock("@/lib/hooks/use-active-session", () => ({ useActiveSession }));
 const FOLLOW_UP = {
   session: { kind: "follow_up", startedAt: "2026-01-01T00:00:00.000Z" },
   blocks: [{ block: { id: "b1" } }],
-  householdIds: ["h-1", "h-2"],
+  picks: [
+    { householdId: "h-1", addedAt: "2025-12-31T00:00:00.000Z" },
+    { householdId: "h-2", addedAt: "2025-12-31T00:00:00.000Z" },
+  ],
 };
 
 /* Tested on its own; here it would only add a request to every count. */

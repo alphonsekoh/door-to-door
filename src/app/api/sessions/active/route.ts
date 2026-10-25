@@ -3,7 +3,7 @@ import { zGetActiveSessionResponse } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
 import { NotFoundError } from "@/server/http/errors";
 import { currentUser } from "@/server/auth/session";
-import { listPickedIds } from "@/server/sessions/households";
+import { listPicks } from "@/server/sessions/households";
 import { toOutingSession, toSessionBlock } from "@/server/sessions/serialise";
 import { findActiveSession, listSessionBlocks } from "@/server/sessions/service";
 
@@ -26,13 +26,16 @@ export const GET = withContract(
 
     const blocks = await listSessionBlocks(db, session.id);
     /* A regular session picks none, so this is empty for it. */
-    const householdIds = await listPickedIds(db, session.id);
+    const picks = await listPicks(db, session.id);
     return {
       status: 200,
       body: {
         session: toOutingSession(session),
         blocks: blocks.map(toSessionBlock),
-        householdIds,
+        picks: picks.map((pick) => ({
+          householdId: pick.householdId,
+          addedAt: pick.addedAt.toISOString(),
+        })),
       },
     };
   },

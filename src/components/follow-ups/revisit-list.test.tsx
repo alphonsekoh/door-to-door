@@ -33,7 +33,7 @@ const ACTIVE = {
     createdAt: STAMP,
   },
   blocks: [],
-  householdIds: [],
+  picks: [],
 } satisfies ActiveSession;
 
 const block = (id: string, name: string) => ({

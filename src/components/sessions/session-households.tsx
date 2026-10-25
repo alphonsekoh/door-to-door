@@ -238,7 +238,7 @@ function HouseholdRow({
 }) {
   const state = householdState(entry);
   const label = stateLabel(state, session.status);
-  const note = pickNote(entry, session);
+  const note = pickNote(entry);
   const blocker = removeBlocker(entry, entries, session.status, blocks);
   const door = `Blk ${entry.block.name} · ${entry.household.unitNumber}`;
 

@@ -139,13 +139,18 @@ export const zOutingSession = z.object({
     createdAt: z.iso.datetime()
 });
 
+export const zSessionPick = z.object({
+    householdId: z.uuid(),
+    addedAt: z.iso.datetime()
+});
+
 /**
  * The active session together with the blocks a member can pick.
  */
 export const zActiveSession = z.object({
     session: zOutingSession,
     blocks: z.array(zSessionBlock),
-    householdIds: z.array(z.uuid())
+    picks: z.array(zSessionPick)
 });
 
 export const zHousehold = z.object({
@@ -244,9 +249,9 @@ export const zHouseholdHistory = z.object({
 /**
  * One household on a follow-up session's list: an admin picked it for
  * the session, and it has at least one `listed`, not removed note that is
- * outstanding or was resolved after the session started (a draft counts
- * outstanding notes only). This is the set a member may record visits at
- * in that session.
+ * outstanding or was resolved after both the session started and the
+ * household was picked (a draft counts outstanding notes only). This is
+ * the set a member may record visits at in that session.
  *
  */
 export const zRevisitEntry = z.object({

@@ -14,16 +14,19 @@ type Listable = Pick<FollowUp, "status" | "householdId" | "doneAt" | "deletedAt"
 
 /*
  * The server's list rule, on the client: listed, not removed, at a household
- * the running follow-up session picked, and still owed or resolved since the
- * session started. `active` is null when nothing is running or it is unknown.
+ * the running follow-up session picked, and still owed or resolved since both
+ * the session started and the household was picked. `active` is null when
+ * nothing is running or it is unknown.
  */
 export function onActiveList(note: Listable, active: ActiveSession | null): boolean {
   if (active?.session.kind !== "follow_up") return false;
   if (note.status !== "listed" || note.deletedAt !== null) return false;
-  if (!active.householdIds.includes(note.householdId)) return false;
+  const pick = active.picks.find((candidate) => candidate.householdId === note.householdId);
+  if (pick === undefined) return false;
   if (note.doneAt === null) return true;
   const started = active.session.startedAt;
-  return started !== null && Date.parse(note.doneAt) >= Date.parse(started);
+  const done = Date.parse(note.doneAt);
+  return started !== null && done >= Date.parse(started) && done >= Date.parse(pick.addedAt);
 }
 
 export type FollowUpRights = {

@@ -87,6 +87,13 @@ const pickedIds = async (id: string) =>
       [id],
     )
   ).rows.map((row) => row.household_id);
+const pickedAt = async (id: string, householdId: string) =>
+  (
+    await pool.query<{ added_at: Date }>(
+      `SELECT added_at FROM session_households WHERE session_id = $1 AND household_id = $2`,
+      [id, householdId],
+    )
+  ).rows.map((row) => row.added_at.toISOString());
 const blockIds = async (id: string) =>
   (
     await pool.query<{ block_id: string }>(
@@ -244,14 +251,21 @@ describe("GET /api/sessions?kind=", () => {
 });
 
 describe("GET /api/sessions/active", () => {
-  it("names a follow-up session's households", async () => {
+  it("names a follow-up session's households and when each was picked", async () => {
     const id = await followUp([OWED_1, OWED_B]);
+    await pool.query(
+      `UPDATE session_households SET added_at = '2026-10-18T09:00:00Z' WHERE household_id = $1`,
+      [OWED_B],
+    );
     await setStatus(id, "active");
     asAlice();
     const body = (await (await getActive(json("GET", "/active"))).json()) as {
-      householdIds: string[];
+      picks: { householdId: string; addedAt: string }[];
     };
-    expect(body.householdIds).toEqual([OWED_1, OWED_B]);
+    expect(body.picks.map((pick) => pick.householdId)).toEqual([OWED_1, OWED_B]);
+    expect(body.picks[1]?.addedAt).toBe("2026-10-18T09:00:00.000Z");
+    const [added] = await pickedAt(id, OWED_1);
+    expect(body.picks[0]?.addedAt).toBe(added);
   });
 
   it("names none for a door-to-door session", async () => {
@@ -260,10 +274,8 @@ describe("GET /api/sessions/active", () => {
     const { id } = (await created.json()) as { id: string };
     await setStatus(id, "active");
     asAlice();
-    const body = (await (await getActive(json("GET", "/active"))).json()) as {
-      householdIds: string[];
-    };
-    expect(body.householdIds).toEqual([]);
+    const body = (await (await getActive(json("GET", "/active"))).json()) as { picks: unknown[] };
+    expect(body.picks).toEqual([]);
   });
 });
 
@@ -656,6 +668,35 @@ describe("a pick whose note leaves the follow-up list", () => {
       (await (await list(id)).json()) as { data: { onList: boolean; notes: unknown[] }[] }
     ).data;
     expect(entries).toEqual([expect.objectContaining({ onList: false, notes: [] })]);
+  });
+
+  it("leaves the list when added midway, whatever was resolved before it was added", async () => {
+    type Entry = { household: { id: string }; onList: boolean; notes: { note: string }[] };
+    const read = async (id: string) => ((await (await list(id)).json()) as { data: Entry[] }).data;
+    const id = await followUp([OWED_2]);
+    await setStatus(id, "active");
+    // Resolved half an hour into the session, before an admin added the door
+    // for "Due later", which is then taken off the follow-up list.
+    await pool.query(
+      `UPDATE follow_ups SET done_at = now() - interval '30 minutes'
+       WHERE household_id = $1 AND note = 'Due soon'`,
+      [OWED_1],
+    );
+    asAdmin();
+    expect((await add(id, [OWED_1])).status).toBe(200);
+    expect(
+      (await read(id)).find((entry) => entry.household.id === OWED_1)?.onList,
+      "owed when added",
+    ).toBe(true);
+    await pool.query(
+      `UPDATE follow_ups SET deleted_at = now(), deleted_by = $2, delete_reason = 'Moved'
+       WHERE household_id = $1 AND note = 'Due later'`,
+      [OWED_1, ADMIN],
+    );
+    const entry = (await read(id)).find((candidate) => candidate.household.id === OWED_1);
+    expect(entry?.onList).toBe(false);
+    // Still read, for the page to tell they were resolved before the pick.
+    expect(entry?.notes.map((note) => note.note)).toEqual(["Due soon", "Done already"]);
   });
 });
 

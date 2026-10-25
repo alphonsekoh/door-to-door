@@ -157,14 +157,15 @@ export async function addSessionHouseholds(
   });
 }
 
-/* Which households a session picked, for a client to tell its list without reading it. */
-export async function listPickedIds(db: Database, sessionId: string): Promise<string[]> {
-  const rows = await db
-    .select({ householdId: sessionHouseholds.householdId })
+export type PickRow = { householdId: string; addedAt: Date };
+
+/* Which households a session picked and when, for a client to tell its list without reading it. */
+export function listPicks(db: Database, sessionId: string): Promise<PickRow[]> {
+  return db
+    .select({ householdId: sessionHouseholds.householdId, addedAt: sessionHouseholds.addedAt })
     .from(sessionHouseholds)
     .where(eq(sessionHouseholds.sessionId, sessionId))
     .orderBy(asc(sessionHouseholds.householdId));
-  return rows.map((row) => row.householdId);
 }
 
 export type SessionHouseholdRow = {

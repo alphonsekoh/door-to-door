@@ -309,3 +309,98 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   /* Left as it found the list. */
   expect(await removeNote(second)).toBe(204);
 });
+
+test.describe("without signal", () => {
+  /* page.route cannot reach a request the service worker makes. */
+  test.use({ serviceWorkers: "block" });
+
+  /*
+   * "Sending…" fitted beside Back to the list and "Saved … on this phone."
+   * did not, so the line grew a row just after Save had scrolled it into
+   * view, and the browser kept the unit field still by scrolling the line
+   * up under the pinned count.
+   */
+  test("a visit saved on the phone keeps its Saved line clear of the pinned count", async ({
+    memberPage,
+    adminApi,
+  }, testInfo) => {
+    const session = await startFollowUpSession(adminApi);
+
+    /* Doors of this test's own, so the chips wrap and the form scrolls. */
+    const stamp = String(Date.now()).slice(-4);
+    const floor = `#4${String(testInfo.project.name.length % 10)}`;
+    const notes: string[] = [];
+    for (const door of ["1", "2", "3", "4"]) {
+      const visited = await adminApi.post("/api/visits", {
+        data: {
+          id: uuidv7(),
+          blockId: SEED_BLOCK,
+          unitNumber: `${floor}-${door}${stamp}`,
+          interestLevel: "medium",
+        },
+      });
+      expect(visited.status()).toBe(201);
+      const { householdId } = (await visited.json()) as { householdId: string };
+      const listed = await adminApi.post("/api/follow-ups", {
+        data: { householdId, note: "Bring the pamphlet" },
+      });
+      expect(listed.status()).toBe(201);
+      notes.push(((await listed.json()) as { id: string }).id);
+      const picked = await adminApi.post(`/api/sessions/${session}/households`, {
+        data: { householdIds: [householdId] },
+      });
+      expect(picked.status()).toBe(200);
+    }
+
+    await memberPage.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+    await untilLive(memberPage);
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue(LISTED_UNIT);
+
+    /* Weak signal: the first send hangs a moment, then every one fails. */
+    let attempts = 0;
+    await memberPage.route("**/api/visits/sync", async (route) => {
+      attempts += 1;
+      if (attempts === 1) await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.abort("internetdisconnected");
+    });
+
+    /* As a thumb does: down to the interest level, once the door's history
+       has loaded, then Save. */
+    await expect
+      .poll(() =>
+        memberPage.evaluate(() => {
+          window.scrollTo(0, document.body.scrollHeight);
+          return window.scrollY;
+        }),
+      )
+      .toBeGreaterThan(300);
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Save", exact: true }).click();
+    const sending = memberPage.getByRole("status").filter({ hasText: `Sending ${LISTED_UNIT}` });
+    await expect(sending).toBeVisible();
+    const height = (await sending.boundingBox())?.height;
+    const status = memberPage
+      .getByRole("status")
+      .filter({ hasText: `Saved ${LISTED_UNIT} on this phone.` });
+    await expect(status).toBeVisible();
+    await expect(memberPage.getByRole("button", { name: /1 waiting to send/ })).toBeVisible();
+    expect((await status.boundingBox())?.height, "the line's height once saved").toBe(height);
+    await expect
+      .poll(() =>
+        status.evaluate((element) => {
+          const box = element.getBoundingClientRect();
+          const top = document.elementFromPoint(box.x + box.width / 2, box.y + 2);
+          return box.top >= 0 && top !== null && element.contains(top);
+        }),
+      )
+      .toBe(true);
+
+    /* Left as it found the list. */
+    for (const id of notes) {
+      const removed = await adminApi.post(`/api/follow-ups/${id}/remove`, {
+        data: { reason: "Test done" },
+      });
+      expect(removed.status()).toBe(204);
+    }
+  });
+});

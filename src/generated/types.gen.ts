@@ -228,12 +228,22 @@ export type ActiveSession = {
     session: OutingSession;
     blocks: Array<SessionBlock>;
     /**
-     * The households an admin picked for a follow-up session, so a client
-     * can tell which listed notes are on its list without reading the
-     * list. Empty for a regular session.
+     * The households an admin picked for a follow-up session, and when,
+     * so a client can tell which listed notes are on its list without
+     * reading the list. Empty for a regular session.
      *
      */
-    householdIds: Array<string>;
+    picks: Array<SessionPick>;
+};
+
+export type SessionPick = {
+    householdId: string;
+    /**
+     * When an admin picked it. A note resolved before this, or before the
+     * session started, was not this session's work at this household.
+     *
+     */
+    addedAt: string;
 };
 
 export type Household = {
@@ -433,9 +443,9 @@ export type HouseholdHistory = {
 /**
  * One household on a follow-up session's list: an admin picked it for
  * the session, and it has at least one `listed`, not removed note that is
- * outstanding or was resolved after the session started (a draft counts
- * outstanding notes only). This is the set a member may record visits at
- * in that session.
+ * outstanding or was resolved after both the session started and the
+ * household was picked (a draft counts outstanding notes only). This is
+ * the set a member may record visits at in that session.
  *
  */
 export type RevisitEntry = {
@@ -443,8 +453,8 @@ export type RevisitEntry = {
     block: Block;
     /**
      * The listed notes that put it on the list: outstanding first (by due
-     * day, undated last), then those resolved during the session, most
-     * recently resolved first.
+     * day, undated last), then those resolved since the later of the
+     * session's start and the pick, most recently resolved first.
      *
      */
     notes: Array<FollowUp>;

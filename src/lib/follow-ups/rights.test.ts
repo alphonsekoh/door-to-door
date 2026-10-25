@@ -39,9 +39,14 @@ function note(overrides: Partial<FollowUp> = {}): FollowUp {
   };
 }
 
+/* Picked the day before it started, as a draft's households are. */
+const PICKED = "2026-10-19T18:00:00.000Z";
+/* Added to the running session for another note, an hour in. */
+const ADDED_LATER = "2026-10-20T19:00:00.000Z";
+
 function running(
   kind: SessionKind,
-  householdIds = [HOUSEHOLD],
+  picks = [{ householdId: HOUSEHOLD, addedAt: PICKED }],
   startedAt: string | null = STARTED,
 ) {
   return {
@@ -63,11 +68,12 @@ function running(
         activeMembers: [],
       },
     ],
-    householdIds,
+    picks,
   } satisfies ActiveSession;
 }
 
 const followUp = running("follow_up");
+const pickedMidway = running("follow_up", [{ householdId: HOUSEHOLD, addedAt: ADDED_LATER }]);
 
 describe("onActiveList", () => {
   it.each<[string, FollowUp, ActiveSession | null, boolean]>([
@@ -92,9 +98,22 @@ describe("onActiveList", () => {
     [
       "a resolved note when the session has no start",
       note({ doneAt: STARTED }),
-      running("follow_up", [HOUSEHOLD], null),
+      running("follow_up", undefined, null),
       false,
     ],
+    [
+      "one resolved during the session but before the household was added to it",
+      note({ doneAt: "2026-10-20T18:30:00.000Z" }),
+      pickedMidway,
+      false,
+    ],
+    [
+      "one resolved after the household was added to the running session",
+      note({ doneAt: "2026-10-20T19:30:00.000Z" }),
+      pickedMidway,
+      true,
+    ],
+    ["one still owed at a household added midway", note(), pickedMidway, true],
   ])("%s: %s", (_case, subject, active, expected) => {
     expect(onActiveList(subject, active)).toBe(expected);
   });

@@ -38,7 +38,7 @@ const FOLLOW_UP = {
       activeMembers: [],
     },
   ],
-  householdIds: ["h1"],
+  picks: [{ householdId: "h1", addedAt: "2025-12-31T00:00:00.000Z" }],
 };
 
 const AT = "2026-03-14T11:00:00.000Z";
