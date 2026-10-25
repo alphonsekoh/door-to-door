@@ -24,6 +24,10 @@ will need put which unit to visit and that unit will be tied to a block, hence w
 member open the block it would not be empty. Hence, when creating a follow up session,
 validate that there at least need to have 1 unit in the list."
 
+A fourth round, after the owner reviewed the third, uncapped the removal notice, made the
+session page name the note a household was picked for, made list counts count
+households, and ruled two findings need no change (D-117-51 onwards).
+
 ## Decisions
 
 - **D-117-1 · No issue, so the PR's number names the task.** This file, `D-117-n` and
@@ -53,7 +57,8 @@ validate that there at least need to have 1 unit in the list."
 - **D-117-5 · Removed notes are read only through `GET /follow-ups?deleted=true`**,
   newest removal first: admins, or a member whose `authorId` is themself; anyone else
   `403`. Every other read leaves them out. Extends D-22-1. _Why:_ an admin's audit trail;
-  a member learns only about their own notes.
+  a member learns only about their own notes. _Extended by D-117-51:_ `removedByOthers`
+  and `deletedSince`.
 - **D-117-6 · `FollowUp` gains `blockId`, `status`, `listedAt`, `listedBy`, `deletedAt`,
   `deletedBy`, `deleteReason`.** Extends D-35-2. Only listed notes are owed: a
   household's `outstandingFollowUps`, the overdue card and "Overdue" count them alone,
@@ -103,7 +108,7 @@ validate that there at least need to have 1 unit in the list."
   Members read the active session's only (`403` otherwise); admins any status, so a
   draft's list can be checked before starting it. A regular session is `409 conflict`.
   Not paginated, and fixed in query count (D-20-3). _Why:_ an admin builds the list by
-  hand, so it stays short. _Order refined by D-117-42._
+  hand, so it stays short. _Order refined by D-117-42; note order by D-117-54._
 - ~~**D-117-14 · One list rule, `onRevisitList` (`src/server/follow-ups/list-rule.ts`).**
   Listed, not removed, in one of the session's attached blocks, and outstanding or
   resolved since the session started; a draft counts outstanding only. It decides the
@@ -146,7 +151,8 @@ validate that there at least need to have 1 unit in the list."
   once the session is known to be door-to-door; until then it says "Save", using the
   kind another screen already heard (`knownSessionKind`, in memory per page). Refines
   D-25-5. _Why:_ the next door is the next household on the list, not the next number;
-  "and next" promised the wrong thing in weak signal. _Research:_ R-80.
+  "and next" promised the wrong thing in weak signal. _Research:_ R-80. _Refined by
+  D-117-59:_ Back to the list has its own row.
 
 ### Screens
 
@@ -160,7 +166,8 @@ validate that there at least need to have 1 unit in the list."
   "N suggestions to review" card sits with the overdue card under New session; each
   hides at zero, and a failed load is one line. Refines D-35-11. _Why:_ one place to
   decide what is owed; with the notices first, New session sat behind the nav on a short
-  iPhone. _Refined by D-117-50:_ counts under the labels, the hint under the list.
+  iPhone. _Refined by D-117-50:_ counts under the labels, the hint under the list; _by
+  D-117-56:_ On the list counts and groups households.
 - **D-117-22 · Admins list a door where they find it.** "Add to list" on each "Needs a
   return visit" row opens a sheet that says why the door is there ("Showed high interest
   on 3 Mar 2026.") above an empty instruction field; the household header offers "Add to
@@ -203,11 +210,13 @@ validate that there at least need to have 1 unit in the list."
   "Not added to the follow-up list" with the reason, on Follow-ups, for 30 days or until
   Got it. A withdrawn suggestion is not declined. _Why:_ long enough to be seen after a
   week away, short enough not to nag. _Extended by D-117-35:_ also a listed note someone
-  else removed, under "Not on the follow-up list".
+  else removed, under "Not on the follow-up list". _Refined by D-117-52:_ every one in the
+  window, filtered on the server.
 - **D-117-29 · First-use hints and the declined notice's Got it are kept in
   `localStorage`: per phone, not per account.** Storage that cannot be used shows the
   hint again; nothing is drawn until after hydration. _Why:_ no schema for UI state, and
-  a hint must never flash up for someone who closed it. _Research:_ R-80, R-81.
+  a hint must never flash up for someone who closed it. _Research:_ R-80, R-81. _Refined
+  by D-117-53:_ Got it to all.
 - **D-117-30 · New `notice-info` utility in `globals.css`** (primary hue) for context
   that changes what a screen allows. Extends D-111-10. _Why:_ a follow-up rule is neither
   an error nor an interest level (D-111-5).
@@ -225,7 +234,8 @@ validate that there at least need to have 1 unit in the list."
   `FollowUp.waitingSuggestionBy` names the suggester, so the screen says this in place of
   Reopen, and a stale Reopen says why and re-reads. Refines D-22-4, D-117-10, D-117-12.
   _Why:_ a reopened note beside a waiting suggestion is the state D-117-8 refuses, and
-  dismissing the suggestion would tell its author "declined" when it was not.
+  dismissing the suggestion would tell its author "declined" when it was not. _Refined by
+  D-117-57:_ the stale Reopen's alert is "Not reopened."; one sentence and name rule.
 - **D-117-33 · Every removal needs a reason (owner).** Dismiss, remove and withdraw: 1 to
   500 characters, not only spaces, stored trimmed, else `400`. The button waits with
   "Write a reason to continue." and the sheet says who will read it. Supersedes
@@ -240,7 +250,8 @@ validate that there at least need to have 1 unit in the list."
   "Removed from the follow-up list by Ben · 3 Mar 2026: {reason}", beside "Declined by
   …". Withdrawing or removing your own note shows you nothing; admins read every removal
   under Dismissed. Extends D-117-28. _Why:_ the removal sheet promised "Ann and admins
-  will see this", and no member screen showed it.
+  will see this", and no member screen showed it. _Refined by D-117-52 and D-117-53:_
+  uncapped; the newest three, then Show all.
 
 ### Third round: households picked for each follow-up session
 
@@ -269,10 +280,11 @@ validate that there at least need to have 1 unit in the list."
 - **D-117-40 · The list rule: picked for the session, with a listed, live note owed or
   resolved since it started (a draft: owed only).** Still one predicate, `onRevisitList`,
   behind the revisits list, the recording refusal (D-117-15) and the member-edit check
-  (D-117-12); the integration test compares the three case by case, picked and not. The
-  client mirror reads `ActiveSession.householdIds`. Supersedes D-117-14. _Why:_ a block
+  (D-117-12); the integration test compares the three case by case, picked and not. ~~The
+  client mirror reads `ActiveSession.householdIds`.~~ Supersedes D-117-14. _Why:_ a block
   no longer says which doors a session is for; the list and its refusals still cannot
-  disagree.
+  disagree. _Refined by D-117-55:_ a resolution counts from the later of the start and
+  the pick; the mirror reads `ActiveSession.picks`.
 - **D-117-41 · Picks are sticky.** Resolving or removing a note never changes picks, and
   removing a note is never refused because a session picked it: the household leaves
   that session's list, and returns if it is listed or reopened again. _Why:_ the
@@ -286,7 +298,8 @@ validate that there at least need to have 1 unit in the list."
   in any status; a regular session is `409` to read or add, `404` to remove. Picks and
   the revisits list order by block name, street, then unit.
   _Why:_ a visit is the session's work and history is never orphaned (D-18-3); only
-  `(name, street)` is unique.
+  `(name, street)` is unique. _Kept by the owner, D-117-60:_ the last-household count
+  includes picks off the list.
 - **D-117-43 · A follow-up session's admin page lists its picks.** "Households to revisit
   (N)" by block, each with its first note and a state: Visited, Done, "Already done" or
   "Done before it started" (resolved since `addedAt`), or "Off the follow-up list".
@@ -294,7 +307,8 @@ validate that there at least need to have 1 unit in the list."
   with the reason, where the server would refuse; Add households offers the rest of the
   list, unticked. An ended session's picks are frozen and read "as they stand today";
   reopening unfreezes them. Supersedes D-117-23. _Why:_ blocks follow picks, so no "Add
-  Blk N"; never offer what the server refuses.
+  Blk N"; never offer what the server refuses. _Refined by D-117-54:_ the row names the
+  note the pick was for, not the first note.
 - **D-117-44 · A follow-up draft starts only with something on its list.** Otherwise
   `POST /sessions/{id}/start` is `409 conflict`, checked under the session row lock, and
   Start waits with the reason. Reopening is not checked. _Why:_ members would open an
@@ -322,14 +336,16 @@ validate that there at least need to have 1 unit in the list."
   that includes this household". A block screen for a block outside the running session,
   of either kind, says so with Go to Session and offers no form. Refines D-117-16,
   D-117-18, D-117-25, D-117-26. _Why:_ the session's picks, not the follow-up list, now
-  decide; a form that refuses every unit helps nobody.
+  decide; a form that refuses every unit helps nobody. _Refined by D-117-58:_ a session
+  block with nothing on the list says so above its form.
 - **D-117-48 · Offline, a follow-up session's list alone is enough.** A copy holding the
   list and no opened block is usable; the shell's home is "Households to revisit", and a
   block never opened is built from the list with only its listed households, and says
   so. With a list saved, only its blocks are offered. After Continue the shell opens the
   block and unit the failed address named, in either kind. The copy's contents are
   unchanged. Refines D-117-17, D-77-3, D-77-4, D-77-12. _Why:_ in the stairwell, a member
-  who read the list but opened no block had nothing to record with.
+  who read the list but opened no block had nothing to record with. _Kept by the owner,
+  D-117-61:_ a row's interest chip may lag until sync.
 - **D-117-49 · Day-neutral words.** The block card reads "visited in this session" and
   unit rows are marked "this session". Refines D-111-7's "N visited tonight" and D-26-2's
   `tonight`. _Why:_ sessions run in the daytime too.
@@ -339,7 +355,80 @@ validate that there at least need to have 1 unit in the list."
   sheet title keeps 12ch of body text before Cancel drops under it. Refines D-117-21 and
   D-111-25. _Why:_ a guard no test can observe is dead code; the tabs wrapped at 393px,
   the hint pushed the first action below the fold, and "Add households" stood a word a
-  line.
+  line. _Refined by D-117-56:_ On the list counts households.
+
+### Fourth round: removal notices
+
+- **D-117-51 · `GET /follow-ups` gains `removedByOthers` and `deletedSince`.** Both are
+  valid only with `deleted=true`, else `400`, judged before any `403` (as D-83-15). `true`
+  gives notes removed by someone other than their author, `false` the author's own
+  withdrawals. Who may read is unchanged (D-117-5), so `total` is the true count of what
+  an author is told. Both list orders end on the id. Extends D-117-5 and D-22-1. _Why:_
+  filtering on the phone let withdrawals and seen notices use up a capped page; ties
+  without a unique order can repeat or skip rows across offset pages. _Research:_ R-84.
+- **D-117-52 · The removal notice reads every page (owner).** The last 30 days' removals
+  by others, 100 a page to the end, then drops those seen on this phone. Every
+  whole-list read of follow-ups (the notice, the New session picker, Add households, On
+  the list) goes through `loadAllFollowUps`, which keeps each note once by id. Refines
+  D-117-28, D-117-35. _Why:_ the author is owed every reason; as D-74-61 for users. A
+  note leaving between two pages can still hide another until the next read: accepted.
+- **D-117-53 · The notice shows the newest three.** "Show all (N)" / "Show fewer" when
+  there are more, "Got it to all" (one storage write) when there are two or more, both
+  under the heading above the notes; each note keeps its Got it. Refines D-117-29,
+  D-117-35. _Why:_ a backlog must not bury the Follow-ups list; below the notes, the
+  controls sat under the nav or the fold on arrival at phone width.
+
+### Fourth round: the picked note and counts
+
+- **D-117-54 · One note order for picks and the revisits list; a row names the note it
+  was picked for (owner).** Owed by due day (undated last), then resolved, most recently
+  resolved first. The session page row shows `pickNote`: the first owed note, else the
+  newest resolved since the pick, never one resolved before it (then none).
+  `GET /follow-ups` keeps D-22-1. Refines D-117-13, D-117-43. _Why:_ oldest-resolved
+  first named a note done in March, read as "Already done", in place of the one picked;
+  the first owed note is the one the picker showed (D-117-39).
+- **D-117-55 · A resolution counts from the later of the session's start and the pick.**
+  `onRevisitList` holds each note to its pick's `added_at`, and so does the client
+  mirror: `GET /sessions/active` carries `picks` (`householdId`, `addedAt`) in place of
+  `householdIds`. Draft picks are unaffected; they precede the start. Refines D-117-40.
+  _Why:_ a door added to a running session for one note kept another, resolved earlier
+  in the session, as Done, and stayed on members' list once its owed note left; the
+  list, the row (D-117-54) and the refusals must agree.
+- **D-117-56 · "On the list" counts households, and groups their notes (owner).** The
+  `/admin/follow-ups` tab reads the whole list (no Show more), counts distinct
+  households as the New session picker does, and shows each door once with its listed
+  notes and their controls under it. To review needs no change (D-117-7). The overdue
+  card still counts notes ("N overdue follow-ups"). Refines D-117-21, D-117-50. _Why:_
+  one list read "5" there and "4 of 4 households ticked" in the picker once a household
+  carried two listed notes, which D-117-32 can cause.
+
+### Fourth round: leftovers and rulings
+
+- **D-117-57 · A refused reopen is said once, in one sentence.** A stale Reopen's alert
+  is "Not reopened."; the re-read's caption says whose suggestion waits. The member's
+  `409` and the caption share `waitingSentence`: first name, "Your" to the suggester,
+  "Someone's" with no name. The name helpers move to `src/lib/session/own-name.ts`,
+  which the server can import. Refines D-117-32. _Why:_ the alert repeated the caption,
+  and the `409` used the full name where the screen used the first.
+- **D-117-58 · A session block with nothing on the session's list says so.** A member
+  there (a bookmark, or a block whose only pick left the list, D-117-41) reads "Nothing
+  in this block is on this session's list." with Back to the list, above a form that
+  stays. Not shown to admins, nor before the list is read. Refines D-117-47. _Why:_ a
+  bare form refused every unit unexplained; a re-read that empties the block must not
+  throw away a half-typed visit.
+- **D-117-59 · In a follow-up session the Saved line's "Back to the list" has its own
+  row.** Refines D-117-19. _Why:_ the line grew a row from "Sending…" to "Saved … on this
+  phone." just after Save scrolled it into view, and scroll anchoring pushed it under
+  the pinned count; an E2E holds its height. _Research:_ R-85.
+- **D-117-60 · The last-household rule counts every pick, on the list or not (owner, no
+  change).** D-117-42 stands, so a running session can be left with nothing on members'
+  list. _Why:_ the owner: admins "can do that on the fly as they would remove and add
+  another household anyways for flexibility purposes."
+- **D-117-61 · Offline, a visited row's interest chip may lag until sync (owner, no
+  change).** In the shell's Households to revisit, a row reads Visited from what the
+  phone holds while its chip shows the latest visit as last read with signal, until the
+  visit sends and the list is read again. _Why:_ the owner ruled it fine; the copy keeps
+  the list as read (D-117-48).
 
 ### How existing decisions are handled
 
@@ -369,6 +458,13 @@ validate that there at least need to have 1 unit in the list."
 | D-111-7, D-26-2          | Wording: "this session", not "tonight"                                    | D-117-49           |
 | D-117-21, D-111-25       | Refined: tab counts, the hint's place, a sheet title's width              | D-117-50           |
 | D-07-5, D-17-2, D-18-3   | Kept: picks are households; the clash is the database's; `block_in_use`   | D-117-36/44/42     |
+| D-117-5, D-22-1          | Extended: the removal filters; the id ends both orders                    | D-117-51           |
+| D-117-28/29/35           | Refined: every removal in the window; newest three, Got it to all         | D-117-52/53        |
+| D-117-13, D-117-43       | Refined: one note order; the row names the note picked for                | D-117-54           |
+| D-117-40                 | Refined: resolved since the later of start and pick; `picks`              | D-117-55           |
+| D-117-21, D-117-50       | Refined: On the list counts and groups households                         | D-117-56           |
+| D-117-32/47, D-117-19    | Refined: "Not reopened."; the empty-block line; the Saved line's row      | D-117-57/58/59     |
+| D-117-42, D-117-48       | Kept (owner): the last-household count; the shell's interest chip         | D-117-60/61        |
 
 ## Known limits
 
@@ -379,14 +475,17 @@ validate that there at least need to have 1 unit in the list."
 - A removed note cannot be restored (D-117-4).
 - One request picks at most 200 households (D-117-38); a longer list is added in parts
   from the session's page.
+- A note that leaves the follow-up list while a whole-list read is between pages can
+  hide another until the next read (D-117-52).
 
 ## Relies on
 
 D-07-1, D-07-3, D-07-4, D-07-5, D-16-2, D-17-1, D-17-2, D-18-3, D-20-2, D-20-3, D-21-1,
 D-21-4, D-22-3, D-25-3, D-25-8, D-28-5, D-29-4, D-33-2, D-33-25, D-35-3, D-35-4, D-35-8,
-D-35-9, D-74-32, D-74-33, D-74-44, D-74-61, D-77-13, D-85-1, D-90-2, D-111-5, D-111-7,
-D-111-36.
+D-35-9, D-74-32, D-74-33, D-74-44, D-74-61, D-77-13, D-83-15, D-85-1, D-90-2, D-111-5,
+D-111-7, D-111-36.
 
 ## Open questions
 
-None. The owner's answers A to F and the third round's four points are recorded above.
+None. The owner's answers A to F, the third round's four points and the fourth round's
+rulings are recorded above.

@@ -837,3 +837,25 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [RFC 9110 §9.3.5, DELETE](https://www.rfc-editor.org/rfc/rfc9110#section-9.3.5),
   [nginx, `log_format`](https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format)
 - **Used by:** D-117-34
+
+### R-84 · Offset pages need a unique order
+
+- **Finding:** PostgreSQL returns rows that tie on `ORDER BY` in no defined order, and
+  the planner takes `LIMIT` and `OFFSET` into account, so different pages of one query
+  can use different plans and order ties differently. Pages read with a non-unique order
+  can repeat or skip rows; a unique last key (the id) makes the order total. Not
+  measured here.
+- **Source:** [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html)
+- **Used by:** D-117-51
+
+### R-85 · Scroll anchoring moves a growing line above the anchor (measured)
+
+- **Finding:** With scroll anchoring, when content above the anchor node changes size,
+  the browser adjusts the scroll position so the anchor stays put. In the follow-up
+  form, the status line above the unit field grew a row just after Save scrolled it into
+  view; the page scrolled to hold the field, and the line's top went under the pinned
+  "1 waiting to send". The E2E measured the line at 56px while sending and 86px once
+  saved before the fix. Observed on Chromium; WebKit not checked here.
+- **Source:** [CSS Scroll Anchoring Module Level 1](https://drafts.csswg.org/css-scroll-anchoring/);
+  #117, `e2e/follow-up-session.spec.ts`
+- **Used by:** D-117-59

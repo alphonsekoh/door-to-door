@@ -87,10 +87,10 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   (`session_households`, at least one) and its blocks are exactly theirs, kept in step
   by `src/server/sessions/households.ts`; nobody attaches them by hand (D-117-36 to
   D-117-38). Its list is computed, never stored: picks with a listed, live note
-  outstanding or resolved since it started (`onRevisitList`,
-  `src/server/follow-ups/list-rule.ts`). In it a member records only at households on
-  the list; admins are exempt (D-117-40, D-117-15). Removing a note never changes picks
-  (D-117-41).
+  outstanding, or resolved since both it started and the household was picked
+  (`onRevisitList`, `src/server/follow-ups/list-rule.ts`, D-117-55). In it a member
+  records only at households on the list; admins are exempt (D-117-40, D-117-15).
+  Removing a note never changes picks (D-117-41).
 - **Blocks** are shared across members and sessions, never locked.
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
@@ -327,6 +327,9 @@ Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
 - User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`).
+- Whole follow-up lists (the removal notice, the household picker, Add households, On the
+  list) load every page through `loadAllFollowUps()` (`src/lib/follow-ups/pages.ts`),
+  keeping each note once by id (D-117-52).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
