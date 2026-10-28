@@ -64,6 +64,7 @@ describe("applyResult", () => {
       clientCreatedAt: "2026-10-15T09:00:00.000Z",
       createdAt: "2026-10-15T09:00:00.000Z",
       updatedAt: "2026-10-15T09:00:00.000Z",
+      followUpsMarkedDone: [],
     };
     const next = applyResult(
       record({ state: "failed", lastError: { code: "internal_error" } }),

@@ -372,7 +372,7 @@ describe("a follow-up session", () => {
     const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
     // Saving marks the follow-up done; Mark done is for one finished without a visit.
     expect(hint).toHaveTextContent(
-      "Tap a household to record your visit; saving it marks its follow-up done, and Undo is there if it isn't.",
+      "Tap a household to record your visit. Saving your visit marks the household's follow-up done. If it still needs another visit, tap Undo, or Reopen on this list.",
     );
     expect(hint).toHaveTextContent("Use Mark done for one finished without a visit.");
     // The same way to ask for a household as everywhere else.

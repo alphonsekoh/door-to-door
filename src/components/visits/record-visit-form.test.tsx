@@ -1954,6 +1954,45 @@ describe("in a follow-up session", () => {
       expect(screen.queryByText(/Undone/)).toBeNull();
     });
 
+    it("never lets a late Undo answer speak for the next unit saved", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      let saves = 0;
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          saves += 1;
+          return Promise.resolve({
+            id: `v${String(saves)}`,
+            householdId: `h${String(saves)}`,
+            followUpsMarkedDone: [`n${String(saves)}`],
+          });
+        }
+        return init?.method === "PATCH"
+          ? new Promise((resolve) => (finish = resolve))
+          : Promise.resolve(history());
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+
+      // The next door is saved while the first Undo is still on its way.
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      await user.click(screen.getByRole("radio", { name: "Medium" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const next = await screen.findByRole("status");
+      expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
+
+      await act(async () => {
+        finish({});
+        await Promise.resolve();
+      });
+      // The first undo has finished: it re-read the list and the block.
+      await waitFor(() => {
+        expect(onRecorded).toHaveBeenCalledTimes(3);
+      });
+      expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
+      expect(next).not.toHaveTextContent(/Undone/);
+      expect(within(next).getByRole("button", { name: UNDO })).toBeInTheDocument();
+    });
+
     describe("through the queue", () => {
       const STAMP = "2026-10-20T18:00:00.000Z";
       const queue = {

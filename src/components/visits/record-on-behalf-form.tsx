@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
-import type { Block, InterestLevel, User } from "@/generated/types.gen";
+import type { Block, InterestLevel, RecordedVisit, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { normaliseUnitNumber } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
@@ -24,7 +24,8 @@ export function RecordOnBehalfForm({
 }: {
   members: User[];
   blocks: Block[];
-  onRecorded: () => void;
+  /* With the unit as sent: the answer names the household by id only. */
+  onRecorded: (visit: RecordedVisit, unitNumber: string) => void;
   onClose: () => void;
 }) {
   const [memberId, setMemberId] = useState("");
@@ -49,20 +50,21 @@ export function RecordOnBehalfForm({
 
     setFailure(null);
     setSaving(true);
+    const unit = normaliseUnitNumber(unitNumber);
     try {
-      await apiFetch("/visits", {
+      const visit = await apiFetch<RecordedVisit>("/visits", {
         method: "POST",
         body: JSON.stringify({
           id: uuidv7(),
           blockId,
-          unitNumber: normaliseUnitNumber(unitNumber),
+          unitNumber: unit,
           interestLevel,
           description,
           memberId,
           clientCreatedAt: new Date().toISOString(),
         }),
       });
-      onRecorded();
+      onRecorded(visit, unit);
     } catch (error) {
       setFailure(error instanceof Error ? error.message : "Could not record that visit.");
     } finally {

@@ -304,8 +304,9 @@ export type Visit = {
      */
     updatedAt: string;
     /**
-     * Present only in the answer to recording this visit (`POST /visits`)
-     * and in its `/visits/sync` result; absent from every other read.
+     * Present only in a `RecordedVisit`, the answer to recording this
+     * visit (`POST /visits`) and its `/visits/sync` result, where it is
+     * required; absent from every other read.
      *
      * The follow-ups that recording this visit marked done and that are
      * still done, by id; empty when it marked none. When a new visit is
@@ -324,6 +325,17 @@ export type Visit = {
      *
      */
     followUpsMarkedDone?: Array<string>;
+};
+
+/**
+ * The answer to recording a visit: `POST /visits`, and each
+ * `/visits/sync` result that carries a visit. Always names the
+ * follow-ups recording it marked done (see `Visit.followUpsMarkedDone`),
+ * so a client never has to guess whether the field was left out.
+ *
+ */
+export type RecordedVisit = Visit & {
+    followUpsMarkedDone: Array<string>;
 };
 
 /**
@@ -725,7 +737,7 @@ export type VisitSyncResult = {
      * `followUpsMarkedDone` for any outcome but `rejected`.
      *
      */
-    visit?: Visit | null;
+    visit?: RecordedVisit | null;
     error?: Error | null;
 };
 
@@ -2365,7 +2377,7 @@ export type CreateVisitResponses = {
      * marked nothing).
      *
      */
-    201: Visit;
+    201: RecordedVisit;
 };
 
 export type CreateVisitResponse = CreateVisitResponses[keyof CreateVisitResponses];

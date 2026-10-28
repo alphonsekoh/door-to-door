@@ -29,14 +29,69 @@ export async function adminRequest(
 }
 
 /*
+ * Runs in the page. Production React never reports a mismatch of attributes
+ * alone: it keeps the server's and moves on, so an attribute worked out from
+ * the clock or the timezone (the phone in Singapore, the server in UTC) would
+ * go unseen. Once hydrated, each element holds the props React rendered it
+ * with, and at rest its attributes agree with them unless hydration kept the
+ * server's; so after each load the two are compared, and a difference is
+ * logged as a hydration error. Only what React set is compared: an
+ * attribute it never rendered, as an extension adds, is not its business.
+ */
+function sweepHydratedAttributes(): void {
+  const XHTML = "http://www.w3.org/1999/xhtml";
+  /* Properties rather than attributes, or not attributes at all. */
+  const SKIP = new Set([
+    "children",
+    "value",
+    "defaultValue",
+    "style",
+    "dangerouslySetInnerHTML",
+    "nonce",
+  ]);
+  const NAMES = new Map([
+    ["className", "class"],
+    ["htmlFor", "for"],
+  ]);
+  const reported = new Set<string>();
+  const sweep = (): void => {
+    for (const element of document.body.querySelectorAll("*")) {
+      if (element.namespaceURI !== XHTML) continue;
+      const key = Object.keys(element).find((name) => name.startsWith("__reactProps$"));
+      if (key === undefined) continue;
+      const props: unknown = Reflect.get(element, key);
+      if (typeof props !== "object" || props === null || "suppressHydrationWarning" in props) {
+        continue;
+      }
+      for (const [name, value] of Object.entries(props)) {
+        if (SKIP.has(name) || (typeof value !== "string" && typeof value !== "number")) continue;
+        const client = String(value);
+        const server = element.getAttribute(NAMES.get(name) ?? name);
+        if (server === client || (server === null && client === "")) continue;
+        const line = `Hydration kept the server's ${name}="${String(server)}" on <${element.localName}>; the client rendered "${client}".`;
+        if (!reported.has(line)) {
+          reported.add(line);
+          console.error(line);
+        }
+      }
+    }
+  };
+  addEventListener("load", () => {
+    setTimeout(sweep, 500);
+    setTimeout(sweep, 2_000);
+  });
+}
+
+/*
  * Fails the test on any hydration error: the server's HTML and the client's
- * first render disagreed, and React threw the server's away. Production
- * React reports only what it had to recover from, never a mismatch of
- * attributes alone, so a browser extension's attributes are not caught here.
+ * first render disagreed. React reports what it had to recover from (text or
+ * structure: it threw the server's away); the sweep above reports an
+ * attribute that differed.
  */
 const HYDRATION = /Minified React error #(418|423|425)|Hydration failed|hydrat/i;
 
-function watchHydration(page: Page): () => void {
+async function watchHydration(page: Page): Promise<() => void> {
+  await page.addInitScript(sweepHydratedAttributes);
   const seen: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error" && HYDRATION.test(message.text())) {
@@ -69,7 +124,7 @@ type Fixtures = {
 
 export const test = base.extend<Fixtures>({
   page: async ({ page }, use) => {
-    const check = watchHydration(page);
+    const check = await watchHydration(page);
     await use(page);
     check();
   },
@@ -77,7 +132,7 @@ export const test = base.extend<Fixtures>({
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: ADMIN_STATE });
     const page = await context.newPage();
-    const check = watchHydration(page);
+    const check = await watchHydration(page);
     await use(page);
     await context.close();
     check();
@@ -86,7 +141,7 @@ export const test = base.extend<Fixtures>({
   memberPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: MEMBER_STATE });
     const page = await context.newPage();
-    const check = watchHydration(page);
+    const check = await watchHydration(page);
     await use(page);
     await context.close();
     check();
@@ -95,7 +150,7 @@ export const test = base.extend<Fixtures>({
   partnerPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: PARTNER_STATE });
     const page = await context.newPage();
-    const check = watchHydration(page);
+    const check = await watchHydration(page);
     await use(page);
     await context.close();
     check();

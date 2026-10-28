@@ -4,6 +4,7 @@ import type {
   HouseholdAttention,
   HouseholdHistory,
   HouseholdSummary,
+  RecordedVisit,
   Visit,
 } from "@/generated/types.gen";
 import { toBlock } from "@/server/blocks/serialise";
@@ -48,7 +49,7 @@ export function toVisit(row: VisitRow): Visit {
  * recording it marked done, so the client can offer to undo it. Every other
  * read of a visit leaves the field out.
  */
-export function toRecordedVisit(row: VisitRow, markedDone: string[]): Visit {
+export function toRecordedVisit(row: VisitRow, markedDone: string[]): RecordedVisit {
   return { ...toVisit(row), followUpsMarkedDone: markedDone };
 }
 

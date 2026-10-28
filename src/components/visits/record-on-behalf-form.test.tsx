@@ -43,7 +43,9 @@ const blocks: Block[] = [
   { id: "b2", name: "125", street: "Test Ave", postalCode: null, createdAt: AT },
 ];
 
-function renderForm(overrides: { onRecorded?: () => void; onClose?: () => void } = {}) {
+function renderForm(
+  overrides: { onRecorded?: (visit: unknown, unit: string) => void; onClose?: () => void } = {},
+) {
   const user = userEvent.setup();
   render(
     <RecordOnBehalfForm
@@ -84,8 +86,10 @@ describe("RecordOnBehalfForm", () => {
 
   it("normalises the unit the same way the field form does", async () => {
     // Otherwise "#5-9" and "#05-9" become two households at one door.
-    const user = renderForm();
-    apiFetch.mockResolvedValue({});
+    const onRecorded = vi.fn();
+    const user = renderForm({ onRecorded });
+    const answer = { id: "v1", followUpsMarkedDone: ["n1"] };
+    apiFetch.mockResolvedValue(answer);
 
     await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
     await user.type(screen.getByLabelText("Unit number"), "  #05-0123  ");
@@ -97,6 +101,9 @@ describe("RecordOnBehalfForm", () => {
     });
     const [, init] = apiFetch.mock.calls[0] as [string, RequestInit];
     expect(JSON.parse(init.body as string)).toMatchObject({ unitNumber: "#05-0123" });
+    // The server's answer goes back with the unit as sent, for the records
+    // screen to say what the record marked done.
+    expect(onRecorded).toHaveBeenCalledWith(answer, "#05-0123");
   });
 
   it("falls back to the email for a member with no name", () => {

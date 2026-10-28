@@ -63,8 +63,12 @@ export default defineConfig({
     /* Phone profiles - viewport, touch and mobile user agent - are set per
        project below; this is the only place the app is exercised at that size. */
     /* A phone in Singapore against a server in UTC, as deployed: anything
-       rendered from the date or the clock on the server then differs from the
-       client's first render, and the hydration check in the fixtures fails. */
+       rendered from the date or the timezone then differs between the
+       server's HTML and the client's first render. The fixtures fail a test
+       on it: React's own error for text or structure, and their sweep of
+       hydrated attributes for an attribute, which production React keeps
+       from the server without a word. Only pages loaded while a test runs
+       are checked. */
     timezoneId: "Asia/Singapore",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",

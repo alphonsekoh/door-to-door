@@ -419,8 +419,9 @@ components:
           type: array
           items: { type: string, format: uuid }
           description: |
-            Present only in the answer to recording this visit (`POST /visits`)
-            and in its `/visits/sync` result; absent from every other read.
+            Present only in a `RecordedVisit`, the answer to recording this
+            visit (`POST /visits`) and its `/visits/sync` result, where it is
+            required; absent from every other read.
 
             The follow-ups that recording this visit marked done and that are
             still done, by id; empty when it marked none. When a new visit is
@@ -436,6 +437,21 @@ components:
             them. A note reopened since (`PATCH /follow-ups/{id}` with
             `done: false`, which is how a client undoes it) or removed is no
             longer listed here.
+
+    RecordedVisit:
+      description: |
+        The answer to recording a visit: `POST /visits`, and each
+        `/visits/sync` result that carries a visit. Always names the
+        follow-ups recording it marked done (see `Visit.followUpsMarkedDone`),
+        so a client never has to guess whether the field was left out.
+      allOf:
+        - $ref: "#/components/schemas/Visit"
+        - type: object
+          required: [followUpsMarkedDone]
+          properties:
+            followUpsMarkedDone:
+              type: array
+              items: { type: string, format: uuid }
 
     TeamSummary:
       description: |
@@ -923,7 +939,7 @@ components:
             Canonical server state, so the client can reconcile, with
             `followUpsMarkedDone` for any outcome but `rejected`.
           oneOf:
-            - $ref: "#/components/schemas/Visit"
+            - $ref: "#/components/schemas/RecordedVisit"
             - type: "null"
         error:
           oneOf:
@@ -2213,7 +2229,7 @@ paths:
             marked nothing).
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Visit" }
+              schema: { $ref: "#/components/schemas/RecordedVisit" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403":

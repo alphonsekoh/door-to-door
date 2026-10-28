@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
+import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import { InterestChip } from "@/components/ui/interest-chip";
 import { RecordOnBehalfForm } from "@/components/visits/record-on-behalf-form";
 import { VisitByline } from "@/components/visits/visit-byline";
@@ -16,6 +17,12 @@ import type {
   User,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import {
+  UNDO_READY,
+  type UndoState,
+  markedDoneLine,
+  undoMarkedDone,
+} from "@/lib/follow-ups/marked-done";
 import { asHouseholdSummary } from "@/lib/history/history";
 import { loadAllUsers } from "@/lib/session/users";
 import {
@@ -54,6 +61,19 @@ type State =
     }
   | { status: "error"; message: string };
 
+/*
+ * A record entered for a member that marked follow-ups done: in a follow-up
+ * session the server does that for every new visit at a door on the list,
+ * crediting the member, so the admin is told and can undo it.
+ */
+type Marked = {
+  visitId: string;
+  unitNumber: string;
+  memberName: string | null;
+  ids: string[];
+  undo: UndoState;
+};
+
 /* The team picker is a convenience; failing to list teams must not take the
    records with it. */
 async function teamsOf(sessionId: string): Promise<Team[] | null> {
@@ -73,6 +93,8 @@ export function AdminRecords() {
   const [members, setMembers] = useState<User[]>([]);
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [recording, setRecording] = useState(false);
+  const [marked, setMarked] = useState<Marked | null>(null);
+  const undoing = useRef(false);
 
   const load = useCallback(async (current: RecordFilters) => {
     try {
@@ -180,10 +202,28 @@ export function AdminRecords() {
     );
   }
 
+  /* Reopens exactly what that record marked done; the record stays. An
+     answer for a record no longer shown is dropped. */
+  async function undoMarked(current: Marked, ids: string[]): Promise<void> {
+    if (undoing.current) return;
+    undoing.current = true;
+    const onThis = (undo: UndoState) => (shown: Marked | null) =>
+      shown?.visitId === current.visitId ? { ...shown, undo } : shown;
+    setMarked(onThis({ kind: "undoing" }));
+    const outcome = await undoMarkedDone(
+      ids,
+      current.undo.kind === "failed" ? current.undo.reopened : 0,
+    );
+    undoing.current = false;
+    setMarked(onThis(outcome));
+  }
+
   const { session, entries, total } = state;
   const teams = state.teams ?? [];
   const visible = entries.filter((entry) => matchesSearch(entry, filters.q));
   const blocks = session.blocks.map((entry) => entry.block);
+  const markedLine = marked === null ? null : markedDoneLine(0, marked.ids, marked.undo);
+  const undoIds = markedLine?.undo ?? null;
 
   return (
     <div className="space-y-4">
@@ -203,6 +243,25 @@ export function AdminRecords() {
           Record for a member
         </button>
       </div>
+
+      {marked === null || markedLine === null ? null : (
+        <div
+          role="status"
+          className="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+        >
+          <span className="min-w-0 flex-[1_1_16ch] break-words">
+            Saved <UnitNumber value={marked.unitNumber} />
+            {marked.memberName === null ? "" : ` for ${marked.memberName}`}. {markedLine.text}
+          </span>
+          {undoIds === null ? null : (
+            <UndoMarkedButton
+              count={undoIds.length}
+              undoing={marked.undo.kind === "undoing"}
+              onUndo={() => void undoMarked(marked, undoIds)}
+            />
+          )}
+        </div>
+      )}
 
       <div className="space-y-2">
         <div>
@@ -387,8 +446,19 @@ export function AdminRecords() {
           <RecordOnBehalfForm
             members={members}
             blocks={blocks}
-            onRecorded={() => {
+            onRecorded={(visit, unitNumber) => {
               setRecording(false);
+              setMarked(
+                visit.followUpsMarkedDone.length === 0
+                  ? null
+                  : {
+                      visitId: visit.id,
+                      unitNumber,
+                      memberName: visit.member.name,
+                      ids: visit.followUpsMarkedDone,
+                      undo: UNDO_READY,
+                    },
+              );
               void load(filters);
             }}
             onClose={() => {

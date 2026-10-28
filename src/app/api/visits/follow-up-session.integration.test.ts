@@ -424,6 +424,9 @@ describe("undoing what a visit marked done", () => {
     const stored = await visitRow();
     const [note] = await notesAt(LISTED);
     if (note === undefined) throw new Error("expected the listed note");
+    // Marked by the queued visit when it landed: there is something to undo.
+    expect(note).toMatchObject({ done_by: ALICE, done_visit_id: queued.id });
+    expect(note.done_at).not.toBeNull();
 
     const undone = await reopen(note.id);
     expect(undone.status).toBe(200);

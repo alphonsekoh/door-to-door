@@ -6,6 +6,7 @@ import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
 import { FollowUpSheet, SUGGESTION_SENT } from "@/components/follow-ups/follow-up-sheet";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
+import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { useSyncQueue } from "@/components/sync/sync-provider";
@@ -14,9 +15,9 @@ import type {
   HouseholdHistory,
   HouseholdSummary,
   InterestLevel,
+  RecordedVisit,
   Religion,
   RevisitEntry,
-  Visit,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
@@ -441,7 +442,7 @@ export function RecordVisitForm({
       // Built as a queued one is, so both paths send the same values. The
       // id is generated here: it is what makes a retry idempotent.
       const visitRequest = buildVisitRequest(fields, Date.now());
-      const visit = await apiFetch<Visit>("/visits", {
+      const visit = await apiFetch<RecordedVisit>("/visits", {
         method: "POST",
         body: JSON.stringify(visitRequest),
       });
@@ -454,7 +455,7 @@ export function RecordVisitForm({
         noted: null,
         action,
         owed,
-        marked: visit.followUpsMarkedDone ?? [],
+        marked: visit.followUpsMarkedDone,
         undo: UNDO_READY,
       });
       onRecorded();
@@ -564,25 +565,12 @@ export function RecordVisitForm({
               <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
                 <span className="min-w-0 break-words">{markedLine.text}</span>
                 {undoIds === null ? null : (
-                  <button
-                    type="button"
-                    disabled={!online || saved.undo.kind === "undoing"}
-                    onClick={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
-                    className="min-h-11 shrink-0 font-medium btn-text"
-                  >
-                    {saved.undo.kind === "undoing" ? (
-                      "Undoing…"
-                    ) : (
-                      <>
-                        Undo{" "}
-                        <span className="sr-only">
-                          {undoIds.length === 1
-                            ? "marking the follow-up done"
-                            : "marking the follow-ups done"}
-                        </span>
-                      </>
-                    )}
-                  </button>
+                  <UndoMarkedButton
+                    count={undoIds.length}
+                    undoing={saved.undo.kind === "undoing"}
+                    disabled={!online}
+                    onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                  />
                 )}
               </div>
             )}

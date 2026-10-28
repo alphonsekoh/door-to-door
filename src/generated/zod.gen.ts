@@ -190,6 +190,17 @@ export const zVisit = z.object({
 });
 
 /**
+ * The answer to recording a visit: `POST /visits`, and each
+ * `/visits/sync` result that carries a visit. Always names the
+ * follow-ups recording it marked done (see `Visit.followUpsMarkedDone`),
+ * so a client never has to guess whether the field was left out.
+ *
+ */
+export const zRecordedVisit = zVisit.and(z.object({
+    followUpsMarkedDone: z.array(z.uuid())
+}));
+
+/**
  * A pair or small group working one outing, with its **current**
  * members; a deactivated person is not listed. A user is on at most one
  * team per outing.
@@ -376,7 +387,7 @@ export const zVisitSyncResultStatus = z.enum([
 export const zVisitSyncResult = z.object({
     id: z.uuid(),
     status: zVisitSyncResultStatus,
-    visit: zVisit.nullish(),
+    visit: zRecordedVisit.nullish(),
     error: zError.nullish()
 });
 
@@ -848,7 +859,7 @@ export const zCreateVisitBody = zCreateVisitRequest;
  * marked nothing).
  *
  */
-export const zCreateVisitResponse = zVisit;
+export const zCreateVisitResponse = zRecordedVisit;
 
 export const zUpdateVisitBody = zUpdateVisitRequest;
 

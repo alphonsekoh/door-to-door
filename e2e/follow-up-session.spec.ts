@@ -109,7 +109,9 @@ test("a member records only the households on a follow-up session's list", async
      list then reads the household as visited, still counted. */
   await expect(status).toContainText("Follow-up marked done.");
   const undo = status.getByRole("button", { name: "Undo marking the follow-up done" });
-  expect((await undo.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  const target = await undo.boundingBox();
+  expect(target?.height).toBeGreaterThanOrEqual(44);
+  expect(target?.width, "a word this short needs its own minimum width").toBeGreaterThanOrEqual(44);
   await expectTappable(undo);
   await undo.click();
   await expect(status).toContainText("Undone. Follow-up reopened.");
