@@ -73,7 +73,8 @@ Owner decisions are marked **(owner)**.
   _Refined by D-111-63:_ an open block is the shell's inline title, with an in-page way
   back to the blocks. _Refined by D-117-48:_ after "Continue as" the shell opens the
   block (and unit) the failed address named; in a follow-up session the way back is "The
-  list".
+  list". _Refined by D-117-63:_ the chrome reads the rendered route, not the address, so
+  the hidden nav holds while hydrating.
 - **D-77-13 · Shell units cannot be tapped, and a record sent after its block's copy
   stays listed, marked "Sent".** Decided by `syncedAt`, not `enqueuedAt`. _Why:_ D-33-13;
   the shell cannot re-read the server, and a record queued before a re-read but sent

@@ -527,7 +527,8 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   (D-33-29). Refines D-25-5 and D-111-20. _Why:_ at large text the member scrolls down
   to High, and a second tap recorded the suggested next unit unseen. Instant, as a
   sheet's focus scroll is: a smooth scroll would carry the field under a moving thumb.
-  `block: "start"` was rejected: on WebKit it moved the page 60px at 16px.
+  `block: "start"` was rejected: on WebKit it moved the page 60px at 16px. _Refined by
+  D-117-77:_ only the Saved line is scrolled; the unit field sits under it.
 
 ## Audit
 

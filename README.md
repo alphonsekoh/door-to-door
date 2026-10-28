@@ -453,7 +453,9 @@ own `door_to_door_e2e` database, so it never disturbs the integration suite. The
 a session's lifecycle, a follow-up session, teams, the account screen and sign-out, and
 the PWA (the worker, offline fallback, caching and phone layout). Three offline-navigation
 tests are skipped on WebKit because Playwright's WebKit offline emulation bypasses the
-service worker (D-32-18).
+service worker (D-32-18). The browser runs at UTC+14 and the server at UTC−12, so their
+dates always differ, and a spec fails on any hydration mismatch on a page it loads,
+attributes included (D-117-64).
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.

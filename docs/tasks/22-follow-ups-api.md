@@ -21,7 +21,8 @@ Create, list, amend, resolve and delete follow-up notes on a household.
 - **D-22-4 · Resolving records who closed it; a resolved note can be reopened.**
   _Refined by D-117-32:_ while a suggestion waits at the door, an admin's reopen also
   lists it and a member's is `409 follow_up_exists`. Deleting is now the soft
-  `POST /follow-ups/{id}/remove` (D-117-4, D-117-34).
+  `POST /follow-ups/{id}/remove` (D-117-4, D-117-34). _Extended by D-117-67 and
+  D-117-70:_ reopening clears `done_visit_id`; `markedByVisit` makes it an Undo.
 
 ## Open questions
 

@@ -28,6 +28,11 @@ A fourth round, after the owner reviewed the third, uncapped the removal notice,
 session page name the note a household was picked for, made list counts count
 households, and ruled two findings need no change (D-117-51 onwards).
 
+A fifth round came from the owner's own testing in Docker (relayed by the workflow on
+2026-10-28): a hydration warning to trace, and "For follow up session, once the household
+notes is saved, it should automatically be marked as done. Make an undo the mark done as
+well." (D-117-62 onwards).
+
 ## Decisions
 
 - **D-117-1 · No issue, so the PR's number names the task.** This file, `D-117-n` and
@@ -125,7 +130,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
   _Why:_ an amend corrects what was allowed when it was recorded (D-20-2, D-74-32). The
   rule is about who chooses the door; D-74-33 still governs amends. _Refined by D-117-40
   and D-117-45:_ the list is the picked households'; the check runs inside the write's
-  transaction, under the session lock.
+  transaction, under the session lock. _Refined by D-117-65:_ a new visit on the list
+  also marks the household's owed listed notes done.
 - **D-117-16 · The queue holds a `not_on_follow_up_list` record and probes it every 5
   min**, as `session_not_active`; the sync sheet says "Not on the follow-up list. Sends
   once an admin adds this unit." Refines D-33-16. _Why:_ an admin listing the unit lets
@@ -152,7 +158,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
   kind another screen already heard (`knownSessionKind`, in memory per page). Refines
   D-25-5. _Why:_ the next door is the next household on the list, not the next number;
   "and next" promised the wrong thing in weak signal. _Research:_ R-80. _Refined by
-  D-117-59:_ Back to the list has its own row.
+  D-117-59:_ Back to the list has its own row; _by D-117-71 and D-117-77:_ a follow-up
+  row with Undo, and only the line is scrolled into view.
 
 ### Screens
 
@@ -185,7 +192,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
   done", a row opens `/blocks/[id]?unit=` with the unit filled in, and Mark done is a
   separate button. Members see no block cards; admins also get the session's blocks, to
   record off the list. A failed list read stays inside the list. Refines D-24-1. _Why:_
-  here the household, not the block, is the unit of work.
+  here the household, not the block, is the unit of work. _Refined by D-117-75:_ Mark
+  done is for a door finished without a visit, and a Done row offers Reopen.
 - **D-117-25 · Notes split into "On the follow-up list" and "Waiting for review"**,
   pinned above the timeline; a suggestion has a dashed edge. Every member sees
   "Suggested by Ann, waiting for review" (owner, D). Bylines name the suggester and the
@@ -193,7 +201,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
   (`src/lib/follow-ups/rights.ts`), which mirrors D-117-12; outside the session a member
   reads "You can mark this done during a follow-up session." Refines D-35-6. _Why:_ never
   offer what the server refuses (D-16-2). _Refined by D-117-32 and D-117-47:_ a waiting
-  suggestion is said in place of Reopen; "…that includes this household".
+  suggestion is said in place of Reopen; "…that includes this household"; _by
+  D-117-74:_ at the door, no Mark done on a note the save will mark.
 - **D-117-26 · Actions are worded by role, and stated where the server would refuse.**
   Admins "Add to follow-up list", members "Suggest a return visit"; otherwise "On the
   follow-up list" or "Suggested by …, waiting for review". A sent suggestion says
@@ -319,7 +328,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
   upsert. Follow-up writes keep household then note (D-117-9) and never lock a session.
   _Why:_ a remove and a record each see the other, two admins cannot remove the last two
   picks at once, and record versus add cannot deadlock; parked-lock tests hold each.
-  _Research:_ R-82, R-35.
+  _Research:_ R-82, R-35. _Refined by D-117-69:_ a visit's transaction marks notes last,
+  after the household.
 - **D-117-46 · "Also add to {session}" wherever an admin lists a door.** The household
   page, a "Needs a return visit" row, the recording form and listing a suggestion (now a
   sheet that shows it first) offer it, ticked, for the running follow-up session, else
@@ -419,7 +429,8 @@ households, and ruled two findings need no change (D-117-51 onwards).
 - **D-117-59 · In a follow-up session the Saved line's "Back to the list" has its own
   row.** Refines D-117-19. _Why:_ the line grew a row from "Sending…" to "Saved … on this
   phone." just after Save scrolled it into view, and scroll anchoring pushed it under
-  the pinned count; an E2E holds its height. _Research:_ R-85.
+  the pinned count; an E2E holds its height. _Research:_ R-85. _Refined by D-117-71:_
+  the follow-up row is there from "Sending…" on, for the same reason.
 - **D-117-60 · The last-household rule counts every pick, on the list or not (owner, no
   change).** D-117-42 stands, so a running session can be left with nothing on members'
   list. _Why:_ the owner: admins "can do that on the fly as they would remove and add
@@ -429,6 +440,111 @@ households, and ruled two findings need no change (D-117-51 onwards).
   phone holds while its chip shows the latest visit as last read with signal, until the
   visit sends and the list is read again. _Why:_ the owner ruled it fine; the copy keeps
   the list as read (D-117-48).
+
+### Fifth round: hydration
+
+- **D-117-62 · The owner's hydration warning was a browser extension: no code change.**
+  The dev overlay's attribute warning came from Grammarly's `data-new-gr-c-s-check-loaded`
+  and `data-gr-ext-installed` on `<body>`, the only difference in the dev server's
+  forwarded log. A clean Chromium in Asia/Singapore against the same Docker app, and a
+  native server under `TZ=UTC`, reported nothing on any page for admin or member. No
+  `suppressHydrationWarning`. _Why:_ the brief asked for evidence before code; silencing
+  `<body>` would also hide a real mismatch there. _Research:_ R-86.
+- **D-117-63 · The root layout's chrome reads the route it rendered, not the address.**
+  `useRoutePathname` (`src/lib/hooks/`) is `/offline` when the rendered segment is, else
+  `usePathname()`; the nav, sync bar, queue, account check and install banner use it.
+  Fixes React #418 on every cold offline reload of `/` and `/blocks/{id}`. Refines
+  D-77-12. _Why:_ the worker serves the prerendered `/offline` at the failed address,
+  where `usePathname()` reads that address on the client, so the chrome drew what the
+  server had left out and React threw the server's HTML away. _Research:_ R-87.
+- **D-117-64 · The E2E phone and server are a day apart, and any hydration error fails a
+  test.** The browser runs at `Pacific/Kiritimati` (UTC+14), the server under
+  `TZ=Etc/GMT+12` (UTC−12). Every page a fixture hands out fails on React's hydration
+  errors and on a sweep comparing each hydrated element's attributes, booleans included,
+  with the props React rendered: every 100 ms for 2 s after load, at `pagehide` and at
+  teardown, kept in `sessionStorage`. No new spec (D-37-6). _Why:_ production React keeps
+  a differing server attribute silently, and Singapore and UTC share a date for most of
+  the day, so a date bug would pass at the wrong hour. _Research:_ R-86, R-88.
+
+### Fifth round: saving marks the follow-up done
+
+- **D-117-65 · A new visit at a household on a running follow-up session's list marks
+  its owed listed notes done (owner).** In the visit's transaction, on `POST /visits`
+  and `/visits/sync` alike, for members and admins, at any interest level (the brief's
+  "every outstanding listed note"). An admin off the list, an amend, a replay or
+  duplicate id, a regular session, a suggestion, a removed note or one already done
+  marks nothing. Refines D-117-15. _Why:_ the owner's request; on the server, so a
+  queued visit counts too. Whether "No response" should is an open question.
+- **D-117-66 · Credited to the visit's author, at the server's time. _Pending the
+  owner._** `doneBy` is the visit's member, so Record for a member credits the member,
+  not the admin that the brief's "the recorder" would name; `doneAt` is when the visit
+  is stored. _Why:_ the visit and its team stamp are the member's (D-29-2) and the admin
+  acts for them; every resolution is stamped by the server (D-35-9).
+- **D-117-67 · `follow_ups.done_visit_id` names the visit that marked a note (migration
+  `0004`).** Nullable FK to `visits`, `on delete set null`, partial index, no backfill;
+  null for a note marked by hand; any reopen clears it. Extends D-22-4. _Why:_ a replay
+  or a lost reply must name the same notes without marking again (D-07-3, D-21-1), and
+  Undo must know exactly what a save closed.
+- **D-117-68 · Recording answers a `RecordedVisit`.** `POST /visits`'s `201` and each
+  sync result with a visit carry a required `followUpsMarkedDone`: the notes that visit
+  marked and that are still done, read from `done_visit_id`. `Visit` and `RecordedVisit`
+  are each `allOf` `VisitFields` with `unevaluatedProperties: false`, so no other read
+  carries the field (D-12-2). _Why:_ required, an answer that drops it fails a test and
+  the client never guesses; only a recording has something to undo. _Research:_ R-90.
+- **D-117-69 · The lock order is unchanged: session, household, notes.** Marking runs
+  after the insert, under the session's `FOR KEY SHARE` and the household upsert's row
+  lock, and touches only notes still owed, so a Mark done that holds the door first
+  keeps its resolver. Refines D-117-45; keeps D-117-9 and D-35-8. _Why:_ one order, so a
+  record and a Mark done never deadlock; parked-lock tests hold both interleavings.
+- **D-117-70 · Undo is `PATCH /follow-ups/{id}` with `done: false` and
+  `markedByVisit`.** It reopens a note only while that visit is still what marked it
+  done: one marked done again since is `409 conflict` ("Ben marked it done again after
+  this visit was saved, so it stays done.") and stays done; one already owed is left as
+  it is; `markedByVisit` without `done: false` is `400`. D-117-12 and D-117-32 are judged
+  first. It never touches the visit. Extends D-35-8 to Undo. _Why:_ a stale Saved line
+  must not take back someone's later resolution.
+- **D-117-71 · The Saved line says what the save marked, with Undo.** In a follow-up
+  session it has a follow-up row from "Sending…" on: "Follow-up marked done once sent."
+  (from the list as last read), then "Follow-up marked done." with Undo, then "Undone.
+  Follow-up reopened.", "Not undone. {the server's reason}", or "Not undone. Check your
+  signal and try again." with Undo kept. Undo is at least 44 by 44px and disabled
+  without signal; a save that marked nothing says nothing. Refines D-117-19, D-117-59.
+  _Why:_ the owner asked for Undo; a row there from the start keeps the line one height.
+- **D-117-72 · Undo lasts as long as its Saved line.** Until another unit is typed or
+  picked, the next save, or leaving. A late answer for a save no longer shown is
+  dropped, and the double-tap guard is per save. Each Undo re-reads the list and the
+  block. _Why:_ usable without racing the next door; one save's answer must never
+  relabel the next.
+- **D-117-73 · A queued visit marks notes when it lands; Undo needs signal (owner).**
+  Sync marks them when the item is first stored, possibly hours later, including a
+  record held as off the list once it is listed and sent. No note change is itself
+  queued, and the offline shell never offers Undo: the list's Reopen does, with signal.
+  Refines D-35-9. _Why:_ the brief asked that offline saves count; a queued reopen would
+  be the offline follow-up change D-35-9 still rules out.
+- **D-117-74 · At the door, the save is what marks a listed note done.** In a follow-up
+  session a note the save will mark (`marksDoneOnSave`) offers no Mark done on the
+  recording form, and the section says "Saving your visit marks this done."; Edit and
+  Remove stay. Admins off the list, door-to-door sessions and the household page keep
+  Mark done. Extends D-35-7; refines D-117-25. _Why:_ the owner replaced the mark at the
+  door with the save; two ways there would ask the member to choose.
+- **D-117-75 · The revisit list keeps Mark done and gains Reopen on Done rows.** Mark
+  done is for a door finished without a visit. Reopen shows only where the viewer may
+  reopen every note on the row, and reopens every done note there, not only those a
+  visit marked (accepted); a waiting suggestion's caption shows instead. After Undo or
+  Reopen the row reads Visited and "N of M visited or done" is unchanged; the hint says
+  so. Refines D-117-24. _Why:_ the brief sends offline Undo to Reopen, and `FollowUp`
+  does not expose `done_visit_id`.
+- **D-117-76 · Record for a member says what it marked done, with the same Undo.**
+  `/admin/records` reads "Saved #05-123 for Ann. Follow-up marked done." until the next
+  record or leaving; Undo is disabled without signal. An admin's Undo, there or on the
+  Saved line, also lists a suggestion that arrived after the save, unwarned (D-117-32;
+  accepted, the window is seconds). _Why:_ the admin was never told the note became
+  "Done by Ann".
+- **D-117-77 · Each save scrolls the Saved line itself into view**, not the wrapper with
+  the unit field and the block's chips. Refines D-111-69. _Why:_ with about ten listed
+  doors in a block that wrapper outgrew a Pixel 5, and `block: "nearest"` aligned its
+  bottom, leaving the line and Undo above the screen; the E2E now lists twelve.
+  _Research:_ R-89.
 
 ### How existing decisions are handled
 
@@ -445,7 +561,7 @@ households, and ruled two findings need no change (D-117-51 onwards).
 | D-111-10, D-115-1        | Extended: `notice-info`; `src/lib/follow-ups/`                            | D-117-30, D-117-31 |
 | D-07-4, D-07-5, D-16-2   | Kept: one active session of any kind; notes stay on the household         | —                  |
 | D-20-2, D-21-1, D-74-33  | Kept: amends and replays are never judged against the list                | D-117-15           |
-| D-22-3, D-35-8/9         | Kept                                                                      | —                  |
+| D-22-3                   | Kept                                                                      | —                  |
 | D-117-4                  | Partly superseded (owner): the reason is required, sent in a POST body    | D-117-33/34        |
 | D-117-14, D-117-23       | Superseded: picks decide the list; the session page lists its picks       | D-117-40/43        |
 | D-22-4, D-117-10/12      | Refined: a reopen lists a waiting suggestion, or waits for an admin       | D-117-32           |
@@ -465,6 +581,14 @@ households, and ruled two findings need no change (D-117-51 onwards).
 | D-117-21, D-117-50       | Refined: On the list counts and groups households                         | D-117-56           |
 | D-117-32/47, D-117-19    | Refined: "Not reopened."; the empty-block line; the Saved line's row      | D-117-57/58/59     |
 | D-117-42, D-117-48       | Kept (owner): the last-household count; the shell's interest chip         | D-117-60/61        |
+| D-77-12                  | Refined: while hydrating, the chrome reads the rendered route             | D-117-63           |
+| D-37-6                   | Kept: the hydration guard lives in the fixtures, not a new spec           | D-117-64           |
+| D-117-15, D-117-45       | Refined: a new visit on the list marks notes done, last in its lock order | D-117-65/69        |
+| D-35-8, D-22-4           | Extended: Undo never takes back a later resolution; reopen clears a link  | D-117-70/67        |
+| D-35-9                   | Refined (owner): a queued visit marks notes when it lands                 | D-117-73           |
+| D-117-19/59, D-111-69    | Refined: the Saved line's follow-up row; only the line is scrolled        | D-117-71/77        |
+| D-35-7, D-117-25         | Extended, refined: at the door the save marks a listed note done          | D-117-74           |
+| D-117-24                 | Refined: Mark done without a visit; Reopen on Done rows                   | D-117-75           |
 
 ## Known limits
 
@@ -477,15 +601,32 @@ households, and ruled two findings need no change (D-117-51 onwards).
   from the session's page.
 - A note that leaves the follow-up list while a whole-list read is between pages can
   hide another until the next read (D-117-52).
+- Undo needs signal; a save sent from the offline shell is undone with the list's Reopen
+  (D-117-73).
+- The E2E attribute sweep reads React's undocumented `__reactProps$` key; a React
+  upgrade may need it changed (R-86).
 
 ## Relies on
 
-D-07-1, D-07-3, D-07-4, D-07-5, D-16-2, D-17-1, D-17-2, D-18-3, D-20-2, D-20-3, D-21-1,
-D-21-4, D-22-3, D-25-3, D-25-8, D-28-5, D-29-4, D-33-2, D-33-25, D-35-3, D-35-4, D-35-8,
-D-35-9, D-74-32, D-74-33, D-74-44, D-74-61, D-77-13, D-83-15, D-85-1, D-90-2, D-111-5,
-D-111-7, D-111-36.
+D-07-1, D-07-2, D-07-3, D-07-4, D-07-5, D-12-2, D-16-2, D-17-1, D-17-2, D-18-3, D-20-2,
+D-20-3, D-21-1, D-21-4, D-22-3, D-25-3, D-25-8, D-28-5, D-29-2, D-29-4, D-33-2,
+D-33-25, D-35-3, D-35-4, D-35-8, D-35-9, D-37-6, D-74-32, D-74-33, D-74-44, D-74-61,
+D-77-13, D-83-15, D-85-1, D-90-2, D-111-5, D-111-7, D-111-36.
 
 ## Open questions
 
-None. The owner's answers A to F, the third round's four points and the fourth round's
+- **Should a "No response" visit close the note? (D-117-65)** As built, yes, as the
+  brief said. Then the row reads Done, and no later follow-up session can pick the
+  household (D-117-38) until someone taps Undo or Reopen. Excluding it is one condition
+  in `markDoneByVisit` plus the at-door caption and the hint.
+- **Who is credited when an admin records for a member? (D-117-66)** The brief named
+  the recorder; as built it is the visit's author. Switching is one argument in
+  `createVisit`'s call, and the records screen would then name the admin.
+- **A household recorded before it was picked reads Visited.** An admin's record
+  earlier in the session, before the household was listed and picked, makes the
+  member's row Visited and counts it in "N of M visited or done" while its note is still
+  owed. Changing it needs a "visited since picked" field on both lists, since
+  `visitedInSession` also decides whether a pick may be removed (D-117-42).
+
+The owner's answers A to F, the third round's four points and the fourth round's
 rulings are recorded above.

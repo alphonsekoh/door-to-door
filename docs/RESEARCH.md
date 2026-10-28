@@ -859,3 +859,63 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [CSS Scroll Anchoring Module Level 1](https://drafts.csswg.org/css-scroll-anchoring/);
   #117, `e2e/follow-up-session.spec.ts`
 - **Used by:** D-117-59
+
+### R-86 · React keeps a differing server attribute, and warns only in development
+
+- **Finding:** React does not promise to patch attribute differences found while
+  hydrating. In development it warns ("…some attributes of the server rendered HTML
+  didn't match the client properties. This won't be patched up.") and names browser
+  extensions among the causes; in production it keeps the server's value and reports
+  nothing. Text and structure differences still throw #418 and re-render. Grammarly
+  writes `data-new-gr-c-s-check-loaded` and `data-gr-ext-installed` on `<body>` before
+  hydration, which raises that warning on every page. A hydrated element holds the props
+  React rendered in an undocumented `__reactProps$<id>` property, and Chromium drops
+  console messages a page logs as it is left, so a check must keep its findings
+  elsewhere.
+- **Source:** [React, `hydrateRoot` caveats](https://react.dev/reference/react-dom/client/hydrateRoot);
+  the Docker dev server's forwarded browser log; measured in #117 with a throwaway
+  `data-tz-probe` attribute, which failed account and teams specs only with the sweep
+- **Used by:** D-117-62, D-117-64
+
+### R-87 · `usePathname()` reads the browser's address on a page served at another
+
+- **Finding:** A prerendered page reached at a different URL (a rewrite, or here the
+  worker's `/offline` fallback at the failed address) hydrates with `usePathname()`
+  giving the browser's address, not the path the server rendered, so anything derived
+  from it can mismatch. `useSelectedLayoutSegment()` comes from the rendered route tree
+  and agrees on both sides. The offline-fallback specs in `pwa.spec.ts` failed with React
+  #418 before the fix.
+- **Source:** [Next.js, `usePathname`, avoid hydration mismatch with rewrites](https://nextjs.org/docs/app/api-reference/functions/use-pathname#avoid-hydration-mismatch-with-rewrites)
+  (also `node_modules/next/dist/docs`); #117
+- **Used by:** D-117-63
+
+### R-88 · `Etc/GMT+12` is UTC−12
+
+- **Finding:** The IANA `Etc/GMT±n` zones keep the POSIX sign, the reverse of what is
+  usual: `Etc/GMT+12` is twelve hours behind UTC. `Pacific/Kiritimati` is UTC+14, the
+  furthest ahead, so the two are 26 hours apart and never share a date. Asia/Singapore
+  (UTC+8) and UTC differ in date only from 16:00 to 24:00 UTC. Not measured here.
+- **Source:** [IANA tz database, `etcetera`](https://data.iana.org/time-zones/tzdb/etcetera)
+- **Used by:** D-117-64
+
+### R-89 · `scrollIntoView({ block: "nearest" })` aligns the far edge of a tall element
+
+- **Finding:** With `nearest`, an element taller than the scrollport whose top is above
+  the view is aligned by its bottom edge, so its top stays out of view. The recording
+  form's wrapper (the Saved line, the unit field and a dozen chips) outgrew a Pixel 5,
+  and the line ended above the screen; the E2E failed on both browsers before the fix.
+- **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
+  #117, `e2e/follow-up-session.spec.ts`
+- **Used by:** D-117-77
+
+### R-90 · `additionalProperties` does not see through `allOf`
+
+- **Finding:** In JSON Schema 2020-12 (OpenAPI 3.1), `additionalProperties` knows only
+  its own subschema's properties, so `false` on a base used in an `allOf` rejects every
+  field another branch adds; `unevaluatedProperties: false` beside the `allOf` sees what
+  every branch evaluated. The hey-api Zod plugin ignores both and emits a plain
+  `z.object` (and `.and()` for the `allOf`), so an extra field is caught by
+  `withContract`'s parsed-versus-returned comparison (R-6), not by the schema.
+- **Source:** [JSON Schema 2020-12 Core, `unevaluatedProperties`](https://json-schema.org/draft/2020-12/json-schema-core#name-unevaluatedproperties);
+  generated `src/generated/zod.gen.ts` (#117)
+- **Used by:** D-117-68

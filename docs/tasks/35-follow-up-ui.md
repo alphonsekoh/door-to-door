@@ -36,13 +36,17 @@ recording form before knocking; overdue widget for admins.
   the follow-up list" and "Waiting for review".
 - **D-35-7 · At the door (recording form) a resolved note is one line with no controls;
   reopen and edit live on the unit screen.** _Why:_ resolved notes accumulate without
-  limit.
+  limit. _Extended by D-117-74:_ in a follow-up session an owed note the save will mark
+  done offers no Mark done there either.
 - **D-35-8 · Re-resolving keeps the first resolution.** `doneAt` and `doneBy` are
   coalesced in the UPDATE. _Why:_ a stale screen or a concurrent tap must not take the
-  credit. Refines D-22-4.
+  credit. Refines D-22-4. _Extended by D-117-70:_ Undo never reopens a note marked done
+  again since its save.
 - **D-35-9 · Follow-up changes are online-only and never queued; screens re-read from
   the server after each change.** A failed re-read keeps the unit already shown. _Why:_
-  as D-74-19; the server stamps the resolver.
+  as D-74-19; the server stamps the resolver. _Refined by D-117-73 (owner):_ a queued
+  visit marks a follow-up session's notes done on the server when it lands; no note
+  change is itself queued.
 - **D-35-10 · A note can be added from the unit header, a visit row (anchored), or right
   after an online save on the recording form (anchored to the saved visit).** _Why:_ the
   server can only anchor to a visit it has stored (D-22-3). _Refined by D-117-26:_ the
