@@ -16,7 +16,7 @@ const { usePathname, useRole, fetchSignedIn } = vi.hoisted(() => ({
   useRole: vi.fn(),
   fetchSignedIn: vi.fn<() => Promise<SignedIn>>(),
 }));
-vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment: () => null }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 /* Who the server says is signed in, asked before every send. */
 vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({

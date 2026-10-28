@@ -18,7 +18,7 @@ const { useSyncQueue, usePathname, loadSyncQueue, idle } = vi.hoisted(() => ({
   idle: { tasks: [] as (() => void)[] },
 }));
 vi.mock("@/components/sync/sync-provider", () => ({ useSyncQueue }));
-vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment: () => null }));
 vi.mock("@/components/sync/sync-queue-loader", () => ({ loadSyncQueue }));
 vi.mock("@/lib/hooks/when-idle", () => ({
   whenIdle: (task: () => void) => {

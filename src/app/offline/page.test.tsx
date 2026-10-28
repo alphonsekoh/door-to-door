@@ -7,7 +7,10 @@ import type * as SignedInModule from "@/lib/sync/signed-in";
 import OfflinePage from "@/app/offline/page";
 import { updateLocalCopy } from "@/lib/offline/local-copy-store";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/offline" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/offline",
+  useSelectedLayoutSegment: () => "offline",
+}));
 vi.mock("@/lib/sync/signed-in", async (importOriginal) => ({
   ...(await importOriginal<typeof SignedInModule>()),
   fetchSignedIn: () => Promise.resolve({ kind: "unknown" }),

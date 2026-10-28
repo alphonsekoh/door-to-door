@@ -62,6 +62,10 @@ export default defineConfig({
     baseURL: BASE_URL,
     /* Phone profiles - viewport, touch and mobile user agent - are set per
        project below; this is the only place the app is exercised at that size. */
+    /* A phone in Singapore against a server in UTC, as deployed: anything
+       rendered from the date or the clock on the server then differs from the
+       client's first render, and the hydration check in the fixtures fails. */
+    timezoneId: "Asia/Singapore",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -91,6 +95,7 @@ export default defineConfig({
     reuseExistingServer: !process.env["CI"],
     timeout: 180_000,
     env: {
+      TZ: "UTC",
       PORT: String(PORT),
       HOSTNAME: "127.0.0.1",
       CONFIG_PATH,

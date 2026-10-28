@@ -22,6 +22,7 @@ const { requireAdminPage } = vi.hoisted(() => ({ requireAdminPage: vi.fn() }));
 vi.mock("@/server/auth/pages", () => ({ requireAdminPage }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
+  useSelectedLayoutSegment: () => null,
   useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
 }));

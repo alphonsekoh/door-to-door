@@ -1,5 +1,7 @@
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncStatusBar } from "@/components/sync/sync-status-bar";
 import type { SyncQueueValue } from "@/components/sync/sync-provider";
@@ -7,12 +9,13 @@ import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
-const { useSyncQueue, usePathname } = vi.hoisted(() => ({
+const { useSyncQueue, usePathname, useSelectedLayoutSegment } = vi.hoisted(() => ({
   useSyncQueue: vi.fn(),
   usePathname: vi.fn<() => string>(),
+  useSelectedLayoutSegment: vi.fn<() => string | null>(),
 }));
 vi.mock("@/components/sync/sync-provider", () => ({ useSyncQueue }));
-vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment }));
 
 const record = (unitNumber: string, overrides: Partial<QueuedVisit> = {}): QueuedVisit => ({
   ...buildQueuedVisit(
@@ -53,6 +56,7 @@ const running = (overrides: Partial<SyncQueueValue> = {}) =>
 beforeEach(() => {
   vi.clearAllMocks();
   usePathname.mockReturnValue("/blocks/b1");
+  useSelectedLayoutSegment.mockReturnValue("blocks");
 });
 
 describe("SyncStatusBar", () => {
@@ -138,6 +142,32 @@ describe("SyncStatusBar on the offline shell (#77)", () => {
     shellState.continueAs("ann");
     render(<SyncStatusBar />);
     expect(screen.getByRole("button", { name: /1 waiting to send/ })).toBeInTheDocument();
+  });
+
+  /* The worker serves the prerendered /offline page at the address that
+     failed: the server rendered /offline, the browser reads /blocks/b1. */
+  it("hydrates the offline page served at another address as the server drew it", async () => {
+    useSelectedLayoutSegment.mockReturnValue("offline");
+    useSyncQueue.mockReturnValue(running());
+    usePathname.mockReturnValue("/offline");
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<SyncStatusBar />);
+    document.body.append(container);
+
+    usePathname.mockReturnValue("/blocks/b1");
+    const mismatches: unknown[] = [];
+    const root = await act(() =>
+      hydrateRoot(container, <SyncStatusBar />, {
+        onRecoverableError: (error) => mismatches.push(error),
+      }),
+    );
+    const drawn = container.innerHTML;
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    expect(mismatches).toEqual([]);
+    expect(drawn).toBe("");
   });
 
   it("is not there before anyone continues, wherever the address is", () => {

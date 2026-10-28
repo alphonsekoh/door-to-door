@@ -29,8 +29,32 @@ export async function adminRequest(
 }
 
 /*
+ * Fails the test on any hydration error: the server's HTML and the client's
+ * first render disagreed, and React threw the server's away. Production
+ * React reports only what it had to recover from, never a mismatch of
+ * attributes alone, so a browser extension's attributes are not caught here.
+ */
+const HYDRATION = /Minified React error #(418|423|425)|Hydration failed|hydrat/i;
+
+function watchHydration(page: Page): () => void {
+  const seen: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && HYDRATION.test(message.text())) {
+      seen.push(`${page.url()}: ${message.text()}`);
+    }
+  });
+  page.on("pageerror", (error) => {
+    if (HYDRATION.test(error.message)) seen.push(`${page.url()}: ${error.message}`);
+  });
+  return () => {
+    expect(seen, "hydration errors").toEqual([]);
+  };
+}
+
+/*
  * Signed-in pages for both roles, plus the one piece of setup more than one
- * spec needs: an outing that is actually running.
+ * spec needs: an outing that is actually running. Every page a fixture hands
+ * out is watched for hydration errors.
  */
 
 type Fixtures = {
@@ -44,25 +68,37 @@ type Fixtures = {
 };
 
 export const test = base.extend<Fixtures>({
+  page: async ({ page }, use) => {
+    const check = watchHydration(page);
+    await use(page);
+    check();
+  },
+
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: ADMIN_STATE });
     const page = await context.newPage();
+    const check = watchHydration(page);
     await use(page);
     await context.close();
+    check();
   },
 
   memberPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: MEMBER_STATE });
     const page = await context.newPage();
+    const check = watchHydration(page);
     await use(page);
     await context.close();
+    check();
   },
 
   partnerPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: PARTNER_STATE });
     const page = await context.newPage();
+    const check = watchHydration(page);
     await use(page);
     await context.close();
+    check();
   },
 
   adminApi: async ({ playwright, baseURL }, use) => {

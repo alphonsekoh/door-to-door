@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useDockedBarOnScreen } from "@/components/ui/docked-actions";
 import { useReservedSpace } from "@/components/ui/use-reserved-space";
@@ -18,6 +17,7 @@ import {
   writeInstalled,
 } from "@/lib/pwa/install-prompt";
 import { useRole } from "@/lib/hooks/use-role";
+import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { isPublicPath } from "@/server/auth/routes";
 
 type BeforeInstallPromptEvent = Event & {
@@ -55,7 +55,7 @@ function readEnvironment(): Environment {
  * otherwise it is the last thing in the page, so it is rendered inside main.
  */
 export function InstallPrompt() {
-  const pathname = usePathname();
+  const pathname = useRoutePathname();
   const { isSignedIn } = useRole();
   const [environment, setEnvironment] = useState<Environment | null>(null);
   const [hasDeferred, setHasDeferred] = useState(false);

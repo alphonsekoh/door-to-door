@@ -1,12 +1,12 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { type SyncQueueView, loadSyncQueue } from "@/components/sync/sync-queue-loader";
 import { useShellState } from "@/lib/offline/shell-state";
 import { barSummary, quietText } from "@/lib/sync/sync-ui";
 import { whenIdle } from "@/lib/hooks/when-idle";
+import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*
@@ -38,7 +38,7 @@ const PINNED = "scroll-edge sync-pinned";
 
 export function SyncStatusBar() {
   const { records, justSaved, enqueue } = useSyncQueue();
-  const pathname = usePathname();
+  const pathname = useRoutePathname();
   const shell = useShellState();
   /* The offline shell shows it once someone is recording, wherever its
      address happens to be. */
