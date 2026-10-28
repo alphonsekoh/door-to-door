@@ -134,28 +134,30 @@ describe("markedDoneLine", () => {
 describe("undoMarkedDone", () => {
   it("reopens each note in turn, and nothing else", async () => {
     apiFetch.mockResolvedValue({});
-    expect(await undoMarkedDone(["f1", "f2"])).toEqual({ kind: "undone", count: 2 });
+    expect(await undoMarkedDone("v1", ["f1", "f2"])).toEqual({ kind: "undone", count: 2 });
+    // Each only while that save is still what marked it done.
+    const body = JSON.stringify({ done: false, markedByVisit: "v1" });
     expect(apiFetch.mock.calls).toEqual([
-      ["/follow-ups/f1", { method: "PATCH", body: JSON.stringify({ done: false }) }],
-      ["/follow-ups/f2", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+      ["/follow-ups/f1", { method: "PATCH", body }],
+      ["/follow-ups/f2", { method: "PATCH", body }],
     ]);
   });
 
   it("skips a note removed since", async () => {
     apiFetch.mockRejectedValueOnce(refusal(404, "No such follow-up.")).mockResolvedValueOnce({});
-    expect(await undoMarkedDone(["gone", "f2"])).toEqual({ kind: "undone", count: 1 });
+    expect(await undoMarkedDone("v1", ["gone", "f2"])).toEqual({ kind: "undone", count: 1 });
   });
 
   it("stops at a refusal with the server's reason", async () => {
     const reason = "Ann's suggestion for this door is waiting for an admin.";
     apiFetch.mockRejectedValueOnce(refusal(409, reason));
-    expect(await undoMarkedDone(["f1", "f2"])).toEqual({ kind: "refused", reason });
+    expect(await undoMarkedDone("v1", ["f1", "f2"])).toEqual({ kind: "refused", reason });
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
   it("keeps what is left when there is no answer, counting what was reopened", async () => {
     apiFetch.mockResolvedValueOnce({}).mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    expect(await undoMarkedDone(["f1", "f2", "f3"])).toEqual({
+    expect(await undoMarkedDone("v1", ["f1", "f2", "f3"])).toEqual({
       kind: "failed",
       left: ["f2", "f3"],
       reopened: 1,
@@ -164,11 +166,11 @@ describe("undoMarkedDone", () => {
 
   it("treats a server fault as no answer", async () => {
     apiFetch.mockRejectedValueOnce(refusal(503, "Try again."));
-    expect(await undoMarkedDone(["f1"])).toMatchObject({ kind: "failed", left: ["f1"] });
+    expect(await undoMarkedDone("v1", ["f1"])).toMatchObject({ kind: "failed", left: ["f1"] });
   });
 
   it("counts a second try's reopens with the first's", async () => {
     apiFetch.mockResolvedValue({});
-    expect(await undoMarkedDone(["f2", "f3"], 1)).toEqual({ kind: "undone", count: 3 });
+    expect(await undoMarkedDone("v1", ["f2", "f3"], 1)).toEqual({ kind: "undone", count: 3 });
   });
 });

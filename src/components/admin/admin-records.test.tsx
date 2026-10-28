@@ -422,10 +422,39 @@ describe("AdminRecords", () => {
       expect(status).toHaveTextContent("Saved #05-123 for Alice. Undone. Follow-up reopened.");
       expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
       expect(patches()).toEqual([
-        ["/follow-ups/n1", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+        [
+          "/follow-ups/n1",
+          { method: "PATCH", body: JSON.stringify({ done: false, markedByVisit: "v1" }) },
+        ],
       ]);
       // The record itself is never touched again.
       expect(apiFetch.mock.calls.filter(([path]) => path === "/visits")).toHaveLength(1);
+    });
+
+    it("cannot undo without signal", async () => {
+      /* The browser losing and finding its signal, as useOnline hears it. */
+      const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+      const setOnLine = (value: boolean) => {
+        onLine.mockReturnValue(value);
+        window.dispatchEvent(new Event(value ? "online" : "offline"));
+      };
+      const user = userEvent.setup();
+      serveRecords([recorded("v1", ["n1"])]);
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+      await recordFor(user, "#05-123");
+      const undo = within(await screen.findByRole("status")).getByRole("button", { name: UNDO });
+      expect(undo).toBeEnabled();
+
+      act(() => {
+        setOnLine(false);
+      });
+      expect(undo).toBeDisabled();
+      act(() => {
+        setOnLine(true);
+      });
+      expect(undo).toBeEnabled();
+      onLine.mockRestore();
     });
 
     it("keeps Undo after no answer, and a second try finishes it", async () => {
@@ -460,10 +489,10 @@ describe("AdminRecords", () => {
 
     it("moves on to the next record, and drops a late answer for the last", async () => {
       const user = userEvent.setup();
-      let finish: (value: unknown) => void = () => undefined;
+      const answers: ((value: unknown) => void)[] = [];
       serveRecords(
         [recorded("v1", ["n1"]), recorded("v2", ["n2"], null), recorded("v3", [])],
-        () => new Promise((resolve) => (finish = resolve)),
+        () => new Promise((resolve) => answers.push(resolve)),
       );
       render(<AdminRecords />);
       await screen.findByText(/Nothing has been recorded/);
@@ -478,15 +507,21 @@ describe("AdminRecords", () => {
       await recordFor(user, "#05-124");
       const status = screen.getByRole("status");
       expect(status).toHaveTextContent(/^Saved #05-124\. Follow-up marked done\./);
-      // One undo at a time: this one waits for the first to answer.
+      // Its Undo is not held up by the first, still on its way.
       await user.click(within(status).getByRole("button", { name: UNDO }));
-      expect(patches()).toHaveLength(1);
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/n1", "/follow-ups/n2"]);
+      expect(within(status).getByRole("button", { name: "Undoing…" })).toBeDisabled();
       await act(async () => {
-        finish({});
+        answers[0]?.({});
         await Promise.resolve();
       });
-      expect(status).toHaveTextContent("Follow-up marked done.");
+      expect(status).toHaveTextContent("Undoing…");
       expect(status).not.toHaveTextContent(/Undone/);
+      await act(async () => {
+        answers[1]?.({});
+        await Promise.resolve();
+      });
+      expect(status).toHaveTextContent(/^Saved #05-124\. Undone\. Follow-up reopened\.$/);
 
       // A record that marked nothing clears the line.
       await recordFor(user, "#05-125");

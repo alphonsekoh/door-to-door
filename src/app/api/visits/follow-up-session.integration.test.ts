@@ -239,15 +239,19 @@ const notesAt = async (household: string) =>
   ).rows;
 const marked = async (response: Response) =>
   ((await response.json()) as { id: string; followUpsMarkedDone?: string[] }).followUpsMarkedDone;
-const reopen = (id: string) =>
+const changeNote = (id: string, body: Record<string, unknown>) =>
   CHANGE_NOTE(
     new Request(`https://test.local/api/follow-ups/${id}`, {
       method: "PATCH",
-      body: JSON.stringify({ done: false }),
+      body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
     }),
     { params: Promise.resolve({ id }) },
   );
+const reopen = (id: string) => changeNote(id, { done: false });
+/* As the Saved line's Undo sends it. */
+const undo = (id: string, visitId: string) =>
+  changeNote(id, { done: false, markedByVisit: visitId });
 
 describe("recording a visit in a follow-up session marks the household's follow-ups done", () => {
   it("marks every owed listed note there, credited to the member, and says which", async () => {
@@ -428,17 +432,66 @@ describe("undoing what a visit marked done", () => {
     expect(note).toMatchObject({ done_by: ALICE, done_visit_id: queued.id });
     expect(note.done_at).not.toBeNull();
 
-    const undone = await reopen(note.id);
+    const undone = await undo(note.id, queued.id);
     expect(undone.status).toBe(200);
     expect(await notesAt(LISTED)).toEqual([
       { ...note, done_at: null, done_by: null, done_visit_id: null },
     ]);
     expect(await visitRow()).toEqual(stored);
+    // A second Undo, whose first answer was lost, finds it owed and leaves it.
+    expect((await undo(note.id, queued.id)).status).toBe(200);
+    expect((await notesAt(LISTED))[0]?.done_at).toBeNull();
 
     // A replay after Undo names nothing, and closes nothing again.
     const [replayed] = await sync([queued]);
     expect(replayed?.visit?.followUpsMarkedDone).toEqual([]);
     expect((await notesAt(LISTED))[0]?.done_at).toBeNull();
+  });
+
+  it("never reopens a note marked done again since the save", async () => {
+    asAlice();
+    const saved = (await (await post("#01-01")).json()) as { id: string };
+    const [note] = await notesAt(LISTED);
+    if (note === undefined) throw new Error("expected the listed note");
+
+    // An admin reopens it and marks it done by hand before Alice taps Undo.
+    asAdmin();
+    expect((await reopen(note.id)).status).toBe(200);
+    expect((await changeNote(note.id, { done: true })).status).toBe(200);
+    asAlice();
+    const refused = await undo(note.id, saved.id);
+    expect(refused.status).toBe(409);
+    expect(await error(refused)).toEqual({
+      code: "conflict",
+      message: "Admin marked it done again after this visit was saved, so it stays done.",
+    });
+    expect((await notesAt(LISTED))[0]).toMatchObject({ done_by: ADMIN, done_visit_id: null });
+
+    // Nor one she marked done again herself, from a stale Saved line.
+    asAdmin();
+    await reopen(note.id);
+    asAlice();
+    await changeNote(note.id, { done: true });
+    const own = await undo(note.id, saved.id);
+    expect((await error(own)).message).toBe(
+      "You marked it done again after this visit was saved, so it stays done.",
+    );
+    expect((await notesAt(LISTED))[0]).toMatchObject({ done_by: ALICE });
+  });
+
+  it("takes markedByVisit only with done: false", async () => {
+    asAlice();
+    const saved = (await (await post("#01-01")).json()) as { id: string };
+    const [note] = await notesAt(LISTED);
+    if (note === undefined) throw new Error("expected the listed note");
+    for (const body of [{ markedByVisit: saved.id }, { done: true, markedByVisit: saved.id }]) {
+      const refused = await changeNote(note.id, body);
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({
+        error: { code: "validation_failed", details: [{ path: "/markedByVisit" }] },
+      });
+    }
+    expect((await notesAt(LISTED))[0]?.done_visit_id).toBe(saved.id);
   });
 
   it("refuses a member's undo while a suggestion waits, and lets an admin's through", async () => {

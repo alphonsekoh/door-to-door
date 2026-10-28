@@ -218,22 +218,27 @@ export function RecordVisitForm({
   const [suggestSent, setSuggestSent] = useState(false);
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
-  const top = useRef<HTMLDivElement>(null);
+  const savedLine = useRef<HTMLDivElement>(null);
   /* Synchronous, so two taps in one frame save one visit, even while the
      first waits on the follow-up list (D-74-44). */
   const sending = useRef(false);
-  const undoing = useRef(false);
+  /* The save whose Undo is on its way: a second tap on it sends nothing,
+     but the next save's Undo is not held up by it. */
+  const undoing = useRef<string | null>(null);
   const savedId = saved?.visitId ?? null;
 
   /*
    * At large text the member scrolls down to the interest level before
    * Save, and the Saved line and the next unit, already filled in, were left
    * above the screen: a second tap then recorded that unit unseen. Each save
-   * brings them back into view, clear of the pinned chrome, before it is
-   * painted. Where they are already in view, nothing moves.
+   * brings the line back into view, clear of the pinned chrome, before it is
+   * painted, with the unit field right under it. Where it is already in
+   * view, nothing moves. Only the line: with the block's chips, the top of
+   * the form can be taller than the screen, and "nearest" then aligns its
+   * bottom, which left the line and its Undo above the screen.
    */
   useLayoutEffect(() => {
-    if (savedId !== null) top.current?.scrollIntoView({ block: "nearest" });
+    if (savedId !== null) savedLine.current?.scrollIntoView({ block: "nearest" });
   }, [savedId]);
 
   /*
@@ -479,13 +484,17 @@ export function RecordVisitForm({
    * unit or saved again, and the list is read again whatever came of it.
    */
   async function undoMarked(visitId: string, ids: string[], before: UndoState): Promise<void> {
-    if (undoing.current) return;
-    undoing.current = true;
+    if (undoing.current === visitId) return;
+    undoing.current = visitId;
     const onThisSave = (undo: UndoState) => (current: Saved | null) =>
       current?.visitId === visitId ? { ...current, undo } : current;
     setSaved(onThisSave({ kind: "undoing" }));
-    const outcome = await undoMarkedDone(ids, before.kind === "failed" ? before.reopened : 0);
-    undoing.current = false;
+    const outcome = await undoMarkedDone(
+      visitId,
+      ids,
+      before.kind === "failed" ? before.reopened : 0,
+    );
+    if (undoing.current === visitId) undoing.current = null;
     setSaved(onThisSave(outcome));
     void followUp?.recheck?.();
     onRecorded();
@@ -532,194 +541,193 @@ export function RecordVisitForm({
       noValidate
       className="space-y-4"
     >
-      <div ref={top} className="scroll-clear-chrome space-y-4">
-        {status === null ? null : (
-          <div
-            role="status"
-            className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
-          >
-            <span className="break-words">{status}</span>
-            {householdId === null || saved?.noted !== null ? null : noteLabel !== null ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setNoting(true);
-                }}
-                className="min-h-11 font-medium btn-text"
-              >
-                {noteLabel}
-              </button>
-            ) : saved.action.kind === "promote" ? (
-              <PromoteButton
-                suggestion={saved.action.suggestion}
-                onPromoted={(message) => {
-                  setSaved({ ...saved, noted: message });
-                  setReloadKey((key) => key + 1);
-                }}
-                className="min-h-11 font-medium btn-text"
-              />
-            ) : null}
-            {/* A row of its own from "Sending…" on, so the line keeps its
+      {status === null ? null : (
+        <div
+          ref={savedLine}
+          role="status"
+          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+        >
+          <span className="break-words">{status}</span>
+          {householdId === null || saved?.noted !== null ? null : noteLabel !== null ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNoting(true);
+              }}
+              className="min-h-11 font-medium btn-text"
+            >
+              {noteLabel}
+            </button>
+          ) : saved.action.kind === "promote" ? (
+            <PromoteButton
+              suggestion={saved.action.suggestion}
+              onPromoted={(message) => {
+                setSaved({ ...saved, noted: message });
+                setReloadKey((key) => key + 1);
+              }}
+              className="min-h-11 font-medium btn-text"
+            />
+          ) : null}
+          {/* A row of its own from "Sending…" on, so the line keeps its
                 height as the words change, as Back to the list's does. */}
-            {saved === null || markedLine === null ? null : (
-              <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
-                <span className="min-w-0 break-words">{markedLine.text}</span>
-                {undoIds === null ? null : (
-                  <UndoMarkedButton
-                    count={undoIds.length}
-                    undoing={saved.undo.kind === "undoing"}
-                    disabled={!online}
-                    onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
-                  />
-                )}
-              </div>
-            )}
-            {/* On a row of its own: beside the line, it fitted "Sending…"
+          {saved === null || markedLine === null ? null : (
+            <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
+              <span className="min-w-0 break-words">{markedLine.text}</span>
+              {undoIds === null ? null : (
+                <UndoMarkedButton
+                  count={undoIds.length}
+                  undoing={saved.undo.kind === "undoing"}
+                  disabled={!online}
+                  onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                />
+              )}
+            </div>
+          )}
+          {/* On a row of its own: beside the line, it fitted "Sending…"
                 but not "Saved … on this phone.", so the line grew just after
                 Save scrolled it into view, and the browser, holding the unit
                 field still, pushed it up under the pinned count. */}
-            {followUp === null ? null : (
-              <div className="basis-full">
-                <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
-                  Back to the list
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* The form stays: a re-read that empties the block must not throw
-            away a visit already half typed. */}
-        {nothingHere ? (
-          <div role="status" className="notice-info">
-            <p className="break-words">
-              Nothing in this block is on this session&apos;s list. Visits can be recorded only at
-              the households on the session&apos;s list.
-            </p>
-            <Link href="/" className="mt-1 inline-flex min-h-11 items-center font-medium btn-text">
-              Back to the list
-            </Link>
-          </div>
-        ) : null}
-
-        <div>
-          <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
-            Unit number
-          </label>
-          <input
-            id="unitNumber"
-            value={unitNumber}
-            onChange={(event) => {
-              setUnitNumber(event.target.value);
-              setSaved(null);
-              setSuggestSent(false);
-              setOffList(false);
-              // Cleared the moment it is fixed, so no red lingers while typing.
-              if (event.target.value.trim() !== "") clearError("unitNumber");
-            }}
-            onBlur={() => {
-              if (unitNumber.trim() === "") {
-                setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
-              }
-            }}
-            inputMode="text"
-            autoComplete="off"
-            placeholder="#05-123"
-            aria-invalid={errors.unitNumber !== undefined}
-            aria-describedby={
-              errors.unitNumber !== undefined
-                ? "unit-error"
-                : gate === "ok" || gate === "checking"
-                  ? undefined
-                  : "unit-gate"
-            }
-            className="min-h-12 field"
-          />
-          {errors.unitNumber === undefined ? null : (
-            <p id="unit-error" className="mt-1 field-error">
-              {errors.unitNumber}
-            </p>
+          {followUp === null ? null : (
+            <div className="basis-full">
+              <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
+                Back to the list
+              </Link>
+            </div>
           )}
-          {gate === "unlisted" ? (
-            <div id="unit-gate" className="mt-2 notice-info">
-              <p className="break-words">
-                <UnitNumber value={typed} /> is not on this session&apos;s list, so it can&apos;t be
-                recorded in this session.
-                {suggestSent
-                  ? null
-                  : canSuggestHere
-                    ? " Should it be? Suggest it for an admin to review."
-                    : unlistedAction === "waiting"
-                      ? " A suggestion to add it is waiting for an admin to review."
-                      : unlistedAction === "listed"
-                        ? " It is on the follow-up list; ask an admin to add it to this session."
-                        : unlistedAction === null
-                          ? null
-                          : " Ask an admin to add it."}
+        </div>
+      )}
+
+      {/* The form stays: a re-read that empties the block must not throw
+            away a visit already half typed. */}
+      {nothingHere ? (
+        <div role="status" className="notice-info">
+          <p className="break-words">
+            Nothing in this block is on this session&apos;s list. Visits can be recorded only at the
+            households on the session&apos;s list.
+          </p>
+          <Link href="/" className="mt-1 inline-flex min-h-11 items-center font-medium btn-text">
+            Back to the list
+          </Link>
+        </div>
+      ) : null}
+
+      <div>
+        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+          Unit number
+        </label>
+        <input
+          id="unitNumber"
+          value={unitNumber}
+          onChange={(event) => {
+            setUnitNumber(event.target.value);
+            setSaved(null);
+            setSuggestSent(false);
+            setOffList(false);
+            // Cleared the moment it is fixed, so no red lingers while typing.
+            if (event.target.value.trim() !== "") clearError("unitNumber");
+          }}
+          onBlur={() => {
+            if (unitNumber.trim() === "") {
+              setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+            }
+          }}
+          inputMode="text"
+          autoComplete="off"
+          placeholder="#05-123"
+          aria-invalid={errors.unitNumber !== undefined}
+          aria-describedby={
+            errors.unitNumber !== undefined
+              ? "unit-error"
+              : gate === "ok" || gate === "checking"
+                ? undefined
+                : "unit-gate"
+          }
+          className="min-h-12 field"
+        />
+        {errors.unitNumber === undefined ? null : (
+          <p id="unit-error" className="mt-1 field-error">
+            {errors.unitNumber}
+          </p>
+        )}
+        {gate === "unlisted" ? (
+          <div id="unit-gate" className="mt-2 notice-info">
+            <p className="break-words">
+              <UnitNumber value={typed} /> is not on this session&apos;s list, so it can&apos;t be
+              recorded in this session.
+              {suggestSent
+                ? null
+                : canSuggestHere
+                  ? " Should it be? Suggest it for an admin to review."
+                  : unlistedAction === "waiting"
+                    ? " A suggestion to add it is waiting for an admin to review."
+                    : unlistedAction === "listed"
+                      ? " It is on the follow-up list; ask an admin to add it to this session."
+                      : unlistedAction === null
+                        ? null
+                        : " Ask an admin to add it."}
+            </p>
+            {suggestSent ? (
+              <p role="status" className="mt-1 font-medium">
+                {SUGGESTION_SENT}
               </p>
-              {suggestSent ? (
-                <p role="status" className="mt-1 font-medium">
-                  {SUGGESTION_SENT}
-                </p>
-              ) : canSuggestHere ? (
+            ) : canSuggestHere ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setSuggesting(true);
+                }}
+                className="mt-1 min-h-11 font-medium btn-text"
+              >
+                {SUGGEST}
+              </button>
+            ) : null}
+          </div>
+        ) : gate === "unknown" ? (
+          <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+            Could not check this session&apos;s list. A visit to a unit not on it will wait on this
+            phone until an admin adds it.
+          </p>
+        ) : gate === "admin_override" ? (
+          <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+            Not on this session&apos;s list. You can still record it as an admin.
+          </p>
+        ) : null}
+      </div>
+
+      {chips.length === 0 ? null : (
+        <div>
+          <p className="mb-1 text-caption font-medium text-foreground-muted">
+            On the list in this block:
+          </p>
+          {/* Wraps at large text; a unit number never splits (D-111-36). */}
+          <ul className="flex flex-wrap gap-2" aria-label="On the list in this block">
+            {chips.map((chip) => (
+              <li key={chip.householdId}>
                 <button
                   type="button"
+                  aria-pressed={chip.unitNumber === typed}
                   onClick={() => {
-                    setSuggesting(true);
+                    setUnitNumber(chip.unitNumber);
+                    setSuggested(chip.unitNumber);
+                    setSaved(null);
+                    setSuggestSent(false);
+                    setOffList(false);
+                    clearError("unitNumber");
                   }}
-                  className="mt-1 min-h-11 font-medium btn-text"
+                  className={`min-h-11 press rounded-full border px-3 text-body tabular-nums ${
+                    chip.unitNumber === typed
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border-strong bg-surface"
+                  }`}
                 >
-                  {SUGGEST}
+                  <UnitNumber value={chip.unitNumber} />
+                  {CHIP_STATE[chip.state]}
                 </button>
-              ) : null}
-            </div>
-          ) : gate === "unknown" ? (
-            <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
-              Could not check this session&apos;s list. A visit to a unit not on it will wait on
-              this phone until an admin adds it.
-            </p>
-          ) : gate === "admin_override" ? (
-            <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
-              Not on this session&apos;s list. You can still record it as an admin.
-            </p>
-          ) : null}
+              </li>
+            ))}
+          </ul>
         </div>
-
-        {chips.length === 0 ? null : (
-          <div>
-            <p className="mb-1 text-caption font-medium text-foreground-muted">
-              On the list in this block:
-            </p>
-            {/* Wraps at large text; a unit number never splits (D-111-36). */}
-            <ul className="flex flex-wrap gap-2" aria-label="On the list in this block">
-              {chips.map((chip) => (
-                <li key={chip.householdId}>
-                  <button
-                    type="button"
-                    aria-pressed={chip.unitNumber === typed}
-                    onClick={() => {
-                      setUnitNumber(chip.unitNumber);
-                      setSuggested(chip.unitNumber);
-                      setSaved(null);
-                      setSuggestSent(false);
-                      setOffList(false);
-                      clearError("unitNumber");
-                    }}
-                    className={`min-h-11 press rounded-full border px-3 text-body tabular-nums ${
-                      chip.unitNumber === typed
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : "border-border-strong bg-surface"
-                    }`}
-                  >
-                    <UnitNumber value={chip.unitNumber} />
-                    {CHIP_STATE[chip.state]}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
+      )}
 
       {history === null ? null : (
         <HouseholdHistoryPanel

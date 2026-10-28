@@ -24,6 +24,7 @@ import {
   undoMarkedDone,
 } from "@/lib/follow-ups/marked-done";
 import { asHouseholdSummary } from "@/lib/history/history";
+import { useOnline } from "@/lib/hooks/use-online";
 import { loadAllUsers } from "@/lib/session/users";
 import {
   hasAnyFilter,
@@ -94,7 +95,9 @@ export function AdminRecords() {
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [recording, setRecording] = useState(false);
   const [marked, setMarked] = useState<Marked | null>(null);
-  const undoing = useRef(false);
+  const online = useOnline();
+  /* The record whose Undo is on its way, as on the member's Saved line. */
+  const undoing = useRef<string | null>(null);
 
   const load = useCallback(async (current: RecordFilters) => {
     try {
@@ -205,16 +208,17 @@ export function AdminRecords() {
   /* Reopens exactly what that record marked done; the record stays. An
      answer for a record no longer shown is dropped. */
   async function undoMarked(current: Marked, ids: string[]): Promise<void> {
-    if (undoing.current) return;
-    undoing.current = true;
+    if (undoing.current === current.visitId) return;
+    undoing.current = current.visitId;
     const onThis = (undo: UndoState) => (shown: Marked | null) =>
       shown?.visitId === current.visitId ? { ...shown, undo } : shown;
     setMarked(onThis({ kind: "undoing" }));
     const outcome = await undoMarkedDone(
+      current.visitId,
       ids,
       current.undo.kind === "failed" ? current.undo.reopened : 0,
     );
-    undoing.current = false;
+    if (undoing.current === current.visitId) undoing.current = null;
     setMarked(onThis(outcome));
   }
 
@@ -257,6 +261,7 @@ export function AdminRecords() {
             <UndoMarkedButton
               count={undoIds.length}
               undoing={marked.undo.kind === "undoing"}
+              disabled={!online}
               onUndo={() => void undoMarked(marked, undoIds)}
             />
           )}

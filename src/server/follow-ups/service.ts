@@ -3,9 +3,15 @@ import type { Database } from "@/db/client";
 import type { FollowUpStatus, Role } from "@/db/schema";
 import { followUps, households, visits } from "@/db/schema";
 import { waitingSentence } from "@/lib/follow-ups/waiting";
+import { firstName } from "@/lib/session/own-name";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { isNoteOnActiveRevisitList, liveFollowUp } from "@/server/follow-ups/list-rule";
-import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
+import {
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  ValidationError,
+} from "@/server/http/errors";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 
 /*
@@ -240,6 +246,7 @@ export type FollowUpChanges = {
   note?: string | undefined;
   dueDate?: string | null | undefined;
   done?: boolean | undefined;
+  markedByVisit?: string | undefined;
   status?: "listed" | undefined;
 };
 
@@ -314,6 +321,34 @@ async function lockFollowUp(tx: Database, id: string): Promise<FollowUpRow> {
   return getFollowUp(tx, id);
 }
 
+/*
+ * Undo reopens what a save marked done and nothing since. A stale Saved line
+ * must not reopen a note someone has reopened and marked done again meanwhile,
+ * as a stale second "done" never takes the credit (D-35-8). A note already
+ * owed passes: the undo has nothing left to do.
+ */
+async function assertStillMarkedBy(
+  db: Database,
+  existing: FollowUpRow,
+  visitId: string,
+  actor: Actor,
+): Promise<void> {
+  if (existing.doneAt === null) return;
+  const { doneVisitId } = firstOrThrow(
+    await db
+      .select({ doneVisitId: followUps.doneVisitId })
+      .from(followUps)
+      .where(eq(followUps.id, existing.id)),
+    "follow-up",
+  );
+  if (doneVisitId === visitId) return;
+  const who = existing.doneById === actor.id ? "You" : firstName(existing.doneByName);
+  throw new ConflictError(
+    "conflict",
+    `${who} marked it done again after this visit was saved, so it stays done.`,
+  );
+}
+
 export function updateFollowUp(
   db: Database,
   id: string,
@@ -329,6 +364,11 @@ async function applyUpdate(
   changes: FollowUpChanges,
   actor: Actor,
 ): Promise<FollowUpRow> {
+  if (changes.markedByVisit !== undefined && changes.done !== false) {
+    throw new ValidationError("Invalid request body.", [
+      { path: "/markedByVisit", message: "Send it only with done: false." },
+    ]);
+  }
   const existing = await lockFollowUp(db, id);
 
   if (actor.role === "admin") {
@@ -338,6 +378,9 @@ async function applyUpdate(
     }
   } else {
     await assertMemberMayUpdate(db, existing, changes, actor);
+  }
+  if (changes.markedByVisit !== undefined) {
+    await assertStillMarkedBy(db, existing, changes.markedByVisit, actor);
   }
 
   const now = new Date();

@@ -332,7 +332,10 @@ test.describe("without signal", () => {
    * "Sending…" fitted beside Back to the list and "Saved … on this phone."
    * did not, so the line grew a row just after Save had scrolled it into
    * view, and the browser kept the unit field still by scrolling the line
-   * up under the pinned count.
+   * up under the pinned count. And with a dozen doors on the list in the
+   * block, the line, the unit field and the chips together were taller than
+   * the screen, so bringing them into view aligned the chips' bottom and
+   * left the line above it.
    */
   test("a visit saved on the phone keeps its Saved line clear of the pinned count", async ({
     memberPage,
@@ -340,16 +343,18 @@ test.describe("without signal", () => {
   }, testInfo) => {
     const session = await startFollowUpSession(adminApi);
 
-    /* Doors of this test's own, so the chips wrap and the form scrolls. */
+    /* Eleven doors of this test's own besides the seeded one, so the chips
+       run to several rows and the form scrolls. */
     const stamp = String(Date.now()).slice(-4);
     const floor = `#4${String(testInfo.project.name.length % 10)}`;
     const notes: string[] = [];
-    for (const door of ["1", "2", "3", "4"]) {
+    const doors: string[] = [];
+    for (let door = 1; door <= 11; door += 1) {
       const visited = await adminApi.post("/api/visits", {
         data: {
           id: uuidv7(),
           blockId: SEED_BLOCK,
-          unitNumber: `${floor}-${door}${stamp}`,
+          unitNumber: `${floor}-${String(door).padStart(2, "0")}${stamp}`,
           interestLevel: "medium",
         },
       });
@@ -360,15 +365,19 @@ test.describe("without signal", () => {
       });
       expect(listed.status()).toBe(201);
       notes.push(((await listed.json()) as { id: string }).id);
-      const picked = await adminApi.post(`/api/sessions/${session}/households`, {
-        data: { householdIds: [householdId] },
-      });
-      expect(picked.status()).toBe(200);
+      doors.push(householdId);
     }
+    const picked = await adminApi.post(`/api/sessions/${session}/households`, {
+      data: { householdIds: doors },
+    });
+    expect(picked.status()).toBe(200);
 
     await memberPage.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
     await untilLive(memberPage);
     await expect(memberPage.getByLabel("Unit number")).toHaveValue(LISTED_UNIT);
+    await expect(
+      memberPage.getByRole("list", { name: "On the list in this block" }).getByRole("listitem"),
+    ).toHaveCount(12);
 
     /* Weak signal: the first send hangs a moment, then every one fails. */
     let attempts = 0;

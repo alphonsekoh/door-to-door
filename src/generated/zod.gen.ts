@@ -175,7 +175,13 @@ export const zTeamSummary = z.object({
     members: z.array(zUserSummary)
 });
 
-export const zVisit = z.object({
+/**
+ * Every field of a visit, shared by the two shapes a visit is answered
+ * in: `Visit` is exactly these, and `RecordedVisit` these and
+ * `followUpsMarkedDone`.
+ *
+ */
+export const zVisitFields = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
     sessionId: z.uuid(),
@@ -185,18 +191,19 @@ export const zVisit = z.object({
     description: z.string().max(4000),
     clientCreatedAt: z.iso.datetime(),
     createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime(),
-    followUpsMarkedDone: z.array(z.uuid()).optional()
+    updatedAt: z.iso.datetime()
 });
+
+export const zVisit = zVisitFields;
 
 /**
  * The answer to recording a visit: `POST /visits`, and each
- * `/visits/sync` result that carries a visit. Always names the
- * follow-ups recording it marked done (see `Visit.followUpsMarkedDone`),
- * so a client never has to guess whether the field was left out.
+ * `/visits/sync` result that carries a visit. A `Visit` that also names
+ * the follow-ups recording it marked done; no other read carries
+ * `followUpsMarkedDone`.
  *
  */
-export const zRecordedVisit = zVisit.and(z.object({
+export const zRecordedVisit = zVisitFields.and(z.object({
     followUpsMarkedDone: z.array(z.uuid())
 }));
 
@@ -411,6 +418,7 @@ export const zUpdateFollowUpRequest = z.object({
     note: z.string().min(1).max(2000).optional(),
     dueDate: z.iso.datetime().nullish(),
     done: z.boolean().optional(),
+    markedByVisit: z.uuid().optional(),
     status: z.enum(['listed']).optional()
 });
 

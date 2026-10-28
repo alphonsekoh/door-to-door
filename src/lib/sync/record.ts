@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { zVisit, zVisitSyncItem } from "@/generated/zod.gen";
+import { zRecordedVisit, zVisit, zVisitSyncItem } from "@/generated/zod.gen";
 import type { QueuedVisit } from "@/lib/sync/types";
 
 /*
@@ -18,7 +18,7 @@ const zEnvelope = z.object({
   lastError: z.object({ code: z.string() }).nullable(),
   enqueuedAt: z.number(),
   syncedAt: z.number().nullable(),
-  serverVisit: zVisit.nullable(),
+  serverVisit: z.union([zRecordedVisit, zVisit]).nullable(),
   /* One without its outing is never sent: it could only be filed in the
      wrong one. */
   item: zVisitSyncItem.and(z.object({ sessionId: z.uuid() })),

@@ -314,7 +314,7 @@ describe("moving along a corridor", () => {
     });
   });
 
-  it("brings the Saved line and the next unit back into view after each save, and only then", async () => {
+  it("brings the Saved line back into view after each save, and only then", async () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     const user = userEvent.setup();
     render(
@@ -343,10 +343,11 @@ describe("moving along a corridor", () => {
     });
     expect(scrolled).toHaveBeenCalledOnce();
     expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
-    const brought = scrolled.mock.contexts[0] as HTMLElement;
-    expect(brought).toContainElement(screen.getByRole("status"));
-    expect(brought).toContainElement(screen.getByLabelText("Unit number"));
-    expect(brought).toHaveClass("scroll-clear-chrome");
+    /* The line itself, which the unit field follows: anything also holding
+       the block's chips can be taller than the screen, and is then aligned
+       by its bottom. */
+    expect(scrolled.mock.contexts[0]).toBe(screen.getByRole("status"));
+    expect(screen.getByRole("status")).toHaveClass("scroll-clear-chrome");
 
     // The next door, already filled in.
     await user.click(screen.getByRole("radio", { name: "High" }));
@@ -1848,7 +1849,10 @@ describe("in a follow-up session", () => {
       expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
       expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
       expect(patches()).toEqual([
-        ["/follow-ups/n#05-123", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+        [
+          "/follow-ups/n#05-123",
+          { method: "PATCH", body: JSON.stringify({ done: false, markedByVisit: "v1" }) },
+        ],
       ]);
       // The visit itself is never touched again.
       expect(
@@ -1955,7 +1959,7 @@ describe("in a follow-up session", () => {
     });
 
     it("never lets a late Undo answer speak for the next unit saved", async () => {
-      let finish: (value: unknown) => void = () => undefined;
+      const answers: ((value: unknown) => void)[] = [];
       let saves = 0;
       apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
         if (path === "/visits") {
@@ -1967,7 +1971,7 @@ describe("in a follow-up session", () => {
           });
         }
         return init?.method === "PATCH"
-          ? new Promise((resolve) => (finish = resolve))
+          ? new Promise((resolve) => answers.push(resolve))
           : Promise.resolve(history());
       });
       const { user, status } = await saveAt();
@@ -1981,7 +1985,7 @@ describe("in a follow-up session", () => {
       expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
 
       await act(async () => {
-        finish({});
+        answers[0]?.({});
         await Promise.resolve();
       });
       // The first undo has finished: it re-read the list and the block.
@@ -1991,6 +1995,44 @@ describe("in a follow-up session", () => {
       expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
       expect(next).not.toHaveTextContent(/Undone/);
       expect(within(next).getByRole("button", { name: UNDO })).toBeInTheDocument();
+    });
+
+    it("never holds up the next save's Undo behind one still on its way", async () => {
+      const answers: ((value: unknown) => void)[] = [];
+      let saves = 0;
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          saves += 1;
+          return Promise.resolve({
+            id: `v${String(saves)}`,
+            householdId: `h${String(saves)}`,
+            followUpsMarkedDone: [`n${String(saves)}`],
+          });
+        }
+        return init?.method === "PATCH"
+          ? new Promise((resolve) => answers.push(resolve))
+          : Promise.resolve(history());
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      await user.click(screen.getByRole("radio", { name: "Medium" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const next = await screen.findByRole("status");
+
+      await user.click(within(next).getByRole("button", { name: UNDO }));
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/n1", "/follow-ups/n2"]);
+      expect(within(next).getByRole("button", { name: "Undoing…" })).toBeDisabled();
+      await act(async () => {
+        answers[0]?.({});
+        await Promise.resolve();
+      });
+      expect(next).not.toHaveTextContent(/Undone/);
+      await act(async () => {
+        answers[1]?.({});
+        await Promise.resolve();
+      });
+      expect(await within(next).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
     });
 
     describe("through the queue", () => {

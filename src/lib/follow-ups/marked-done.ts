@@ -76,12 +76,15 @@ export function markedDoneLine(
 }
 
 /*
- * Reopens each note in turn. A note removed since is skipped: there is
- * nothing left to undo there. A refusal stops with the server's reason
- * (a member's reopen waits while a suggestion is waiting, D-117-32); no
- * answer keeps what is still to reopen, for a second try.
+ * Reopens each note in turn, each only if the save of `visitId` is still
+ * what marked it done. A note removed since is skipped: there is nothing
+ * left to undo there. A refusal stops with the server's reason (a member's
+ * reopen waits while a suggestion is waiting, D-117-32; a note marked done
+ * again since stays done); no answer keeps what is still to reopen, for a
+ * second try.
  */
 export async function undoMarkedDone(
+  visitId: string,
   ids: readonly string[],
   reopenedBefore = 0,
 ): Promise<UndoState> {
@@ -90,7 +93,7 @@ export async function undoMarkedDone(
     try {
       await apiFetch(`/follow-ups/${id}`, {
         method: "PATCH",
-        body: JSON.stringify({ done: false }),
+        body: JSON.stringify({ done: false, markedByVisit: visitId }),
       });
       reopened += 1;
     } catch (error) {

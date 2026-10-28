@@ -362,9 +362,12 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
-    Visit:
+    VisitFields:
+      description: |
+        Every field of a visit, shared by the two shapes a visit is answered
+        in: `Visit` is exactly these, and `RecordedVisit` these and
+        `followUpsMarkedDone`.
       type: object
-      additionalProperties: false
       required:
         [
           id,
@@ -415,43 +418,42 @@ components:
           type: string
           format: date-time
           description: Drives last-write-wins when a queued edit arrives out of order.
-        followUpsMarkedDone:
-          type: array
-          items: { type: string, format: uuid }
-          description: |
-            Present only in a `RecordedVisit`, the answer to recording this
-            visit (`POST /visits`) and its `/visits/sync` result, where it is
-            required; absent from every other read.
 
-            The follow-ups that recording this visit marked done and that are
-            still done, by id; empty when it marked none. When a new visit is
-            stored during a running `follow_up` session at a household on that
-            session's list, every outstanding listed note there is marked done
-            in the same transaction, with `doneBy` the visit's author. An amend
-            never marks anything, and neither does a visit in a `regular`
-            session or at a household not on the list (where only an admin
-            may record).
-
-            Read from what is stored, so a replay of the same visit id reports
-            the same notes and never marks them again or changes who closed
-            them. A note reopened since (`PATCH /follow-ups/{id}` with
-            `done: false`, which is how a client undoes it) or removed is no
-            longer listed here.
+    Visit:
+      allOf:
+        - $ref: "#/components/schemas/VisitFields"
+      unevaluatedProperties: false
 
     RecordedVisit:
       description: |
         The answer to recording a visit: `POST /visits`, and each
-        `/visits/sync` result that carries a visit. Always names the
-        follow-ups recording it marked done (see `Visit.followUpsMarkedDone`),
-        so a client never has to guess whether the field was left out.
+        `/visits/sync` result that carries a visit. A `Visit` that also names
+        the follow-ups recording it marked done; no other read carries
+        `followUpsMarkedDone`.
       allOf:
-        - $ref: "#/components/schemas/Visit"
+        - $ref: "#/components/schemas/VisitFields"
         - type: object
           required: [followUpsMarkedDone]
           properties:
             followUpsMarkedDone:
               type: array
               items: { type: string, format: uuid }
+              description: |
+                The follow-ups that recording this visit marked done and that
+                are still done, by id; empty when it marked none. When a new
+                visit is stored during a running `follow_up` session at a
+                household on that session's list, every outstanding listed
+                note there is marked done in the same transaction, with
+                `doneBy` the visit's author. An amend never marks anything,
+                and neither does a visit in a `regular` session or at a
+                household not on the list (where only an admin may record).
+
+                Read from what is stored, so a replay of the same visit id
+                reports the same notes and never marks them again or changes
+                who closed them. A note reopened since (`PATCH
+                /follow-ups/{id}` with `done: false`, which is how a client
+                undoes it) or removed is no longer listed here.
+      unevaluatedProperties: false
 
     TeamSummary:
       description: |
@@ -983,6 +985,17 @@ components:
             waits at the household (`waitingSuggestionBy`) also lists that
             suggestion when an admin does it, and is `409 follow_up_exists` for
             a member.
+        markedByVisit:
+          type: string
+          format: uuid
+          description: |
+            Only with `done: false` (`400` otherwise): reopen the note only if
+            this visit's recording marked it done (it is in that visit's
+            `RecordedVisit.followUpsMarkedDone`). This is how a client undoes
+            exactly what a save marked, and nothing since: a note done since
+            for any other reason (reopened and marked done again, by hand or
+            by another visit) is `409 conflict` and stays done; a note already
+            owed is left as it is.
         status:
           type: string
           enum: [listed]
@@ -2539,9 +2552,9 @@ paths:
         Marking a note that is already done as done again changes nothing:
         `doneAt` and `doneBy` keep the first resolution, so a stale screen
         cannot take the credit. Reopening clears `doneBy`, and the link to a
-        visit that marked it done (see `Visit.followUpsMarkedDone`), so
-        `done: false` is also how a client undoes what recording a visit
-        marked done. It never changes the visit.
+        visit that marked it done (see `RecordedVisit.followUpsMarkedDone`), so
+        `done: false` with `markedByVisit` is how a client undoes what
+        recording a visit marked done. It never changes the visit.
 
         **Reopening while a suggestion waits** at the household
         (`waitingSuggestionBy` is set): an admin's reopen also lists that
@@ -2577,10 +2590,11 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: |
-            `conflict`: resolving a suggestion. `not_on_follow_up_list`: a member
-            changing a listed note outside the follow-up session whose list it
-            is on. `follow_up_exists`: a member reopening a listed note while a
-            suggestion waits at its household.
+            `conflict`: resolving a suggestion, or undoing with `markedByVisit`
+            a note done since for another reason. `not_on_follow_up_list`: a
+            member changing a listed note outside the follow-up session whose
+            list it is on. `follow_up_exists`: a member reopening a listed note
+            while a suggestion waits at its household.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

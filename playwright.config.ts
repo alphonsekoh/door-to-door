@@ -62,14 +62,18 @@ export default defineConfig({
     baseURL: BASE_URL,
     /* Phone profiles - viewport, touch and mobile user agent - are set per
        project below; this is the only place the app is exercised at that size. */
-    /* A phone in Singapore against a server in UTC, as deployed: anything
-       rendered from the date or the timezone then differs between the
-       server's HTML and the client's first render. The fixtures fail a test
-       on it: React's own error for text or structure, and their sweep of
-       hydrated attributes for an attribute, which production React keeps
-       from the server without a word. Only pages loaded while a test runs
-       are checked. */
-    timezoneId: "Asia/Singapore",
+    /* The phone at UTC+14 and the server at UTC-12 (webServer's TZ below):
+       26 hours apart, so whatever the hour the phone's date is a day or two
+       ahead of the server's and its clock two hours on. Deployed, a phone in
+       Singapore and a server in UTC disagree on the date for only part of
+       the day, so a bug in a date worked out from "today" would pass a run
+       at the wrong hour. Anything rendered from the date, the hour or the
+       timezone differs here between the server's HTML and the client's
+       first render, and the fixtures fail a test on it: React's own error
+       for text or structure, and their sweep of hydrated attributes for an
+       attribute, which production React keeps from the server without a
+       word. Only pages loaded while a test runs are checked. */
+    timezoneId: "Pacific/Kiritimati",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
@@ -99,7 +103,8 @@ export default defineConfig({
     reuseExistingServer: !process.env["CI"],
     timeout: 180_000,
     env: {
-      TZ: "UTC",
+      /* UTC-12: the POSIX sign is the other way round. */
+      TZ: "Etc/GMT+12",
       PORT: String(PORT),
       HOSTNAME: "127.0.0.1",
       CONFIG_PATH,

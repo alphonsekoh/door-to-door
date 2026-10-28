@@ -40,7 +40,6 @@ export type SyncOutcome = {
   id: string;
   status: SyncStatus;
   visit: VisitRow | null;
-  /* What storing the visit marked done, for every outcome with a visit. */
   markedDone: string[];
   error: ApiError | null;
 };
@@ -228,7 +227,6 @@ async function applyItem(
   return answer(db, item.id, status);
 }
 
-/* The stored visit, and what storing it marked done, read after the write. */
 async function answer(
   db: Database,
   id: string,

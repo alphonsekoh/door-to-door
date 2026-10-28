@@ -28,32 +28,89 @@ export async function adminRequest(
   });
 }
 
+/* The sessionStorage key where the page keeps every difference it found,
+   and the event that has it sweep again: the fixture's teardown fires one
+   and reads the other. Kept in storage rather than only logged, since
+   Chromium drops what a page logs as it is left, and storage outlives a
+   navigation in the tab. */
+const MISMATCHES = "e2e:hydration-mismatches";
+const SWEEP = "e2e:sweep-hydrated-attributes";
+
 /*
  * Runs in the page. Production React never reports a mismatch of attributes
  * alone: it keeps the server's and moves on, so an attribute worked out from
- * the clock or the timezone (the phone in Singapore, the server in UTC) would
- * go unseen. Once hydrated, each element holds the props React rendered it
+ * the clock or the timezone (the phone and the server a day apart) would go
+ * unseen. Once hydrated, each element holds the props React rendered it
  * with, and at rest its attributes agree with them unless hydration kept the
- * server's; so after each load the two are compared, and a difference is
- * logged as a hydration error. Only what React set is compared: an
- * attribute it never rendered, as an extension adds, is not its business.
+ * server's; so after each load, as the page is left and at the end of the
+ * test, the two are compared, and a difference is logged as a hydration
+ * error. Only what React set is compared: an attribute it never rendered, as
+ * an extension adds, is not its business.
  */
-function sweepHydratedAttributes(): void {
+function sweepHydratedAttributes([mismatches, event]: [string, string]): void {
   const XHTML = "http://www.w3.org/1999/xhtml";
-  /* Properties rather than attributes, or not attributes at all. */
   const SKIP = new Set([
+    /* Properties rather than attributes, or not attributes at all. */
     "children",
     "value",
     "defaultValue",
+    "checked",
+    "defaultChecked",
+    "selected",
+    "multiple",
+    "muted",
     "style",
     "dangerouslySetInnerHTML",
     "nonce",
+    /* Set by hand on what is behind a sheet (use-modal.ts). */
+    "inert",
   ]);
   const NAMES = new Map([
     ["className", "class"],
     ["htmlFor", "for"],
   ]);
-  const reported = new Set<string>();
+  /* Booleans React writes as an attribute present or absent... */
+  const PRESENCE = new Set([
+    "disabled",
+    "hidden",
+    "required",
+    "readOnly",
+    "noValidate",
+    "formNoValidate",
+    "open",
+    "reversed",
+    "async",
+    "defer",
+    "autoPlay",
+    "controls",
+    "loop",
+    "playsInline",
+    "allowFullScreen",
+  ]);
+  /* ...and those it spells out as "true" or "false". Any other boolean it
+     leaves off the element. */
+  const spelled = (name: string): boolean =>
+    name.startsWith("aria-") ||
+    name.startsWith("data-") ||
+    ["draggable", "spellCheck", "contentEditable"].includes(name);
+  const shown = (value: string | null): string => (value === null ? "absent" : `"${value}"`);
+
+  const reported: string[] = [];
+  /* Kept with the page it was found on, as the console's are reported. */
+  const keep = (line: string): void => {
+    const entry = `${location.href}: ${line}`;
+    try {
+      const kept: unknown = JSON.parse(sessionStorage.getItem(mismatches) ?? "[]");
+      const lines = Array.isArray(kept)
+        ? kept.filter((stored): stored is string => typeof stored === "string")
+        : [];
+      if (!lines.includes(entry)) {
+        sessionStorage.setItem(mismatches, JSON.stringify([...lines, entry]));
+      }
+    } catch {
+      /* No storage here, such as on an error page: the console still has it. */
+    }
+  };
   const sweep = (): void => {
     for (const element of document.body.querySelectorAll("*")) {
       if (element.namespaceURI !== XHTML) continue;
@@ -64,22 +121,60 @@ function sweepHydratedAttributes(): void {
         continue;
       }
       for (const [name, value] of Object.entries(props)) {
-        if (SKIP.has(name) || (typeof value !== "string" && typeof value !== "number")) continue;
-        const client = String(value);
+        if (SKIP.has(name)) continue;
         const server = element.getAttribute(NAMES.get(name) ?? name);
-        if (server === client || (server === null && client === "")) continue;
-        const line = `Hydration kept the server's ${name}="${String(server)}" on <${element.localName}>; the client rendered "${client}".`;
-        if (!reported.has(line)) {
-          reported.add(line);
+        let client: string | null;
+        if (typeof value === "string" || typeof value === "number") {
+          client = String(value);
+          if (server === null && client === "") continue;
+        } else if (typeof value === "boolean" && PRESENCE.has(name)) {
+          if ((server !== null) === value) continue;
+          client = value ? "" : null;
+        } else if (typeof value === "boolean" && spelled(name)) {
+          client = String(value);
+        } else {
+          continue;
+        }
+        if (server === client) continue;
+        const line = `Hydration kept the server's ${name} ${shown(server)} on <${element.localName}>; the client rendered ${shown(client)}.`;
+        if (!reported.includes(line)) {
+          reported.push(line);
           console.error(line);
+          keep(line);
         }
       }
     }
   };
+  /* Every 100ms for the first two seconds, as a test may leave a page as soon
+     as it is hydrated; then as it is left, and from the teardown. */
   addEventListener("load", () => {
-    setTimeout(sweep, 500);
-    setTimeout(sweep, 2_000);
+    const often = setInterval(sweep, 100);
+    setTimeout(() => {
+      clearInterval(often);
+      sweep();
+    }, 2_000);
   });
+  addEventListener("pagehide", sweep);
+  addEventListener(event, sweep);
+}
+
+/* The last look, and every difference found in this tab. A page closed,
+   between documents or off the app's origin has nothing more to say. */
+async function sweepNow(page: Page): Promise<string[]> {
+  try {
+    return await page.evaluate(
+      ([mismatches, event]) => {
+        dispatchEvent(new Event(event));
+        const kept: unknown = JSON.parse(sessionStorage.getItem(mismatches) ?? "[]");
+        return Array.isArray(kept)
+          ? kept.filter((line): line is string => typeof line === "string")
+          : [];
+      },
+      [MISMATCHES, SWEEP] as const,
+    );
+  } catch {
+    return [];
+  }
 }
 
 /*
@@ -90,8 +185,8 @@ function sweepHydratedAttributes(): void {
  */
 const HYDRATION = /Minified React error #(418|423|425)|Hydration failed|hydrat/i;
 
-async function watchHydration(page: Page): Promise<() => void> {
-  await page.addInitScript(sweepHydratedAttributes);
+async function watchHydration(page: Page): Promise<() => Promise<void>> {
+  await page.addInitScript(sweepHydratedAttributes, [MISMATCHES, SWEEP] as [string, string]);
   const seen: string[] = [];
   page.on("console", (message) => {
     if (message.type() === "error" && HYDRATION.test(message.text())) {
@@ -101,7 +196,11 @@ async function watchHydration(page: Page): Promise<() => void> {
   page.on("pageerror", (error) => {
     if (HYDRATION.test(error.message)) seen.push(`${page.url()}: ${error.message}`);
   });
-  return () => {
+  /* Run before the page closes; asserts on everything seen. */
+  return async () => {
+    for (const entry of await sweepNow(page)) {
+      if (!seen.includes(entry)) seen.push(entry);
+    }
     expect(seen, "hydration errors").toEqual([]);
   };
 }
@@ -126,7 +225,7 @@ export const test = base.extend<Fixtures>({
   page: async ({ page }, use) => {
     const check = await watchHydration(page);
     await use(page);
-    check();
+    await check();
   },
 
   adminPage: async ({ browser }, use) => {
@@ -134,8 +233,11 @@ export const test = base.extend<Fixtures>({
     const page = await context.newPage();
     const check = await watchHydration(page);
     await use(page);
-    await context.close();
-    check();
+    try {
+      await check();
+    } finally {
+      await context.close();
+    }
   },
 
   memberPage: async ({ browser }, use) => {
@@ -143,8 +245,11 @@ export const test = base.extend<Fixtures>({
     const page = await context.newPage();
     const check = await watchHydration(page);
     await use(page);
-    await context.close();
-    check();
+    try {
+      await check();
+    } finally {
+      await context.close();
+    }
   },
 
   partnerPage: async ({ browser }, use) => {
@@ -152,8 +257,11 @@ export const test = base.extend<Fixtures>({
     const page = await context.newPage();
     const check = await watchHydration(page);
     await use(page);
-    await context.close();
-    check();
+    try {
+      await check();
+    } finally {
+      await context.close();
+    }
   },
 
   adminApi: async ({ playwright, baseURL }, use) => {
