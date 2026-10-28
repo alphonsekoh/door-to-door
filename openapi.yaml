@@ -415,6 +415,27 @@ components:
           type: string
           format: date-time
           description: Drives last-write-wins when a queued edit arrives out of order.
+        followUpsMarkedDone:
+          type: array
+          items: { type: string, format: uuid }
+          description: |
+            Present only in the answer to recording this visit (`POST /visits`)
+            and in its `/visits/sync` result; absent from every other read.
+
+            The follow-ups that recording this visit marked done and that are
+            still done, by id; empty when it marked none. When a new visit is
+            stored during a running `follow_up` session at a household on that
+            session's list, every outstanding listed note there is marked done
+            in the same transaction, with `doneBy` the visit's author. An amend
+            never marks anything, and neither does a visit in a `regular`
+            session or at a household not on the list (where only an admin
+            may record).
+
+            Read from what is stored, so a replay of the same visit id reports
+            the same notes and never marks them again or changes who closed
+            them. A note reopened since (`PATCH /follow-ups/{id}` with
+            `done: false`, which is how a client undoes it) or removed is no
+            longer listed here.
 
     TeamSummary:
       description: |
@@ -898,7 +919,9 @@ components:
         id: { type: string, format: uuid }
         status: { $ref: "#/components/schemas/VisitSyncResultStatus" }
         visit:
-          description: Canonical server state, so the client can reconcile.
+          description: |
+            Canonical server state, so the client can reconcile, with
+            `followUpsMarkedDone` for any outcome but `rejected`.
           oneOf:
             - $ref: "#/components/schemas/Visit"
             - type: "null"
@@ -2171,6 +2194,13 @@ paths:
         `409 not_on_follow_up_list`. The caller's role decides, not the
         author's: an admin may record anywhere in the session's blocks,
         including on a member's behalf.
+
+        Recording a visit at a household on a running `follow_up` session's
+        list also marks every outstanding listed note there done, in the same
+        transaction, credited to the visit's author; `followUpsMarkedDone`
+        names them, so a client can offer to undo it. This holds for members
+        and admins alike; an admin recording at a household not on the list
+        marks nothing.
       requestBody:
         required: true
         content:
@@ -2178,7 +2208,9 @@ paths:
             schema: { $ref: "#/components/schemas/CreateVisitRequest" }
       responses:
         "201":
-          description: The recorded visit.
+          description: |
+            The recorded visit, with `followUpsMarkedDone` (empty when it
+            marked nothing).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Visit" }
@@ -2287,6 +2319,13 @@ paths:
         household to the list lets the same item through, so a queue should
         hold it and try again now and then rather than discard it. Amending a
         record already stored is never refused for this reason.
+
+        A new record stored in a running `follow_up` session at a household on
+        its list marks that household's outstanding listed notes done, exactly
+        as `POST /visits` does, when the item is first stored (whenever that
+        is, so a record held and sent later marks them then). Every result
+        that carries a `visit` carries its `followUpsMarkedDone`: a replay
+        answered `unchanged` reports the same notes and marks nothing again.
 
         Clock skew is reported at two levels, using one tolerance
         (`sync.clockSkewToleranceSeconds` in config.yaml, default 300). A batch
@@ -2483,7 +2522,10 @@ paths:
 
         Marking a note that is already done as done again changes nothing:
         `doneAt` and `doneBy` keep the first resolution, so a stale screen
-        cannot take the credit. Reopening clears `doneBy`.
+        cannot take the credit. Reopening clears `doneBy`, and the link to a
+        visit that marked it done (see `Visit.followUpsMarkedDone`), so
+        `done: false` is also how a client undoes what recording a visit
+        marked done. It never changes the visit.
 
         **Reopening while a suggestion waits** at the household
         (`waitingSuggestionBy` is set): an admin's reopen also lists that

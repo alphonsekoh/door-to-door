@@ -14,6 +14,9 @@ vi.mock("@/lib/api-client", async () => {
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
+
 const { noteRevisits } = vi.hoisted(() => ({ noteRevisits: vi.fn() }));
 vi.mock("@/components/sync/local-copy-writer", () => ({
   useLocalCopyWriter: () => ({ noteRevisits }),
@@ -127,7 +130,13 @@ const list = (data: RevisitEntry[]) => ({ data });
 beforeEach(() => {
   vi.clearAllMocks();
   useOnline.mockReturnValue(true);
+  useRole.mockReturnValue({ userId: "u1", isAdmin: false });
 });
+
+/* The session picked the household the day before it started, and its note
+   was marked done an hour in: on the list, Done, and the member's to reopen. */
+const PICKED = { ...ACTIVE, picks: [{ householdId: "h1", addedAt: "2026-10-19T10:00:00.000Z" }] };
+const DONE_TONIGHT = "2026-10-20T11:00:00.000Z";
 
 describe("RevisitList", () => {
   it("reads the session's list and keeps it on the phone for the offline shell", async () => {
@@ -267,6 +276,96 @@ describe("RevisitList", () => {
     apiFetch.mockResolvedValue(list([entry("#05-123")]));
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
     expect(await screen.findByRole("button", { name: "Mark done, #05-123" })).toBeDisabled();
+  });
+
+  it("reopens a Done household's notes, then reads the list again", async () => {
+    const done = entry("#05-123", {
+      visited: true,
+      notes: [note("a", { doneAt: DONE_TONIGHT }), note("b", { doneAt: DONE_TONIGHT })],
+    });
+    const reopened = entry("#05-123", { visited: true, notes: [note("a"), note("b")] });
+    let reads = 0;
+    apiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") return Promise.resolve({});
+      reads += 1;
+      return Promise.resolve(list([reads === 1 ? done : reopened]));
+    });
+    render(<RevisitList active={PICKED} tick={1} isAdmin={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reopen, #05-123" }));
+
+    // Visited now, not Done, and still counted.
+    expect(await screen.findByRole("button", { name: "Mark done, #05-123" })).toBeInTheDocument();
+    expect(screen.getByText("Visited")).toBeInTheDocument();
+    expect(screen.getByText("1 of 1 visited or done")).toBeInTheDocument();
+    expect(apiFetch.mock.calls.filter(([, init]) => init !== undefined)).toEqual([
+      ["/follow-ups/a", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+      ["/follow-ups/b", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+    ]);
+  });
+
+  it("says a member's reopen waits on a suggestion at the door, instead of offering it", async () => {
+    const waiting = { id: "u2", name: "Ann Lee", image: null };
+    apiFetch.mockResolvedValue(
+      list([
+        entry("#05-123", {
+          notes: [note("a", { doneAt: DONE_TONIGHT, waitingSuggestionBy: waiting })],
+        }),
+      ]),
+    );
+    render(<RevisitList active={PICKED} tick={1} isAdmin={false} />);
+    expect(
+      await screen.findByText(
+        "Ann's suggestion for this door is waiting for an admin. Ask an admin to review it.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Reopen/ })).toBeNull();
+  });
+
+  it("lets an admin reopen there, and says the suggestion goes on the list too", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const waiting = { id: "u2", name: "Ann Lee", image: null };
+    apiFetch.mockResolvedValue(
+      list([
+        entry("#05-123", {
+          notes: [note("a", { doneAt: DONE_TONIGHT, waitingSuggestionBy: waiting })],
+        }),
+      ]),
+    );
+    render(<RevisitList active={PICKED} tick={1} isAdmin />);
+    expect(await screen.findByRole("button", { name: "Reopen, #05-123" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Reopening also adds Ann's suggestion to the list."),
+    ).toBeInTheDocument();
+  });
+
+  it("says a refused reopen once, and reads the list again", async () => {
+    const done = entry("#05-123", { notes: [note("a", { doneAt: DONE_TONIGHT })] });
+    let reads = 0;
+    apiFetch.mockImplementation((_path: string, init?: { method?: string }) => {
+      if (init?.method === "PATCH") {
+        return Promise.reject(
+          new ApiRequestError(409, { error: { code: "follow_up_exists", message: "raw" } }),
+        );
+      }
+      reads += 1;
+      return Promise.resolve(list([done]));
+    });
+    render(<RevisitList active={PICKED} tick={1} isAdmin={false} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Reopen, #05-123" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not reopened.");
+    await waitFor(() => {
+      expect(reads).toBe(2);
+    });
+  });
+
+  it("offers no reopen for a Done household the viewer could not reopen", async () => {
+    // Off the running session's list as this phone knows it: the server would refuse.
+    apiFetch.mockResolvedValue(
+      list([entry("#05-123", { notes: [note("a", { doneAt: DONE_TONIGHT })] })]),
+    );
+    render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
+    expect(await screen.findByText("Done")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 
   it("tells a member who adds households, and how to check again", async () => {

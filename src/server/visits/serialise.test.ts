@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { FollowUpRow } from "@/server/visits/queries";
-import { toFollowUp, toHousehold, toVisit } from "@/server/visits/serialise";
+import { toFollowUp, toHousehold, toRecordedVisit, toVisit } from "@/server/visits/serialise";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
 
 const at = new Date("2026-03-14T10:00:00.000Z");
@@ -99,6 +99,19 @@ describe("toVisit", () => {
     const serialised = toVisit({ ...visit, clientCreatedAt: captured });
     expect(serialised.clientCreatedAt).toBe("2026-03-14T09:00:00.000Z");
     expect(serialised.createdAt).toBe("2026-03-14T10:00:00.000Z");
+  });
+
+  it("names no follow-ups on an ordinary read", () => {
+    expect(toVisit(visit)).not.toHaveProperty("followUpsMarkedDone");
+  });
+});
+
+describe("toRecordedVisit", () => {
+  it("is the visit, with the follow-ups recording it marked done", () => {
+    expect(toRecordedVisit(visit, ["f1", "f2"])).toEqual({
+      ...toVisit(visit),
+      followUpsMarkedDone: ["f1", "f2"],
+    });
   });
 });
 

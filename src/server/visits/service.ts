@@ -6,6 +6,7 @@ import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
 import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { markDoneByVisit } from "@/server/follow-ups/marked-by-visit";
 import {
   attachTeams,
   autoJoin,
@@ -255,6 +256,7 @@ export async function createVisit(
     }
     await stampVisit(tx, input.id, teamId, input.memberId);
     await autoJoin(tx, sessionId, input.memberId);
+    await markDoneByVisit(tx, session, household.id, input.id, input.memberId);
   });
 
   return getVisit(db, input.id);

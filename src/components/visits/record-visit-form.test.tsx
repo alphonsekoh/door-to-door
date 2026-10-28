@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { ApiRequestError } from "@/lib/api-client";
 import {
@@ -10,6 +10,7 @@ import {
   validateVisit,
 } from "@/components/visits/record-visit-form";
 import type { ActiveSession, FollowUp, HouseholdSummary } from "@/generated/types.gen";
+import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
@@ -441,7 +442,9 @@ describe("history before knocking", () => {
     expect(list.getByText(/Added by Ben · 2 Nov 2025/)).toBeInTheDocument();
   });
 
-  it("lets a note be marked done at the door, then re-reads the unit", async () => {
+  it("lets an admin mark a note done at the door in a door-to-door session, then re-reads the unit", async () => {
+    // Saving marks it done only in a follow-up session; elsewhere the button stays.
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     let resolved = false;
     apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "PATCH") {
@@ -469,7 +472,6 @@ describe("history before knocking", () => {
         loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
-        active={FOLLOW_UP}
         onRecorded={vi.fn()}
       />,
     );
@@ -511,6 +513,7 @@ describe("history before knocking", () => {
   });
 
   it("keeps the unit on screen when the re-read after marking done fails", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     let reads = 0;
     apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "PATCH") return Promise.resolve({});
@@ -526,7 +529,6 @@ describe("history before knocking", () => {
         loadSession={noSession}
         blockId={BLOCK}
         known={[summary("#05-123")]}
-        active={FOLLOW_UP}
         onRecorded={vi.fn()}
       />,
     );
@@ -544,6 +546,68 @@ describe("history before knocking", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Mr Tan")).toBeInTheDocument();
     expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
+  });
+
+  it("offers no Mark done in a follow-up session, where saving the visit marks it done", async () => {
+    apiFetch.mockResolvedValue(history({ followUps: [owed] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={FOLLOW_UP}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByText("Saving your visit marks this done.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+  });
+
+  it("says so once for every note the save marks done", async () => {
+    // An admin too: the save marks them whoever records it.
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(history({ followUps: [owed, { ...owed, id: "f2" }] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={FOLLOW_UP}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByText("Saving your visit marks these done.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+    // Edit and Remove stay: only marking done moves to the save.
+    expect(screen.getAllByRole("button", { name: "Remove from list" })).toHaveLength(2);
+  });
+
+  it("keeps an admin's Mark done at a household the follow-up session did not pick", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(history({ followUps: [owed] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={{ ...FOLLOW_UP, picks: [] }}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+    expect(screen.queryByText(/Saving your visit marks/)).toBeNull();
   });
 
   it("drops the last unit's history when a different unit's lookup fails", async () => {
@@ -1725,6 +1789,247 @@ describe("in a follow-up session", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Not saved. This unit is not on this session's list.",
     );
+  });
+
+  describe("marking the follow-up done on save", () => {
+    const UNDO = "Undo marking the follow-up done";
+    const REASON =
+      "Ann's suggestion for this door is waiting for an admin. Ask an admin to review it.";
+    const recheck = vi.fn(() => Promise.resolve(LIST));
+    const onRecorded = vi.fn();
+
+    /* The server marks what it marks; a reopen answers as `reopen` says. */
+    function server(marked: string[], reopen: () => Promise<unknown> = () => Promise.resolve({})) {
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          return Promise.resolve({
+            id: "v1",
+            householdId: "h#05-123",
+            followUpsMarkedDone: marked,
+          });
+        }
+        return init?.method === "PATCH" ? reopen() : Promise.resolve(history());
+      });
+    }
+
+    const form = (revisits = LIST) => (
+      <RecordVisitForm
+        sessionId="s9"
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        followUp={{ revisits, recheck }}
+        onRecorded={onRecorded}
+      />
+    );
+
+    const saveAt = async (unit = "#05-123", revisits = LIST) => {
+      const user = userEvent.setup();
+      const view = render(form(revisits));
+      await user.clear(screen.getByLabelText("Unit number"));
+      await user.type(screen.getByLabelText("Unit number"), unit);
+      await user.click(screen.getByRole("radio", { name: "No response" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      return { user, view, status: await screen.findByRole("status") };
+    };
+
+    const patches = () =>
+      apiFetch.mock.calls.filter(
+        ([, init]) => (init as { method?: string } | undefined)?.method === "PATCH",
+      );
+
+    it("says it was marked done, and Undo reopens exactly that, leaving the visit", async () => {
+      server(["n#05-123"]);
+      const { user, status } = await saveAt();
+      expect(status).toHaveTextContent("Saved #05-123.Follow-up marked done.");
+      expect(onRecorded).toHaveBeenCalledTimes(1);
+
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      expect(patches()).toEqual([
+        ["/follow-ups/n#05-123", { method: "PATCH", body: JSON.stringify({ done: false }) }],
+      ]);
+      // The visit itself is never touched again.
+      expect(
+        apiFetch.mock.calls.filter(([path]) => String(path).startsWith("/visits")),
+      ).toHaveLength(1);
+      // The list and the block are read again, so the row and chip read Visited.
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(onRecorded).toHaveBeenCalledTimes(2);
+    });
+
+    it("says how many, and reopens them all", async () => {
+      server(["a", "b"]);
+      const { user, status } = await saveAt();
+      expect(status).toHaveTextContent("2 follow-ups marked done.");
+      await user.click(
+        within(status).getByRole("button", { name: "Undo marking the follow-ups done" }),
+      );
+      expect(await within(status).findByText("Undone. 2 follow-ups reopened.")).toBeInTheDocument();
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/a", "/follow-ups/b"]);
+    });
+
+    it("gives the server's reason when it will not reopen, and offers Undo no more", async () => {
+      server(["n#05-123"], () =>
+        Promise.reject(
+          new ApiRequestError(409, { error: { code: "follow_up_exists", message: REASON } }),
+        ),
+      );
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText(`Not undone. ${REASON}`)).toBeInTheDocument();
+      expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      expect(recheck).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps Undo after no answer, and a second try finishes it", async () => {
+      let attempts = 0;
+      server(["n#05-123"], () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : Promise.resolve({});
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(
+        await within(status).findByText("Not undone. Check your signal and try again."),
+      ).toBeInTheDocument();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(attempts).toBe(2);
+    });
+
+    it("sends one undo for two taps, and says it is working", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
+      const { status } = await saveAt();
+      const undo = within(status).getByRole("button", { name: UNDO });
+      act(() => {
+        fireEvent.click(undo);
+        fireEvent.click(undo);
+      });
+      expect(within(status).getByRole("button", { name: "Undoing…" })).toBeDisabled();
+      await act(async () => {
+        finish({});
+        await Promise.resolve();
+      });
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(patches()).toHaveLength(1);
+    });
+
+    it("cannot undo without signal", async () => {
+      server(["n#05-123"]);
+      useOnline.mockReturnValue(false);
+      const { status } = await saveAt();
+      expect(within(status).getByRole("button", { name: UNDO })).toBeDisabled();
+    });
+
+    it("says nothing of follow-ups where the server marked none", async () => {
+      // Someone marked it done by hand while the member was at the door.
+      server([]);
+      const { status } = await saveAt();
+      expect(status).toHaveTextContent(/^Saved #05-123\.Back to the list$/);
+    });
+
+    it("says nothing for an admin's visit off the list", async () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      server([]);
+      const { status } = await saveAt("#09-999");
+      expect(status).not.toHaveTextContent(/marked done/);
+    });
+
+    it("lets go of Undo once another unit is typed, and drops a late answer", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      expect(screen.queryByRole("status")).toBeNull();
+      await act(async () => {
+        finish({});
+        await Promise.resolve();
+      });
+      expect(screen.queryByText(/Undone/)).toBeNull();
+    });
+
+    describe("through the queue", () => {
+      const STAMP = "2026-10-20T18:00:00.000Z";
+      const queue = {
+        ...NO_QUEUE,
+        ownerId: "u1",
+        records: [] as QueuedVisit[],
+        inFlight: new Set<string>(),
+        enqueue: vi.fn((draft: VisitDraft) =>
+          Promise.resolve(buildQueuedVisit(draft, "u1", Date.now(), () => "v-queued")),
+        ),
+      };
+      const sent = (marked: string[]): QueuedVisit => ({
+        ...buildQueuedVisit(
+          { ...draftFor("#05-123"), sessionId: "s9" },
+          "u1",
+          Date.now(),
+          () => "v-queued",
+        ),
+        state: "synced",
+        serverVisit: {
+          id: "v-queued",
+          householdId: "h#05-123",
+          sessionId: "s9",
+          member: { id: "u1", name: "Me", image: null },
+          team: null,
+          interestLevel: "no_response",
+          description: "",
+          clientCreatedAt: STAMP,
+          createdAt: STAMP,
+          updatedAt: STAMP,
+          followUpsMarkedDone: marked,
+        },
+      });
+
+      beforeEach(() => {
+        queue.records = [];
+        queue.inFlight = new Set();
+        useSyncQueue.mockImplementation(() => queue);
+      });
+
+      afterEach(() => {
+        shellState.leave();
+      });
+
+      it("says it will be marked done once sent, then offers Undo once it is", async () => {
+        const { view, status } = await saveAt();
+        expect(status).toHaveTextContent(
+          "Saved #05-123 on this phone.Follow-up marked done once sent.",
+        );
+        queue.inFlight = new Set(["v-queued"]);
+        view.rerender(form());
+        expect(status).toHaveTextContent("Sending #05-123…Follow-up marked done once sent.");
+
+        queue.inFlight = new Set();
+        queue.records = [sent(["n#05-123"])];
+        view.rerender(form());
+        expect(status).toHaveTextContent("Saved #05-123.Follow-up marked done.");
+        expect(within(status).getByRole("button", { name: UNDO })).toBeEnabled();
+      });
+
+      it("drops the line once sent if the server marked nothing", async () => {
+        const { view, status } = await saveAt();
+        queue.records = [sent([])];
+        view.rerender(form());
+        expect(status).not.toHaveTextContent(/marked done/);
+      });
+
+      it("never offers Undo on the offline shell", async () => {
+        shellState.continueAs("u1");
+        const { view, status } = await saveAt();
+        queue.records = [sent(["n#05-123"])];
+        view.rerender(form());
+        expect(status).toHaveTextContent("Follow-up marked done.");
+        expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      });
+    });
   });
 
   describe("in a block with nothing on the session's list", () => {

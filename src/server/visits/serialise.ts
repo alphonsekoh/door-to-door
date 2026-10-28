@@ -43,6 +43,15 @@ export function toVisit(row: VisitRow): Visit {
   };
 }
 
+/*
+ * The answer to recording a visit, and only that: with the follow-ups
+ * recording it marked done, so the client can offer to undo it. Every other
+ * read of a visit leaves the field out.
+ */
+export function toRecordedVisit(row: VisitRow, markedDone: string[]): Visit {
+  return { ...toVisit(row), followUpsMarkedDone: markedDone };
+}
+
 /* A left-joined user: all three columns are null together when nobody is named. */
 function userOrNull(
   id: string | null,

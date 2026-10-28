@@ -430,6 +430,79 @@ describe("a visit recorded while an admin changes the session's households", () 
     };
   };
 
+  /*
+   * A visit marks the door's notes done under the household's lock, as a
+   * hand-marked done takes it, so whichever holds the door first is credited
+   * and the other changes nothing. The note held here parks whichever side
+   * got the household first.
+   */
+  const quietNote = async () =>
+    (await pool.query<{ id: string }>(`SELECT id FROM follow_ups WHERE household_id = $1`, [QUIET]))
+      .rows[0]?.id ?? "";
+  const doneAtQuiet = async () =>
+    (
+      await pool.query<{ done_by: string | null; done_visit_id: string | null }>(
+        `SELECT done_by, done_visit_id FROM follow_ups WHERE household_id = $1`,
+        [QUIET],
+      )
+    ).rows;
+
+  async function race(
+    first: () => Promise<unknown>,
+    firstWaitsOn: string,
+    second: () => Promise<unknown>,
+    secondWaitsOn: string,
+  ) {
+    const client = await controller.connect();
+    let one: Promise<unknown> | undefined;
+    let two: Promise<unknown> | undefined;
+    try {
+      await client.query("BEGIN");
+      await client.query(`SELECT 1 FROM follow_ups WHERE id = $1 FOR UPDATE`, [await quietNote()]);
+      one = settle(first());
+      await waitingOn(firstWaitsOn);
+      two = settle(second());
+      await waitingOn(secondWaitsOn);
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+      await Promise.all([one, two]);
+    }
+    return [await one, await two];
+  }
+
+  it("leaves the credit with a mark done that held the door first", async () => {
+    const id = await quietNote();
+    const [marking, recording] = await race(
+      () => updateFollowUp(db, id, { done: true }, admin),
+      `%from "follow_ups"%for update%`,
+      record,
+      `%insert into "households"%`,
+    );
+
+    expect(marking).toMatchObject({ ok: { doneById: ADMIN } });
+    expect(recording).toMatchObject({ ok: { memberId: ALICE } });
+    expect(await doneAtQuiet()).toEqual([{ done_by: ADMIN, done_visit_id: null }]);
+  });
+
+  it("leaves the credit with a visit that held the door first", async () => {
+    const id = await quietNote();
+    const [recording, marking] = await race(
+      record,
+      `%update "follow_ups"%`,
+      () => updateFollowUp(db, id, { done: true }, admin),
+      `%from "households"%for update%`,
+    );
+
+    expect(recording).toMatchObject({ ok: { memberId: ALICE } });
+    expect(marking).toMatchObject({ ok: { doneById: ALICE } });
+    const visit = (recording as { ok: { id: string } }).ok.id;
+    expect(await doneAtQuiet()).toEqual([{ done_by: ALICE, done_visit_id: visit }]);
+  });
+
   it("judges a synced record after a removal it waited for, and holds it", async () => {
     const outcome = await parked(
       { table: "outing_sessions", id: SESSION },

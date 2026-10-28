@@ -174,9 +174,10 @@ function SessionBody({
           {/* The list stands in for the block cards: each group opens its block. */}
           <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
           <HintCard id="follow-up-session" title="How a follow-up session works">
-            Tap a household to record your visit. When the follow-up is finished, tap Mark done. A
-            door that should be on the list? Type its unit in the block and tap Suggest a return
-            visit; an admin reviews it.
+            Tap a household to record your visit; saving it marks its follow-up done, and Undo is
+            there if it isn&apos;t. Use Mark done for one finished without a visit. A door that
+            should be on the list? Type its unit in the block and tap Suggest a return visit; an
+            admin reviews it.
           </HintCard>
           {/* The list shows only blocks with listed households, so an admin
               recording elsewhere, as an admin may, starts from here. */}

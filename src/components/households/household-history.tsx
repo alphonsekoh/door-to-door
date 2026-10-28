@@ -5,7 +5,7 @@ import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
-import { ADD_TO_LIST, SUGGEST, householdAction } from "@/lib/follow-ups/rights";
+import { ADD_TO_LIST, SUGGEST, householdAction, marksDoneOnSave } from "@/lib/follow-ups/rights";
 import { buildTimeline, sortOutstanding } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
 import { useRole } from "@/lib/hooks/use-role";
@@ -32,7 +32,9 @@ const INTEREST_LABEL: Record<string, string> = {
  * At the door (`atDoor`) a resolved note shrinks to one line with no
  * controls: resolved notes accumulate without limit, and full cards pushed
  * the required interest picker far below the fold. Reopening and editing
- * stay on the unit's own screen.
+ * stay on the unit's own screen. In a follow-up session, saving the visit
+ * marks what is owed on the session's list done, so those notes offer no
+ * Mark done there, and one line says why.
  *
  * After any change the parent re-reads the unit from the server rather than
  * patching it here: the server stamps who resolved a note and when.
@@ -58,6 +60,7 @@ export function HouseholdHistoryPanel({
   const [sheet, setSheet] = useState<FollowUpSheetMode | null>(null);
   const [sent, setSent] = useState<string | null>(null);
   const owed = sortOutstanding(followUps.filter((note) => note.status === "listed"));
+  const markedOnSave = atDoor ? owed.filter((note) => marksDoneOnSave(note, active)).length : 0;
   const waiting = followUps.filter((note) => note.status === "suggested");
   const timeline = buildTimeline(
     visits,
@@ -85,6 +88,7 @@ export function HouseholdHistoryPanel({
       note={note}
       now={now}
       active={active}
+      atDoor={atDoor}
       onChanged={onChanged}
       onEdit={edit}
       onPromoted={setSent}
@@ -123,6 +127,13 @@ export function HouseholdHistoryPanel({
               <li key={note.id}>{item(note)}</li>
             ))}
           </ul>
+          {markedOnSave === 0 ? null : (
+            <p className="mt-1 text-caption text-foreground-muted">
+              {markedOnSave === 1
+                ? "Saving your visit marks this done."
+                : "Saving your visit marks these done."}
+            </p>
+          )}
         </div>
       ) : null}
 

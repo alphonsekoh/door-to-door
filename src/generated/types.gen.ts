@@ -303,6 +303,27 @@ export type Visit = {
      * Drives last-write-wins when a queued edit arrives out of order.
      */
     updatedAt: string;
+    /**
+     * Present only in the answer to recording this visit (`POST /visits`)
+     * and in its `/visits/sync` result; absent from every other read.
+     *
+     * The follow-ups that recording this visit marked done and that are
+     * still done, by id; empty when it marked none. When a new visit is
+     * stored during a running `follow_up` session at a household on that
+     * session's list, every outstanding listed note there is marked done
+     * in the same transaction, with `doneBy` the visit's author. An amend
+     * never marks anything, and neither does a visit in a `regular`
+     * session or at a household not on the list (where only an admin
+     * may record).
+     *
+     * Read from what is stored, so a replay of the same visit id reports
+     * the same notes and never marks them again or changes who closed
+     * them. A note reopened since (`PATCH /follow-ups/{id}` with
+     * `done: false`, which is how a client undoes it) or removed is no
+     * longer listed here.
+     *
+     */
+    followUpsMarkedDone?: Array<string>;
 };
 
 /**
@@ -700,7 +721,9 @@ export type VisitSyncResult = {
     id: string;
     status: VisitSyncResultStatus;
     /**
-     * Canonical server state, so the client can reconcile.
+     * Canonical server state, so the client can reconcile, with
+     * `followUpsMarkedDone` for any outcome but `rejected`.
+     *
      */
     visit?: Visit | null;
     error?: Error | null;
@@ -2338,7 +2361,9 @@ export type CreateVisitError = CreateVisitErrors[keyof CreateVisitErrors];
 
 export type CreateVisitResponses = {
     /**
-     * The recorded visit.
+     * The recorded visit, with `followUpsMarkedDone` (empty when it
+     * marked nothing).
+     *
      */
     201: Visit;
 };

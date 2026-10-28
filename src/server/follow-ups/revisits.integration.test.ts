@@ -382,3 +382,47 @@ describe("whether a note is on the running session's list", () => {
     expect(await isNoteOnActiveRevisitList(db, await noteOf("Due soon"))).toBe(false);
   });
 });
+
+describe("a visit that marks the household's notes done", () => {
+  const record = (unitNumber: string, memberId = ALICE) =>
+    createVisit(
+      db,
+      { id: nextVisitId(), blockId: BLOCK_A, unitNumber, interestLevel: "low", memberId },
+      { now: new Date(), toleranceMs: 300_000 },
+      { role: "member" },
+    );
+
+  it("keeps the household on the list, its notes done, and the member's to undo", async () => {
+    await record("#01-01");
+
+    const entry = (await listRevisits(db, session)).find((e) => e.household.id === OWED);
+    expect(entry?.notes.map((note) => [note.note, note.doneById])).toEqual([
+      ["Due soon", ALICE],
+      ["Undated", ALICE],
+      ["Done tonight too", null],
+    ]);
+    // Still a door the member may record at, and a note they may reopen.
+    expect(await isUnitOnRevisitList(db, session, BLOCK_A, "#01-01")).toBe(true);
+    expect(await isNoteOnActiveRevisitList(db, await noteOf("Due soon"))).toBe(true);
+  });
+
+  it("marks nothing at a household off the list", async () => {
+    // An admin may record there; nothing there is this session's work.
+    await createVisit(
+      db,
+      {
+        id: nextVisitId(),
+        blockId: BLOCK_A,
+        unitNumber: "#06-06",
+        interestLevel: "low",
+        memberId: ADMIN,
+      },
+      { now: new Date(), toleranceMs: 300_000 },
+      { role: "admin" },
+    );
+    const { rows } = await pool.query(`SELECT done_at FROM follow_ups WHERE household_id = $1`, [
+      NOT_PICKED,
+    ]);
+    expect(rows).toEqual([{ done_at: null }]);
+  });
+});

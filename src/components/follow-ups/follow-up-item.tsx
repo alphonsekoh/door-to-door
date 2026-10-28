@@ -6,7 +6,7 @@ import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
 import type { ActiveSession, FollowUp } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
-import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
+import { followUpRights, marksDoneOnSave, waitingCaption } from "@/lib/follow-ups/rights";
 import {
   FOLLOW_UP_OFFLINE_NOTE,
   addedByline,
@@ -44,6 +44,7 @@ export function FollowUpItem({
   note,
   now,
   active,
+  atDoor = false,
   showUnit = false,
   onChanged,
   onEdit,
@@ -53,6 +54,8 @@ export function FollowUpItem({
   now: Date;
   /* The running session, which decides what a member may change. */
   active: ActiveSession | null;
+  /* On the recording form, where saving the visit may mark it done. */
+  atDoor?: boolean;
   showUnit?: boolean;
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
@@ -101,6 +104,7 @@ export function FollowUpItem({
       <FollowUpControls
         note={note}
         active={active}
+        atDoor={atDoor}
         onChanged={onChanged}
         onEdit={onEdit}
         onPromoted={onPromoted}
@@ -112,12 +116,14 @@ export function FollowUpItem({
 function FollowUpControls({
   note,
   active,
+  atDoor,
   onChanged,
   onEdit,
   onPromoted,
 }: {
   note: FollowUp;
   active: ActiveSession | null;
+  atDoor: boolean;
   onChanged: (() => void) | undefined;
   onEdit: ((note: FollowUp) => void) | undefined;
   onPromoted: ((message: string) => void) | undefined;
@@ -152,8 +158,11 @@ function FollowUpControls({
     }
   }
 
+  /* At the door, saving the visit marks it done: the owner's one way, so
+     a second button there would only ask the member to choose. */
+  const resolvable = rights.canResolve && !(atDoor && marksDoneOnSave(note, active));
   const editable = onEdit !== undefined && rights.canEditText;
-  const offers = rights.canResolve || rights.canPromote || editable || rights.canRemove;
+  const offers = resolvable || rights.canPromote || editable || rights.canRemove;
   const removeLabel = !isAdmin
     ? "Withdraw"
     : note.status === "suggested"
@@ -181,7 +190,7 @@ function FollowUpControls({
               Add to list
             </button>
           ) : null}
-          {rights.canResolve ? (
+          {resolvable ? (
             /* `done` alone, so it counts as a resolution any member may make. */
             <button
               type="button"

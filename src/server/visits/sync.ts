@@ -6,6 +6,7 @@ import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
 import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { markDoneByVisit, notesMarkedDoneBy } from "@/server/follow-ups/marked-by-visit";
 import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
@@ -39,6 +40,8 @@ export type SyncOutcome = {
   id: string;
   status: SyncStatus;
   visit: VisitRow | null;
+  /* What storing the visit marked done, for every outcome with a visit. */
+  markedDone: string[];
   error: ApiError | null;
 };
 
@@ -168,11 +171,11 @@ async function applyItem(
        * An older edit arriving after a newer one. Acknowledged so the client
        * clears it from the queue, but not applied - last write wins.
        */
-      return { id: item.id, status: "stale", visit: await getVisit(db, item.id), error: null };
+      return answer(db, item.id, "stale");
     }
     if (incomingUpdatedAt.getTime() === stored.updatedAt.getTime()) {
       // A replay of something already stored: the normal retry outcome.
-      return { id: item.id, status: "unchanged", visit: await getVisit(db, item.id), error: null };
+      return answer(db, item.id, "unchanged");
     }
   }
 
@@ -222,7 +225,22 @@ async function applyItem(
     status = await persist(db, write);
   }
 
-  return { id: item.id, status, visit: await getVisit(db, item.id), error: null };
+  return answer(db, item.id, status);
+}
+
+/* The stored visit, and what storing it marked done, read after the write. */
+async function answer(
+  db: Database,
+  id: string,
+  status: "applied" | "unchanged" | "stale",
+): Promise<SyncOutcome> {
+  return {
+    id,
+    status,
+    visit: await getVisit(db, id),
+    markedDone: await notesMarkedDoneBy(db, id),
+    error: null,
+  };
 }
 
 type Write = {
@@ -330,6 +348,7 @@ async function persist(db: Database, write: Write): Promise<"applied" | "unchang
       if (inserted.length > 0) {
         await stampVisit(tx, item.id, teamId, memberId);
         await autoJoin(tx, sessionId, memberId);
+        await markDoneByVisit(tx, session, household.id, item.id, memberId);
         return;
       }
 
@@ -409,6 +428,7 @@ export async function syncVisits(
         id: item.id,
         status: "rejected",
         visit: null,
+        markedDone: [],
         /*
          * Anything that is not a deliberate refusal - a dropped connection, a
          * deadlock - is the server's failure, not the record's. It is reported

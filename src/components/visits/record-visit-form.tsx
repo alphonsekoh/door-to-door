@@ -20,6 +20,13 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import {
+  UNDO_READY,
+  type UndoState,
+  markedDoneLine,
+  owedAt,
+  undoMarkedDone,
+} from "@/lib/follow-ups/marked-done";
+import {
   type RevisitState,
   type UnitGate,
   listedUnitsIn,
@@ -32,7 +39,9 @@ import {
   SUGGEST,
   householdAction,
 } from "@/lib/follow-ups/rights";
+import { useOnline } from "@/lib/hooks/use-online";
 import { useRole } from "@/lib/hooks/use-role";
+import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import {
   OUTING_ASK_TIMEOUT_MS,
@@ -95,6 +104,12 @@ type Saved = {
   /* What the household offered before the form was cleared for the next
      door, so nothing is offered after the save that the server refuses. */
   action: HouseholdAction;
+  /* In a follow-up session the server marks the household's follow-ups
+     done with the visit: how many the list said it owed when saved, which
+     the server says it marked (null until it has the visit), and Undo. */
+  owed: number;
+  marked: string[] | null;
+  undo: UndoState;
 };
 
 /*
@@ -171,6 +186,8 @@ export function RecordVisitForm({
 }: Props) {
   const sync = useSyncQueue();
   const { userId, isAdmin } = useRole();
+  const online = useOnline();
+  const shell = useShellState();
   const formId = useId();
   const [unitNumber, setUnitNumber] = useState(initialUnit);
   /* The next unit filled in after a save, or the one picked from the list,
@@ -204,6 +221,7 @@ export function RecordVisitForm({
   /* Synchronous, so two taps in one frame save one visit, even while the
      first waits on the follow-up list (D-74-44). */
   const sending = useRef(false);
+  const undoing = useRef(false);
   const savedId = saved?.visitId ?? null;
 
   /*
@@ -363,6 +381,7 @@ export function RecordVisitForm({
       history?.household.unitNumber === unit ? history.followUps : [],
       { userId, isAdmin },
     );
+    const owed = followUp === null ? 0 : owedAt(followUp.revisits, blockId, unit);
     /* In a follow-up session the next door is the next household on the
        list, not the next number along, so nothing is guessed. */
     const nextUnit = next ? nextUnitNumber(unitNumber) : null;
@@ -406,6 +425,9 @@ export function RecordVisitForm({
           unitNumber: unit,
           noted: null,
           action,
+          owed,
+          marked: null,
+          undo: UNDO_READY,
         });
         setSaving(false);
         sending.current = false;
@@ -431,6 +453,9 @@ export function RecordVisitForm({
         unitNumber: unit,
         noted: null,
         action,
+        owed,
+        marked: visit.followUpsMarkedDone ?? [],
+        undo: UNDO_READY,
       });
       onRecorded();
     } catch (error) {
@@ -447,9 +472,35 @@ export function RecordVisitForm({
     }
   }
 
+  /*
+   * Reopens what this save marked done, and only that: the visit stays as
+   * recorded. Its answer is dropped once the member has moved on to another
+   * unit or saved again, and the list is read again whatever came of it.
+   */
+  async function undoMarked(visitId: string, ids: string[], before: UndoState): Promise<void> {
+    if (undoing.current) return;
+    undoing.current = true;
+    const onThisSave = (undo: UndoState) => (current: Saved | null) =>
+      current?.visitId === visitId ? { ...current, undo } : current;
+    setSaved(onThisSave({ kind: "undoing" }));
+    const outcome = await undoMarkedDone(ids, before.kind === "failed" ? before.reopened : 0);
+    undoing.current = false;
+    setSaved(onThisSave(outcome));
+    void followUp?.recheck?.();
+    onRecorded();
+  }
+
   /* A queued save's household comes from the server's row once sent. */
   const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
   const householdId = saved?.householdId ?? queued?.serverVisit?.householdId ?? null;
+  const marked =
+    saved?.marked ??
+    (queued?.serverVisit == null ? null : (queued.serverVisit.followUpsMarkedDone ?? []));
+  const markedLine =
+    saved === null || followUp === null ? null : markedDoneLine(saved.owed, marked, saved.undo);
+  /* Never on the offline shell: every follow-up change needs signal
+     (D-35-9), so it waits for the session list's Reopen once there is some. */
+  const undoIds = shell.active ? null : (markedLine?.undo ?? null);
   const status =
     saved === null ? null : householdId !== null ? (
       <>
@@ -507,6 +558,34 @@ export function RecordVisitForm({
                 className="min-h-11 font-medium btn-text"
               />
             ) : null}
+            {/* A row of its own from "Sending…" on, so the line keeps its
+                height as the words change, as Back to the list's does. */}
+            {saved === null || markedLine === null ? null : (
+              <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
+                <span className="min-w-0 break-words">{markedLine.text}</span>
+                {undoIds === null ? null : (
+                  <button
+                    type="button"
+                    disabled={!online || saved.undo.kind === "undoing"}
+                    onClick={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                    className="min-h-11 shrink-0 font-medium btn-text"
+                  >
+                    {saved.undo.kind === "undoing" ? (
+                      "Undoing…"
+                    ) : (
+                      <>
+                        Undo{" "}
+                        <span className="sr-only">
+                          {undoIds.length === 1
+                            ? "marking the follow-up done"
+                            : "marking the follow-ups done"}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
             {/* On a row of its own: beside the line, it fitted "Sending…"
                 but not "Saved … on this phone.", so the line grew just after
                 Save scrolled it into view, and the browser, holding the unit

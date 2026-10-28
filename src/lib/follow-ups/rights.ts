@@ -29,6 +29,15 @@ export function onActiveList(note: Listable, active: ActiveSession | null): bool
   return started !== null && done >= Date.parse(started) && done >= Date.parse(pick.addedAt);
 }
 
+/*
+ * Whether recording a visit here marks the note done: still owed, on the
+ * running follow-up session's list. The server does it, for members and
+ * admins alike, so the door offers no Mark done of its own.
+ */
+export function marksDoneOnSave(note: Listable, active: ActiveSession | null): boolean {
+  return note.doneAt === null && onActiveList(note, active);
+}
+
 export type FollowUpRights = {
   canResolve: boolean;
   canEditText: boolean;

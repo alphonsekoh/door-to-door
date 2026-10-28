@@ -274,6 +274,7 @@ describe("follow ups", () => {
       visit_id: "set null",
       author_id: "restrict",
       done_by: "set null",
+      done_visit_id: "set null",
       listed_by: "set null",
       deleted_by: "set null",
     });
@@ -281,6 +282,10 @@ describe("follow ups", () => {
 
   it("indexes the outstanding-notes query", () => {
     expect(indexNames(followUps)).toContain("follow_ups_outstanding_idx");
+  });
+
+  it("indexes the notes a visit marked done, which its answer reads back", () => {
+    expect(indexNames(followUps)).toContain("follow_ups_done_visit_idx");
   });
 
   it("reads notes written before suggestions existed as listed", () => {

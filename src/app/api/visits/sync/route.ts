@@ -6,7 +6,7 @@ import { createRateLimiter } from "@/server/auth/rate-limit";
 import { withContract } from "@/server/http/contract";
 import { RateLimitedError } from "@/server/http/errors";
 import { assertBatchClockSane, currentClock } from "@/server/visits/clock-rules";
-import { toVisit } from "@/server/visits/serialise";
+import { toRecordedVisit } from "@/server/visits/serialise";
 import { syncVisits } from "@/server/visits/sync";
 
 /*
@@ -44,7 +44,7 @@ export const POST = withContract(
         results: outcomes.map((outcome) => ({
           id: outcome.id,
           status: outcome.status,
-          visit: outcome.visit === null ? null : toVisit(outcome.visit),
+          visit: outcome.visit === null ? null : toRecordedVisit(outcome.visit, outcome.markedDone),
           error: outcome.error === null ? null : outcome.error.toBody(),
         })),
       },

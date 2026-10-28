@@ -1,0 +1,3 @@
+ALTER TABLE "follow_ups" ADD COLUMN "done_visit_id" uuid;--> statement-breakpoint
+ALTER TABLE "follow_ups" ADD CONSTRAINT "follow_ups_done_visit_id_visits_id_fk" FOREIGN KEY ("done_visit_id") REFERENCES "public"."visits"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "follow_ups_done_visit_idx" ON "follow_ups" USING btree ("done_visit_id") WHERE "follow_ups"."done_visit_id" is not null;

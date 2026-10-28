@@ -12,9 +12,10 @@ import { currentSession } from "@/server/auth/session";
 import { requireUser, resolveMemberScope } from "@/server/auth/guards";
 import { firstOrThrow } from "@/server/db-utils";
 import { withContract } from "@/server/http/contract";
-import { toVisit } from "@/server/visits/serialise";
+import { toRecordedVisit, toVisit } from "@/server/visits/serialise";
 import { currentClock } from "@/server/visits/clock-rules";
 import { createVisit, visitColumns } from "@/server/visits/service";
+import { notesMarkedDoneBy } from "@/server/follow-ups/marked-by-visit";
 
 export const GET = withContract(
   {
@@ -87,8 +88,9 @@ export const POST = withContract(
      */
     const memberId = resolveMemberScope(session, body.memberId);
     const user = requireUser(session);
+    const db = getDatabase();
     const visit = await createVisit(
-      getDatabase(),
+      db,
       {
         id: body.id,
         blockId: body.blockId,
@@ -104,6 +106,6 @@ export const POST = withContract(
       currentClock(),
       { role: user.role },
     );
-    return { status: 201, body: toVisit(visit) };
+    return { status: 201, body: toRecordedVisit(visit, await notesMarkedDoneBy(db, visit.id)) };
   },
 );

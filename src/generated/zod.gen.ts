@@ -185,7 +185,8 @@ export const zVisit = z.object({
     description: z.string().max(4000),
     clientCreatedAt: z.iso.datetime(),
     createdAt: z.iso.datetime(),
-    updatedAt: z.iso.datetime()
+    updatedAt: z.iso.datetime(),
+    followUpsMarkedDone: z.array(z.uuid()).optional()
 });
 
 /**
@@ -843,7 +844,9 @@ export const zListVisitsResponse = zVisitList;
 export const zCreateVisitBody = zCreateVisitRequest;
 
 /**
- * The recorded visit.
+ * The recorded visit, with `followUpsMarkedDone` (empty when it
+ * marked nothing).
+ *
  */
 export const zCreateVisitResponse = zVisit;
 

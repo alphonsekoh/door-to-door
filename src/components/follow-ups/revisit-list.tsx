@@ -10,18 +10,21 @@ import { UnitNumber } from "@/components/ui/unit-number";
 import type { ActiveSession, RevisitEntry, RevisitList as List } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { groupByBlock, progress, revisitState } from "@/lib/follow-ups/revisits";
+import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
 import { describeFollowUpFailure, isOverdue } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRole } from "@/lib/hooks/use-role";
 
 type State =
   { status: "loading" } | { status: "ready"; entries: RevisitEntry[] } | { status: "error" };
 
 /*
  * A follow-up session's households, grouped by block, which drive the
- * session screen: a member taps one to record there with its unit filled in,
- * and marks it done when the follow-up is finished. A failed read stays in
- * here, so the team card and the rest of the screen still work.
+ * session screen: a member taps one to record there with its unit filled in
+ * (saving the visit marks it done), marks one done that needed no visit,
+ * and reopens one marked done too soon. A failed read stays in here, so the
+ * team card and the rest of the screen still work.
  */
 export function RevisitList({
   active,
@@ -125,7 +128,12 @@ export function RevisitList({
             </div>
             <ul className="overflow-hidden rounded-xl border border-border bg-surface">
               {group.entries.map((entry) => (
-                <RevisitRow key={entry.household.id} entry={entry} onChanged={() => void load()} />
+                <RevisitRow
+                  key={entry.household.id}
+                  entry={entry}
+                  active={active}
+                  onChanged={() => void load()}
+                />
               ))}
             </ul>
           </div>
@@ -135,8 +143,17 @@ export function RevisitList({
   );
 }
 
-function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () => void }) {
+function RevisitRow({
+  entry,
+  active,
+  onChanged,
+}: {
+  entry: RevisitEntry;
+  active: ActiveSession;
+  onChanged: () => void;
+}) {
   const online = useOnline();
+  const { userId, isAdmin } = useRole();
   const [now] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -146,24 +163,33 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
   const owed = entry.notes.filter((note) => note.doneAt === null);
   const first = owed[0] ?? entry.notes[0];
   const { household, block } = entry;
+  /* A Done row reopens every note it counts, so only where the viewer may
+     reopen each; a suggestion waiting at the door is said instead. */
+  const rights = entry.notes.map((note) => followUpRights(note, { userId, isAdmin }, active));
+  const canReopen = state === "done" && rights.every((right) => right.canResolve);
+  const waiting =
+    state === "done"
+      ? (rights.find((right) => right.waitingSuggestion !== null)?.waitingSuggestion ?? null)
+      : null;
 
-  /* Every note that put the household on the list, usually one. The list
-     is read again whatever came of it: with one note closed and the next
-     refused, or a reply lost, only the server knows what is still owed. */
-  async function markDone(): Promise<void> {
+  /* Every note that put the household on the list, usually one, closed or
+     reopened together. The list is read again whatever came of it: with one
+     note changed and the next refused, or a reply lost, only the server
+     knows what is still owed. */
+  async function change(done: boolean): Promise<void> {
     if (sending.current) return;
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
-      for (const note of owed) {
+      for (const note of done ? owed : entry.notes) {
         await apiFetch(`/follow-ups/${note.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ done: true }),
+          body: JSON.stringify({ done }),
         });
       }
     } catch (error) {
-      setFailure(describeFollowUpFailure(error));
+      setFailure(describeFollowUpFailure(error, done ? "save" : "reopen"));
     } finally {
       sending.current = false;
       setBusy(false);
@@ -173,8 +199,8 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
 
   return (
     <li className="border-b border-border last:border-b-0">
-      {/* The row opens the block with this unit filled in; Mark done sits
-          beside it, never inside the link. */}
+      {/* The row opens the block with this unit filled in; Mark done or
+          Reopen sits beside it, never inside the link. */}
       <Link
         href={`/blocks/${block.id}?unit=${encodeURIComponent(household.unitNumber)}`}
         className="block press-row px-4 py-3"
@@ -204,29 +230,36 @@ function RevisitRow({ entry, onChanged }: { entry: RevisitEntry; onChanged: () =
           </span>
         )}
       </Link>
-      {state === "done" ? null : (
+      {state === "done" && !canReopen && waiting === null && failure === null ? null : (
         <div className="px-4 pb-3">
           {failure === null ? null : (
             <p role="alert" className="mb-2 notice-danger">
               {failure}
             </p>
           )}
-          <button
-            type="button"
-            disabled={busy || !online}
-            onClick={() => void markDone()}
-            className="min-h-11 btn-secondary rounded-lg px-4 text-body font-medium"
-          >
-            {busy ? (
-              "Saving…"
-            ) : (
-              <>
-                Mark done
-                {/* Each row's button names its door to a screen reader. */}
-                <span className="sr-only">, {household.unitNumber}</span>
-              </>
-            )}
-          </button>
+          {state !== "done" || canReopen ? (
+            <button
+              type="button"
+              disabled={busy || !online}
+              onClick={() => void change(state !== "done")}
+              className="min-h-11 btn-secondary rounded-lg px-4 text-body font-medium"
+            >
+              {busy ? (
+                "Saving…"
+              ) : (
+                <>
+                  {state === "done" ? "Reopen" : "Mark done"}
+                  {/* Each row's button names its door to a screen reader. */}
+                  <span className="sr-only">, {household.unitNumber}</span>
+                </>
+              )}
+            </button>
+          ) : null}
+          {waiting === null ? null : (
+            <p className="mt-1 text-caption break-words text-foreground-muted">
+              {waitingCaption(waiting, isAdmin)}
+            </p>
+          )}
         </div>
       )}
     </li>

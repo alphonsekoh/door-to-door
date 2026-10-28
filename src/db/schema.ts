@@ -366,6 +366,12 @@ export const followUps = pgTable(
     dueDate: timestamp("due_date", { withTimezone: true, mode: "date" }),
     doneAt: timestamp("done_at", { withTimezone: true, mode: "date" }),
     doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+    /*
+     * The visit whose recording marked it done, in a follow-up session; null
+     * when it was marked done by hand. Read back, so a replayed visit names
+     * the same notes, and an undo reopens exactly those. Reopening clears it.
+     */
+    doneVisitId: uuid("done_visit_id").references(() => visits.id, { onDelete: "set null" }),
     listedAt: timestamp("listed_at", { withTimezone: true, mode: "date" }),
     listedBy: uuid("listed_by").references(() => users.id, { onDelete: "set null" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
@@ -385,6 +391,9 @@ export const followUps = pgTable(
     uniqueIndex("follow_ups_one_open_suggestion_idx")
       .on(table.householdId)
       .where(sql`${table.status} = 'suggested' and ${table.deletedAt} is null`),
+    index("follow_ups_done_visit_idx")
+      .on(table.doneVisitId)
+      .where(sql`${table.doneVisitId} is not null`),
   ],
 );
 

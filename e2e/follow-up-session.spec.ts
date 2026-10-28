@@ -104,6 +104,18 @@ test("a member records only the households on a follow-up session's list", async
   await expect(status).toBeVisible();
   await expect(status.getByRole("link", { name: "Back to the list" })).toBeVisible();
   await expect(unit).toHaveValue("");
+
+  /* Saving marked its follow-up done, once sent; Undo reopens it, and the
+     list then reads the household as visited, still counted. */
+  await expect(status).toContainText("Follow-up marked done.");
+  const undo = status.getByRole("button", { name: "Undo marking the follow-up done" });
+  expect((await undo.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  await expectTappable(undo);
+  await undo.click();
+  await expect(status).toContainText("Undone. Follow-up reopened.");
+  await status.getByRole("link", { name: "Back to the list" }).click();
+  await expect(row).toContainText("Visited");
+  await expect(list).toContainText("1 of 1 visited or done");
 });
 
 test("an admin picks the households for a follow-up session, and a member is sent to them", async ({

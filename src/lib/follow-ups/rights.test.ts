@@ -4,6 +4,7 @@ import {
   type FollowUpRights,
   followUpRights,
   householdAction,
+  marksDoneOnSave,
   onActiveList,
   waitingCaption,
   waitingLabel,
@@ -116,6 +117,24 @@ describe("onActiveList", () => {
     ["one still owed at a household added midway", note(), pickedMidway, true],
   ])("%s: %s", (_case, subject, active, expected) => {
     expect(onActiveList(subject, active)).toBe(expected);
+  });
+});
+
+describe("marksDoneOnSave", () => {
+  it.each<[string, FollowUp, ActiveSession | null, boolean]>([
+    ["a note owed on the running follow-up session's list", note(), followUp, true],
+    [
+      "one already resolved during the session",
+      note({ doneAt: "2026-10-20T19:00:00.000Z" }),
+      followUp,
+      false,
+    ],
+    ["a household the session did not pick", note({ householdId: "h2" }), followUp, false],
+    ["a suggestion", note({ status: "suggested" }), followUp, false],
+    ["a regular session", note(), running("regular"), false],
+    ["no session running", note(), null, false],
+  ])("%s: %s", (_case, subject, active, expected) => {
+    expect(marksDoneOnSave(subject, active)).toBe(expected);
   });
 });
 

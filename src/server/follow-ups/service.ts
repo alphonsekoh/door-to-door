@@ -390,6 +390,8 @@ async function applyUpdate(
   if (changes.done === false) {
     values["doneAt"] = null;
     values["doneBy"] = null;
+    // Also how a client undoes what recording a visit marked done.
+    values["doneVisitId"] = null;
   }
 
   await db.update(followUps).set(values).where(eq(followUps.id, id));

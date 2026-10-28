@@ -370,7 +370,11 @@ describe("a follow-up session", () => {
     apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
     render(<ActiveSessionScreen />);
     const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
-    expect(hint).toHaveTextContent("When the follow-up is finished, tap Mark done.");
+    // Saving marks the follow-up done; Mark done is for one finished without a visit.
+    expect(hint).toHaveTextContent(
+      "Tap a household to record your visit; saving it marks its follow-up done, and Undo is there if it isn't.",
+    );
+    expect(hint).toHaveTextContent("Use Mark done for one finished without a visit.");
     // The same way to ask for a household as everywhere else.
     expect(hint).toHaveTextContent("Type its unit in the block and tap Suggest a return visit");
     expect(hint).not.toHaveTextContent(/ask an admin/i);
