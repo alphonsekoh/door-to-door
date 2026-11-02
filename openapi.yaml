@@ -62,8 +62,9 @@ info:
 
     Every operation other than a `GET` refuses, with `403 forbidden` and before
     its request is read, a request the browser marks as sent by another
-    origin: a `Sec-Fetch-Site` other than `same-origin`, or, when that header is
-    absent, an `Origin` whose host is not this server's. A request body must be
+    origin: a `Sec-Fetch-Site` other than `same-origin` or `none` (a request the
+    user started), or, when that header is absent, an `Origin` whose host is not
+    this server's. A request body must be
     `application/json`; any other `Content-Type` is
     `415 unsupported_media_type`.
 
