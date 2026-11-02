@@ -919,3 +919,50 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [JSON Schema 2020-12 Core, `unevaluatedProperties`](https://json-schema.org/draft/2020-12/json-schema-core#name-unevaluatedproperties);
   generated `src/generated/zod.gen.ts` (#117)
 - **Used by:** D-117-68
+
+### R-91 · Who sets `Sec-Fetch-Site`, and when
+
+- **Finding:** The browser sets it: `same-origin`, `same-site`, `cross-site`, or `none`
+  for a request the user started (address bar, bookmark). A `Sec-` header is a forbidden
+  request-header name, so no page can set or forge it. It is sent only to potentially
+  trustworthy URLs (HTTPS, `localhost`), so a phone on plain `http` over a LAN gets none.
+  Safari sends it from 16.4 (not tested here).
+- **Source:** [Fetch Metadata Request Headers](https://w3c.github.io/webappsec-fetch-metadata/);
+  [Fetch, forbidden request-header](https://fetch.spec.whatwg.org/#forbidden-request-header);
+  [MDN, `Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site)
+- **Used by:** D-121-2, D-121-3
+
+### R-92 · What another origin can send without a preflight
+
+- **Finding:** A cross-origin form or `fetch` sends a body with no preflight only as
+  `text/plain`, `application/x-www-form-urlencoded` or `multipart/form-data`, and only
+  with CORS-safelisted headers; `application/json`, or a header like `X-Forwarded-Host`,
+  needs a preflight the server must grant. A `SameSite=Lax` cookie goes with any request
+  within the same site (registrable domain), so a sibling subdomain's POST carries it.
+  The browser adds `Origin` to every request that is not `GET` or `HEAD`: `null` for an
+  opaque origin (sandboxed frame, `file:`) or a form under `Referrer-Policy: no-referrer`;
+  a `fetch` always sends the real one.
+- **Source:** [Fetch, CORS-safelisted request-header](https://fetch.spec.whatwg.org/#cors-safelisted-request-header);
+  [Fetch, append a request `Origin` header](https://fetch.spec.whatwg.org/#append-a-request-origin-header);
+  [RFC 6265bis, `SameSite`](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)
+- **Used by:** D-121-3, D-121-4, D-121-5, D-121-6
+
+### R-93 · Next.js builds `request.url` from the bind address
+
+- **Finding:** Unless `experimental.trustHostHeader` is set, a route handler's
+  `request.url` is the server's own `hostname:port` (default `localhost`), with the
+  scheme from `X-Forwarded-Proto`, not the `Host` the browser sent. Behind a proxy it
+  does not name the public origin. Same cause as R-30.
+- **Source:** `next` 16.3.3, `dist/server/lib/router-utils/resolve-routes.js` (`initUrl`)
+- **Used by:** D-121-5
+
+### R-94 · Which reverse proxies pass the public `Host`
+
+- **Finding:** nginx sends the upstream's host (`proxy_set_header Host $proxy_host` is
+  its default) and no `X-Forwarded-Host`. Caddy passes `Host` through and sets
+  `X-Forwarded-Host`. Traefik passes `Host` (`passHostHeader`, default true). Read, not
+  tested here.
+- **Source:** [nginx, `proxy_set_header`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header);
+  [Caddy, `reverse_proxy` headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers);
+  [Traefik, pass host header](https://doc.traefik.io/traefik/routing/services/#pass-host-header)
+- **Used by:** D-121-5
