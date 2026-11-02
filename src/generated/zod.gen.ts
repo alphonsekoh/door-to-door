@@ -310,7 +310,7 @@ export const zSessionHouseholdList = z.object({
 export const zCreateSessionRequest = z.object({
     title: z.string().min(1).max(160),
     kind: zSessionKind.optional().default('regular'),
-    blockIds: z.array(z.uuid()).optional(),
+    blockIds: z.array(z.uuid()).max(50).optional(),
     householdIds: z.array(z.uuid()).min(1).max(200).optional()
 });
 
@@ -440,7 +440,7 @@ export const zCreateUserRequest = z.object({
 
 export const zCreateTeamRequest = z.object({
     name: z.string().min(1).max(60),
-    memberIds: z.array(z.uuid()).optional()
+    memberIds: z.array(z.uuid()).max(50).optional()
 });
 
 export const zUpdateTeamRequest = z.object({

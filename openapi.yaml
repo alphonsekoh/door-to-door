@@ -741,6 +741,7 @@ components:
             A regular session only: blocks to attach immediately. More may be
             added later. Sent with `kind: follow_up` it is `400`, since a
             follow-up session's blocks come from its households.
+          maxItems: 50
           items: { type: string, format: uuid }
         householdIds:
           type: array
@@ -1049,6 +1050,7 @@ components:
         memberIds:
           type: array
           uniqueItems: true
+          maxItems: 50
           items: { type: string, format: uuid }
           description: |
             Others to place on the team. A member creating a team is always

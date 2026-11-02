@@ -385,6 +385,39 @@ describe("forming a team", () => {
     expect((await call(createTeam, "POST", { id: MISSING }, { name: "Pair" })).status).toBe(404);
   });
 
+  it("refuses an oversized list of people on its length alone, without parsing an id", async () => {
+    /*
+     * Any member can send this. Unbounded, every bad id was its own issue, so
+     * one huge body could exhaust the server's memory (GHSA-mrhx-c7xc-m3w5, #118).
+     */
+    as(ALICE);
+    const response = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Crowd", memberIds: Array.from({ length: 51 }, () => "x") },
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toEqual(["/memberIds"]);
+    expect(await count("session_teams")).toBe(0);
+  });
+
+  it("takes a list of people at exactly the limit through to the check that they exist", async () => {
+    asAdmin();
+    const strangers = Array.from(
+      { length: 50 },
+      (_, i) => `74747474-0000-4000-8003-${String(i).padStart(12, "0")}`,
+    );
+    const response = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Crowd", memberIds: strangers },
+    );
+    expect(response.status).toBe(404);
+  });
+
   it.each([["   "], ["Pair​1"], ["..."], ["x".repeat(61)]])(
     "refuses the name %j (400)",
     async (name) => {
