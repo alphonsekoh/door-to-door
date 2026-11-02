@@ -501,6 +501,12 @@ docker run -p 3000:3000 \
 - **HTTPS** is required for the service worker and installing outside `localhost`. Behind
   a reverse proxy keep `auth.trustHost: true`; if the app is exposed directly with
   `trustHost: false`, set `AUTH_URL`.
+- **The proxy must pass the public host:** forward the original `Host`, or set
+  `X-Forwarded-Host` to it. A write from a browser that sends no `Sec-Fetch-Site` (Safari
+  before 16.4, so iPhones on iOS 15 and 16.0 to 16.3) is checked by comparing its `Origin`
+  with that host, and refused with `403` if the server sees only the proxy's. Those
+  members still sign in, but nothing they record ever sends. Caddy and Traefik pass it by
+  default; nginx needs `proxy_set_header Host $host;` (or `X-Forwarded-Host $host`).
 - **Database connections:** one `pg` pool per process; changing `database.url` needs a
   restart. A dropped connection fails that request with a `500` and is replaced.
 - **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
@@ -535,6 +541,7 @@ docker run -p 3000:3000 \
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
+| Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).             |
 | A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
 | The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
 | The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
