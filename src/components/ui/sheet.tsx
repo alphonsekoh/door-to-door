@@ -94,6 +94,8 @@ type SheetProps = {
   layer?: keyof typeof OVERLAY;
   role?: "dialog" | "alertdialog";
   initialFocus?: RefObject<HTMLElement | null>;
+  /* Where focus goes on close, instead of back to what opened it. */
+  returnFocus?: RefObject<HTMLElement | null> | undefined;
   /* Drag the handle down to dismiss. Off for confirmations, which should
      take a deliberate answer. */
   draggable?: boolean;
@@ -115,6 +117,7 @@ export function Sheet({
   layer = "sheet",
   role = "dialog",
   initialFocus,
+  returnFocus,
   draggable = true,
   discard,
   bodyClassName = "",
@@ -122,7 +125,7 @@ export function Sheet({
 }: SheetProps) {
   const present = useIsPresent();
   const reduce = useReducedMotion() === true;
-  const { overlay, panel } = useModal(onClose, initialFocus, present);
+  const { overlay, panel } = useModal(onClose, initialFocus, present, returnFocus);
   /* Px while dragged; the percentage it rises from while it opens. */
   const y = useMotionValue<number | string>(0);
   const gesture = useRef<Gesture | null>(null);

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useModal } from "@/lib/hooks/use-modal";
 
@@ -271,6 +271,77 @@ describe("useModal", () => {
     await user.keyboard("{Escape}");
     // The new Open button is a different element; focus is not forced onto it.
     expect(screen.getByRole("button", { name: "Open" })).not.toHaveFocus();
+  });
+
+  describe("sending focus somewhere named on close", () => {
+    /* A form whose Save opens a dialog about one of its fields. */
+    function Form({ keepField = true }: { keepField?: boolean }) {
+      const field = useRef<HTMLInputElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <main>
+            {keepField ? <input ref={field} aria-label="Unit number" /> : null}
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(true);
+              }}
+            >
+              Save
+            </button>
+          </main>
+          {open ? (
+            <Named
+              returnFocus={field}
+              onClose={() => {
+                setOpen(false);
+              }}
+            />
+          ) : null}
+        </>
+      );
+    }
+
+    function Named({
+      returnFocus,
+      onClose,
+    }: {
+      returnFocus: RefObject<HTMLElement | null>;
+      onClose: () => void;
+    }) {
+      const { overlay, panel } = useModal(onClose, undefined, true, returnFocus);
+      return (
+        <div ref={overlay}>
+          <div ref={panel} tabIndex={-1} role="alertdialog" aria-label="Not saved" />
+        </div>
+      );
+    }
+
+    it("focuses the named field rather than what opened it, and brings it into view", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      const user = userEvent.setup();
+      render(<Form />);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      scrolled.mockClear();
+
+      await user.keyboard("{Escape}");
+      const field = screen.getByLabelText("Unit number");
+      expect(field).toHaveFocus();
+      expect(scrolled.mock.contexts).toEqual([field]);
+      expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+      scrolled.mockRestore();
+    });
+
+    it("goes back to what opened it when the named field has gone", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(<Form />);
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      rerender(<Form keepField={false} />);
+
+      await user.keyboard("{Escape}");
+      expect(screen.getByRole("button", { name: "Save" })).toHaveFocus();
+    });
   });
 
   it("does nothing when its refs are never attached", () => {

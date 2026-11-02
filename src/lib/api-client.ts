@@ -1,7 +1,7 @@
 "use client";
 
 import { accountStore, classifyAuthFailure } from "@/lib/session/account-state";
-import type { ErrorBody } from "@/server/http/errors";
+import type { ErrorBody, FieldIssue } from "@/server/http/errors";
 
 /*
  * A thin typed fetch wrapper over the generated types.
@@ -14,12 +14,15 @@ import type { ErrorBody } from "@/server/http/errors";
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  /* Which fields a 400 refused, so a form can point at them (D-119-16). */
+  readonly details: FieldIssue[];
 
   constructor(status: number, body: ErrorBody | undefined) {
     super(body?.error.message ?? "Something went wrong.");
     this.name = "ApiRequestError";
     this.status = status;
     this.code = body?.error.code ?? "internal_error";
+    this.details = body?.error.details ?? [];
   }
 }
 

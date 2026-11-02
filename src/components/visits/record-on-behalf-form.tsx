@@ -1,12 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { InterestPicker } from "@/components/ui/interest-picker";
-import { Sheet, SheetActions } from "@/components/ui/sheet";
+import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
+import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import type { Block, InterestLevel, RecordedVisit, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import {
+  type NotSaved,
+  type NotSavedField,
+  VISIT_NOT_SAVED,
+  notSavedForBlank,
+  notSavedFromServer,
+  notSavedLine,
+} from "@/lib/not-saved";
 import { normaliseUnitNumber } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
+
+/* In the order the form shows them. */
+const FIELDS = [
+  "memberId",
+  "blockId",
+  "unitNumber",
+  "interestLevel",
+] as const satisfies readonly NotSavedField[];
 
 /*
  * An admin entering a record someone else made - phoned in from a corridor, or
@@ -35,6 +52,18 @@ export function RecordOnBehalfForm({
   const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [notSaved, setNotSaved] = useState<NotSaved | null>(null);
+  /* Where OK on the Not saved dialog sends focus. */
+  const memberField = useRef<HTMLSelectElement>(null);
+  const blockField = useRef<HTMLSelectElement>(null);
+  const unitField = useRef<HTMLInputElement>(null);
+  const firstInterest = useRef<HTMLButtonElement>(null);
+  const fieldRefs: Partial<Record<NotSavedField, RefObject<HTMLElement | null>>> = {
+    memberId: memberField,
+    blockId: blockField,
+    unitNumber: unitField,
+    interestLevel: firstInterest,
+  };
 
   /* Asked before a flick or a stray tap loses a record typed in from paper. */
   const discard =
@@ -45,6 +74,18 @@ export function RecordOnBehalfForm({
   async function save(): Promise<void> {
     if (memberId === "" || blockId === "" || unitNumber.trim() === "" || interestLevel === null) {
       setFailure("Choose a member, a block, a unit and an interest level.");
+      const missing = {
+        memberId: memberId === "",
+        blockId: blockId === "",
+        unitNumber: unitNumber.trim() === "",
+        interestLevel: interestLevel === null,
+      };
+      setNotSaved(
+        notSavedForBlank(
+          FIELDS.filter((field) => missing[field]),
+          FIELDS,
+        ),
+      );
       return;
     }
 
@@ -66,120 +107,150 @@ export function RecordOnBehalfForm({
       });
       onRecorded(visit, unit);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not record that visit.");
+      const refused = notSavedFromServer(error, FIELDS);
+      setFailure(
+        refused !== null
+          ? notSavedLine(refused)
+          : error instanceof Error
+            ? error.message
+            : "Could not record that visit.",
+      );
+      setNotSaved(refused);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Sheet
-      label="Record on behalf of a member"
-      title="Record for a member"
-      onClose={onClose}
-      discard={discard}
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-        noValidate
-        className="space-y-4 pt-2"
+    <>
+      <Sheet
+        label="Record on behalf of a member"
+        title="Record for a member"
+        onClose={onClose}
+        discard={discard}
       >
-        {failure === null ? null : (
-          <p role="alert" className="notice-danger">
-            {failure}
-          </p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+          noValidate
+          className="space-y-4 pt-2"
+        >
+          {failure === null ? null : (
+            <p role="alert" className="notice-danger">
+              {failure}
+            </p>
+          )}
+
+          <div>
+            <label htmlFor="behalf-member" className="mb-1 block text-body font-medium">
+              Recorded by
+            </label>
+            <select
+              ref={memberField}
+              id="behalf-member"
+              value={memberId}
+              onChange={(event) => {
+                setMemberId(event.target.value);
+              }}
+              className="h-12 min-h-12 field"
+            >
+              <option value="">Choose a member</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.id}>
+                  {member.name ?? member.email}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="behalf-block" className="mb-1 block text-body font-medium">
+              Block
+            </label>
+            <select
+              ref={blockField}
+              id="behalf-block"
+              value={blockId}
+              onChange={(event) => {
+                setBlockId(event.target.value);
+              }}
+              className="h-12 min-h-12 field"
+            >
+              {blocks.map((block) => (
+                <option key={block.id} value={block.id}>
+                  Blk {block.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="behalf-unit" className="mb-1 block text-body font-medium">
+              Unit number
+            </label>
+            <input
+              ref={unitField}
+              id="behalf-unit"
+              value={unitNumber}
+              onChange={(event) => {
+                setUnitNumber(event.target.value);
+              }}
+              placeholder="#05-123"
+              autoComplete="off"
+              className="min-h-12 field"
+            />
+          </div>
+
+          <div>
+            <p className="mb-1 text-body font-medium">Interest level</p>
+            <InterestPicker
+              value={interestLevel}
+              onChange={setInterestLevel}
+              firstRef={firstInterest}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="behalf-notes" className="mb-1 block text-body font-medium">
+              Notes
+            </label>
+            <textarea
+              id="behalf-notes"
+              rows={3}
+              value={description}
+              onChange={(event) => {
+                setDescription(event.target.value);
+              }}
+              className="field py-2"
+            />
+          </div>
+
+          <SheetActions>
+            <button
+              type="submit"
+              disabled={saving}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+            >
+              {saving ? "Saving…" : "Save the record"}
+            </button>
+          </SheetActions>
+        </form>
+      </Sheet>
+      {/* Beside the sheet, not in it, as Sheet keeps its own confirmation. */}
+      <SheetPresence>
+        {notSaved === null ? null : (
+          <NotSavedDialog
+            lead={VISIT_NOT_SAVED}
+            reasons={notSaved.reasons}
+            returnFocus={notSaved.field === null ? undefined : fieldRefs[notSaved.field]}
+            onDismiss={() => {
+              setNotSaved(null);
+            }}
+          />
         )}
-
-        <div>
-          <label htmlFor="behalf-member" className="mb-1 block text-body font-medium">
-            Recorded by
-          </label>
-          <select
-            id="behalf-member"
-            value={memberId}
-            onChange={(event) => {
-              setMemberId(event.target.value);
-            }}
-            className="h-12 min-h-12 field"
-          >
-            <option value="">Choose a member</option>
-            {members.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.name ?? member.email}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="behalf-block" className="mb-1 block text-body font-medium">
-            Block
-          </label>
-          <select
-            id="behalf-block"
-            value={blockId}
-            onChange={(event) => {
-              setBlockId(event.target.value);
-            }}
-            className="h-12 min-h-12 field"
-          >
-            {blocks.map((block) => (
-              <option key={block.id} value={block.id}>
-                Blk {block.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label htmlFor="behalf-unit" className="mb-1 block text-body font-medium">
-            Unit number
-          </label>
-          <input
-            id="behalf-unit"
-            value={unitNumber}
-            onChange={(event) => {
-              setUnitNumber(event.target.value);
-            }}
-            placeholder="#05-123"
-            autoComplete="off"
-            className="min-h-12 field"
-          />
-        </div>
-
-        <div>
-          <p className="mb-1 text-body font-medium">Interest level</p>
-          <InterestPicker value={interestLevel} onChange={setInterestLevel} />
-        </div>
-
-        <div>
-          <label htmlFor="behalf-notes" className="mb-1 block text-body font-medium">
-            Notes
-          </label>
-          <textarea
-            id="behalf-notes"
-            rows={3}
-            value={description}
-            onChange={(event) => {
-              setDescription(event.target.value);
-            }}
-            className="field py-2"
-          />
-        </div>
-
-        <SheetActions>
-          <button
-            type="submit"
-            disabled={saving}
-            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-          >
-            {saving ? "Saving…" : "Save the record"}
-          </button>
-        </SheetActions>
-      </form>
-    </Sheet>
+      </SheetPresence>
+    </>
   );
 }

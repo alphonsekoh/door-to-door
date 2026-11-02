@@ -53,6 +53,21 @@ describe("apiFetch", () => {
     });
   });
 
+  it("carries the fields a 400 refused, so a form can point at them", async () => {
+    const details = [{ path: "/unitNumber", message: "Invalid string: must match pattern /\\S/" }];
+    respond(400, {
+      error: { code: "validation_failed", message: "Invalid request body.", details },
+    });
+    await expect(apiFetch("/visits")).rejects.toMatchObject({ status: 400, details });
+  });
+
+  it("carries no fields when the body names none, or is not JSON", async () => {
+    respond(409, { error: { code: "conflict", message: "Taken." } });
+    await expect(apiFetch("/visits")).rejects.toMatchObject({ details: [] });
+    respond(502, undefined);
+    await expect(apiFetch("/visits")).rejects.toMatchObject({ details: [] });
+  });
+
   it("still reports the status when the body is not JSON", async () => {
     // A proxy or a crash can return HTML; the status must survive.
     respond(502, undefined);

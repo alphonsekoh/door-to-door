@@ -3,6 +3,7 @@ import type { Database } from "@/db/client";
 import { blocks } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { ConflictError, NotFoundError } from "@/server/http/errors";
+import { requireText } from "@/server/http/text";
 
 /*
  * The block registry. `(name, street)` is the natural key, so a duplicate is a
@@ -58,15 +59,13 @@ export async function createBlock(
   db: Database,
   input: { name: string; street: string; postalCode?: string | null | undefined },
 ): Promise<BlockRow> {
+  const values = {
+    name: requireText(input.name, "/name"),
+    street: requireText(input.street, "/street"),
+    postalCode: input.postalCode ?? null,
+  };
   try {
-    const inserted = await db
-      .insert(blocks)
-      .values({
-        name: input.name.trim(),
-        street: input.street.trim(),
-        postalCode: input.postalCode ?? null,
-      })
-      .returning();
+    const inserted = await db.insert(blocks).values(values).returning();
     return firstOrThrow(inserted, "the block insert");
   } catch (error) {
     if (isDuplicateBlock(error)) {
@@ -90,8 +89,8 @@ export async function updateBlock(
   },
 ): Promise<BlockRow> {
   const values: Record<string, unknown> = {};
-  if (changes.name !== undefined) values["name"] = changes.name.trim();
-  if (changes.street !== undefined) values["street"] = changes.street.trim();
+  if (changes.name !== undefined) values["name"] = requireText(changes.name, "/name");
+  if (changes.street !== undefined) values["street"] = requireText(changes.street, "/street");
   if (changes.postalCode !== undefined) values["postalCode"] = changes.postalCode;
 
   try {

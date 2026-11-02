@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -110,6 +111,8 @@ export const blocks = pgTable(
   (table) => [
     unique("blocks_name_street_unique").on(table.name, table.street),
     index("blocks_street_idx").on(table.street),
+    check("blocks_name_not_blank", sql`btrim(${table.name}) <> ''`),
+    check("blocks_street_not_blank", sql`btrim(${table.street}) <> ''`),
   ],
 );
 
@@ -247,6 +250,13 @@ export const households = pgTable(
   (table) => [
     unique("households_block_unit_unique").on(table.blockId, table.unitNumber),
     index("households_block_idx").on(table.blockId),
+    /*
+     * The last guard behind the contract and the services (#119): a blank
+     * unit or note fails the response contract, so one stored row turned
+     * every read that included it into a 500. Fails with 23514 on a database
+     * that already holds one; `npm run db:check-blank` lists them.
+     */
+    check("households_unit_number_not_blank", sql`btrim(${table.unitNumber}) <> ''`),
   ],
 );
 
@@ -394,6 +404,7 @@ export const followUps = pgTable(
     index("follow_ups_done_visit_idx")
       .on(table.doneVisitId)
       .where(sql`${table.doneVisitId} is not null`),
+    check("follow_ups_note_not_blank", sql`btrim(${table.note}) <> ''`),
   ],
 );
 

@@ -9,6 +9,7 @@ import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/li
 import { markDoneByVisit, notesMarkedDoneBy } from "@/server/follow-ups/marked-by-visit";
 import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
+import { requireText } from "@/server/http/text";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
 import { getVisit, upsertHousehold } from "@/server/visits/service";
@@ -110,10 +111,16 @@ async function resolveSession(
 
 async function applyItem(
   db: Database,
-  item: SyncItem,
+  sent: SyncItem,
   caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome> {
+  /*
+   * First, so a blank unit is this item's refusal alone and nothing is read
+   * for it. The contract refuses the whole batch before this; the guard is
+   * for a caller that skips the contract. From here on the unit is as stored.
+   */
+  const item = { ...sent, unitNumber: requireText(sent.unitNumber, "/unitNumber") };
   const memberId = caller.id;
   const incomingUpdatedAt = new Date(item.updatedAt);
   const incomingCreatedAt = new Date(item.clientCreatedAt);
@@ -157,7 +164,7 @@ async function applyItem(
      */
     if (
       item.blockId !== stored.blockId ||
-      item.unitNumber.trim() !== stored.unitNumber ||
+      item.unitNumber !== stored.unitNumber ||
       (item.sessionId !== undefined && item.sessionId !== stored.sessionId)
     ) {
       throw new ConflictError(
