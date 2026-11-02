@@ -3,7 +3,7 @@ import { zDetachSessionBlockPath } from "@/generated/zod.gen";
 import { z } from "zod";
 import { withContract } from "@/server/http/contract";
 import { currentUser } from "@/server/auth/session";
-import { detachBlock, getSession } from "@/server/sessions/service";
+import { assertBlocksByHand, detachBlock, getSession } from "@/server/sessions/service";
 
 export const DELETE = withContract(
   {
@@ -14,7 +14,7 @@ export const DELETE = withContract(
   async ({ path }) => {
     await currentUser("admin");
     const db = getDatabase();
-    await getSession(db, path.id);
+    assertBlocksByHand(await getSession(db, path.id));
     await detachBlock(db, path.id, path.blockId);
     return { status: 204 };
   },

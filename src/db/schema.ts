@@ -29,6 +29,10 @@ export const interestLevelEnum = pgEnum("interest_level", ["low", "medium", "hig
 
 export const sessionStatusEnum = pgEnum("session_status", ["draft", "active", "ended"]);
 
+export const sessionKindEnum = pgEnum("session_kind", ["regular", "follow_up"]);
+
+export const followUpStatusEnum = pgEnum("follow_up_status", ["suggested", "listed"]);
+
 /* ------------------------------------------------------------------ users */
 
 export const users = pgTable("users", {
@@ -116,6 +120,8 @@ export const outingSessions = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     title: text("title").notNull(),
+    // Fixed at creation: switching mid-session would rewrite who may record where.
+    kind: sessionKindEnum("kind").notNull().default("regular"),
     status: sessionStatusEnum("status").notNull().default("draft"),
     startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }),
     endedAt: timestamp("ended_at", { withTimezone: true, mode: "date" }),
@@ -244,6 +250,30 @@ export const households = pgTable(
   ],
 );
 
+/*
+ * The households an admin picked for a follow-up session, at least one from
+ * creation on. The session's blocks are exactly these households' blocks,
+ * kept in step by the service, so a member never opens an empty block. Picks
+ * change only when an admin adds or removes one, so an ended session keeps a
+ * truthful record of what it set out to do.
+ */
+export const sessionHouseholds = pgTable(
+  "session_households",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => outingSessions.id, { onDelete: "cascade" }),
+    householdId: uuid("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    addedAt: timestamp("added_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.householdId] }),
+    index("session_households_household_idx").on(table.householdId),
+  ],
+);
+
 /* ----------------------------------------------------------------- visits */
 
 /*
@@ -313,6 +343,11 @@ export const visitTeammates = pgTable(
 /*
  * Attached to the household, not the session, so a note written in January is
  * still there when someone knocks on that door in August.
+ *
+ * A `listed` note is on the follow-up list, which only an admin decides; a
+ * `suggested` one is a member asking for a return visit. Removal is soft: the
+ * row stays with who removed it and why, so a declined suggestion can be
+ * explained to its author and an admin can audit what left the list.
  */
 export const followUps = pgTable(
   "follow_ups",
@@ -325,10 +360,23 @@ export const followUps = pgTable(
     authorId: uuid("author_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
+    // The default backfills notes written before suggestions existed as listed.
+    status: followUpStatusEnum("status").notNull().default("listed"),
     note: text("note").notNull(),
     dueDate: timestamp("due_date", { withTimezone: true, mode: "date" }),
     doneAt: timestamp("done_at", { withTimezone: true, mode: "date" }),
     doneBy: uuid("done_by").references(() => users.id, { onDelete: "set null" }),
+    /*
+     * The visit whose recording marked it done, in a follow-up session; null
+     * when it was marked done by hand. Read back, so a replayed visit names
+     * the same notes, and an undo reopens exactly those. Reopening clears it.
+     */
+    doneVisitId: uuid("done_visit_id").references(() => visits.id, { onDelete: "set null" }),
+    listedAt: timestamp("listed_at", { withTimezone: true, mode: "date" }),
+    listedBy: uuid("listed_by").references(() => users.id, { onDelete: "set null" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true, mode: "date" }),
+    deletedBy: uuid("deleted_by").references(() => users.id, { onDelete: "set null" }),
+    deleteReason: text("delete_reason"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
@@ -336,6 +384,16 @@ export const followUps = pgTable(
     index("follow_ups_household_idx").on(table.householdId),
     // Outstanding notes are the actionable list; this is the query behind it.
     index("follow_ups_outstanding_idx").on(table.doneAt, table.dueDate),
+    /*
+     * One pending suggestion per household, held here so two members
+     * suggesting the same door at once cannot both succeed.
+     */
+    uniqueIndex("follow_ups_one_open_suggestion_idx")
+      .on(table.householdId)
+      .where(sql`${table.status} = 'suggested' and ${table.deletedAt} is null`),
+    index("follow_ups_done_visit_idx")
+      .on(table.doneVisitId)
+      .where(sql`${table.doneVisitId} is not null`),
   ],
 );
 
@@ -359,3 +417,5 @@ export type Role = (typeof roleEnum.enumValues)[number];
 export type Religion = (typeof religionEnum.enumValues)[number];
 export type InterestLevel = (typeof interestLevelEnum.enumValues)[number];
 export type SessionStatus = (typeof sessionStatusEnum.enumValues)[number];
+export type SessionKind = (typeof sessionKindEnum.enumValues)[number];
+export type FollowUpStatus = (typeof followUpStatusEnum.enumValues)[number];

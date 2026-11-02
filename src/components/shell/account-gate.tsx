@@ -1,11 +1,11 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
 import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
 import { accountStore } from "@/lib/session/account-state";
 import { useRole } from "@/lib/hooks/use-role";
 import { loadCurrentUser } from "@/lib/session/users";
+import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*
@@ -21,7 +21,7 @@ export function AccountGate({ children }: { children: ReactNode }) {
     accountStore.getServerSnapshot,
   );
   const { isSignedIn } = useRole();
-  const pathname = usePathname();
+  const pathname = useRoutePathname();
   const checked = useRef(false);
 
   /* Once per document load: server-rendered and not-found pages make no API

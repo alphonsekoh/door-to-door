@@ -5,9 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { AdminTeams } from "@/components/admin/admin-teams";
 import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import { PageHeader } from "@/components/ui/page-header";
+import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
+import { SessionHouseholds } from "@/components/sessions/session-households";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { startBlocker } from "@/lib/follow-ups/session-households";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -30,6 +33,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   /* Bumped by the poll so the team panel re-reads on the same beat. */
   const [tick, setTick] = useState(0);
+  /* A follow-up session's households on members' list, once read. */
+  const [onList, setOnList] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -122,11 +127,21 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
 
   const { session, blocks } = state;
   const recorded = blocks.reduce((sum, entry) => sum + entry.visitCount, 0);
+  /* A follow-up session's blocks follow its households: read-only here. */
+  const byHand = session.kind === "regular";
 
   return (
     <div className="space-y-5">
       {/* The session's own name is the heading, not the word "Session". */}
-      <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
+      <div>
+        <PageHeader title={session.title} subtitle={statusLabel(session.status)} back={BACK} />
+        {session.kind === "follow_up" ? (
+          <p className="-mt-3 flex flex-wrap items-center gap-2 text-caption text-foreground-muted">
+            <KindBadge kind={session.kind} />
+            Members can record only households on its list.
+          </p>
+        ) : null}
+      </div>
 
       {session.status === "ended" ? (
         <div className="rounded-xl border border-border bg-surface-muted p-4">
@@ -154,6 +169,9 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
           key={spec.action}
           sessionId={session.id}
           spec={spec}
+          blocked={
+            spec.action === "start" && session.kind === "follow_up" ? startBlocker(onList) : null
+          }
           onDone={() => void load()}
         />
       ))}
@@ -161,17 +179,24 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       <div>
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">
           <h2 className="text-title font-semibold">Blocks</h2>
-          <button
-            type="button"
-            onClick={() => {
-              setNotice(null);
-              setAttaching(true);
-            }}
-            className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
-          >
-            Add blocks
-          </button>
+          {byHand ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNotice(null);
+                setAttaching(true);
+              }}
+              className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+            >
+              Add blocks
+            </button>
+          ) : null}
         </div>
+        {byHand ? null : (
+          <p className="mb-2 text-caption text-foreground-muted">
+            Blocks follow the households in this session.
+          </p>
+        )}
 
         {notice === null ? null : (
           <p role="status" className="mb-2 text-body text-foreground-muted">
@@ -216,21 +241,33 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
                     ) : null}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDetaching(entry);
-                    }}
-                    className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
-                  >
-                    Remove
-                  </button>
+                  {byHand ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDetaching(entry);
+                      }}
+                      className="min-h-11 shrink-0 btn-secondary rounded-lg px-3 text-body font-medium"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
+
+      {session.kind === "follow_up" ? (
+        <SessionHouseholds
+          session={session}
+          blocks={blocks}
+          tick={tick}
+          onChanged={load}
+          onCounted={setOnList}
+        />
+      ) : null}
 
       <AdminTeams sessionId={session.id} status={session.status} tick={tick} />
 

@@ -54,7 +54,8 @@ const item = (overrides: Partial<SyncItem> = {}): SyncItem => ({
   updatedAt: T1,
   ...overrides,
 });
-const flush = (items: SyncItem[], memberId: string) => syncVisits(db, items, memberId, clock);
+const flush = (items: SyncItem[], memberId: string) =>
+  syncVisits(db, items, { id: memberId, role: "member" }, clock);
 
 const row = async () =>
   (

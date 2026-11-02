@@ -1,7 +1,15 @@
 import type { Locator, Page } from "@playwright/test";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK } from "./accounts";
-import { ensureActiveSession, expect, test, untilLive } from "./fixtures";
+import {
+  endActiveSession,
+  ensureActiveSession,
+  expect,
+  listSeededHousehold,
+  startFollowUpSession,
+  test,
+  untilLive,
+} from "./fixtures";
 
 /*
  * Every screen at the largest text the app draws: 32px, twice the base
@@ -340,6 +348,9 @@ test.beforeEach(async ({ adminApi }) => {
 /* A wide unit number, and a note long enough to be cut to its line. */
 const WIDE_UNIT = "#12-1234A";
 
+/* #05-125 in the seed: its one note is resolved, so a member may suggest it. */
+const RESOLVED_HOUSEHOLD = "00000000-0000-4000-8003-000000000002";
+
 test("a member's screens fit at the largest text", async ({ memberPage: page, adminApi }) => {
   const running = await ensureActiveSession(adminApi);
   const recorded = await page.request.post("/api/visits", {
@@ -391,9 +402,20 @@ test("a member's screens fit at the largest text", async ({ memberPage: page, ad
   await expectFits(page, "Follow-ups", door);
   await door.click();
   await page.waitForURL(/\/households\//);
-  await expectFits(page, "a household", page.getByRole("button", { name: "Add follow-up" }));
-  await page.getByRole("button", { name: "Add follow-up" }).click();
-  await expectFits(page, "adding a follow-up", page.getByRole("dialog"));
+  // On the list already, so the header says so beside the unit.
+  await expectFits(
+    page,
+    "a household on the list",
+    page.getByText("On the follow-up list").first(),
+  );
+
+  // Nothing open here, so the header offers a suggestion.
+  await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+  await atCap(page);
+  const suggest = page.getByRole("button", { name: "Suggest a return visit" }).first();
+  await expectFits(page, "a household", suggest);
+  await suggest.click();
+  await expectFits(page, "suggesting a return visit", page.getByRole("dialog"));
   await page.keyboard.press("Escape");
 
   await page.goto("/account");
@@ -444,6 +466,32 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
     "Needs a return visit",
     page.locator('main a[href^="/households/"]').first().or(page.getByText("Nothing is waiting.")),
   );
+
+  /* Its tabs carry counts, which must wrap rather than overlap (D-111-25). */
+  await page.goto("/admin/follow-ups?tab=list");
+  await atCap(page);
+  await expectFits(page, "the follow-up list", page.getByRole("button", { name: /^To review/ }));
+  await expectFits(
+    page,
+    "a note on the follow-up list",
+    page.getByRole("button", { name: "Remove from list" }).first(),
+  );
+
+  /* The kind chooser's cards hold a long hint each; a follow-up session
+     then lists the households to pick, with Create draft below them. */
+  await listSeededHousehold(adminApi);
+  await page.goto("/admin/sessions");
+  await atCap(page);
+  await page.getByRole("button", { name: "New session" }).click();
+  const followUpKind = page.getByRole("radio", { name: /Follow-up/ });
+  await expectFits(page, "choosing a session's kind", followUpKind);
+  await followUpKind.click();
+  await expectFits(
+    page,
+    "picking households",
+    page.getByRole("group", { name: "Households to visit" }).getByRole("checkbox").first(),
+  );
+  await expectTappable(page.getByRole("button", { name: "Create draft" }), "Create draft");
 
   await page.goto("/admin/team");
   await atCap(page);
@@ -716,5 +764,67 @@ test.describe("without signal", () => {
     const continueOn = page.getByRole("button", { name: "Continue", exact: true });
     await expectFits(page, "recording offline, back online", continueOn);
     await expectWhole(page.getByText("Back online."), "the back-online line");
+  });
+});
+
+/*
+ * A follow-up session's own screens: the member's list of households, the
+ * recording form with its chips and its refusal, and the admin's panel. Its
+ * session is ended afterwards, so no other spec records into it.
+ */
+test.describe("a follow-up session", () => {
+  test.beforeEach(async ({ adminApi }) => {
+    await startFollowUpSession(adminApi, "Follow-up visits, Saturday");
+  });
+
+  test.afterEach(async ({ adminApi }) => {
+    await endActiveSession(adminApi);
+  });
+
+  test("its screens fit at the largest text", async ({ memberPage, adminPage, adminApi }) => {
+    await memberPage.goto("/");
+    await atCap(memberPage);
+    const row = memberPage.locator('main a[href*="?unit="]').first();
+    await expectFits(memberPage, "a follow-up session", row);
+    await expectFits(
+      memberPage,
+      "marking a household done",
+      memberPage.getByRole("button", { name: "Mark done" }).first(),
+    );
+
+    await row.click();
+    await memberPage.waitForURL(/\/blocks\/.*\?unit=/);
+    await atCap(memberPage);
+    await untilLive(memberPage);
+    const chip = memberPage
+      .getByRole("list", { name: "On the list in this block" })
+      .getByRole("button")
+      .first();
+    await expectFits(memberPage, "the follow-up list's units", chip);
+    await memberPage.getByLabel("Unit number").fill("#09-999");
+    await expectFits(
+      memberPage,
+      "a unit off the follow-up list",
+      memberPage.getByLabel("Unit number"),
+    );
+    await expectTappable(memberPage.getByRole("button", { name: "Save", exact: true }), "Save");
+
+    const { session } = (await (await adminApi.get("/api/sessions/active")).json()) as {
+      session: { id: string };
+    };
+    await adminPage.goto(`/admin/sessions/${session.id}`);
+    await atCap(adminPage);
+    await expectFits(
+      adminPage,
+      "a follow-up session's households",
+      adminPage.getByRole("heading", { name: /^Households to revisit/ }),
+    );
+    /* Its blocks follow its households: nothing to add or take away by hand. */
+    await expect(adminPage.getByRole("button", { name: "Add blocks" })).toHaveCount(0);
+    await adminPage.getByRole("button", { name: "Add households" }).click();
+    const adding = adminPage.getByRole("dialog", { name: "Add households" });
+    await expect(adding.getByRole("button", { name: /^Add \d+ household/ })).toBeVisible();
+    await expectFits(adminPage, "adding households", adding);
+    await adminPage.keyboard.press("Escape");
   });
 });

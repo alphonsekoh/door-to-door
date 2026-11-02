@@ -1,8 +1,9 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
-import { blocks, followUps, households, users, visits } from "@/db/schema";
+import { blocks, followUps, households, users, visits, type FollowUpStatus } from "@/db/schema";
 import { firstOrThrow } from "@/server/db-utils";
+import { liveFollowUp } from "@/server/follow-ups/list-rule";
 import { NotFoundError } from "@/server/http/errors";
 import { attachTeams } from "@/server/teams/access";
 import type { HouseholdRow, VisitRow } from "@/server/visits/service";
@@ -13,9 +14,11 @@ import { visitColumns } from "@/server/visits/service";
 export type FollowUpRow = {
   id: string;
   householdId: string;
+  blockId: string;
   blockName: string;
   unitNumber: string;
   visitId: string | null;
+  status: FollowUpStatus;
   note: string;
   dueDate: Date | null;
   doneAt: Date | null;
@@ -26,6 +29,19 @@ export type FollowUpRow = {
   doneById: string | null;
   doneByName: string | null;
   doneByImage: string | null;
+  listedAt: Date | null;
+  listedById: string | null;
+  listedByName: string | null;
+  listedByImage: string | null;
+  deletedAt: Date | null;
+  deletedById: string | null;
+  deletedByName: string | null;
+  deletedByImage: string | null;
+  deleteReason: string | null;
+  waitingSuggestionId: string | null;
+  waitingById: string | null;
+  waitingByName: string | null;
+  waitingByImage: string | null;
 };
 
 export type HouseholdSummaryRow = {
@@ -100,10 +116,18 @@ export async function listHouseholds(
 
   const history = await attachTeams(db, rawHistory);
 
+  /* Only what is owed: a suggestion is not a promise until an admin lists it. */
   const outstanding = await db
     .select({ householdId: followUps.householdId, total: sql<number>`count(*)::int` })
     .from(followUps)
-    .where(and(inArray(followUps.householdId, ids), isNull(followUps.doneAt)))
+    .where(
+      and(
+        inArray(followUps.householdId, ids),
+        liveFollowUp,
+        eq(followUps.status, "listed"),
+        isNull(followUps.doneAt),
+      ),
+    )
     .groupBy(followUps.householdId);
 
   const outstandingByHousehold = new Map(outstanding.map((row) => [row.householdId, row.total]));
@@ -171,23 +195,36 @@ export async function getHouseholdHistory(
   };
 }
 
-/* Aliased so author and resolver can both be joined from the users table. */
+/* Aliased so everyone a note names can be joined from the users table. */
 const author = alias(users, "author");
 const resolver = alias(users, "resolver");
+const lister = alias(users, "lister");
+const remover = alias(users, "remover");
+/* A suggestion waiting at the same door, and who made it. */
+const pending = alias(followUps, "pending");
+const suggester = alias(users, "suggester");
 
 /*
  * The one SELECT every follow-up read goes through, so the list, a single
  * note and a household's history can never disagree on what a note carries.
- * Callers add their own filter and order.
+ * Callers add their own filter and order, including whether removed notes
+ * count (`liveFollowUp`).
+ *
+ * A listed, live note also carries the suggestion waiting at its household,
+ * if any, since reopening it would leave that suggestion beside an owed note.
+ * The partial unique index allows at most one, so the join never doubles a
+ * row; a suggestion or a removed note joins none.
  */
 export function selectFollowUps(db: Database) {
   return db
     .select({
       id: followUps.id,
       householdId: followUps.householdId,
+      blockId: households.blockId,
       blockName: blocks.name,
       unitNumber: households.unitNumber,
       visitId: followUps.visitId,
+      status: followUps.status,
       note: followUps.note,
       dueDate: followUps.dueDate,
       doneAt: followUps.doneAt,
@@ -198,17 +235,44 @@ export function selectFollowUps(db: Database) {
       doneById: resolver.id,
       doneByName: resolver.name,
       doneByImage: resolver.image,
+      listedAt: followUps.listedAt,
+      listedById: lister.id,
+      listedByName: lister.name,
+      listedByImage: lister.image,
+      deletedAt: followUps.deletedAt,
+      deletedById: remover.id,
+      deletedByName: remover.name,
+      deletedByImage: remover.image,
+      deleteReason: followUps.deleteReason,
+      waitingSuggestionId: pending.id,
+      waitingById: suggester.id,
+      waitingByName: suggester.name,
+      waitingByImage: suggester.image,
     })
     .from(followUps)
     .innerJoin(households, eq(households.id, followUps.householdId))
     .innerJoin(blocks, eq(blocks.id, households.blockId))
     .innerJoin(author, eq(author.id, followUps.authorId))
-    .leftJoin(resolver, eq(resolver.id, followUps.doneBy));
+    .leftJoin(resolver, eq(resolver.id, followUps.doneBy))
+    .leftJoin(lister, eq(lister.id, followUps.listedBy))
+    .leftJoin(remover, eq(remover.id, followUps.deletedBy))
+    .leftJoin(
+      pending,
+      and(
+        eq(followUps.status, "listed"),
+        isNull(followUps.deletedAt),
+        eq(pending.householdId, followUps.householdId),
+        eq(pending.status, "suggested"),
+        isNull(pending.deletedAt),
+      ),
+    )
+    .leftJoin(suggester, eq(suggester.id, pending.authorId));
 }
 
+/* Listed notes and pending suggestions alike, so the next member sees both. */
 export async function listFollowUpsFor(db: Database, householdId: string): Promise<FollowUpRow[]> {
   return selectFollowUps(db)
-    .where(eq(followUps.householdId, householdId))
+    .where(and(eq(followUps.householdId, householdId), liveFollowUp))
     .orderBy(asc(followUps.createdAt));
 }
 
@@ -240,9 +304,10 @@ const AT_LEAST: Record<"medium" | "high", ("medium" | "high")[]> = {
  * matters. Comparing against max(created_at) rather than picking any matching
  * visit is what makes that true.
  *
- * A household with an outstanding follow-up is excluded - it is already
- * someone's job, and leaving it here would make the list something to scroll
- * past rather than work through.
+ * A household with an open follow-up is excluded - an unresolved listed note
+ * is already someone's job, and a pending suggestion is already in the review
+ * queue. Leaving either here would make the list something to scroll past
+ * rather than work through. Removed notes do not count.
  */
 export async function listHouseholdsNeedingAttention(
   db: Database,
@@ -256,14 +321,16 @@ export async function listHouseholdsNeedingAttention(
   const latest = sql`${visits.createdAt} = (
     select max(v2.created_at) from ${visits} v2 where v2.household_id = ${visits.householdId}
   )`;
-  const noOutstanding = sql`not exists (
+  const noOpenNote = sql`not exists (
     select 1 from ${followUps} f
-    where f.household_id = ${visits.householdId} and f.done_at is null
+    where f.household_id = ${visits.householdId}
+      and f.deleted_at is null
+      and (f.status = 'suggested' or f.done_at is null)
   )`;
 
   const conditions = [
     latest,
-    noOutstanding,
+    noOpenNote,
     inArray(visits.interestLevel, AT_LEAST[options.minimumInterest]),
     ...(options.blockId === undefined ? [] : [eq(households.blockId, options.blockId)]),
   ];

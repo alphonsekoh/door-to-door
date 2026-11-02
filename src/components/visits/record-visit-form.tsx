@@ -1,22 +1,55 @@
 "use client";
 
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
-import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
+import { FollowUpSheet, SUGGESTION_SENT } from "@/components/follow-ups/follow-up-sheet";
+import { PromoteButton } from "@/components/follow-ups/promote-button";
+import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
+  ActiveSession,
   HouseholdHistory,
   HouseholdSummary,
   InterestLevel,
+  RecordedVisit,
   Religion,
-  Visit,
+  RevisitEntry,
 } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import {
+  UNDO_READY,
+  type UndoState,
+  markedDoneLine,
+  owedAt,
+  undoMarkedDone,
+} from "@/lib/follow-ups/marked-done";
+import {
+  type RevisitState,
+  type UnitGate,
+  listedUnitsIn,
+  nothingListedHere,
+  unitGate,
+} from "@/lib/follow-ups/revisits";
+import {
+  ADD_TO_LIST,
+  type HouseholdAction,
+  SUGGEST,
+  householdAction,
+} from "@/lib/follow-ups/rights";
+import { useOnline } from "@/lib/hooks/use-online";
+import { useRole } from "@/lib/hooks/use-role";
+import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
-import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
+import {
+  OUTING_ASK_TIMEOUT_MS,
+  type OutingAnswer,
+  askOutingWithin,
+  within,
+} from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { normaliseUnitNumber, nextUnitNumber } from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -67,12 +100,51 @@ type Saved = {
   visitId: string;
   householdId: string | null;
   unitNumber: string;
-  noted: boolean;
+  /* What a note added after the save said, once one was. */
+  noted: string | null;
+  /* What the household offered before the form was cleared for the next
+     door, so nothing is offered after the save that the server refuses. */
+  action: HouseholdAction;
+  /* In a follow-up session the server marks the household's follow-ups
+     done with the visit: how many the list said it owed when saved, which
+     the server says it marked (null until it has the visit), and Undo. */
+  owed: number;
+  marked: string[] | null;
+  undo: UndoState;
+};
+
+/*
+ * A follow-up session's rule for this form: a member records only at units
+ * on its list. `revisits` is undefined while the list is first read, and
+ * null when it could not be, which leaves the server to hold an unlisted
+ * record until an admin adds it. `recheck` reads it again: a refusal is never
+ * made against a list that may be stale, since the member was told to ask an
+ * admin to add the unit, and the admin may just have.
+ */
+export type FollowUpRule = {
+  revisits: RevisitEntry[] | null | undefined;
+  recheck?: () => Promise<RevisitEntry[] | null>;
+};
+
+export const OFF_THE_LIST = "Not saved. This unit is not on this session's list.";
+
+const CHIP_STATE: Record<RevisitState, string> = {
+  to_visit: "",
+  visited: " · Visited",
+  done: " · Done",
 };
 
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
+  /* Null in a door-to-door session, where every unit may be recorded. */
+  followUp?: FollowUpRule | null;
+  /* The running session, for what the history panel lets the member change. */
+  active?: ActiveSession | null;
+  initialUnit?: string;
+  /* False while the session's kind is unknown: Save then promises, and
+     guesses, no next unit. A follow-up session never guesses one. */
+  guessNext?: boolean;
   /* The running session, so a queued record names the one it was saved in. */
   sessionId: string | null;
   /* Asks the server again which session is running, for a save made before
@@ -104,16 +176,24 @@ const NO_OUTING = "No session is running, so this visit is not saved yet.";
 export function RecordVisitForm({
   blockId,
   known,
+  followUp = null,
+  active = null,
+  initialUnit = "",
+  guessNext = true,
   sessionId,
   loadSession,
   onRecorded,
   onDirtyChange,
 }: Props) {
   const sync = useSyncQueue();
+  const { userId, isAdmin } = useRole();
+  const online = useOnline();
+  const shell = useShellState();
   const formId = useId();
-  const [unitNumber, setUnitNumber] = useState("");
-  /* The next unit filled in after a save is the app's guess, not input. */
-  const [suggested, setSuggested] = useState("");
+  const [unitNumber, setUnitNumber] = useState(initialUnit);
+  /* The next unit filled in after a save, or the one picked from the list,
+     is the app's guess, not input. */
+  const [suggested, setSuggested] = useState(initialUnit);
   const [interestLevel, setInterestLevel] = useState<InterestLevel | null>(null);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
@@ -124,25 +204,41 @@ export function RecordVisitForm({
   /* The summary beside Save belongs to a Save that was refused, not to a
      field left on blur. */
   const [refused, setRefused] = useState(false);
+  /* That Save was refused because the server's list, read again just then,
+     does not have the unit: held apart from the list on screen, which a
+     slower read may not have updated yet. */
+  const [offList, setOffList] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [noting, setNoting] = useState(false);
+  /* Suggesting the unit just refused, from the notice that refused it. */
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestSent, setSuggestSent] = useState(false);
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
-  const top = useRef<HTMLDivElement>(null);
+  const savedLine = useRef<HTMLDivElement>(null);
+  /* Synchronous, so two taps in one frame save one visit, even while the
+     first waits on the follow-up list (D-74-44). */
+  const sending = useRef(false);
+  /* The save whose Undo is on its way: a second tap on it sends nothing,
+     but the next save's Undo is not held up by it. */
+  const undoing = useRef<string | null>(null);
   const savedId = saved?.visitId ?? null;
 
   /*
    * At large text the member scrolls down to the interest level before
    * Save, and the Saved line and the next unit, already filled in, were left
    * above the screen: a second tap then recorded that unit unseen. Each save
-   * brings them back into view, clear of the pinned chrome, before it is
-   * painted. Where they are already in view, nothing moves.
+   * brings the line back into view, clear of the pinned chrome, before it is
+   * painted, with the unit field right under it. Where it is already in
+   * view, nothing moves. Only the line: with the block's chips, the top of
+   * the form can be taller than the screen, and "nearest" then aligns its
+   * bottom, which left the line and its Undo above the screen.
    */
   useLayoutEffect(() => {
-    if (savedId !== null) top.current?.scrollIntoView({ block: "nearest" });
+    if (savedId !== null) savedLine.current?.scrollIntoView({ block: "nearest" });
   }, [savedId]);
 
   /*
@@ -198,6 +294,7 @@ export function RecordVisitForm({
     setDetails(false);
     setErrors({});
     setRefused(false);
+    setOffList(false);
     setHistory(null);
   }, []);
 
@@ -208,7 +305,28 @@ export function RecordVisitForm({
     });
   }
 
-  const blocked = refused ? blockedMessage(errors) : null;
+  const next = followUp === null && guessNext;
+  const gate = followUp === null ? "ok" : unitGate(unitNumber, blockId, followUp.revisits, isAdmin);
+  const chips = followUp?.revisits == null ? [] : listedUnitsIn(followUp.revisits, blockId);
+  const nothingHere = followUp !== null && nothingListedHere(followUp.revisits, blockId, isAdmin);
+  const typed = normaliseUnitNumber(unitNumber);
+  /* The typed unit's own history: one still showing for the unit typed
+     before must not decide what this one offers. */
+  const here = history !== null && history.household.id === matchId ? history : null;
+  /* What the refusal says can be done: a suggestion only where the server
+     would take one, and never "ask an admin" beside it. */
+  const unlistedAction =
+    gate !== "unlisted"
+      ? null
+      : here === null
+        ? matchId === null
+          ? "ask"
+          : null
+        : householdAction(here.followUps, { userId, isAdmin }).kind;
+  const canSuggestHere = unlistedAction === "suggest";
+  const blocked = refused
+    ? (blockedMessage(errors) ?? (offList && gate !== "ok" ? OFF_THE_LIST : null))
+    : null;
 
   const dirty =
     unitNumber.trim() !== suggested ||
@@ -226,7 +344,20 @@ export function RecordVisitForm({
     [onDirtyChange],
   );
 
+  /*
+   * The list as the server holds it now, for a unit this screen would
+   * refuse or has not been able to judge yet. Within the save's limit: in
+   * weak signal the list on screen decides, or the server does once a
+   * record is queued.
+   */
+  async function judgeAgain(rule: FollowUpRule): Promise<UnitGate> {
+    const fresh =
+      rule.recheck === undefined ? null : await within(rule.recheck(), null, OUTING_ASK_TIMEOUT_MS);
+    return unitGate(unitNumber, blockId, fresh ?? rule.revisits ?? null, isAdmin);
+  }
+
   async function save(): Promise<void> {
+    if (sending.current) return;
     const found = validateVisit(unitNumber, interestLevel);
     setErrors(found);
     if (Object.keys(found).length > 0 || interestLevel === null) {
@@ -234,10 +365,32 @@ export function RecordVisitForm({
       return;
     }
 
+    sending.current = true;
     setFailure(null);
-    setSaved(null);
     setSaving(true);
+    const judged =
+      followUp !== null && (gate === "unlisted" || gate === "checking")
+        ? await judgeAgain(followUp)
+        : gate;
+    if (judged === "unlisted") {
+      setRefused(true);
+      setOffList(true);
+      setSaving(false);
+      sending.current = false;
+      return;
+    }
+
+    setSaved(null);
+    setSuggestSent(false);
     const unit = normaliseUnitNumber(unitNumber);
+    const action = householdAction(
+      history?.household.unitNumber === unit ? history.followUps : [],
+      { userId, isAdmin },
+    );
+    const owed = followUp === null ? 0 : owedAt(followUp.revisits, blockId, unit);
+    /* In a follow-up session the next door is the next household on the
+       list, not the next number along, so nothing is guessed. */
+    const nextUnit = next ? nextUnitNumber(unitNumber) : null;
     const fields: VisitFields = {
       blockId,
       unitNumber: unit,
@@ -266,13 +419,24 @@ export function RecordVisitForm({
       if (outing.kind !== "running") {
         setFailure(outing.kind === "none" ? NO_OUTING : OUTING_UNKNOWN);
         setSaving(false);
+        sending.current = false;
         return;
       }
       try {
         const record = await sync.enqueue({ ...fields, sessionId: outing.id });
-        reset(nextUnitNumber(unitNumber));
-        setSaved({ visitId: record.id, householdId: null, unitNumber: unit, noted: false });
+        reset(nextUnit);
+        setSaved({
+          visitId: record.id,
+          householdId: null,
+          unitNumber: unit,
+          noted: null,
+          action,
+          owed,
+          marked: null,
+          undo: UNDO_READY,
+        });
         setSaving(false);
+        sending.current = false;
         return;
       } catch {
         // Falls through to the direct save.
@@ -283,37 +447,89 @@ export function RecordVisitForm({
       // Built as a queued one is, so both paths send the same values. The
       // id is generated here: it is what makes a retry idempotent.
       const visitRequest = buildVisitRequest(fields, Date.now());
-      const visit = await apiFetch<Visit>("/visits", {
+      const visit = await apiFetch<RecordedVisit>("/visits", {
         method: "POST",
         body: JSON.stringify(visitRequest),
       });
       // Straight on to the next door, with the unit already filled in.
-      reset(nextUnitNumber(unitNumber));
+      reset(nextUnit);
       setSaved({
         visitId: visit.id,
         householdId: visit.householdId,
         unitNumber: unit,
-        noted: false,
+        noted: null,
+        action,
+        owed,
+        marked: visit.followUpsMarkedDone,
+        undo: UNDO_READY,
       });
       onRecorded();
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not save this visit.");
+      setFailure(
+        error instanceof ApiRequestError && error.code === "not_on_follow_up_list"
+          ? OFF_THE_LIST
+          : error instanceof Error
+            ? error.message
+            : "Could not save this visit.",
+      );
     } finally {
       setSaving(false);
+      sending.current = false;
     }
+  }
+
+  /*
+   * Reopens what this save marked done, and only that: the visit stays as
+   * recorded. Its answer is dropped once the member has moved on to another
+   * unit or saved again, and the list is read again whatever came of it.
+   */
+  async function undoMarked(visitId: string, ids: string[], before: UndoState): Promise<void> {
+    if (undoing.current === visitId) return;
+    undoing.current = visitId;
+    const onThisSave = (undo: UndoState) => (current: Saved | null) =>
+      current?.visitId === visitId ? { ...current, undo } : current;
+    setSaved(onThisSave({ kind: "undoing" }));
+    const outcome = await undoMarkedDone(
+      visitId,
+      ids,
+      before.kind === "failed" ? before.reopened : 0,
+    );
+    if (undoing.current === visitId) undoing.current = null;
+    setSaved(onThisSave(outcome));
+    void followUp?.recheck?.();
+    onRecorded();
   }
 
   /* A queued save's household comes from the server's row once sent. */
   const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
   const householdId = saved?.householdId ?? queued?.serverVisit?.householdId ?? null;
+  const marked =
+    saved?.marked ??
+    (queued?.serverVisit == null ? null : (queued.serverVisit.followUpsMarkedDone ?? []));
+  const markedLine =
+    saved === null || followUp === null ? null : markedDoneLine(saved.owed, marked, saved.undo);
+  /* Never on the offline shell: every follow-up change needs signal
+     (D-35-9), so it waits for the session list's Reopen once there is some. */
+  const undoIds = shell.active ? null : (markedLine?.undo ?? null);
   const status =
     saved === null ? null : householdId !== null ? (
       <>
-        Saved <UnitNumber value={saved.unitNumber} />.{saved.noted ? " Follow-up added." : ""}
+        Saved <UnitNumber value={saved.unitNumber} />.
+        {saved.noted === null ? "" : ` ${saved.noted}`}
       </>
     ) : (
       queuedStatus(saved.unitNumber, queued, sync.inFlight.has(saved.visitId))
     );
+  /* Only what the household offered: a door already listed, or waiting for
+     review, gets nothing a second note would be refused for. A member in a
+     follow-up session records only listed doors, which have their follow-up. */
+  const offer = saved?.action.kind;
+  const noteLabel =
+    offer === "add_to_list"
+      ? ADD_TO_LIST
+      : offer === "suggest" && followUp === null
+        ? SUGGEST
+        : null;
 
   return (
     <form
@@ -325,63 +541,198 @@ export function RecordVisitForm({
       noValidate
       className="space-y-4"
     >
-      <div ref={top} className="scroll-clear-chrome space-y-4">
-        {status === null ? null : (
-          <div
-            role="status"
-            className="flex min-h-14 flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
-          >
-            <span className="break-words">{status}</span>
-            {householdId === null || saved?.noted !== false ? null : (
+      {status === null ? null : (
+        <div
+          ref={savedLine}
+          role="status"
+          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+        >
+          <span className="break-words">{status}</span>
+          {householdId === null || saved?.noted !== null ? null : noteLabel !== null ? (
+            <button
+              type="button"
+              onClick={() => {
+                setNoting(true);
+              }}
+              className="min-h-11 font-medium btn-text"
+            >
+              {noteLabel}
+            </button>
+          ) : saved.action.kind === "promote" ? (
+            <PromoteButton
+              suggestion={saved.action.suggestion}
+              onPromoted={(message) => {
+                setSaved({ ...saved, noted: message });
+                setReloadKey((key) => key + 1);
+              }}
+              className="min-h-11 font-medium btn-text"
+            />
+          ) : null}
+          {/* A row of its own from "Sending…" on, so the line keeps its
+                height as the words change, as Back to the list's does. */}
+          {saved === null || markedLine === null ? null : (
+            <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
+              <span className="min-w-0 break-words">{markedLine.text}</span>
+              {undoIds === null ? null : (
+                <UndoMarkedButton
+                  count={undoIds.length}
+                  undoing={saved.undo.kind === "undoing"}
+                  disabled={!online}
+                  onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                />
+              )}
+            </div>
+          )}
+          {/* On a row of its own: beside the line, it fitted "Sending…"
+                but not "Saved … on this phone.", so the line grew just after
+                Save scrolled it into view, and the browser, holding the unit
+                field still, pushed it up under the pinned count. */}
+          {followUp === null ? null : (
+            <div className="basis-full">
+              <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
+                Back to the list
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* The form stays: a re-read that empties the block must not throw
+            away a visit already half typed. */}
+      {nothingHere ? (
+        <div role="status" className="notice-info">
+          <p className="break-words">
+            Nothing in this block is on this session&apos;s list. Visits can be recorded only at the
+            households on the session&apos;s list.
+          </p>
+          <Link href="/" className="mt-1 inline-flex min-h-11 items-center font-medium btn-text">
+            Back to the list
+          </Link>
+        </div>
+      ) : null}
+
+      <div>
+        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+          Unit number
+        </label>
+        <input
+          id="unitNumber"
+          value={unitNumber}
+          onChange={(event) => {
+            setUnitNumber(event.target.value);
+            setSaved(null);
+            setSuggestSent(false);
+            setOffList(false);
+            // Cleared the moment it is fixed, so no red lingers while typing.
+            if (event.target.value.trim() !== "") clearError("unitNumber");
+          }}
+          onBlur={() => {
+            if (unitNumber.trim() === "") {
+              setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+            }
+          }}
+          inputMode="text"
+          autoComplete="off"
+          placeholder="#05-123"
+          aria-invalid={errors.unitNumber !== undefined}
+          aria-describedby={
+            errors.unitNumber !== undefined
+              ? "unit-error"
+              : gate === "ok" || gate === "checking"
+                ? undefined
+                : "unit-gate"
+          }
+          className="min-h-12 field"
+        />
+        {errors.unitNumber === undefined ? null : (
+          <p id="unit-error" className="mt-1 field-error">
+            {errors.unitNumber}
+          </p>
+        )}
+        {gate === "unlisted" ? (
+          <div id="unit-gate" className="mt-2 notice-info">
+            <p className="break-words">
+              <UnitNumber value={typed} /> is not on this session&apos;s list, so it can&apos;t be
+              recorded in this session.
+              {suggestSent
+                ? null
+                : canSuggestHere
+                  ? " Should it be? Suggest it for an admin to review."
+                  : unlistedAction === "waiting"
+                    ? " A suggestion to add it is waiting for an admin to review."
+                    : unlistedAction === "listed"
+                      ? " It is on the follow-up list; ask an admin to add it to this session."
+                      : unlistedAction === null
+                        ? null
+                        : " Ask an admin to add it."}
+            </p>
+            {suggestSent ? (
+              <p role="status" className="mt-1 font-medium">
+                {SUGGESTION_SENT}
+              </p>
+            ) : canSuggestHere ? (
               <button
                 type="button"
                 onClick={() => {
-                  setNoting(true);
+                  setSuggesting(true);
                 }}
-                className="min-h-11 font-medium btn-text"
+                className="mt-1 min-h-11 font-medium btn-text"
               >
-                Add follow-up
+                {SUGGEST}
               </button>
-            )}
+            ) : null}
           </div>
-        )}
-
-        <div>
-          <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
-            Unit number
-          </label>
-          <input
-            id="unitNumber"
-            value={unitNumber}
-            onChange={(event) => {
-              setUnitNumber(event.target.value);
-              setSaved(null);
-              // Cleared the moment it is fixed, so no red lingers while typing.
-              if (event.target.value.trim() !== "") clearError("unitNumber");
-            }}
-            onBlur={() => {
-              if (unitNumber.trim() === "") {
-                setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
-              }
-            }}
-            inputMode="text"
-            autoComplete="off"
-            placeholder="#05-123"
-            aria-invalid={errors.unitNumber !== undefined}
-            aria-describedby={errors.unitNumber === undefined ? undefined : "unit-error"}
-            className="min-h-12 field"
-          />
-          {errors.unitNumber === undefined ? null : (
-            <p id="unit-error" className="mt-1 field-error">
-              {errors.unitNumber}
-            </p>
-          )}
-        </div>
+        ) : gate === "unknown" ? (
+          <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+            Could not check this session&apos;s list. A visit to a unit not on it will wait on this
+            phone until an admin adds it.
+          </p>
+        ) : gate === "admin_override" ? (
+          <p id="unit-gate" className="mt-1 text-caption text-foreground-muted">
+            Not on this session&apos;s list. You can still record it as an admin.
+          </p>
+        ) : null}
       </div>
+
+      {chips.length === 0 ? null : (
+        <div>
+          <p className="mb-1 text-caption font-medium text-foreground-muted">
+            On the list in this block:
+          </p>
+          {/* Wraps at large text; a unit number never splits (D-111-36). */}
+          <ul className="flex flex-wrap gap-2" aria-label="On the list in this block">
+            {chips.map((chip) => (
+              <li key={chip.householdId}>
+                <button
+                  type="button"
+                  aria-pressed={chip.unitNumber === typed}
+                  onClick={() => {
+                    setUnitNumber(chip.unitNumber);
+                    setSuggested(chip.unitNumber);
+                    setSaved(null);
+                    setSuggestSent(false);
+                    setOffList(false);
+                    clearError("unitNumber");
+                  }}
+                  className={`min-h-11 press rounded-full border px-3 text-body tabular-nums ${
+                    chip.unitNumber === typed
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border-strong bg-surface"
+                  }`}
+                >
+                  <UnitNumber value={chip.unitNumber} />
+                  {CHIP_STATE[chip.state]}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {history === null ? null : (
         <HouseholdHistoryPanel
           history={history}
+          active={active}
           atDoor
           onChanged={() => {
             setReloadKey((key) => key + 1);
@@ -401,13 +752,34 @@ export function RecordVisitForm({
             onClose={() => {
               setNoting(false);
             }}
-            onSaved={() => {
+            onSaved={(message) => {
               setNoting(false);
-              setSaved({ ...saved, noted: true });
+              setSaved({ ...saved, noted: message });
               setReloadKey((key) => key + 1);
             }}
           />
         )}
+      </SheetPresence>
+
+      <SheetPresence>
+        {suggesting && here !== null ? (
+          <FollowUpSheet
+            mode={{
+              kind: "create",
+              householdId: here.household.id,
+              visitId: null,
+              unitNumber: here.household.unitNumber,
+            }}
+            onClose={() => {
+              setSuggesting(false);
+            }}
+            onSaved={() => {
+              setSuggesting(false);
+              setSuggestSent(true);
+              setReloadKey((key) => key + 1);
+            }}
+          />
+        ) : null}
       </SheetPresence>
 
       <div>
@@ -525,7 +897,7 @@ export function RecordVisitForm({
           </p>
         )}
         {/* Named, since a DockHost moves the bar out of the form. */}
-        <SaveAndNext form={formId} saving={saving} />
+        <SaveAndNext form={formId} saving={saving} next={next} />
       </DockedActions>
     </form>
   );
@@ -538,7 +910,15 @@ export function RecordVisitForm({
  * live; what can still be lost is text typed before then, which the
  * controlled unit field clears as React takes over (#113).
  */
-export function SaveAndNext({ form, saving = false }: { form?: string; saving?: boolean }) {
+export function SaveAndNext({
+  form,
+  saving = false,
+  next = true,
+}: {
+  form?: string;
+  saving?: boolean;
+  next?: boolean;
+}) {
   return (
     <button
       type={form === undefined ? "button" : "submit"}
@@ -546,7 +926,7 @@ export function SaveAndNext({ form, saving = false }: { form?: string; saving?: 
       disabled={saving}
       className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
     >
-      {saving ? "Saving…" : "Save and next"}
+      {saving ? "Saving…" : next ? "Save and next" : "Save"}
     </button>
   );
 }

@@ -40,7 +40,7 @@ afterAll(async () => {
   await pool.end();
 });
 
-const draft = (title = "Outing") => createSession(db, { title, createdBy: ADMIN });
+const draft = (title = "Outing") => createSession(db, { title, kind: "regular", createdBy: ADMIN });
 
 describe("createSession", () => {
   it("creates a draft, not an active session", async () => {
@@ -51,6 +51,7 @@ describe("createSession", () => {
   it("attaches blocks supplied up front", async () => {
     const session = await createSession(db, {
       title: "Outing",
+      kind: "regular",
       blockIds: [BLOCK_A, BLOCK_B],
       createdBy: ADMIN,
     });
@@ -65,6 +66,7 @@ describe("createSession", () => {
     await expect(
       createSession(db, {
         title: "Outing",
+        kind: "regular",
         blockIds: [BLOCK_A, "dddddddd-0000-4000-8001-00000000ffff"],
         createdBy: ADMIN,
       }),

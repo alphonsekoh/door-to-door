@@ -2,31 +2,55 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DeclinedNotice } from "@/components/follow-ups/declined-notice";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
+import { HintCard } from "@/components/ui/hint-card";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { useActiveSession } from "@/lib/hooks/use-active-session";
 import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const PAGE_SIZE = 20;
 
-export type FollowUpView = "everyone" | "mine";
+export type FollowUpView = "list" | "review" | "mine";
 
-/* D-29-4: the URL is editable, so anything but the one known value is the default. */
+/* D-29-4: the URL is editable, so anything but a known value is the default. */
 export function parseFollowUpView(params: URLSearchParams): FollowUpView {
-  return params.get("view") === "mine" ? "mine" : "everyone";
+  const view = params.get("view");
+  return view === "review" || view === "mine" ? view : "list";
 }
 
 const VIEWS: { value: FollowUpView; label: string }[] = [
-  { value: "everyone", label: "Everyone" },
+  { value: "list", label: "On the list" },
+  { value: "review", label: "Waiting for review" },
   { value: "mine", label: "Mine" },
 ];
 
-const EMPTY: Record<FollowUpView, string> = {
-  everyone: "No follow-ups waiting.",
-  mine: "You have no follow-ups waiting.",
+const EMPTY: Record<FollowUpView, { title: string; detail: string | null }> = {
+  list: {
+    title: "Nothing is on the follow-up list.",
+    detail: "Admins add households here for follow-up sessions.",
+  },
+  review: { title: "No suggestions waiting.", detail: null },
+  mine: {
+    title: "You have no follow-ups or suggestions.",
+    detail: "Open a household and tap Suggest a return visit.",
+  },
 };
+
+/* What each view asks the server for; Mine needs the viewer's id. */
+function queryFor(view: FollowUpView, userId: string): URLSearchParams {
+  switch (view) {
+    case "list":
+      return new URLSearchParams({ status: "listed", outstanding: "true" });
+    case "review":
+      return new URLSearchParams({ status: "suggested" });
+    case "mine":
+      return new URLSearchParams({ authorId: userId, outstanding: "true" });
+  }
+}
 
 type State =
   | { status: "loading" }
@@ -34,14 +58,15 @@ type State =
   | { status: "error" };
 
 /*
- * Every outstanding note, in the server's order: soonest due first, undated
- * last. The door matters more than who wrote the note, so Everyone is the
- * default and Mine narrows it.
+ * Households worth a return visit, in the server's order: soonest due first,
+ * undated last. The list admins decide comes first; suggestions waiting for
+ * review are a tap away, so every member sees what is already asked for.
  */
 export function FollowUpsScreen() {
   const router = useRouter();
   const view = parseFollowUpView(new URLSearchParams(useSearchParams().toString()));
   const { userId } = useRole();
+  const active = useActiveSession();
   const [now] = useState(() => new Date());
   const [state, setState] = useState<State>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
@@ -49,19 +74,13 @@ export function FollowUpsScreen() {
   /* Switching views quickly must not let an older answer land last. */
   const generation = useRef(0);
 
-  /* Mine needs the viewer's id before it can ask. */
-  const author = view === "mine" ? userId : null;
-
   const load = useCallback(
     async (offset: number) => {
-      if (author === undefined) return;
+      if (userId === undefined) return;
       const mine = ++generation.current;
-      const params = new URLSearchParams({
-        outstanding: "true",
-        limit: String(PAGE_SIZE),
-        offset: String(offset),
-      });
-      if (author !== null) params.set("authorId", author);
+      const params = queryFor(view, userId);
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
       try {
         const page = await apiFetch<FollowUpList>(`/follow-ups?${params.toString()}`);
         if (mine !== generation.current) return;
@@ -77,7 +96,7 @@ export function FollowUpsScreen() {
         if (mine === generation.current) setState({ status: "error" });
       }
     },
-    [author],
+    [view, userId],
   );
 
   useEffect(() => {
@@ -92,9 +111,14 @@ export function FollowUpsScreen() {
     void load(0);
   };
 
+  const empty = EMPTY[view];
+
   return (
     <div className="space-y-4">
-      <div role="group" aria-label="Whose follow-ups" className="flex gap-2">
+      {/* First, so they are in reach on arrival whatever is said below them.
+          Three short labels: they wrap onto two rows at large text rather
+          than cut a label (D-111-25). */}
+      <div role="group" aria-label="Which follow-ups" className="flex flex-wrap gap-2">
         {VIEWS.map((option) => {
           const on = option.value === view;
           return (
@@ -105,9 +129,11 @@ export function FollowUpsScreen() {
               onClick={() => {
                 if (on) return;
                 setState({ status: "loading" });
-                router.replace(option.value === "mine" ? "/follow-ups?view=mine" : "/follow-ups");
+                router.replace(
+                  option.value === "list" ? "/follow-ups" : `/follow-ups?view=${option.value}`,
+                );
               }}
-              className={`min-h-11 flex-1 press rounded-lg border text-body font-medium ${
+              className={`min-h-11 flex-[1_1_8ch] press rounded-lg border px-2 text-body font-medium ${
                 on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"
               }`}
             >
@@ -116,6 +142,8 @@ export function FollowUpsScreen() {
           );
         })}
       </div>
+
+      {userId === undefined ? null : <DeclinedNotice userId={userId} />}
 
       {state.status === "loading" ? (
         <p className="text-body text-foreground-muted">Loading…</p>
@@ -131,7 +159,12 @@ export function FollowUpsScreen() {
           </button>
         </div>
       ) : state.notes.length === 0 ? (
-        <p className="text-body text-foreground-muted">{EMPTY[view]}</p>
+        <div className="rounded-xl border border-dashed border-border bg-surface-muted p-5">
+          <p className="text-body font-medium">{empty.title}</p>
+          {empty.detail === null ? null : (
+            <p className="mt-1 text-body text-foreground-muted">{empty.detail}</p>
+          )}
+        </div>
       ) : (
         <>
           <ul className="space-y-2">
@@ -140,6 +173,7 @@ export function FollowUpsScreen() {
                 <FollowUpItem
                   note={note}
                   now={now}
+                  active={active}
                   showUnit
                   onChanged={reload}
                   onEdit={setEditing}
@@ -164,6 +198,14 @@ export function FollowUpsScreen() {
           ) : null}
         </>
       )}
+
+      {/* Under the list, as on the session screen: above it, with a declined
+          suggestion, it pushed the tabs under the nav on a first visit. */}
+      <HintCard id="follow-ups" title="What are follow-ups?">
+        Admins choose which households go on the follow-up list. In a follow-up session you visit
+        them and mark each one done. Think another household should be revisited? Tap Suggest a
+        return visit on its page, or after you record a visit there.
+      </HintCard>
 
       <SheetPresence>
         {editing === null ? null : (

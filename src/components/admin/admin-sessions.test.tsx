@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminSessions } from "@/components/admin/admin-sessions";
@@ -15,6 +15,7 @@ function session(id: string, title: string, status: SessionStatus): OutingSessio
   return {
     id,
     title,
+    kind: "regular",
     status,
     startedAt: null,
     endedAt: null,
@@ -119,6 +120,8 @@ describe("AdminSessions", () => {
     render(<AdminSessions />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // Only the list failed: a session can still be created.
+    expect(screen.getByRole("button", { name: "New session" })).toBeEnabled();
 
     apiFetch.mockResolvedValue(page([session("s1", "June outing", "active")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
@@ -129,5 +132,63 @@ describe("AdminSessions", () => {
     apiFetch.mockRejectedValue("boom");
     render(<AdminSessions />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the sessions.");
+  });
+});
+
+describe("follow-up sessions and the list", () => {
+  it("marks a follow-up session on its row", async () => {
+    apiFetch.mockResolvedValue(
+      page([
+        { ...session("s1", "Revisits", "draft"), kind: "follow_up" },
+        session("s2", "Knocking", "draft"),
+      ]),
+    );
+    render(<AdminSessions />);
+    const revisits = (await screen.findByText("Revisits")).closest("li");
+    expect(revisits).toHaveTextContent("Follow-up");
+    expect(screen.getByText("Knocking").closest("li")).not.toHaveTextContent("Follow-up");
+  });
+
+  it("leads to the follow-up list and the other admin screens", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<AdminSessions />);
+    const screens = await screen.findByRole("navigation", { name: "Admin screens" });
+    expect(
+      within(screens)
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")]),
+    ).toEqual([
+      ["Follow-up list", "/admin/follow-ups"],
+      ["Needs a return visit", "/admin/attention"],
+      ["All records", "/admin/history"],
+      ["Team", "/admin/team"],
+    ]);
+  });
+
+  it("puts New session first, then the notices, then the links, so it is in reach on a short phone", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    render(<AdminSessions notices={<p>2 suggestions to review</p>} />);
+    const order = [
+      await screen.findByRole("button", { name: "New session" }),
+      screen.getByText("2 suggestions to review"),
+      screen.getByRole("navigation", { name: "Admin screens" }),
+      await screen.findByText("No sessions yet."),
+    ];
+    order.slice(1).forEach((later, i) => {
+      const earlier = order[i];
+      if (earlier === undefined) throw new Error("expected an earlier element");
+      expect(
+        earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+  });
+
+  it("offers New session, the notices and the links while the list is still loading", () => {
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    render(<AdminSessions notices={<p>2 overdue follow-ups</p>} />);
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New session" })).toBeEnabled();
+    expect(screen.getByText("2 overdue follow-ups")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Team" })).toBeInTheDocument();
   });
 });

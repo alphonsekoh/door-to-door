@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRecords } from "@/components/admin/admin-records";
@@ -77,12 +77,23 @@ function entry(
     session: {
       id: "s1",
       title: "June outing",
+      kind: "regular",
       status: "active",
       startedAt: null,
       endedAt: null,
       createdBy: { id: "admin", name: "Admin", image: null },
       createdAt: AT,
     },
+  };
+}
+
+/* The answer to recording on a member's behalf. */
+function recorded(id: string, marked: string[], name: string | null = "Alice") {
+  return {
+    ...entry("#05-123").visit,
+    id,
+    member: { id: "u1", name, image: null },
+    followUpsMarkedDone: marked,
   };
 }
 
@@ -347,7 +358,7 @@ describe("AdminRecords", () => {
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
       if (path.startsWith("/users")) return Promise.resolve(userPage);
-      if (path === "/visits") return Promise.resolve({});
+      if (path === "/visits") return Promise.resolve(recorded("v1", []));
       return Promise.resolve({
         data: [entry("#05-123")],
         pagination: { limit: 100, offset: 0, total: 1, hasMore: false },
@@ -356,6 +367,166 @@ describe("AdminRecords", () => {
     await user.click(screen.getByRole("button", { name: "Save the record" }));
 
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
+    // A record that marked nothing says nothing more: door-to-door as before.
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  describe("a record that marked follow-ups done (follow-up session)", () => {
+    const UNDO = "Undo marking the follow-up done";
+
+    /* The server answers each record in turn; a reopen answers as `reopen` says. */
+    function serveRecords(
+      answers: ReturnType<typeof recorded>[],
+      reopen: () => Promise<unknown> = () => Promise.resolve({}),
+    ) {
+      const queue = [...answers];
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") return Promise.resolve(queue.shift());
+        if (init?.method === "PATCH") return reopen();
+        if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+        if (path.startsWith("/users")) return Promise.resolve(userPage);
+        return Promise.resolve({
+          data: [],
+          pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+        });
+      });
+    }
+
+    async function recordFor(user: ReturnType<typeof userEvent.setup>, unit: string) {
+      await user.click(screen.getByRole("button", { name: "Record for a member" }));
+      await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+      await user.type(screen.getByLabelText("Unit number"), unit);
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save the record" }));
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog")).toBeNull();
+      });
+    }
+
+    const patches = () =>
+      apiFetch.mock.calls.filter(
+        ([, init]) => (init as { method?: string } | undefined)?.method === "PATCH",
+      );
+
+    it("says so, naming the member credited, and Undo reopens exactly that", async () => {
+      const user = userEvent.setup();
+      serveRecords([recorded("v1", ["n1"])]);
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+
+      await recordFor(user, "#05-123");
+      const status = await screen.findByRole("status");
+      expect(status).toHaveTextContent("Saved #05-123 for Alice. Follow-up marked done.");
+
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(status).toHaveTextContent("Saved #05-123 for Alice. Undone. Follow-up reopened.");
+      expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      expect(patches()).toEqual([
+        [
+          "/follow-ups/n1",
+          { method: "PATCH", body: JSON.stringify({ done: false, markedByVisit: "v1" }) },
+        ],
+      ]);
+      // The record itself is never touched again.
+      expect(apiFetch.mock.calls.filter(([path]) => path === "/visits")).toHaveLength(1);
+    });
+
+    it("cannot undo without signal", async () => {
+      /* The browser losing and finding its signal, as useOnline hears it. */
+      const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);
+      const setOnLine = (value: boolean) => {
+        onLine.mockReturnValue(value);
+        window.dispatchEvent(new Event(value ? "online" : "offline"));
+      };
+      const user = userEvent.setup();
+      serveRecords([recorded("v1", ["n1"])]);
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+      await recordFor(user, "#05-123");
+      const undo = within(await screen.findByRole("status")).getByRole("button", { name: UNDO });
+      expect(undo).toBeEnabled();
+
+      act(() => {
+        setOnLine(false);
+      });
+      expect(undo).toBeDisabled();
+      act(() => {
+        setOnLine(true);
+      });
+      expect(undo).toBeEnabled();
+      onLine.mockRestore();
+    });
+
+    it("keeps Undo after no answer, and a second try finishes it", async () => {
+      const user = userEvent.setup();
+      let attempts = 0;
+      serveRecords([recorded("v1", ["n1", "n2"])], () => {
+        attempts += 1;
+        return attempts === 2
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : Promise.resolve({});
+      });
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+
+      await recordFor(user, "#05-123");
+      const status = await screen.findByRole("status");
+      expect(status).toHaveTextContent("2 follow-ups marked done.");
+      await user.click(
+        within(status).getByRole("button", { name: "Undo marking the follow-ups done" }),
+      );
+      expect(status).toHaveTextContent("Not undone. Check your signal and try again.");
+
+      // Only what is left is sent again, and both count as reopened.
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(status).toHaveTextContent("Undone. 2 follow-ups reopened.");
+      expect(patches().map(([path]) => String(path))).toEqual([
+        "/follow-ups/n1",
+        "/follow-ups/n2",
+        "/follow-ups/n2",
+      ]);
+    });
+
+    it("moves on to the next record, and drops a late answer for the last", async () => {
+      const user = userEvent.setup();
+      const answers: ((value: unknown) => void)[] = [];
+      serveRecords(
+        [recorded("v1", ["n1"]), recorded("v2", ["n2"], null), recorded("v3", [])],
+        () => new Promise((resolve) => answers.push(resolve)),
+      );
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+
+      await recordFor(user, "#05-123");
+      await user.click(
+        within(await screen.findByRole("status")).getByRole("button", { name: UNDO }),
+      );
+      expect(screen.getByRole("button", { name: "Undoing…" })).toBeDisabled();
+
+      // A member with no name is not named.
+      await recordFor(user, "#05-124");
+      const status = screen.getByRole("status");
+      expect(status).toHaveTextContent(/^Saved #05-124\. Follow-up marked done\./);
+      // Its Undo is not held up by the first, still on its way.
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/n1", "/follow-ups/n2"]);
+      expect(within(status).getByRole("button", { name: "Undoing…" })).toBeDisabled();
+      await act(async () => {
+        answers[0]?.({});
+        await Promise.resolve();
+      });
+      expect(status).toHaveTextContent("Undoing…");
+      expect(status).not.toHaveTextContent(/Undone/);
+      await act(async () => {
+        answers[1]?.({});
+        await Promise.resolve();
+      });
+      expect(status).toHaveTextContent(/^Saved #05-124\. Undone\. Follow-up reopened\.$/);
+
+      // A record that marked nothing clears the line.
+      await recordFor(user, "#05-125");
+      expect(screen.queryByRole("status")).toBeNull();
+    });
   });
 
   it("puts the block and member filters in the URL too", async () => {

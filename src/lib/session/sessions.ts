@@ -1,4 +1,4 @@
-import type { SessionStatus } from "@/generated/types.gen";
+import type { SessionKind, SessionStatus } from "@/generated/types.gen";
 
 /*
  * What an admin may do to a session, and what to call it.
@@ -45,3 +45,19 @@ const LABELS: Record<SessionStatus, string> = {
 export function statusLabel(status: SessionStatus): string {
   return LABELS[status];
 }
+
+export type KindSpec = { value: SessionKind; label: string; hint: string };
+
+/* The choice an admin makes once, when the session is created. */
+export const SESSION_KINDS: readonly KindSpec[] = [
+  {
+    value: "regular",
+    label: "Door-to-door",
+    hint: "Knock on every unit in the blocks you attach.",
+  },
+  {
+    value: "follow_up",
+    label: "Follow-up",
+    hint: "Go back to households you pick from the follow-up list. Members can record only those households.",
+  },
+];

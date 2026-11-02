@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import type { ActionSpec } from "@/lib/session/sessions";
@@ -17,13 +17,17 @@ export function SessionActionButton({
   sessionId,
   spec,
   primary = true,
+  blocked = null,
   onDone,
 }: {
   sessionId: string;
   spec: ActionSpec;
   primary?: boolean;
+  /* Why the server would refuse it now, said beside it instead of offered. */
+  blocked?: string | null;
   onDone: (session: OutingSession) => void;
 }) {
+  const blockedId = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -51,7 +55,8 @@ export function SessionActionButton({
     <>
       <button
         type="button"
-        disabled={busy}
+        disabled={busy || blocked !== null}
+        aria-describedby={blocked === null ? undefined : blockedId}
         onClick={() => {
           if (spec.confirm === null) {
             void run();
@@ -68,6 +73,11 @@ export function SessionActionButton({
         {busy && !confirming ? "Working…" : spec.label}
       </button>
 
+      {blocked === null ? null : (
+        <p id={blockedId} className="mt-2 basis-full text-caption text-foreground-muted">
+          {blocked}
+        </p>
+      )}
       {/* A row of its own when the button sits beside a title. */}
       {failure === null ? null : (
         <p role="alert" className="mt-2 basis-full notice-danger">

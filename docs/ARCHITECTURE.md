@@ -63,7 +63,8 @@ users ─┐
        ├─< visits >── households >── blocks
 outing_sessions ─┘        │
        └─< session_blocks >┘
-households ─< follow_ups (optional visit_id, set null on delete)
+outing_sessions ─< session_households >── households (a follow-up session's picks)
+households ─< follow_ups (optional visit_id and done_visit_id, set null on delete; status; soft delete)
 outing_sessions ─< session_participants (never removed)
 outing_sessions ─< session_teams ─< session_team_members (unique per session+user)
 visits >── session_teams (team_id, nullable, restrict); visits ─< visit_teammates
@@ -73,12 +74,25 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   latest-known and only ever updated with non-null values.
 - **Visit** = one knock. `interest_level` and `description` never overwritten.
   `id` is a client-generated UUIDv7 with no database default.
-- **Follow-up** attaches to the household, so it outlives the session. `dueDate` is
-  a day (local midnight); overdue once that day has passed. Any member resolves or
-  reopens (D-35-1, pending owner); text, due date and delete are author or admin. The
-  first resolution sticks.
+- **Follow-up** attaches to the household, so it outlives the session. It is `listed`
+  (on the follow-up list, which only an admin decides) or `suggested` (a member's
+  request, one pending per household by partial unique index). Removal is soft and
+  always has a reason: the row keeps who removed it, when and why, and leaves every
+  list, count and check (D-117-4, D-117-33).
+  `dueDate` is a day (local midnight); overdue once that day has passed. Who may change
+  a note is D-117-12; the first resolution sticks.
 - **Session** (`outing_sessions`): `draft → active → ended`, reopenable. At most one
-  `active`, by partial unique index.
+  `active`, by partial unique index, whatever its `kind`: `regular` (door-to-door) or
+  `follow_up`, fixed at creation. A follow-up session has households an admin picked
+  (`session_households`, at least one) and its blocks are exactly theirs, kept in step
+  by `src/server/sessions/households.ts`; nobody attaches them by hand (D-117-36 to
+  D-117-38). Its list is computed, never stored: picks with a listed, live note
+  outstanding, or resolved since both it started and the household was picked
+  (`onRevisitList`, `src/server/follow-ups/list-rule.ts`, D-117-55). In it a member
+  records only at households on the list; admins are exempt (D-117-40, D-117-15). A new
+  visit at a household on the list marks its owed listed notes done in the same
+  transaction, and `done_visit_id` keeps which visit did (D-117-65, D-117-67). Removing a
+  note never changes picks (D-117-41).
 - **Blocks** are shared across members and sessions, never locked.
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
@@ -125,14 +139,33 @@ authoritative, and a change to any of them needs the owner.
 ### One active session app-wide
 
 - **Context.** Admins run sessions; members record into whichever is running.
-- **Decision.** At most one `outing_sessions` row has `status = 'active'`, enforced by a
-  partial unique index (D-07-4). A second start is `409 session_already_active`, decided
-  by the database with no pre-check (D-17-2).
+- **Decision.** At most one `outing_sessions` row has `status = 'active'`, of either
+  kind, enforced by a partial unique index (D-07-4). A second start is
+  `409 session_already_active`, decided by the database with no pre-check (D-17-2).
 - **Why.** Two concurrent starts are a race the API cannot close on its own.
 - **Consequences.** Members never choose a session, only a block in the running one.
   Queued visits for an ended session are held, not dropped, until it is reopened
   (D-21-4). The E2E suite runs on one worker because parallel specs would fight over the
   one active session (D-37-4).
+
+### Admins decide the follow-up list
+
+- **Context.** Any member could write, resolve and reopen a note at any time (D-35-1),
+  so the list of doors to revisit was whatever anyone had written.
+- **Decision (owner).** Only an admin puts a household on the list; a member's note is a
+  suggestion an admin adds or dismisses. A follow-up session goes back to households an
+  admin picks from that list, at least one, and its blocks follow them. Members change
+  listed notes only during a follow-up session that picked them, and record only at its
+  picks. Every removal is soft and needs a reason (D-117-3, D-117-4, D-117-12, D-117-15,
+  D-117-33, D-117-36 to D-117-38).
+- **Why.** A follow-up session needs a list someone chose, a member must never open an
+  empty block, and a removal must be explainable to the note's author.
+- **Consequences.** One rule decides the list, the recording refusal and a member's
+  right to change a note, so they cannot disagree (D-117-40). An offline record for a
+  unit off the list is held until an admin lists and picks it (D-117-16). Picks and
+  visit writes meet on the session row in one lock order (D-117-45). A visit at a door on
+  the list closes its notes on the server, so a queued one does too when it lands
+  (D-117-73). Removed notes stay in the database for good.
 
 ### Serwist, not next-pwa
 
@@ -162,7 +195,14 @@ authoritative, and a change to any of them needs the owner.
    Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
    `500`, never allowed.
 4. The service does the work. Sync and `POST /visits` also run the clock rules
-   (`src/server/visits/clock-rules.ts`) before any write. Constraint violations are recognised by name through
+   (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
+   transaction they lock the session row (`FOR KEY SHARE`) and judge the session, the
+   block and, in a follow-up session, the list rule for a member's new visit
+   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
+   then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
+   the answer is a `RecordedVisit` naming them. Changing a follow-up session's households
+   and transitions lock that row `FOR UPDATE` (D-117-45).
+   Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
    and is a logged `500` in production. Only the parsed value is sent.
@@ -269,15 +309,35 @@ Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
   (`GET /sessions/{id}/teams` or `includeTeam` results), see `src/lib/history/amend.ts`.
-- Follow-ups: logic in `src/lib/history/follow-ups.ts`; `HouseholdHistoryPanel` (unit screen and
-  recording form) pins outstanding notes above a visits-and-resolved-notes timeline.
-  `/follow-ups` lists outstanding notes (`?view=mine`); admins get an overdue card on
-  `/admin/sessions`. Online-only, re-read from the server after each change.
+- Follow-ups: bylines and the timeline in `src/lib/history/follow-ups.ts`; rights, the
+  list and hints in `src/lib/follow-ups/`. `HouseholdHistoryPanel` (unit screen and
+  recording form) pins "On the follow-up list" and "Waiting for review" above a
+  visits-and-resolved-notes timeline. Controls come only from `followUpRights`, which
+  mirrors the server (D-117-25). `/follow-ups` has On the list, Waiting for review
+  (`?view=review`) and Mine (`?view=mine`). Admins review at `/admin/follow-ups`
+  (`?tab=`), and `/admin/sessions` carries the review count and overdue cards.
+  Removals go through one reason sheet (`src/lib/follow-ups/removal.ts`); listing a door
+  offers "Also add to {session}" (`target-session.ts`, `add-to-list.ts`, D-117-46).
+  Online-only, re-read from the server after each change; only a queued visit's own
+  marking happens later, on the server (D-117-73).
+- Follow-up session: created with households picked from the follow-up list
+  (`household-picker.tsx`, `src/lib/follow-ups/pick.ts`); its admin page lists the picks
+  (`GET /sessions/{id}/households`, `session-households.tsx`) with read-only blocks. The
+  member's session screen is "Households to revisit" (`GET /sessions/{id}/revisits`,
+  re-read on its 30s poll); the block screen shows listed units as chips and reads the
+  list again before refusing a unit, and a block outside the running session offers no
+  form. After a save there, the Saved line and Record for a member say what was marked
+  done and offer Undo (`src/lib/follow-ups/marked-done.ts`, `UndoMarkedButton`,
+  D-117-71, D-117-76). First-use hints and the removal notice are remembered in
+  `localStorage`, per phone (D-117-29).
 - `/history` and `/history/[id]` have a Me / My team toggle held in `?view=team`
   (`src/lib/teams/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
 - User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`).
+- Whole follow-up lists (the removal notice, the household picker, Add households, On the
+  list) load every page through `loadAllFollowUps()` (`src/lib/follow-ups/pages.ts`),
+  keeping each note once by id (D-117-52).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
@@ -364,21 +424,32 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
            ─► BlockViews (in-page, not amendable) ─► queue as usual
 ```
 
-- The copy (`src/lib/offline/`) holds the member, the session and each opened block's
-  `HouseholdSummary[]`, validated with the generated Zod on read (D-77-3). It is cleared
+- The copy (`src/lib/offline/`, `v: 2`) holds the member, the session, each opened
+  block's `HouseholdSummary[]` and a follow-up session's list, validated with the
+  generated Zod on read (D-77-3, D-117-17). The shell reads the list again once the
+  server answers. A follow-up session's list alone makes the copy usable: the shell's
+  home is then the list, and a block never opened is built from it with only its listed
+  households (`shellList`, `shellBlocks`). After "Continue as" the shell opens the block
+  and unit the failed address named (`shell-target.ts`, D-117-48). The copy is cleared
   on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; never the queue
   (D-77-2, D-77-6).
 - While the shell is shown, `shellState` (not the path or session) decides the queue
-  owner, the sync bar and the hidden nav (D-77-10, D-77-12). Sends still go through
+  owner, the sync bar and the hidden nav (D-77-10, D-77-12). The chrome reads the route
+  through `useRoutePathname`, which is `/offline` there on server and client alike,
+  never the failed address (D-117-63). Sends still go through
   `sendAs`, so the cookie must name the owner.
 - The queue flushes on its own triggers; a reconnect row offers Continue (a full
   `goTo`) once the server answers (D-77-11). `ReloadWhenOnline` runs from the first render
   until "Continue as": while the copy loads, when there is none, and at the gate
   (D-106-8).
 
-**Sync write path.** Each item runs in one transaction: `INSERT ... ON CONFLICT DO
+**Sync write path.** Each item runs in one transaction. It first locks its session's
+row `FOR KEY SHARE` and judges, under that lock, that the session is still active, the
+block is in it and, for a member's new visit in a follow-up session, the unit is on its
+list (D-117-45). Then `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
-snapshot and auto-join), otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
+snapshot, auto-join and, in a follow-up session, marking the household's notes done),
+otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
 (`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
 interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
 `internal_error` (retryable). The request path above is unchanged; the new endpoints
@@ -400,6 +471,9 @@ another member's visit (D-21-5) has a team exception (D-74-22), not a way around
 | integration | Vitest (`*.integration.test.ts`) | real PostgreSQL (`db-test`, 5433)                                      |
 | components  | Vitest (`*.test.tsx`)            | jsdom + Testing Library                                                |
 | e2e         | Playwright (`e2e/`)              | standalone production build, Pixel 5 (Chromium) and iPhone 13 (WebKit) |
+
+The E2E browser runs at UTC+14 and its server at UTC−12, and every page a fixture hands
+out fails its test on a hydration mismatch, attributes included (D-117-64).
 
 ## Runtime
 

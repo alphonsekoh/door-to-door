@@ -1,10 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Religion } from "@/db/schema";
+import type { InterestLevel, Religion, Role } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
+import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { markDoneByVisit } from "@/server/follow-ups/marked-by-visit";
 import {
   attachTeams,
   autoJoin,
@@ -111,12 +113,26 @@ export const visitColumns = {
   memberImage: users.image,
 };
 
-async function requireActiveSessionWithBlock(db: Database, blockId: string): Promise<string> {
+/*
+ * Locks the active session's row (FOR KEY SHARE) before anything else, as
+ * changing a follow-up session's households does (FOR UPDATE), so a record
+ * and a household change wait for each other in one order. The checks that
+ * follow then read what a remove committed, and a remove sees this visit.
+ */
+async function requireActiveSessionWithBlock(
+  db: Database,
+  blockId: string,
+): Promise<RevisitSession> {
   const active = await db
-    .select({ id: outingSessions.id })
+    .select({
+      id: outingSessions.id,
+      kind: outingSessions.kind,
+      startedAt: outingSessions.startedAt,
+    })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
-    .limit(1);
+    .limit(1)
+    .for("key share");
 
   const session = active[0];
   if (!session) {
@@ -132,7 +148,7 @@ async function requireActiveSessionWithBlock(db: Database, blockId: string): Pro
   if (attached.length === 0) {
     throw new ConflictError("conflict", "That block is not part of the active session.");
   }
-  return session.id;
+  return session;
 }
 
 export async function getVisit(db: Database, id: string): Promise<VisitRow> {
@@ -162,6 +178,8 @@ export async function createVisit(
     memberId: string;
   } & HouseholdIdentity,
   clock: Clock,
+  // Who is recording, which is not the author when an admin records for someone.
+  actor: { role: Role },
 ): Promise<VisitRow> {
   if (input.clientCreatedAt !== undefined) {
     assertNotInFuture(new Date(input.clientCreatedAt), clock);
@@ -190,13 +208,16 @@ export async function createVisit(
     throw new NotFoundError("No such member.");
   }
 
-  const sessionId = await requireActiveSessionWithBlock(db, input.blockId);
-
   /*
    * One transaction, so a duplicate id rolls the household upsert back and a
-   * visit never exists without the stamp and snapshot that describe it.
+   * visit never exists without the stamp and snapshot that describe it. Where
+   * it may be recorded is judged inside it, under the session lock.
    */
   await db.transaction(async (tx) => {
+    const session = await requireActiveSessionWithBlock(tx, input.blockId);
+    await assertMayRecordHere(tx, actor, session, input.blockId, input.unitNumber);
+    const sessionId = session.id;
+
     const household = await upsertHousehold(tx, {
       blockId: input.blockId,
       unitNumber: input.unitNumber,
@@ -235,6 +256,7 @@ export async function createVisit(
     }
     await stampVisit(tx, input.id, teamId, input.memberId);
     await autoJoin(tx, sessionId, input.memberId);
+    await markDoneByVisit(tx, session, household.id, input.id, input.memberId);
   });
 
   return getVisit(db, input.id);

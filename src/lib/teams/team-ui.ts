@@ -1,5 +1,6 @@
 import type { Participant, Team, User } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
+import { firstName } from "@/lib/session/own-name";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/teams/team-name";
 
 /* D-74-1: the one limit of teams, said where people form them. */
@@ -14,16 +15,8 @@ export const ADMIN_OFFLINE_NOTE = "Connect to change teams";
 export const ADMIN_UNSYNCED_NOTE =
   "Teammates see and edit each other's records once they have synced. A record still waiting on a phone is only on that phone.";
 
-export const NAME_FALLBACK = "Someone";
-
-/* A user with no name still has to be listed and tapped. */
-export function displayName(name: string | null): string {
-  return name === null || name.trim() === "" ? NAME_FALLBACK : name.trim();
-}
-
-export function firstName(name: string | null): string {
-  return displayName(name).replace(/\s.*$/, "");
-}
+/* Kept where the server can import them too; re-exported for the team screens. */
+export { NAME_FALLBACK, displayName, firstName } from "@/lib/session/own-name";
 
 /* "Ann", "Ann & Ben", "Ann, Ben & Cy" from first names. Long first names can
    exceed the limit, so it is cut by code point, and a cut that leaves

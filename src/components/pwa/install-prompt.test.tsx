@@ -9,7 +9,10 @@ const { pathname, role } = vi.hoisted(() => ({
   pathname: { current: "/" },
   role: { signedIn: true },
 }));
-vi.mock("next/navigation", () => ({ usePathname: () => pathname.current }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => pathname.current,
+  useSelectedLayoutSegment: () => null,
+}));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ isSignedIn: role.signedIn }) }));
 
 const ANDROID_CHROME =

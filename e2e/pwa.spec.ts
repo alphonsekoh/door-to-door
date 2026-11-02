@@ -1,6 +1,18 @@
 import type { Page } from "@playwright/test";
-import { SEED_BLOCK, SEED_MEMBER, SEED_PARTNER, SEED_PASSWORD } from "./accounts";
-import { endActiveSession, ensureActiveSession, expect, test } from "./fixtures";
+import {
+  SEED_BLOCK,
+  SEED_LISTED_HOUSEHOLD,
+  SEED_MEMBER,
+  SEED_PARTNER,
+  SEED_PASSWORD,
+} from "./accounts";
+import {
+  endActiveSession,
+  ensureActiveSession,
+  expect,
+  startFollowUpSession,
+  test,
+} from "./fixtures";
 
 /*
  * The PWA layer in a real browser. jsdom cannot register a service worker, so
@@ -26,6 +38,34 @@ function savedCopyMember(page: Page): Promise<string | null> {
             const copy = get.result as { member?: { name?: string } } | undefined;
             db.close();
             resolve(copy?.member?.name ?? null);
+          };
+        };
+      }),
+  );
+}
+
+/* What the local copy holds for the shell: the list's length (null when
+   none was read) and how many blocks were opened. */
+function savedCopyShape(page: Page): Promise<{ revisits: number | null; blocks: number } | null> {
+  return page.evaluate(
+    () =>
+      new Promise<{ revisits: number | null; blocks: number } | null>((resolve) => {
+        const open = indexedDB.open("door-to-door-local");
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore("copy");
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          const get = db.transaction("copy").objectStore("copy").get("current");
+          get.onsuccess = () => {
+            const copy = get.result as
+              { revisits: unknown[] | null; blocks: unknown[] } | undefined;
+            db.close();
+            resolve(
+              copy === undefined
+                ? null
+                : { revisits: copy.revisits?.length ?? null, blocks: copy.blocks.length },
+            );
           };
         };
       }),
@@ -190,7 +230,8 @@ test.describe("the worker in charge", () => {
     await expect(page.getByRole("button", { name: "Save and next" })).toBeHidden();
     await page.getByRole("button", { name: /^Continue as Alice/ }).click();
 
-    await page.getByRole("button", { name: /Blk 123/ }).click();
+    // The block it was reloaded on opens as the member continues.
+    await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
     await page.getByLabel("Unit number").fill(unit);
     await page.getByRole("radio", { name: "High" }).click();
     await page.getByRole("button", { name: "Save and next" }).click();
@@ -256,6 +297,62 @@ test.describe("the worker in charge", () => {
     await expect(page.getByRole("heading", { level: 1, name: /^Blk / })).toBeVisible();
     await page.getByRole("tab", { name: /All units/ }).click();
     await expect(page.getByText(unit)).toBeVisible();
+  });
+
+  /*
+   * The stairwell: a follow-up session's list read with signal, then a
+   * household tapped in a block never opened, with none. Chromium only, as
+   * above.
+   */
+  test("a household on the follow-up list records from the shell with no block opened", async ({
+    memberPage: page,
+    adminApi,
+    browserName,
+  }) => {
+    test.skip(browserName === "webkit", "Playwright WebKit offline emulation bypasses the worker");
+    const sessionId = await startFollowUpSession(adminApi, "Stairwell revisits");
+    try {
+      const listed = "#05-123";
+      await page.goto("/");
+      await controlled(page);
+      const row = page
+        .getByRole("region", { name: "Households to revisit" })
+        .locator(`a[href*="?unit=${encodeURIComponent(listed)}"]`);
+      await expect(row).toBeVisible();
+      // The session screen saved its list; no block was ever opened.
+      await expect.poll(() => savedCopyShape(page)).toEqual({ revisits: 1, blocks: 0 });
+
+      await page.context().setOffline(true);
+      await row.click();
+      await expect(page.getByRole("heading", { level: 1, name: "Offline" })).toBeVisible();
+      await page.getByRole("button", { name: /^Continue as Alice/ }).click();
+
+      // Straight to the household it was tapped for, as online.
+      await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+      await expect(page.getByLabel("Unit number")).toHaveValue(listed);
+      await page.getByRole("radio", { name: "High" }).click();
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      await expect(page.getByText(`Saved ${listed} on this phone.`)).toBeVisible();
+
+      await page.getByRole("button", { name: "The list" }).click();
+      const list = page.getByRole("region", { name: "Households to revisit" });
+      await expect(list).toContainText("1 of 1 visited or done");
+
+      await page.context().setOffline(false);
+      // As in the test above: no `online` fires for a document loaded offline.
+      await page.evaluate(() => window.dispatchEvent(new Event("online")));
+      await expect(page.getByText("All visits sent")).toBeVisible();
+
+      const door = (await (
+        await adminApi.get(`/api/households/${SEED_LISTED_HOUSEHOLD}`)
+      ).json()) as { visits: { sessionId: string; member: { name: string | null } }[] };
+      expect(
+        door.visits.filter((visit) => visit.sessionId === sessionId).map((v) => v.member.name),
+      ).toEqual(["Alice Tan"]);
+    } finally {
+      await page.context().setOffline(false);
+      await endActiveSession(adminApi);
+    }
   });
 
   test("the next member to sign in on the phone sees nothing of the last one's", async ({

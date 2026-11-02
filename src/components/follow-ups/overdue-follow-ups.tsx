@@ -19,6 +19,7 @@ type State =
  * Promises past their day, for the admin landing page. Uses the ordinary list
  * with `dueBefore` set to the start of today, so a note due today is not
  * counted, and takes the count from the page total rather than a new endpoint.
+ * Only listed notes are owed: a suggestion's date is a wish until it is listed.
  * It is a bonus on this screen: a failed load is noted, never blocking.
  */
 export function OverdueFollowUps() {
@@ -27,7 +28,7 @@ export function OverdueFollowUps() {
   useEffect(() => {
     const before = encodeURIComponent(startOfToday(new Date()));
     apiFetch<FollowUpList>(
-      `/follow-ups?outstanding=true&dueBefore=${before}&limit=${String(SHOWN)}`,
+      `/follow-ups?status=listed&outstanding=true&dueBefore=${before}&limit=${String(SHOWN)}`,
     ).then(
       (page) => {
         setState({ status: "ready", notes: page.data, total: page.pagination.total });
@@ -74,7 +75,7 @@ export function OverdueFollowUps() {
         ))}
       </ul>
       <Link
-        href="/follow-ups"
+        href="/admin/follow-ups?tab=list"
         className="mt-2 inline-flex min-h-11 items-center text-body font-medium btn-text"
       >
         See all

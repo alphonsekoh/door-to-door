@@ -16,11 +16,12 @@ const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 const ALICE = "0190a000-0000-7000-8000-00000000000a";
 
 const copy = (name = "Alice"): LocalCopy => ({
-  v: 1,
+  v: 2,
   member: { id: ALICE, name },
   savedAt: NOW,
   outing: null,
   blocks: [],
+  revisits: null,
 });
 
 async function raw(): Promise<unknown> {

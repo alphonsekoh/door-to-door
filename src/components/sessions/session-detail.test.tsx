@@ -11,6 +11,41 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
+/* The households panel has its own tests; here it only has to be placed and fed. */
+vi.mock("@/components/sessions/session-households", () => ({
+  SessionHouseholds: ({
+    session,
+    blocks,
+    tick,
+    onChanged,
+    onCounted,
+  }: {
+    session: OutingSession;
+    blocks: readonly SessionBlock[];
+    tick: number;
+    onChanged: () => Promise<void>;
+    onCounted: (onList: number) => void;
+  }) => (
+    <>
+      <button type="button" onClick={() => void onChanged()}>
+        Households panel: {session.status}, read {String(tick)}, blocks{" "}
+        {blocks.map((entry) => `${entry.block.name} (${String(entry.visitCount)})`).join(", ")}
+      </button>
+      {[0, 2].map((count) => (
+        <button
+          key={count}
+          type="button"
+          onClick={() => {
+            onCounted(count);
+          }}
+        >
+          Read {String(count)} on the list
+        </button>
+      ))}
+    </>
+  ),
+}));
+
 /* The team panel has its own tests; here it only has to be placed and fed. */
 vi.mock("@/components/admin/admin-teams", () => ({
   AdminTeams: ({ status, tick }: { status: string; tick: number }) => (
@@ -26,6 +61,7 @@ function session(status: SessionStatus): OutingSession {
   return {
     id: "s1",
     title: "June outing",
+    kind: "regular",
     status,
     startedAt: null,
     endedAt: null,
@@ -351,5 +387,81 @@ describe("SessionDetail", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("a follow-up session", () => {
+  function serveKind(kind: "regular" | "follow_up") {
+    apiFetch.mockImplementation((path: string) =>
+      path.endsWith("/blocks")
+        ? Promise.resolve([sessionBlock("b1", "123", { visitCount: 2 })])
+        : Promise.resolve({ ...session("draft"), kind }),
+    );
+  }
+
+  it("says what kind it is and what that means for members", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText("Follow-up")).toBeInTheDocument();
+    expect(screen.getByText("Members can record only households on its list.")).toBeVisible();
+  });
+
+  it("shows its households to revisit, fed the blocks and their visits", async () => {
+    // A block holding this session's visits keeps its last pick (block_in_use).
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(
+      await screen.findByText(/Households panel: draft, read 0, blocks 123 \(2\)/),
+    ).toBeInTheDocument();
+  });
+
+  it("reads its blocks again once the households change, since blocks follow them", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    const calls = () =>
+      apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1/blocks").length;
+    await screen.findByText(/Households panel/);
+    const before = calls();
+    await userEvent.click(screen.getByRole("button", { name: /Households panel/ }));
+    await waitFor(() => {
+      expect(calls()).toBe(before + 1);
+    });
+  });
+
+  it("shows its blocks read-only, saying they follow the households", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByText("Blocks follow the households in this session.")).toBeVisible();
+    expect(screen.getByText("Blk 123")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add blocks" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+  });
+
+  it("holds Start once nothing picked is on the list, and says why", async () => {
+    serveKind("follow_up");
+    render(<SessionDetail sessionId="s1" />);
+    const start = await screen.findByRole("button", { name: "Start session" });
+    // Unread is not refused: the server decides.
+    expect(start).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Read 0 on the list" }));
+    expect(start).toBeDisabled();
+    expect(start).toHaveAccessibleDescription(
+      "Every household here is done or off the follow-up list, so members would find nothing to visit. Add households to start it.",
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Read 2 on the list" }));
+    expect(start).toBeEnabled();
+    expect(start).not.toHaveAccessibleDescription();
+  });
+
+  it("has neither for a door-to-door session", async () => {
+    serveKind("regular");
+    render(<SessionDetail sessionId="s1" />);
+    await screen.findByText("June outing");
+    expect(screen.queryByText("Follow-up")).toBeNull();
+    expect(screen.queryByText(/Households panel/)).toBeNull();
+    expect(screen.queryByText("Blocks follow the households in this session.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add blocks" })).toBeInTheDocument();
   });
 });

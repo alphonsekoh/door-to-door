@@ -61,6 +61,9 @@ describe("recordReason", () => {
     expect(recordReason(record({ state: "held", lastError: { code: "session_not_active" } }))).toBe(
       "The session has ended. Sends if an admin reopens it.",
     );
+    expect(
+      recordReason(record({ state: "held", lastError: { code: "not_on_follow_up_list" } })),
+    ).toBe("Not on this session's list. Sends once an admin adds this unit.");
     for (const code of ["conflict", "not_found", "unknown"]) {
       expect(recordReason(record({ state: "held", lastError: { code } }))).toBe(
         "The server would not accept this record. Ask an admin.",

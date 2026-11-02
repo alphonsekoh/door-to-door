@@ -1,15 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { NavIcon } from "@/components/ui/nav-icon";
 import { isActiveRoute, visibleNavItems } from "@/lib/session/nav";
 import { useShellState } from "@/lib/offline/shell-state";
+import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { isPublicPath } from "@/server/auth/routes";
 import { useRole } from "@/lib/hooks/use-role";
 
 export function BottomNav() {
-  const pathname = usePathname();
+  const pathname = useRoutePathname();
   const { isAdmin } = useRole();
   const items = visibleNavItems(isAdmin);
   const shell = useShellState();

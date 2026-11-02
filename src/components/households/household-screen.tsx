@@ -2,11 +2,21 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
+import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { BackLink } from "@/components/ui/back-link";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import {
+  ADD_TO_LIST,
+  ON_THE_LIST,
+  SUGGEST,
+  householdAction,
+  waitingLabel,
+} from "@/lib/follow-ups/rights";
+import { useActiveSession } from "@/lib/hooks/use-active-session";
+import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
@@ -25,6 +35,9 @@ type State =
 export function HouseholdScreen({ householdId }: { householdId: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [adding, setAdding] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+  const { userId, isAdmin } = useRole();
+  const active = useActiveSession();
   /* Two quick changes re-read twice; only the newest answer may land. */
   const generation = useRef(0);
 
@@ -85,29 +98,49 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
     );
   }
 
-  const { household, block, visits } = state.history;
+  const { household, block, visits, followUps } = state.history;
   /* Oldest first, so the last one is the latest knock. */
   const latest = visits.at(-1);
+  const action = householdAction(followUps, { userId, isAdmin });
 
   return (
     <div className="space-y-4">
       <div>
         {back}
-        {/* At large text Add follow-up drops under the unit rather than push
+        {/* At large text the action drops under the unit rather than push
             past the edge, and the unit number never breaks at its hyphen. */}
         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
           <h1 className="text-heading font-semibold tabular-nums">
             <UnitNumber value={household.unitNumber} />
           </h1>
-          <button
-            type="button"
-            onClick={() => {
-              setAdding(true);
-            }}
-            className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
-          >
-            Add follow-up
-          </button>
+          {action.kind === "add_to_list" || action.kind === "suggest" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setSent(null);
+                setAdding(true);
+              }}
+              className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
+            >
+              {action.kind === "add_to_list" ? ADD_TO_LIST : SUGGEST}
+            </button>
+          ) : action.kind === "promote" ? (
+            /* The same as Add to list on the suggestion below: one door, one
+               note on the list, and its author is not told it was declined. */
+            <PromoteButton
+              suggestion={action.suggestion}
+              onPromoted={(message) => {
+                setSent(message);
+                reload();
+              }}
+              className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
+            />
+          ) : (
+            /* Said instead of offered: the server would refuse a second one. */
+            <p className="inline-flex min-h-11 items-center rounded-lg bg-primary/10 px-3 text-caption font-medium">
+              {action.kind === "listed" ? ON_THE_LIST : waitingLabel(action.by)}
+            </p>
+          )}
         </div>
         <p className="text-body text-foreground-muted">
           Blk {block.name}, {block.street}
@@ -119,7 +152,18 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
         )}
       </div>
 
-      <HouseholdHistoryPanel history={state.history} onChanged={reload} anchorVisits />
+      {sent === null ? null : (
+        <p role="status" className="notice-success">
+          {sent}
+        </p>
+      )}
+
+      <HouseholdHistoryPanel
+        history={state.history}
+        active={active}
+        onChanged={reload}
+        anchorVisits
+      />
 
       <SheetPresence>
         {adding ? (
@@ -133,8 +177,9 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
             onClose={() => {
               setAdding(false);
             }}
-            onSaved={() => {
+            onSaved={(message) => {
               setAdding(false);
+              setSent(message);
               reload();
             }}
           />

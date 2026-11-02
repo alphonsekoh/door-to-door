@@ -175,14 +175,14 @@ describe("summariseProgress", () => {
 
 describe("progressLabel", () => {
   it("reads as one phrase", () => {
-    expect(progressLabel({ units: 12, floors: 3, answered: 5 }, "Tonight")).toBe(
-      "Tonight: 12 units on 3 floors, 5 answered",
+    expect(progressLabel({ units: 12, floors: 3, answered: 5 }, "This session")).toBe(
+      "This session: 12 units on 3 floors, 5 answered",
     );
   });
 
   it("uses the singular for a single unit on a single floor", () => {
-    expect(progressLabel({ units: 1, floors: 1, answered: 0 }, "Tonight")).toBe(
-      "Tonight: 1 unit on 1 floor, 0 answered",
+    expect(progressLabel({ units: 1, floors: 1, answered: 0 }, "This session")).toBe(
+      "This session: 1 unit on 1 floor, 0 answered",
     );
   });
 

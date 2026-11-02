@@ -18,13 +18,19 @@ export function askOutingWithin(
   ask: () => Promise<OutingAnswer>,
   timeoutMs = OUTING_ASK_TIMEOUT_MS,
 ): Promise<OutingAnswer> {
+  return within(ask(), { kind: "unknown" }, timeoutMs);
+}
+
+/* Whatever `answer` settles to, or `fallback` once `timeoutMs` has passed.
+   For anything a save asks the server first, by the same limit. */
+export function within<T>(answer: Promise<T>, fallback: T, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const gaveUp = new Promise<OutingAnswer>((resolve) => {
+  const gaveUp = new Promise<T>((resolve) => {
     timer = setTimeout(() => {
-      resolve({ kind: "unknown" });
+      resolve(fallback);
     }, timeoutMs);
   });
-  return Promise.race([ask(), gaveUp]).finally(() => {
+  return Promise.race([answer, gaveUp]).finally(() => {
     clearTimeout(timer);
   });
 }

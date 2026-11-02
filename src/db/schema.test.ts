@@ -4,6 +4,7 @@ import {
   accounts,
   authSessions,
   blocks,
+  followUpStatusEnum,
   followUps,
   households,
   interestLevelEnum,
@@ -11,6 +12,8 @@ import {
   religionEnum,
   roleEnum,
   sessionBlocks,
+  sessionHouseholds,
+  sessionKindEnum,
   sessionParticipants,
   sessionStatusEnum,
   sessionTeamMembers,
@@ -69,6 +72,14 @@ describe("enums", () => {
     // reopen moves ended -> active, so no extra status is needed.
     expect(sessionStatusEnum.enumValues).toEqual(["draft", "active", "ended"]);
   });
+
+  it("session kind is door-to-door or follow-up", () => {
+    expect(sessionKindEnum.enumValues).toEqual(["regular", "follow_up"]);
+  });
+
+  it("follow-up status is a suggestion or a list entry", () => {
+    expect(followUpStatusEnum.enumValues).toEqual(["suggested", "listed"]);
+  });
 });
 
 describe("users", () => {
@@ -110,6 +121,12 @@ describe("outing sessions", () => {
     expect(column(outingSessions, "status")?.default).toBe("draft");
   });
 
+  it("is a door-to-door session unless created as a follow-up", () => {
+    // Existing rows and clients that send no kind keep working as before.
+    expect(column(outingSessions, "kind")?.default).toBe("regular");
+    expect(column(outingSessions, "kind")?.notNull).toBe(true);
+  });
+
   it("refuses to lose the admin who created it", () => {
     expect(deleteActions(outingSessions)).toEqual({ created_by: "restrict" });
   });
@@ -128,6 +145,26 @@ describe("session blocks", () => {
       session_id: "cascade",
       block_id: "restrict",
     });
+  });
+});
+
+describe("session households", () => {
+  it("keys on session plus household, so picking twice is impossible", () => {
+    expect(config(sessionHouseholds).primaryKeys[0]?.columns.map((c) => c.name)).toEqual([
+      "session_id",
+      "household_id",
+    ]);
+  });
+
+  it("goes with its session or its household", () => {
+    expect(deleteActions(sessionHouseholds)).toEqual({
+      session_id: "cascade",
+      household_id: "cascade",
+    });
+  });
+
+  it("finds a household's sessions without a scan", () => {
+    expect(indexNames(sessionHouseholds)).toEqual(["session_households_household_idx"]);
   });
 });
 
@@ -237,11 +274,37 @@ describe("follow ups", () => {
       visit_id: "set null",
       author_id: "restrict",
       done_by: "set null",
+      done_visit_id: "set null",
+      listed_by: "set null",
+      deleted_by: "set null",
     });
   });
 
   it("indexes the outstanding-notes query", () => {
     expect(indexNames(followUps)).toContain("follow_ups_outstanding_idx");
+  });
+
+  it("indexes the notes a visit marked done, which its answer reads back", () => {
+    expect(indexNames(followUps)).toContain("follow_ups_done_visit_idx");
+  });
+
+  it("reads notes written before suggestions existed as listed", () => {
+    expect(column(followUps, "status")?.default).toBe("listed");
+  });
+
+  it("removes softly, keeping who removed it and why", () => {
+    expect(columnNames(followUps)).toEqual(
+      expect.arrayContaining(["deleted_at", "deleted_by", "delete_reason"]),
+    );
+  });
+
+  it("allows one pending suggestion per household", () => {
+    const pending = config(followUps).indexes.find(
+      (i) => i.config.name === "follow_ups_one_open_suggestion_idx",
+    );
+    expect(pending?.config.unique).toBe(true);
+    // Partial, or a household could never be suggested again after a review.
+    expect(pending?.config.where).toBeDefined();
   });
 });
 

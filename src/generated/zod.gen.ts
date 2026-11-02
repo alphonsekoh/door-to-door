@@ -37,6 +37,22 @@ export const zSessionStatus = z.enum([
     'ended'
 ]);
 
+/**
+ * `regular` is door-to-door knocking. `follow_up` revisits households on
+ * the follow-up list. Set at creation and never changed.
+ *
+ */
+export const zSessionKind = z.enum(['regular', 'follow_up']);
+
+/**
+ * `listed` is on the follow-up list: an admin created it, or promoted a
+ * suggestion. `suggested` is a member's request for a return visit,
+ * waiting for an admin to add it to the list or dismiss it. A suggestion
+ * is not a list entry and is never resolved.
+ *
+ */
+export const zFollowUpStatus = z.enum(['suggested', 'listed']);
+
 export const zErrorCode = z.enum([
     'validation_failed',
     'unauthenticated',
@@ -48,6 +64,8 @@ export const zErrorCode = z.enum([
     'session_already_active',
     'clock_skew',
     'block_in_use',
+    'not_on_follow_up_list',
+    'follow_up_exists',
     'rate_limited',
     'internal_error'
 ]);
@@ -113,6 +131,7 @@ export const zSessionBlock = z.object({
 export const zOutingSession = z.object({
     id: z.uuid(),
     title: z.string().min(1).max(160),
+    kind: zSessionKind,
     status: zSessionStatus,
     startedAt: z.iso.datetime().nullable(),
     endedAt: z.iso.datetime().nullable(),
@@ -120,12 +139,18 @@ export const zOutingSession = z.object({
     createdAt: z.iso.datetime()
 });
 
+export const zSessionPick = z.object({
+    householdId: z.uuid(),
+    addedAt: z.iso.datetime()
+});
+
 /**
  * The active session together with the blocks a member can pick.
  */
 export const zActiveSession = z.object({
     session: zOutingSession,
-    blocks: z.array(zSessionBlock)
+    blocks: z.array(zSessionBlock),
+    picks: z.array(zSessionPick)
 });
 
 export const zHousehold = z.object({
@@ -150,7 +175,13 @@ export const zTeamSummary = z.object({
     members: z.array(zUserSummary)
 });
 
-export const zVisit = z.object({
+/**
+ * Every field of a visit, shared by the two shapes a visit is answered
+ * in: `Visit` is exactly these, and `RecordedVisit` these and
+ * `followUpsMarkedDone`.
+ *
+ */
+export const zVisitFields = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
     sessionId: z.uuid(),
@@ -162,6 +193,19 @@ export const zVisit = z.object({
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime()
 });
+
+export const zVisit = zVisitFields;
+
+/**
+ * The answer to recording a visit: `POST /visits`, and each
+ * `/visits/sync` result that carries a visit. A `Visit` that also names
+ * the follow-ups recording it marked done; no other read carries
+ * `followUpsMarkedDone`.
+ *
+ */
+export const zRecordedVisit = zVisitFields.and(z.object({
+    followUpsMarkedDone: z.array(z.uuid())
+}));
 
 /**
  * A pair or small group working one outing, with its **current**
@@ -190,6 +234,14 @@ export const zParticipant = z.object({
 export const zFollowUp = z.object({
     id: z.uuid(),
     householdId: z.uuid(),
+    blockId: z.uuid(),
+    status: zFollowUpStatus,
+    listedAt: z.iso.datetime().nullable(),
+    listedBy: zUserSummary.nullable(),
+    deletedAt: z.iso.datetime().nullable(),
+    deletedBy: zUserSummary.nullable(),
+    deleteReason: z.string().max(500).nullable(),
+    waitingSuggestionBy: zUserSummary.nullable(),
     blockName: z.string(),
     unitNumber: z.string(),
     visitId: z.uuid().nullable(),
@@ -213,9 +265,53 @@ export const zHouseholdHistory = z.object({
     followUps: z.array(zFollowUp)
 });
 
+/**
+ * One household on a follow-up session's list: an admin picked it for
+ * the session, and it has at least one `listed`, not removed note that is
+ * outstanding or was resolved after both the session started and the
+ * household was picked (a draft counts outstanding notes only). This is
+ * the set a member may record visits at in that session.
+ *
+ */
+export const zRevisitEntry = z.object({
+    household: zHousehold,
+    block: zBlock,
+    notes: z.array(zFollowUp).min(1),
+    latestVisit: zVisit.nullable(),
+    visitedInSession: z.boolean()
+});
+
+export const zRevisitList = z.object({
+    data: z.array(zRevisitEntry)
+});
+
+/**
+ * A household an admin picked for a follow-up session. Picks change only
+ * when an admin adds or removes one, so they are the session's record of
+ * what it set out to do; `onList` says whether the household is on the
+ * session's list right now. A picked household drops off the list when
+ * its notes are resolved before the session started, or taken off the
+ * follow-up list, and returns when it is listed or reopened again.
+ *
+ */
+export const zSessionHousehold = z.object({
+    household: zHousehold,
+    block: zBlock,
+    addedAt: z.iso.datetime(),
+    notes: z.array(zFollowUp),
+    onList: z.boolean(),
+    visitedInSession: z.boolean()
+});
+
+export const zSessionHouseholdList = z.object({
+    data: z.array(zSessionHousehold)
+});
+
 export const zCreateSessionRequest = z.object({
     title: z.string().min(1).max(160),
-    blockIds: z.array(z.uuid()).optional()
+    kind: zSessionKind.optional().default('regular'),
+    blockIds: z.array(z.uuid()).optional(),
+    householdIds: z.array(z.uuid()).min(1).max(200).optional()
 });
 
 export const zCreateBlockRequest = z.object({
@@ -232,6 +328,10 @@ export const zUpdateBlockRequest = z.object({
 
 export const zAttachBlocksRequest = z.object({
     blockIds: z.array(z.uuid()).min(1).max(50)
+});
+
+export const zAddSessionHouseholdsRequest = z.object({
+    householdIds: z.array(z.uuid()).min(1).max(200)
 });
 
 /**
@@ -294,7 +394,7 @@ export const zVisitSyncResultStatus = z.enum([
 export const zVisitSyncResult = z.object({
     id: z.uuid(),
     status: zVisitSyncResultStatus,
-    visit: zVisit.nullish(),
+    visit: zRecordedVisit.nullish(),
     error: zError.nullish()
 });
 
@@ -317,7 +417,18 @@ export const zCreateFollowUpRequest = z.object({
 export const zUpdateFollowUpRequest = z.object({
     note: z.string().min(1).max(2000).optional(),
     dueDate: z.iso.datetime().nullish(),
-    done: z.boolean().optional()
+    done: z.boolean().optional(),
+    markedByVisit: z.uuid().optional(),
+    status: z.enum(['listed']).optional()
+});
+
+/**
+ * Sent in the body, not the URL, so free text about a household never
+ * lands in a proxy or access log.
+ *
+ */
+export const zRemoveFollowUpRequest = z.object({
+    reason: z.string().min(1).max(500).regex(/\S/)
 });
 
 export const zCreateUserRequest = z.object({
@@ -468,7 +579,8 @@ export const zPathId = z.uuid();
 export const zListSessionsQuery = z.object({
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).optional().default(0),
-    status: zSessionStatus.optional()
+    status: zSessionStatus.optional(),
+    kind: zSessionKind.optional()
 });
 
 /**
@@ -553,6 +665,45 @@ export const zDetachSessionBlockPath = z.object({
  * Detached.
  */
 export const zDetachSessionBlockResponse = z.void();
+
+export const zListSessionRevisitsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The households to revisit.
+ */
+export const zListSessionRevisitsResponse = zRevisitList;
+
+export const zListSessionHouseholdsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The picked households.
+ */
+export const zListSessionHouseholdsResponse = zSessionHouseholdList;
+
+export const zAddSessionHouseholdsBody = zAddSessionHouseholdsRequest;
+
+export const zAddSessionHouseholdsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The session's households after adding.
+ */
+export const zAddSessionHouseholdsResponse = zSessionHouseholdList;
+
+export const zRemoveSessionHouseholdPath = z.object({
+    id: z.uuid(),
+    householdId: z.uuid()
+});
+
+/**
+ * Removed from the session.
+ */
+export const zRemoveSessionHouseholdResponse = z.void();
 
 export const zListParticipantsPath = z.object({
     id: z.uuid()
@@ -712,9 +863,11 @@ export const zListVisitsResponse = zVisitList;
 export const zCreateVisitBody = zCreateVisitRequest;
 
 /**
- * The recorded visit.
+ * The recorded visit, with `followUpsMarkedDone` (empty when it
+ * marked nothing).
+ *
  */
-export const zCreateVisitResponse = zVisit;
+export const zCreateVisitResponse = zRecordedVisit;
 
 export const zUpdateVisitBody = zUpdateVisitRequest;
 
@@ -737,8 +890,12 @@ export const zSyncVisitsResponse = zVisitSyncResponse;
 export const zListFollowUpsQuery = z.object({
     householdId: z.uuid().optional(),
     authorId: z.uuid().optional(),
+    status: zFollowUpStatus.optional(),
     outstanding: z.boolean().optional(),
     dueBefore: z.iso.datetime().optional(),
+    deleted: z.boolean().optional().default(false),
+    removedByOthers: z.boolean().optional(),
+    deletedSince: z.iso.datetime().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).optional().default(0)
 });
@@ -755,15 +912,6 @@ export const zCreateFollowUpBody = zCreateFollowUpRequest;
  */
 export const zCreateFollowUpResponse = zFollowUp;
 
-export const zDeleteFollowUpPath = z.object({
-    id: z.uuid()
-});
-
-/**
- * Deleted.
- */
-export const zDeleteFollowUpResponse = z.void();
-
 export const zUpdateFollowUpBody = zUpdateFollowUpRequest;
 
 export const zUpdateFollowUpPath = z.object({
@@ -774,6 +922,17 @@ export const zUpdateFollowUpPath = z.object({
  * The updated note.
  */
 export const zUpdateFollowUpResponse = zFollowUp;
+
+export const zRemoveFollowUpBody = zRemoveFollowUpRequest;
+
+export const zRemoveFollowUpPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * Removed.
+ */
+export const zRemoveFollowUpResponse = z.void();
 
 export const zListHistoryQuery = z.object({
     blockId: z.uuid().optional(),

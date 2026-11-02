@@ -98,6 +98,7 @@ export async function listHistory(
       block: blocks,
       sessionId: outingSessions.id,
       sessionTitle: outingSessions.title,
+      sessionKind: outingSessions.kind,
       sessionStatus: outingSessions.status,
       sessionStartedAt: outingSessions.startedAt,
       sessionEndedAt: outingSessions.endedAt,
@@ -153,6 +154,7 @@ export async function listHistory(
       session: {
         id: row.sessionId,
         title: row.sessionTitle,
+        kind: row.sessionKind,
         status: row.sessionStatus,
         startedAt: row.sessionStartedAt,
         endedAt: row.sessionEndedAt,
@@ -200,6 +202,7 @@ export async function listOwnSessionHistory(
     .select({
       sessionId: outingSessions.id,
       sessionTitle: outingSessions.title,
+      sessionKind: outingSessions.kind,
       sessionStatus: outingSessions.status,
       sessionStartedAt: outingSessions.startedAt,
       sessionEndedAt: outingSessions.endedAt,
@@ -253,6 +256,7 @@ export async function listOwnSessionHistory(
       session: {
         id: row.sessionId,
         title: row.sessionTitle,
+        kind: row.sessionKind,
         status: row.sessionStatus,
         startedAt: row.sessionStartedAt,
         endedAt: row.sessionEndedAt,

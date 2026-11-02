@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/app-shell";
 import { accountStore } from "@/lib/session/account-state";
 
-vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+  useSelectedLayoutSegment: () => null,
+}));
 /* The nav reads the role to decide whether to offer the admin tab, so it needs
    a session. The real tree gets one from SessionProvider in the root layout. */
 vi.mock("@/lib/hooks/use-role", () => ({

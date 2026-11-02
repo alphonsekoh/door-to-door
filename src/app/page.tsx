@@ -1,11 +1,7 @@
 import { ActiveSessionScreen } from "@/components/sessions/active-session";
-import { PageHeader } from "@/components/ui/page-header";
 
+/* The header is the screen's own: what it asks of a member depends on the
+   kind of session running. */
 export default function SessionPage() {
-  return (
-    <>
-      <PageHeader title="Active session" subtitle="Pick a block to start recording." />
-      <ActiveSessionScreen />
-    </>
-  );
+  return <ActiveSessionScreen />;
 }

@@ -15,6 +15,27 @@
       "when": 1791524534287,
       "tag": "0001_outgoing_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792741950035,
+      "tag": "0002_follow_up_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792839848663,
+      "tag": "0003_session_households",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793168200313,
+      "tag": "0004_follow_up_done_visit",
+      "breakpoints": true
     }
   ]
 }

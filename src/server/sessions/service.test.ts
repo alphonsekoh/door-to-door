@@ -45,23 +45,13 @@ describe("transitionSession error handling", () => {
      * A connection reset must not be reported as "another session is active",
      * which would send an admin looking for a session that does not exist.
      */
-    const draftRow = {
-      id: "s1",
-      title: "Outing",
-      status: "draft",
-      startedAt: null,
-      endedAt: null,
-      createdAt: new Date(),
-      createdById: "u1",
-      createdByName: "Admin",
-      createdByImage: null,
-    };
+    const lockedDraft = { id: "s1", kind: "regular", status: "draft", startedAt: null };
 
-    const stub = {
+    const stub: Database = {
+      transaction: (run: (tx: Database) => Promise<unknown>) => run(stub),
+      // The session row, read under its lock.
       select: () => ({
-        from: () => ({
-          innerJoin: () => ({ where: () => ({ limit: () => Promise.resolve([draftRow]) }) }),
-        }),
+        from: () => ({ where: () => ({ for: () => Promise.resolve([lockedDraft]) }) }),
       }),
       update: () => ({
         set: () => ({ where: () => Promise.reject(new Error("connection reset")) }),

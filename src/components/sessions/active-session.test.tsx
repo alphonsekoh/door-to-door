@@ -1,9 +1,10 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveSessionScreen } from "@/components/sessions/active-session";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { knownSessionKind } from "@/lib/session/known-kind";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -15,6 +16,22 @@ vi.mock("@/lib/api-client", async () => {
 const { noteOuting, noteBlock } = vi.hoisted(() => ({ noteOuting: vi.fn(), noteBlock: vi.fn() }));
 vi.mock("@/components/sync/local-copy-writer", () => ({
   useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
+}));
+
+const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
+
+/* Tested on its own; here only that it is given the session and the beat. */
+vi.mock("@/components/follow-ups/revisit-list", () => ({
+  RevisitList: ({
+    active,
+    tick,
+    isAdmin,
+  }: {
+    active: { session: { id: string } };
+    tick: number;
+    isAdmin: boolean;
+  }) => <p>{`revisits ${active.session.id} tick ${String(tick)} admin ${String(isAdmin)}`}</p>,
 }));
 
 vi.mock("@/components/teams/outing-team", () => ({
@@ -31,10 +48,11 @@ const block = (name: string, over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-const session = (blocks: unknown[]) => ({
+const session = (blocks: unknown[], kind = "regular") => ({
   session: {
     id: "s1",
     title: "March outing",
+    kind,
     status: "active",
     startedAt: null,
     endedAt: null,
@@ -46,6 +64,8 @@ const session = (blocks: unknown[]) => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+  localStorage.clear();
 });
 
 afterEach(() => {
@@ -84,7 +104,7 @@ describe("with blocks", () => {
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("6")).toBeInTheDocument();
     // This session's units, not the block's size.
-    expect(screen.getByText("visited tonight")).toBeInTheDocument();
+    expect(screen.getByText("visited in this session")).toBeInTheDocument();
     // Visits only shown when they exceed units, or it is noise.
     expect(screen.getByText("8 visits")).toBeInTheDocument();
   });
@@ -121,7 +141,7 @@ describe("with blocks", () => {
     apiFetch.mockResolvedValue(session([block("123", { householdCount: 1, visitCount: 1 })]));
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("1")).toBeInTheDocument();
-    expect(screen.getByText("visited tonight")).toBeInTheDocument();
+    expect(screen.getByText("visited in this session")).toBeInTheDocument();
   });
 });
 
@@ -243,5 +263,130 @@ describe("the offline copy", () => {
     render(<ActiveSessionScreen />);
     await screen.findByRole("alert");
     expect(noteOuting).not.toHaveBeenCalled();
+  });
+});
+
+describe("what the next screen is told", () => {
+  it("is the kind of session running, so a block opens knowing it", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await waitFor(() => {
+      expect(knownSessionKind.getSnapshot()).toBe("follow_up");
+    });
+  });
+
+  it("is that none is running on a 404, and nothing after a failure", async () => {
+    apiFetch.mockRejectedValue(new ApiRequestError(404, undefined));
+    const view = render(<ActiveSessionScreen />);
+    await screen.findByText("No session is running.");
+    expect(knownSessionKind.getSnapshot()).toBeNull();
+    view.unmount();
+
+    knownSessionKind.forget();
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<ActiveSessionScreen />);
+    await screen.findByRole("alert");
+    expect(knownSessionKind.getSnapshot()).toBeUndefined();
+  });
+});
+
+describe("a follow-up session", () => {
+  it("says what kind of session it is and what it allows", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Follow-up")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Visits can be recorded only at the households below\.$/),
+    ).toBeInTheDocument();
+    // Said at any hour: a session is not always in the evening.
+    expect(screen.queryByText(/Tonight/)).toBeNull();
+  });
+
+  it("asks a member to tap a household, not to pick a block", async () => {
+    // There are no block cards to pick in a follow-up session.
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("Tap a household to record your visit.")).toBeVisible();
+    expect(screen.queryByText("Pick a block to start recording.")).toBeNull();
+  });
+
+  it("asks for a block in a door-to-door session, and nothing until the kind is known", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    render(<ActiveSessionScreen />);
+    expect(screen.getByRole("heading", { name: "Active session" })).toBeVisible();
+    expect(screen.queryByText(/Pick a block|Tap a household/)).toBeNull();
+    answer(session([block("123")]));
+    expect(await screen.findByText("Pick a block to start recording.")).toBeVisible();
+  });
+
+  it("tells an admin they can still record any unit, and where", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(session([block("123"), block("125")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(
+      await screen.findByText(/As an admin you can record any unit in this session's blocks\./),
+    ).toBeVisible();
+    expect(screen.getByText(/admin true/)).toBeInTheDocument();
+    // A block with nobody on the list is still reachable from here.
+    const blocks = screen.getByRole("region", { name: "Blocks in this session" });
+    expect(within(blocks).getByRole("link", { name: /Blk 125/ })).toHaveAttribute(
+      "href",
+      "/blocks/b-125",
+    );
+  });
+
+  it("leaves the admin's block list out when the session has no blocks", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(session([], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/admin true/);
+    expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
+  });
+
+  it("drives the screen from the list of households, not the block cards", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    expect(await screen.findByText("revisits s1 tick 1 admin false")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Blk 123/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
+    // The team card still works as in any session.
+    expect(screen.getByText(/team card s1/)).toBeInTheDocument();
+  });
+
+  it("re-reads the list with every refresh", async () => {
+    apiFetch.mockResolvedValue(session([], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/revisits s1 tick 1/);
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText(/revisits s1 tick 2/)).toBeInTheDocument();
+  });
+
+  it("explains how it works once, until dismissed on this phone", async () => {
+    apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
+    render(<ActiveSessionScreen />);
+    const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
+    // Saving marks the follow-up done; Mark done is for one finished without a visit.
+    expect(hint).toHaveTextContent(
+      "Tap a household to record your visit. Saving your visit marks the household's follow-up done. If it still needs another visit, tap Undo, or Reopen on this list.",
+    );
+    expect(hint).toHaveTextContent("Use Mark done for one finished without a visit.");
+    // The same way to ask for a household as everywhere else.
+    expect(hint).toHaveTextContent("Type its unit in the block and tap Suggest a return visit");
+    expect(hint).not.toHaveTextContent(/ask an admin/i);
+    fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
+    expect(screen.queryByRole("region", { name: "How a follow-up session works" })).toBeNull();
+  });
+
+  it("carries no badge or rule for a door-to-door session", async () => {
+    apiFetch.mockResolvedValue(session([block("123")]));
+    render(<ActiveSessionScreen />);
+    await screen.findByText("Blk 123");
+    expect(screen.queryByText("Follow-up")).toBeNull();
+    expect(screen.queryByText(/revisits/)).toBeNull();
   });
 });

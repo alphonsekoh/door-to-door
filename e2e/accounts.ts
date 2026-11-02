@@ -16,3 +16,6 @@ export const PARTNER_STATE = "e2e/.auth/partner.json";
 
 /* Block 123, Ang Mo Kio Ave 3, from the seed. */
 export const SEED_BLOCK = "00000000-0000-4000-8001-000000000001";
+
+/* #05-123 in Blk 123, on the follow-up list since the June visit. */
+export const SEED_LISTED_HOUSEHOLD = "00000000-0000-4000-8003-000000000001";

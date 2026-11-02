@@ -35,9 +35,19 @@ The household/visit split is the heart of the app and the thing most likely to b
   visit**, so the interest trajectory over time stays visible. Amending corrects the same
   visit; it never moves it to another unit or session.
 - A **follow-up** attaches to the _household_, not the session, so it survives across sessions.
+  Only an admin puts one on the **follow-up list** (`listed`); a member's is a `suggested`
+  return visit for an admin to add or dismiss. Removing a follow-up is always a soft
+  delete with a required reason (who, when, why), and removed ones leave every list,
+  count and check (D-117-4, D-117-33).
 - **One session is active app-wide at a time**, enforced by a partial unique index.
-  Admins attach blocks to a live session; members self-select a block. Blocks are shared,
-  never locked.
+  Admins attach blocks to a live door-to-door session; members self-select a block.
+  Blocks are shared, never locked.
+- A session's **kind** is fixed at creation: door-to-door (`regular`) or `follow_up`. A
+  follow-up session has households an admin picked from the follow-up list
+  (`session_households`, never fewer than one), and its blocks follow them; nobody
+  attaches its blocks by hand. In it a member records only at households on its list,
+  and changes a listed follow-up only while it is on that list; admins are exempt. One
+  rule decides the list (`src/server/follow-ups/list-rule.ts`, D-117-40).
 - `visits.id` is a **client-generated UUIDv7** — this is what makes the offline queue
   idempotent. Do not replace it with a database default.
 - The word users see is **session** (D-111-7), as in the API (`/sessions`). Only the
@@ -65,7 +75,8 @@ are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/
 
 **[CI]** A Playwright suite (`e2e/`) runs against the production build in a real browser
 at phone viewports, on Chromium (Pixel 5) and WebKit (iPhone 13): signing in, recording a
-visit online and offline, a session's lifecycle, teams, the account screen and the PWA.
+visit online and offline, a session's lifecycle, a follow-up session, teams, the account
+screen and the PWA.
 It exists for what jsdom cannot see - layout, stacking, and client-side navigation -
 after a sheet's save button shipped underneath the bottom nav through three PRs and 1100
 passing tests. Keep the suite thin; Vitest owns coverage. Add a spec only for a flow it

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { interestLevelEnum, religionEnum, roleEnum, sessionStatusEnum } from "@/db/schema";
+import {
+  followUpStatusEnum,
+  interestLevelEnum,
+  religionEnum,
+  roleEnum,
+  sessionKindEnum,
+  sessionStatusEnum,
+} from "@/db/schema";
 import { listOperations, loadOpenApiDocument, schemaEnum } from "@/lib/openapi-document";
 
 const doc = loadOpenApiDocument();
@@ -26,6 +33,8 @@ describe("enums mirror the database", () => {
     ["Religion", religionEnum],
     ["InterestLevel", interestLevelEnum],
     ["SessionStatus", sessionStatusEnum],
+    ["SessionKind", sessionKindEnum],
+    ["FollowUpStatus", followUpStatusEnum],
   ])("%s matches the Drizzle pgEnum exactly", (name, pgEnum) => {
     expect(schemaEnum(doc, name)).toEqual([...pgEnum.enumValues]);
   });

@@ -1,13 +1,16 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
+import { ApiRequestError } from "@/lib/api-client";
 import {
+  OFF_THE_LIST,
   RecordVisitForm,
   blockedMessage,
   validateVisit,
 } from "@/components/visits/record-visit-form";
-import type { HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, FollowUp, HouseholdSummary } from "@/generated/types.gen";
+import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
@@ -93,18 +96,49 @@ beforeEach(() => {
 });
 
 /* A note left on an earlier outing, months before this knock. */
-const owed = {
+const owed: FollowUp = {
   id: "f1",
   householdId: "h1",
+  blockId: "b1",
   blockName: "123",
   unitNumber: "#05-123",
   visitId: null,
+  status: "listed",
   author: { id: "u2", name: "Ben", image: null },
   note: "Bring the community event flyer.",
   dueDate: null,
   doneAt: null,
   doneBy: null,
+  listedAt: null,
+  listedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2025-11-02T10:00:00.000Z",
+};
+
+/* A follow-up session covering this block, so a member may resolve its notes. */
+const FOLLOW_UP: ActiveSession = {
+  session: {
+    id: "s9",
+    title: "Follow-up",
+    kind: "follow_up",
+    status: "active",
+    startedAt: "2025-01-01T00:00:00.000Z",
+    endedAt: null,
+    createdBy: { id: "a1", name: "Admin", image: null },
+    createdAt: "2025-01-01T00:00:00.000Z",
+  },
+  blocks: [
+    {
+      block: { id: BLOCK, name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+      visitCount: 0,
+      householdCount: 0,
+      activeMembers: [],
+    },
+  ],
+  picks: [{ householdId: "h1", addedAt: "2024-12-31T00:00:00.000Z" }],
 };
 
 describe("validateVisit", () => {
@@ -239,6 +273,27 @@ describe("moving along a corridor", () => {
     });
   });
 
+  it("promises and guesses no next unit while the kind of session is not known", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        guessNext={false}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+    expect(screen.getByLabelText("Unit number")).toHaveValue("");
+  });
+
   it("clears the interest level so the next door starts fresh", async () => {
     const user = userEvent.setup();
     render(
@@ -259,7 +314,7 @@ describe("moving along a corridor", () => {
     });
   });
 
-  it("brings the Saved line and the next unit back into view after each save, and only then", async () => {
+  it("brings the Saved line back into view after each save, and only then", async () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     const user = userEvent.setup();
     render(
@@ -288,10 +343,11 @@ describe("moving along a corridor", () => {
     });
     expect(scrolled).toHaveBeenCalledOnce();
     expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
-    const brought = scrolled.mock.contexts[0] as HTMLElement;
-    expect(brought).toContainElement(screen.getByRole("status"));
-    expect(brought).toContainElement(screen.getByLabelText("Unit number"));
-    expect(brought).toHaveClass("scroll-clear-chrome");
+    /* The line itself, which the unit field follows: anything also holding
+       the block's chips can be taller than the screen, and is then aligned
+       by its bottom. */
+    expect(scrolled.mock.contexts[0]).toBe(screen.getByRole("status"));
+    expect(screen.getByRole("status")).toHaveClass("scroll-clear-chrome");
 
     // The next door, already filled in.
     await user.click(screen.getByRole("radio", { name: "High" }));
@@ -382,13 +438,14 @@ describe("history before knocking", () => {
     );
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
 
-    expect(await screen.findByText("Outstanding follow-up")).toBeInTheDocument();
-    const list = within(screen.getByRole("list", { name: "Outstanding follow-ups" }));
+    const list = within(await screen.findByRole("list", { name: "On the follow-up list" }));
     expect(list.getByText("Bring the community event flyer.")).toBeInTheDocument();
     expect(list.getByText(/Added by Ben · 2 Nov 2025/)).toBeInTheDocument();
   });
 
-  it("lets a note be marked done at the door, then re-reads the unit", async () => {
+  it("lets an admin mark a note done at the door in a door-to-door session, then re-reads the unit", async () => {
+    // Saving marks it done only in a follow-up session; elsewhere the button stays.
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     let resolved = false;
     apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "PATCH") {
@@ -424,7 +481,7 @@ describe("history before knocking", () => {
 
     const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
     expect(await timeline.findByText("Follow-up done")).toBeInTheDocument();
-    expect(screen.queryByText("Outstanding follow-up")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "On the follow-up list" })).not.toBeInTheDocument();
     expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
   });
 
@@ -457,6 +514,7 @@ describe("history before knocking", () => {
   });
 
   it("keeps the unit on screen when the re-read after marking done fails", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     let reads = 0;
     apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
       if (init?.method === "PATCH") return Promise.resolve({});
@@ -489,6 +547,68 @@ describe("history before knocking", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Mr Tan")).toBeInTheDocument();
     expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
+  });
+
+  it("offers no Mark done in a follow-up session, where saving the visit marks it done", async () => {
+    apiFetch.mockResolvedValue(history({ followUps: [owed] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={FOLLOW_UP}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByText("Saving your visit marks this done.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+  });
+
+  it("says so once for every note the save marks done", async () => {
+    // An admin too: the save marks them whoever records it.
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(history({ followUps: [owed, { ...owed, id: "f2" }] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={FOLLOW_UP}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByText("Saving your visit marks these done.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+    // Edit and Remove stay: only marking done moves to the save.
+    expect(screen.getAllByRole("button", { name: "Remove from list" })).toHaveLength(2);
+  });
+
+  it("keeps an admin's Mark done at a household the follow-up session did not pick", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue(history({ followUps: [owed] }));
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        active={{ ...FOLLOW_UP, picks: [] }}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+
+    expect(await screen.findByRole("button", { name: "Mark done" })).toBeInTheDocument();
+    expect(screen.queryByText(/Saving your visit marks/)).toBeNull();
   });
 
   it("drops the last unit's history when a different unit's lookup fails", async () => {
@@ -644,14 +764,14 @@ describe("a follow-up after saving", () => {
     return user;
   };
 
-  it("offers to add one, anchored to the visit just saved", async () => {
+  it("offers a member a suggestion, anchored to the visit just saved", async () => {
     const user = await saveVisit();
     expect(await screen.findByRole("status")).toHaveTextContent("Saved #06-201.");
-    await user.click(screen.getByRole("button", { name: "Add follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
 
-    const sheet = screen.getByRole("dialog", { name: "Follow-up for #06-201" });
-    await user.type(within(sheet).getByLabelText("Note"), "Call on Sunday");
-    await user.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
+    await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
+    await user.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
 
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
@@ -664,16 +784,34 @@ describe("a follow-up after saving", () => {
         }),
       });
     });
-    expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201. Follow-up added.");
-    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved #06-201. Suggestion sent. An admin will review it.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Suggest a return visit" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers an admin the follow-up list itself", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const user = await saveVisit();
+    await user.click(await screen.findByRole("button", { name: "Add to follow-up list" }));
+    const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #06-201" });
+    await user.type(within(sheet).getByLabelText("What should the next visit do?"), "Flyer");
+    await user.click(within(sheet).getByRole("button", { name: "Add to list" }));
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Saved #06-201. Added to the follow-up list.",
+      );
+    });
   });
 
   it("can be dismissed without adding anything", async () => {
     const user = await saveVisit();
-    await user.click(await screen.findByRole("button", { name: "Add follow-up" }));
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add follow-up" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Suggest a return visit" })).toBeInTheDocument();
   });
 
   it("clears once the next unit is typed", async () => {
@@ -701,7 +839,85 @@ describe("a follow-up after saving", () => {
       await user.click(screen.getByRole("button", { name: "Save and next" }));
     });
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Add follow-up" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Suggest a return visit" }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("what a save offers for a household with a note already", () => {
+  const waiting: FollowUp = { ...owed, id: "s1", status: "suggested" };
+
+  /* Answers the unit's history with `notes`, and a save with its visit. */
+  const recordAt = async (notes: FollowUp[]) => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
+      Promise.resolve(
+        init?.method === undefined
+          ? history({ followUps: notes })
+          : path === "/visits"
+            ? { id: "v-new", householdId: "h1" }
+            : {},
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await screen.findByText("Mr Tan");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Saved #05-123.");
+    return { user, status };
+  };
+
+  it.each([
+    ["already on the list", [owed]],
+    ["waiting for review", [waiting]],
+  ])(
+    "offers a member no suggestion for a household %s, which the server would refuse",
+    async (_case, notes) => {
+      const { status } = await recordAt(notes);
+      expect(within(status).queryByRole("button")).toBeNull();
+    },
+  );
+
+  it("offers an admin nothing more for a household already on the list", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const { status } = await recordAt([owed]);
+    expect(within(status).queryByRole("button")).toBeNull();
+  });
+
+  it("has an admin list the waiting suggestion, not add a second note beside it", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    const { user, status } = await recordAt([waiting]);
+    await user.click(within(status).getByRole("button", { name: "Add to follow-up list" }));
+    // The suggestion is shown before it is listed, in its author's words.
+    const sheet = within(
+      screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
+    );
+    const add = sheet.getByRole("button", { name: "Add to list" });
+    await waitFor(() => {
+      expect(add).toBeEnabled();
+    });
+    await user.click(add);
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Saved #05-123. Added to the follow-up list.",
+      );
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups/s1", {
+      method: "PATCH",
+      body: JSON.stringify({ status: "listed" }),
+    });
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
   });
 });
 
@@ -1035,10 +1251,10 @@ describe("saving into the offline queue", () => {
     rerenderForm(view);
     expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201.");
 
-    await user.click(screen.getByRole("button", { name: "Add follow-up" }));
-    const sheet = screen.getByRole("dialog", { name: "Follow-up for #06-201" });
-    await user.type(within(sheet).getByLabelText("Note"), "Call on Sunday");
-    await user.click(within(sheet).getByRole("button", { name: "Save follow-up" }));
+    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
+    await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
+    await user.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
         method: "POST",
@@ -1318,5 +1534,810 @@ describe("telling the page whether anything would be lost", () => {
     await user.type(screen.getByLabelText("Unit number"), "#05-1");
     view.unmount();
     expect(last()).toBe(false);
+  });
+});
+
+describe("in a follow-up session", () => {
+  const revisit = (unitNumber: string, { done = false, visited = false } = {}) => ({
+    household: { ...summary(unitNumber, `h${unitNumber}`).household },
+    block: { id: BLOCK, name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+    notes: [{ ...owed, id: `n${unitNumber}`, doneAt: done ? "2026-10-20T10:00:00.000Z" : null }],
+    latestVisit: null,
+    visitedInSession: visited,
+  });
+  const LIST = [
+    revisit("#05-123"),
+    revisit("#06-201", { visited: true }),
+    revisit("#07-301", { done: true }),
+  ];
+
+  const mount = (
+    revisits: ReturnType<typeof revisit>[] | null = LIST,
+    known: HouseholdSummary[] = [],
+    initialUnit?: string,
+  ) =>
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={known}
+        followUp={{ revisits }}
+        onRecorded={vi.fn()}
+        {...(initialUnit === undefined ? {} : { initialUnit })}
+      />,
+    );
+
+  it("offers the block's listed units as chips that fill in the unit", async () => {
+    const user = userEvent.setup();
+    mount();
+    const chips = within(screen.getByRole("list", { name: "On the list in this block" }));
+    expect(chips.getAllByRole("button").map((chip) => chip.textContent)).toEqual([
+      "#05-123",
+      "#06-201 · Visited",
+      "#07-301 · Done",
+    ]);
+    await user.click(chips.getByRole("button", { name: "#06-201 · Visited" }));
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(chips.getByRole("button", { name: "#06-201 · Visited" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("explains an unlisted unit and refuses to save it, beside Save", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on this session's list, so it can't be recorded in this session. Ask an admin to add it.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not saved. This unit is not on this session's list.",
+    );
+    expect(apiFetch).not.toHaveBeenCalledWith("/visits", expect.anything());
+  });
+
+  it("lifts the refusal once a listed unit is chosen", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-123" });
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(screen.getByRole("alert")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    expect(screen.queryByRole("alert")).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+  });
+
+  it("lets a member suggest a known, unlisted household from the refusal", async () => {
+    apiFetch.mockImplementation((path: string, init?: { method?: string }) =>
+      Promise.resolve(
+        init?.method === "POST" ? {} : history({ household: summary("#05-124", "h9").household }),
+      ),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    const suggest = await screen.findByRole("button", { name: "Suggest a return visit" });
+    // One way to get it listed is offered, not "ask an admin" beside it.
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on this session's list, so it can't be recorded in this session. Should it be? Suggest it for an admin to review. Suggest a return visit",
+    );
+    await user.click(suggest);
+    const sheet = within(screen.getByRole("dialog", { name: "Suggest a return visit, #05-124" }));
+    await user.type(sheet.getByLabelText("Why should we go back?"), "Wants a visit");
+    await user.click(sheet.getByRole("button", { name: "Send suggestion" }));
+    expect(
+      await screen.findByText("Suggestion sent. An admin will review it."),
+    ).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/follow-ups", {
+      method: "POST",
+      body: JSON.stringify({
+        householdId: "h9",
+        visitId: null,
+        note: "Wants a visit",
+        dueDate: null,
+      }),
+    });
+  });
+
+  it("closes the suggestion from the refusal on Cancel, leaving it on offer", async () => {
+    apiFetch.mockResolvedValue(history({ household: summary("#05-124", "h9").household }));
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(screen.getByRole("button", { name: "Suggest a return visit" })).toBeInTheDocument();
+    expect(apiFetch).not.toHaveBeenCalledWith("/follow-ups", expect.anything());
+  });
+
+  it("offers no suggestion for a household already waiting for review", async () => {
+    apiFetch.mockResolvedValue(
+      history({
+        household: summary("#05-124", "h9").household,
+        followUps: [{ ...owed, status: "suggested" }],
+      }),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(await screen.findByRole("list", { name: "Waiting for review" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /A suggestion to add it is waiting for an admin to review\.$/,
+    );
+  });
+
+  it("says a household on the follow-up list needs adding to this session", async () => {
+    // Listed, but this session did not pick it: only an admin can add it.
+    apiFetch.mockResolvedValue(
+      history({ household: summary("#05-124", "h9").household, followUps: [owed] }),
+    );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(await screen.findByRole("list", { name: "On the follow-up list" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on this session's list, so it can't be recorded in this session. It is on the follow-up list; ask an admin to add it to this session.",
+    );
+  });
+
+  it("says nothing of what to do while a known unit's history loads", async () => {
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9")]);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "#05-124 is not on this session's list, so it can't be recorded in this session.",
+    );
+  });
+
+  it("never suggests the unit typed before, while the next one's history loads", async () => {
+    let later: (value: unknown) => void = () => undefined;
+    apiFetch
+      .mockResolvedValueOnce(history({ household: summary("#05-124", "h9").household }))
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          later = resolve;
+        }),
+      );
+    const user = userEvent.setup();
+    mount(LIST, [summary("#05-124", "h9"), summary("#05-125", "h10")]);
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#05-124");
+    expect(await screen.findByRole("button", { name: "Suggest a return visit" })).toBeVisible();
+
+    // Straight from one known unit to the next, as a chip or a paste does.
+    fireEvent.change(unit, { target: { value: "#05-125" } });
+    expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
+    act(() => {
+      later(history({ household: summary("#05-125", "h10").household }));
+    });
+    expect(await screen.findByRole("button", { name: "Suggest a return visit" })).toBeVisible();
+  });
+
+  it("tells an admin the unit is off the list, and records it anyway", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "Not on this session's list. You can still record it as an admin.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+  });
+
+  it("says when the list could not be checked, and still saves", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount(null);
+    expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "Could not check this session's list. A visit to a unit not on it will wait on this phone until an admin adds it.",
+    );
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+  });
+
+  it("guesses no next unit after a save, and offers the way back to the list", async () => {
+    apiFetch.mockResolvedValue({ id: "v1", householdId: "h1" });
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Saved #05-123.");
+    expect(within(status).getByRole("link", { name: "Back to the list" })).toHaveAttribute(
+      "href",
+      "/",
+    );
+    // The household is listed already: a member has nothing to suggest here.
+    expect(within(status).queryByRole("button")).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("");
+    // Nothing comes next by itself, so the button promises no "next".
+    expect(screen.queryByRole("button", { name: "Save and next" })).toBeNull();
+  });
+
+  it("explains a refusal from the server in the same words", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "not_on_follow_up_list", message: "raw server text" },
+      }),
+    );
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "#05-123" }));
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Not saved. This unit is not on this session's list.",
+    );
+  });
+
+  describe("marking the follow-up done on save", () => {
+    const UNDO = "Undo marking the follow-up done";
+    const REASON =
+      "Ann's suggestion for this door is waiting for an admin. Ask an admin to review it.";
+    const recheck = vi.fn(() => Promise.resolve(LIST));
+    const onRecorded = vi.fn();
+
+    /* The server marks what it marks; a reopen answers as `reopen` says. */
+    function server(marked: string[], reopen: () => Promise<unknown> = () => Promise.resolve({})) {
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          return Promise.resolve({
+            id: "v1",
+            householdId: "h#05-123",
+            followUpsMarkedDone: marked,
+          });
+        }
+        return init?.method === "PATCH" ? reopen() : Promise.resolve(history());
+      });
+    }
+
+    const form = (revisits = LIST) => (
+      <RecordVisitForm
+        sessionId="s9"
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        followUp={{ revisits, recheck }}
+        onRecorded={onRecorded}
+      />
+    );
+
+    const saveAt = async (unit = "#05-123", revisits = LIST) => {
+      const user = userEvent.setup();
+      const view = render(form(revisits));
+      await user.clear(screen.getByLabelText("Unit number"));
+      await user.type(screen.getByLabelText("Unit number"), unit);
+      await user.click(screen.getByRole("radio", { name: "No response" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      return { user, view, status: await screen.findByRole("status") };
+    };
+
+    const patches = () =>
+      apiFetch.mock.calls.filter(
+        ([, init]) => (init as { method?: string } | undefined)?.method === "PATCH",
+      );
+
+    it("says it was marked done, and Undo reopens exactly that, leaving the visit", async () => {
+      server(["n#05-123"]);
+      const { user, status } = await saveAt();
+      expect(status).toHaveTextContent("Saved #05-123.Follow-up marked done.");
+      expect(onRecorded).toHaveBeenCalledTimes(1);
+
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      expect(patches()).toEqual([
+        [
+          "/follow-ups/n#05-123",
+          { method: "PATCH", body: JSON.stringify({ done: false, markedByVisit: "v1" }) },
+        ],
+      ]);
+      // The visit itself is never touched again.
+      expect(
+        apiFetch.mock.calls.filter(([path]) => String(path).startsWith("/visits")),
+      ).toHaveLength(1);
+      // The list and the block are read again, so the row and chip read Visited.
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(onRecorded).toHaveBeenCalledTimes(2);
+    });
+
+    it("says how many, and reopens them all", async () => {
+      server(["a", "b"]);
+      const { user, status } = await saveAt();
+      expect(status).toHaveTextContent("2 follow-ups marked done.");
+      await user.click(
+        within(status).getByRole("button", { name: "Undo marking the follow-ups done" }),
+      );
+      expect(await within(status).findByText("Undone. 2 follow-ups reopened.")).toBeInTheDocument();
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/a", "/follow-ups/b"]);
+    });
+
+    it("gives the server's reason when it will not reopen, and offers Undo no more", async () => {
+      server(["n#05-123"], () =>
+        Promise.reject(
+          new ApiRequestError(409, { error: { code: "follow_up_exists", message: REASON } }),
+        ),
+      );
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText(`Not undone. ${REASON}`)).toBeInTheDocument();
+      expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      expect(recheck).toHaveBeenCalledTimes(1);
+    });
+
+    it("keeps Undo after no answer, and a second try finishes it", async () => {
+      let attempts = 0;
+      server(["n#05-123"], () => {
+        attempts += 1;
+        return attempts === 1
+          ? Promise.reject(new TypeError("Failed to fetch"))
+          : Promise.resolve({});
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(
+        await within(status).findByText("Not undone. Check your signal and try again."),
+      ).toBeInTheDocument();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(attempts).toBe(2);
+    });
+
+    it("sends one undo for two taps, and says it is working", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
+      const { status } = await saveAt();
+      const undo = within(status).getByRole("button", { name: UNDO });
+      act(() => {
+        fireEvent.click(undo);
+        fireEvent.click(undo);
+      });
+      expect(within(status).getByRole("button", { name: "Undoing…" })).toBeDisabled();
+      await act(async () => {
+        finish({});
+        await Promise.resolve();
+      });
+      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(patches()).toHaveLength(1);
+    });
+
+    it("cannot undo without signal", async () => {
+      server(["n#05-123"]);
+      useOnline.mockReturnValue(false);
+      const { status } = await saveAt();
+      expect(within(status).getByRole("button", { name: UNDO })).toBeDisabled();
+    });
+
+    it("says nothing of follow-ups where the server marked none", async () => {
+      // Someone marked it done by hand while the member was at the door.
+      server([]);
+      const { status } = await saveAt();
+      expect(status).toHaveTextContent(/^Saved #05-123\.Back to the list$/);
+    });
+
+    it("says nothing for an admin's visit off the list", async () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      server([]);
+      const { status } = await saveAt("#09-999");
+      expect(status).not.toHaveTextContent(/marked done/);
+    });
+
+    it("lets go of Undo once another unit is typed, and drops a late answer", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      expect(screen.queryByRole("status")).toBeNull();
+      await act(async () => {
+        finish({});
+        await Promise.resolve();
+      });
+      expect(screen.queryByText(/Undone/)).toBeNull();
+    });
+
+    it("never lets a late Undo answer speak for the next unit saved", async () => {
+      const answers: ((value: unknown) => void)[] = [];
+      let saves = 0;
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          saves += 1;
+          return Promise.resolve({
+            id: `v${String(saves)}`,
+            householdId: `h${String(saves)}`,
+            followUpsMarkedDone: [`n${String(saves)}`],
+          });
+        }
+        return init?.method === "PATCH"
+          ? new Promise((resolve) => answers.push(resolve))
+          : Promise.resolve(history());
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+
+      // The next door is saved while the first Undo is still on its way.
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      await user.click(screen.getByRole("radio", { name: "Medium" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const next = await screen.findByRole("status");
+      expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
+
+      await act(async () => {
+        answers[0]?.({});
+        await Promise.resolve();
+      });
+      // The first undo has finished: it re-read the list and the block.
+      await waitFor(() => {
+        expect(onRecorded).toHaveBeenCalledTimes(3);
+      });
+      expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
+      expect(next).not.toHaveTextContent(/Undone/);
+      expect(within(next).getByRole("button", { name: UNDO })).toBeInTheDocument();
+    });
+
+    it("never holds up the next save's Undo behind one still on its way", async () => {
+      const answers: ((value: unknown) => void)[] = [];
+      let saves = 0;
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          saves += 1;
+          return Promise.resolve({
+            id: `v${String(saves)}`,
+            householdId: `h${String(saves)}`,
+            followUpsMarkedDone: [`n${String(saves)}`],
+          });
+        }
+        return init?.method === "PATCH"
+          ? new Promise((resolve) => answers.push(resolve))
+          : Promise.resolve(history());
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      await user.click(screen.getByRole("radio", { name: "Medium" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const next = await screen.findByRole("status");
+
+      await user.click(within(next).getByRole("button", { name: UNDO }));
+      expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/n1", "/follow-ups/n2"]);
+      expect(within(next).getByRole("button", { name: "Undoing…" })).toBeDisabled();
+      await act(async () => {
+        answers[0]?.({});
+        await Promise.resolve();
+      });
+      expect(next).not.toHaveTextContent(/Undone/);
+      await act(async () => {
+        answers[1]?.({});
+        await Promise.resolve();
+      });
+      expect(await within(next).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+    });
+
+    describe("through the queue", () => {
+      const STAMP = "2026-10-20T18:00:00.000Z";
+      const queue = {
+        ...NO_QUEUE,
+        ownerId: "u1",
+        records: [] as QueuedVisit[],
+        inFlight: new Set<string>(),
+        enqueue: vi.fn((draft: VisitDraft) =>
+          Promise.resolve(buildQueuedVisit(draft, "u1", Date.now(), () => "v-queued")),
+        ),
+      };
+      const sent = (marked: string[]): QueuedVisit => ({
+        ...buildQueuedVisit(
+          { ...draftFor("#05-123"), sessionId: "s9" },
+          "u1",
+          Date.now(),
+          () => "v-queued",
+        ),
+        state: "synced",
+        serverVisit: {
+          id: "v-queued",
+          householdId: "h#05-123",
+          sessionId: "s9",
+          member: { id: "u1", name: "Me", image: null },
+          team: null,
+          interestLevel: "no_response",
+          description: "",
+          clientCreatedAt: STAMP,
+          createdAt: STAMP,
+          updatedAt: STAMP,
+          followUpsMarkedDone: marked,
+        },
+      });
+
+      beforeEach(() => {
+        queue.records = [];
+        queue.inFlight = new Set();
+        useSyncQueue.mockImplementation(() => queue);
+      });
+
+      afterEach(() => {
+        shellState.leave();
+      });
+
+      it("says it will be marked done once sent, then offers Undo once it is", async () => {
+        const { view, status } = await saveAt();
+        expect(status).toHaveTextContent(
+          "Saved #05-123 on this phone.Follow-up marked done once sent.",
+        );
+        queue.inFlight = new Set(["v-queued"]);
+        view.rerender(form());
+        expect(status).toHaveTextContent("Sending #05-123…Follow-up marked done once sent.");
+
+        queue.inFlight = new Set();
+        queue.records = [sent(["n#05-123"])];
+        view.rerender(form());
+        expect(status).toHaveTextContent("Saved #05-123.Follow-up marked done.");
+        expect(within(status).getByRole("button", { name: UNDO })).toBeEnabled();
+      });
+
+      it("drops the line once sent if the server marked nothing", async () => {
+        const { view, status } = await saveAt();
+        queue.records = [sent([])];
+        view.rerender(form());
+        expect(status).not.toHaveTextContent(/marked done/);
+      });
+
+      it("never offers Undo on the offline shell", async () => {
+        shellState.continueAs("u1");
+        const { view, status } = await saveAt();
+        queue.records = [sent(["n#05-123"])];
+        view.rerender(form());
+        expect(status).toHaveTextContent("Follow-up marked done.");
+        expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
+      });
+    });
+  });
+
+  describe("in a block with nothing on the session's list", () => {
+    const ELSEWHERE = LIST.map((entry) => ({
+      ...entry,
+      block: { ...entry.block, id: "elsewhere" },
+    }));
+    const LINE = "Nothing in this block is on this session's list.";
+
+    it("tells a member so, with the way back to the list, and keeps the form", async () => {
+      const user = userEvent.setup();
+      mount(ELSEWHERE);
+      const line = screen.getByRole("status");
+      expect(line).toHaveTextContent(
+        `${LINE} Visits can be recorded only at the households on the session's list.`,
+      );
+      expect(within(line).getByRole("link", { name: "Back to the list" })).toHaveAttribute(
+        "href",
+        "/",
+      );
+      // Above the unit, and the form stays for what is already typed.
+      const unit = screen.getByLabelText("Unit number");
+      expect(line.compareDocumentPosition(unit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      await user.type(unit, "#05-123");
+      expect(unit).toHaveValue("#05-123");
+    });
+
+    it("tells an empty list the same", () => {
+      mount([]);
+      expect(screen.getByRole("status")).toHaveTextContent(LINE);
+    });
+
+    it("says nothing to an admin, who may record anywhere", () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      mount(ELSEWHERE);
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
+
+    it("says nothing until the list is read, or when it cannot be", () => {
+      mount(null);
+      expect(screen.queryByText(LINE)).toBeNull();
+      cleanup();
+      render(
+        <RecordVisitForm
+          sessionId={null}
+          loadSession={noSession}
+          blockId={BLOCK}
+          known={[]}
+          followUp={{ revisits: undefined }}
+          onRecorded={vi.fn()}
+        />,
+      );
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
+
+    it("says nothing where the block has households on the list", () => {
+      mount();
+      expect(screen.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      expect(screen.queryByText(LINE)).toBeNull();
+    });
+  });
+
+  it("arrives with a unit picked from the list, which counts as nothing typed", () => {
+    const onDirtyChange = vi.fn();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        followUp={{ revisits: LIST }}
+        initialUnit="#06-201"
+        onRecorded={vi.fn()}
+        onDirtyChange={onDirtyChange}
+      />,
+    );
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  describe("with a list that may have moved on", () => {
+    const ADDED = [...LIST, revisit("#05-124")];
+
+    const mountWith = (
+      revisits: ReturnType<typeof revisit>[] | null | undefined,
+      recheck: () => Promise<ReturnType<typeof revisit>[] | null>,
+    ) =>
+      render(
+        <RecordVisitForm
+          sessionId={null}
+          loadSession={noSession}
+          blockId={BLOCK}
+          known={[]}
+          followUp={{ revisits, recheck }}
+          onRecorded={vi.fn()}
+        />,
+      );
+
+    const postedVisits = () => apiFetch.mock.calls.filter(([path]) => path === "/visits");
+
+    it("asks for the list again before refusing, and saves a unit an admin has just added", async () => {
+      // The refusal told the member to ask an admin; the admin did.
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-124" });
+      const recheck = vi.fn(() => Promise.resolve(ADDED));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(1);
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("refuses once the list read again still leaves the unit off", async () => {
+      const recheck = vi.fn(() => Promise.resolve(LIST));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(0);
+      expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+    });
+
+    it("judges by the list on screen when it cannot be read again", async () => {
+      const recheck = vi.fn(() => Promise.resolve(null));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(postedVisits()).toHaveLength(0);
+    });
+
+    it("does not ask again for a unit already on the list", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-123" });
+      const recheck = vi.fn(() => Promise.resolve(LIST));
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.click(screen.getByRole("button", { name: "#05-123" }));
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+      expect(recheck).not.toHaveBeenCalled();
+    });
+
+    it("says nothing about the list while it is first read, and a save waits for it", async () => {
+      // An ordinary load on weak signal is not a failure to warn about.
+      let answer: (list: ReturnType<typeof revisit>[] | null) => void = () => undefined;
+      const recheck = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof revisit>[] | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(screen.queryByText(/is not on this session's list/)).toBeNull();
+      expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
+
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+      expect(postedVisits()).toHaveLength(0);
+
+      answer(LIST);
+      expect(await screen.findByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+      expect(postedVisits()).toHaveLength(0);
+    });
+
+    it("saves while the list is still unknown once it cannot be read, leaving the server to judge", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h9" });
+      const recheck = vi.fn(() => Promise.resolve(null));
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(postedVisits()).toHaveLength(1);
+    });
+
+    it("lets an admin save at once while the list is first read", async () => {
+      useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h9" });
+      const recheck = vi.fn(() => new Promise<null>(() => undefined));
+      const user = userEvent.setup();
+      mountWith(undefined, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).not.toHaveBeenCalled();
+    });
+
+    it("saves one visit for two taps while the list is read again", async () => {
+      apiFetch.mockResolvedValue({ id: "v1", householdId: "h#05-124" });
+      let answer: (list: ReturnType<typeof revisit>[] | null) => void = () => undefined;
+      const recheck = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof revisit>[] | null>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      const form = screen.getByLabelText("Unit number").closest("form");
+      if (form === null) throw new Error("expected the form");
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      answer(ADDED);
+      expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-124.");
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(postedVisits()).toHaveLength(1);
+    });
   });
 });

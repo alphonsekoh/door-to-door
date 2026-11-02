@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, HouseholdSummary, RevisitEntry } from "@/generated/types.gen";
 import {
   LOCAL_COPY_TTL_MS,
   type LocalCopy,
   noteBlock,
   noteOuting,
+  noteRevisits,
   offlineRows,
   readCopy,
+  replaceRevisits,
+  shellBlocks,
   usableCopy,
 } from "@/lib/offline/local-copy";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -34,6 +37,7 @@ function active(sessionId = TONIGHT, blockIds = [BLK_123, BLK_456]): ActiveSessi
     session: {
       id: sessionId,
       title: "Thursday evening",
+      kind: "regular",
       status: "active",
       startedAt: STAMP,
       endedAt: null,
@@ -46,6 +50,7 @@ function active(sessionId = TONIGHT, blockIds = [BLK_123, BLK_456]): ActiveSessi
       householdCount: 0,
       activeMembers: [],
     })),
+    picks: [],
   };
 }
 
@@ -78,6 +83,42 @@ function household(unitNumber: string, blockId = BLK_123): HouseholdSummary {
   };
 }
 
+/* Tonight's follow-up list: #05-01 in Blk 123. */
+function revisits(): RevisitEntry[] {
+  const { household: unit, latestVisit } = household("#05-01");
+  return [
+    {
+      household: unit,
+      block: block(BLK_123, "123"),
+      notes: [
+        {
+          id: "0190a000-0000-7000-8000-0000000000f1",
+          householdId: unit.id,
+          blockId: BLK_123,
+          blockName: "123",
+          unitNumber: "#05-01",
+          visitId: null,
+          status: "listed",
+          author: { id: ALICE.id, name: "Admin", image: null },
+          note: "Bring the booklet",
+          dueDate: null,
+          doneAt: null,
+          doneBy: null,
+          listedAt: STAMP,
+          listedBy: { id: ALICE.id, name: "Admin", image: null },
+          deletedAt: null,
+          deletedBy: null,
+          deleteReason: null,
+          waitingSuggestionBy: null,
+          createdAt: STAMP,
+        },
+      ],
+      latestVisit,
+      visitedInSession: false,
+    },
+  ];
+}
+
 /* Alice, tonight's outing, Blk 123 opened at NOW. */
 function copyWithBlock(at = NOW): LocalCopy {
   const copy = noteBlock(null, ALICE, active(), BLK_123, [household("#05-01")], at);
@@ -108,11 +149,12 @@ function queued(unitNumber: string, at: number, overrides: Partial<QueuedVisit> 
 describe("noteOuting", () => {
   it("starts a copy for the member with the outing and no blocks", () => {
     expect(noteOuting(null, ALICE, active(), NOW)).toEqual({
-      v: 1,
+      v: 2,
       member: ALICE,
       savedAt: NOW,
       outing: active().session,
       blocks: [],
+      revisits: null,
     });
   });
 
@@ -148,6 +190,28 @@ describe("noteOuting", () => {
     const renamed = noteOuting(copyWithBlock(), { ...ALICE, name: "Alice Ng" }, active(), NOW);
     expect(renamed.member.name).toBe("Alice Ng");
     expect(renamed.blocks).toHaveLength(1);
+  });
+});
+
+describe("noteRevisits", () => {
+  it("keeps the follow-up list with the outing", () => {
+    const copy = noteRevisits(copyWithBlock(), ALICE, active(), revisits(), NOW + 1);
+    expect(copy.revisits).toEqual(revisits());
+    expect(copy.blocks.map((b) => b.block.id)).toEqual([BLK_123]);
+    expect(copy.savedAt).toBe(NOW + 1);
+  });
+
+  it("is kept while the same outing runs, and dropped for another", () => {
+    const listed = noteRevisits(null, ALICE, active(), revisits(), NOW);
+    expect(noteOuting(listed, ALICE, active(), NOW + 1).revisits).toEqual(revisits());
+    expect(noteBlock(listed, ALICE, active(), BLK_456, [], NOW + 1)?.revisits).toEqual(revisits());
+    expect(noteOuting(listed, ALICE, active(LAST_WEEK), NOW + 1).revisits).toBeNull();
+    expect(noteOuting(listed, ALICE, null, NOW + 1).revisits).toBeNull();
+  });
+
+  it("is never taken from another member's copy", () => {
+    const alices = noteRevisits(null, ALICE, active(), revisits(), NOW);
+    expect(noteOuting(alices, BEN, active(), NOW).revisits).toBeNull();
   });
 });
 
@@ -196,14 +260,16 @@ describe("noteBlock", () => {
 
 describe("readCopy", () => {
   it("reads back what was written", () => {
-    const copy = copyWithBlock();
+    const copy = noteRevisits(copyWithBlock(), ALICE, active(), revisits(), NOW);
     expect(readCopy(structuredClone(copy))).toEqual(copy);
   });
 
   it.each([
     ["nothing", undefined],
     ["a string", "Alice"],
-    ["another version", { ...copyWithBlock(), v: 2 }],
+    ["a copy of an unknown version", { ...copyWithBlock(), v: 3 }],
+    ["no follow-up list field", { ...copyWithBlock(), revisits: undefined }],
+    ["a bad follow-up list", { ...copyWithBlock(), revisits: [{ household: null }] }],
     ["no member", { ...copyWithBlock(), member: null }],
     ["a blank name", { ...copyWithBlock(), member: { id: ALICE.id, name: "" } }],
     ["a bad outing", { ...copyWithBlock(), outing: { id: TONIGHT } }],
@@ -219,9 +285,116 @@ describe("readCopy", () => {
   });
 });
 
+/* As the build before follow-up sessions wrote it. */
+function v1Copy(): unknown {
+  const { revisits: _list, outing, ...rest } = copyWithBlock();
+  if (outing === null) throw new Error("expected an outing");
+  const { kind: _kind, ...before } = outing;
+  return { ...rest, v: 1, outing: before };
+}
+
+describe("readCopy, for a copy written before follow-up sessions", () => {
+  it("reads it as a door-to-door session with no list, so the shell still opens", () => {
+    expect(readCopy(v1Copy())).toEqual({ ...copyWithBlock(), revisits: null });
+  });
+
+  it("keeps a kind the server had already sent it", () => {
+    const raw = { ...(v1Copy() as LocalCopy), outing: { ...active().session, kind: "follow_up" } };
+    expect(readCopy(raw)?.outing?.kind).toBe("follow_up");
+  });
+
+  it("keeps a copy with no outing", () => {
+    expect(readCopy({ ...(v1Copy() as LocalCopy), outing: null })).toMatchObject({
+      v: 2,
+      outing: null,
+      revisits: null,
+    });
+  });
+
+  it.each([
+    ["a bad outing", { ...(v1Copy() as LocalCopy), outing: { id: TONIGHT } }],
+    ["a blank name", { ...(v1Copy() as LocalCopy), member: { id: ALICE.id, name: "" } }],
+  ])("still rejects %s", (_, raw) => {
+    expect(readCopy(raw)).toBeNull();
+  });
+});
+
+describe("replaceRevisits", () => {
+  it("puts the list read again onto the copy of that outing, keeping its age", () => {
+    const copy = copyWithBlock();
+    expect(replaceRevisits(copy, TONIGHT, revisits())).toEqual({ ...copy, revisits: revisits() });
+  });
+
+  it("leaves another outing's copy, or none, as it was", () => {
+    const copy = copyWithBlock();
+    expect(replaceRevisits(copy, LAST_WEEK, revisits())).toBe(copy);
+    expect(replaceRevisits(null, TONIGHT, revisits())).toBeNull();
+    const none = noteOuting(null, ALICE, null, NOW);
+    expect(replaceRevisits(none, TONIGHT, revisits())).toBe(none);
+  });
+});
+
+describe("shellBlocks", () => {
+  it("is the blocks opened, with no list read", () => {
+    expect(shellBlocks(copyWithBlock())).toEqual(copyWithBlock().blocks);
+  });
+
+  it("is the list's blocks, a block never opened carrying its listed households alone", () => {
+    // The list was read on the session screen; no block was opened.
+    const [only] = shellBlocks(noteRevisits(null, ALICE, active(), revisits(), NOW));
+    const [listed] = revisits();
+    expect(only).toEqual({
+      block: block(BLK_123, "123"),
+      households: [
+        {
+          household: listed?.household,
+          visitCount: 1,
+          latestVisit: listed?.latestVisit,
+          outstandingFollowUps: 1,
+        },
+      ],
+      savedAt: null,
+    });
+  });
+
+  it("counts no visit for a listed household never visited, and only its owed notes", () => {
+    const [listed] = revisits();
+    if (listed === undefined) throw new Error("expected an entry");
+    const note = listed.notes[0];
+    if (note === undefined) throw new Error("expected a note");
+    const fresh = { ...listed, latestVisit: null, notes: [note, { ...note, doneAt: STAMP }] };
+    const [only] = shellBlocks({ blocks: [], revisits: [fresh] });
+    expect(only?.households.map((h) => [h.visitCount, h.outstandingFollowUps])).toEqual([[0, 1]]);
+  });
+
+  it("uses a block opened with signal whole, and leaves out one no longer on the list", () => {
+    const opened = noteBlock(
+      noteRevisits(null, ALICE, active(), revisits(), NOW),
+      ALICE,
+      active(),
+      BLK_123,
+      [household("#05-01"), household("#05-02")],
+      NOW,
+    );
+    const both = noteBlock(opened, ALICE, active(), BLK_456, [household("#01-01", BLK_456)], NOW);
+    if (both === null) throw new Error("expected a copy");
+    expect(shellBlocks(both)).toEqual([both.blocks[0]]);
+  });
+
+  it("offers nothing for an empty list", () => {
+    expect(shellBlocks({ ...copyWithBlock(), revisits: [] })).toEqual([]);
+  });
+});
+
 describe("usableCopy", () => {
   it("is the copy while it has an outing and a block", () => {
     const copy = copyWithBlock();
+    expect(usableCopy(copy, NOW)).toEqual(copy);
+  });
+
+  it("is the copy with a follow-up list read and no block opened", () => {
+    // The stairwell: the list was read on the session screen, then the signal went.
+    const copy = noteRevisits(null, ALICE, active(), revisits(), NOW);
     expect(usableCopy(copy, NOW)).toEqual(copy);
   });
 
@@ -229,6 +402,7 @@ describe("usableCopy", () => {
     ["no copy", null],
     ["no outing", noteOuting(copyWithBlock(), ALICE, null, NOW)],
     ["no block opened", noteOuting(null, ALICE, active(), NOW)],
+    ["an empty follow-up list", noteRevisits(copyWithBlock(), ALICE, active(), [], NOW)],
   ])("is null with %s", (_, copy) => {
     expect(usableCopy(copy, NOW)).toBeNull();
   });
@@ -285,5 +459,28 @@ describe("offlineRows", () => {
     const unknown = queued("#05-02", NOW + 1, { state: "synced", syncedAt: null });
     const rows = offlineRows(saved, [unknown], TONIGHT);
     expect(rows.map((r) => r.household.unitNumber)).toEqual(["#05-01"]);
+  });
+
+  it("lays every record sent in this session over a block known only from the list", () => {
+    const [listedOnly] = shellBlocks(noteRevisits(null, ALICE, active(), revisits(), NOW));
+    if (listedOnly === undefined) throw new Error("expected a block");
+    const rows = offlineRows(
+      listedOnly,
+      [
+        // Sent long before the list was read: its units were never read to hold it.
+        queued("#05-01", NOW - 9, { state: "synced", syncedAt: NOW - 8 }),
+        queued("#05-03", NOW - 9, { state: "synced", syncedAt: null }),
+        // Another session's, from last week.
+        {
+          ...queued("#05-04", NOW - 9, { state: "synced", syncedAt: NOW - 8 }),
+          item: { ...queued("#05-04", NOW - 9).item, sessionId: LAST_WEEK },
+        },
+      ],
+      TONIGHT,
+    );
+    expect(rows.map((r) => [r.household.unitNumber, r.pending?.state])).toEqual([
+      ["#05-01", "synced"],
+      ["#05-03", "synced"],
+    ]);
   });
 });

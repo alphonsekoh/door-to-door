@@ -1,9 +1,24 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
-import type { SessionStatus } from "@/db/schema";
+import {
+  blocks,
+  followUps,
+  households,
+  outingSessions,
+  sessionBlocks,
+  users,
+  visits,
+} from "@/db/schema";
+import type { SessionKind, SessionStatus } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
-import { ConflictError, NotFoundError } from "@/server/http/errors";
+import { onRevisitList } from "@/server/follow-ups/list-rule";
+import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
+import {
+  type LockedSession,
+  blockHasSessionVisits,
+  lockSession,
+  pickHouseholds,
+} from "@/server/sessions/households";
 
 /*
  * Session lifecycle.
@@ -22,6 +37,7 @@ export const isActiveSessionClash = (error: unknown): boolean =>
 export type SessionRow = {
   id: string;
   title: string;
+  kind: SessionKind;
   status: SessionStatus;
   startedAt: Date | null;
   endedAt: Date | null;
@@ -34,6 +50,7 @@ export type SessionRow = {
 const sessionColumns = {
   id: outingSessions.id,
   title: outingSessions.title,
+  kind: outingSessions.kind,
   status: outingSessions.status,
   startedAt: outingSessions.startedAt,
   endedAt: outingSessions.endedAt,
@@ -45,9 +62,12 @@ const sessionColumns = {
 
 export async function listSessions(
   db: Database,
-  options: { limit: number; offset: number; status?: SessionStatus },
+  options: { limit: number; offset: number; status?: SessionStatus; kind?: SessionKind },
 ): Promise<{ rows: SessionRow[]; total: number }> {
-  const filter = options.status ? eq(outingSessions.status, options.status) : undefined;
+  const filter = and(
+    options.status === undefined ? undefined : eq(outingSessions.status, options.status),
+    options.kind === undefined ? undefined : eq(outingSessions.kind, options.kind),
+  );
 
   const rows = await db
     .select(sessionColumns)
@@ -81,23 +101,69 @@ export async function getSession(db: Database, id: string): Promise<SessionRow> 
   return session;
 }
 
-export async function createSession(
-  db: Database,
-  input: { title: string; blockIds?: string[]; createdBy: string },
-): Promise<SessionRow> {
+export type NewSession = {
+  title: string;
+  kind: SessionKind;
+  blockIds?: string[] | undefined;
+  householdIds?: string[] | undefined;
+  createdBy: string;
+};
+
+/*
+ * A regular session takes blocks; a follow-up session takes the households
+ * it goes back to, at least one, and gets their blocks. Each refuses the
+ * other's, so a client cannot build a follow-up session block by block.
+ */
+function assertShape(input: NewSession): void {
+  const issue = (path: string, message: string) =>
+    new ValidationError("Invalid request body.", [{ path, message }]);
+  if (input.kind === "regular") {
+    if (input.householdIds !== undefined) {
+      throw issue("/householdIds", "Only a follow-up session has households.");
+    }
+    return;
+  }
+  if (input.blockIds !== undefined) {
+    throw issue("/blockIds", "A follow-up session's blocks come from its households.");
+  }
+  if (input.householdIds === undefined) {
+    throw issue("/householdIds", "Pick at least one household to visit.");
+  }
+}
+
+export async function createSession(db: Database, input: NewSession): Promise<SessionRow> {
+  assertShape(input);
   return db.transaction(async (tx) => {
     const inserted = await tx
       .insert(outingSessions)
-      .values({ title: input.title, status: "draft", createdBy: input.createdBy })
+      .values({
+        title: input.title,
+        kind: input.kind,
+        status: "draft",
+        createdBy: input.createdBy,
+      })
       .returning({ id: outingSessions.id });
 
     const id = firstOrThrow(inserted, "the session insert").id;
 
+    if (input.householdIds !== undefined) {
+      await pickHouseholds(tx, id, input.householdIds);
+    }
     if (input.blockIds && input.blockIds.length > 0) {
       await attachBlocks(tx, id, input.blockIds);
     }
     return getSession(tx, id);
   });
+}
+
+/* A follow-up session's blocks follow its households, never a hand. */
+export function assertBlocksByHand(session: { kind: SessionKind }): void {
+  if (session.kind === "follow_up") {
+    throw new ConflictError(
+      "conflict",
+      "A follow-up session's blocks follow its households. Add or remove households instead.",
+    );
+  }
 }
 
 /* Rejects unknown blocks before attaching any, so the request is all or nothing. */
@@ -135,45 +201,77 @@ const STATE: Record<SessionStatus, string> = {
   ended: "has already ended",
 };
 
-export async function transitionSession(
+const NOTHING_OWED =
+  "Every household in this session is done or off the follow-up list, so members would find nothing to visit. Add households before starting it.";
+
+/*
+ * Whether a follow-up draft has anything on its list: a picked household
+ * with a listed note still owed. Picks are sticky, so a draft whose notes
+ * were all resolved or removed since keeps picks with nothing on them, and
+ * starting it would open members onto an empty list: what "at least one
+ * household" at creation exists to prevent.
+ */
+async function hasSomethingOwed(db: Database, session: LockedSession): Promise<boolean> {
+  const found = await db
+    .select({ id: followUps.id })
+    .from(followUps)
+    .where(onRevisitList(db, session))
+    .limit(1);
+  return found.length > 0;
+}
+
+/*
+ * Under the session's row lock, which household changes and visit writes
+ * also take, so what a start checks still holds when it lands.
+ */
+export function transitionSession(
   db: Database,
   id: string,
   transition: Transition,
 ): Promise<SessionRow> {
   const { from, to, done } = TRANSITIONS[transition];
-  const current = await getSession(db, id);
+  return db.transaction(async (tx) => {
+    const current = await lockSession(tx, id);
 
-  if (current.status !== from) {
-    throw new ConflictError(
-      "conflict",
-      `This session ${STATE[current.status]}, so it cannot be ${done}.`,
-    );
-  }
-
-  const now = new Date();
-  const values =
-    to === "active"
-      ? { status: to, updatedAt: now, startedAt: current.startedAt ?? now, endedAt: null }
-      : { status: to, updatedAt: now, endedAt: now };
-
-  try {
-    await db.update(outingSessions).set(values).where(eq(outingSessions.id, id));
-  } catch (error) {
-    if (isActiveSessionClash(error)) {
-      /*
-       * Reopen hits this whenever another session is active. It is the
-       * recovery path for a session ended by mistake, so the message has to
-       * say what to do rather than surface a constraint name.
-       */
+    if (current.status !== from) {
       throw new ConflictError(
-        "session_already_active",
-        "Another session is already active. End it before starting or reopening this one.",
+        "conflict",
+        `This session ${STATE[current.status]}, so it cannot be ${done}.`,
       );
     }
-    throw error;
-  }
+    if (
+      transition === "start" &&
+      current.kind === "follow_up" &&
+      !(await hasSomethingOwed(tx, current))
+    ) {
+      throw new ConflictError("conflict", NOTHING_OWED);
+    }
 
-  return getSession(db, id);
+    const now = new Date();
+    const values =
+      to === "active"
+        ? { status: to, updatedAt: now, startedAt: current.startedAt ?? now, endedAt: null }
+        : { status: to, updatedAt: now, endedAt: now };
+
+    try {
+      await tx.update(outingSessions).set(values).where(eq(outingSessions.id, id));
+    } catch (error) {
+      if (isActiveSessionClash(error)) {
+        /*
+         * Reopen hits this whenever another session is active. It is the
+         * recovery path for a session ended by mistake, so the message has to
+         * say what to do rather than surface a constraint name.
+         */
+        throw new ConflictError(
+          "session_already_active",
+          "Another session is already active. End it before starting or reopening this one.",
+        );
+      }
+      throw error;
+    }
+
+    return getSession(tx, id);
+  });
 }
 
 export type SessionBlockMember = { id: string; name: string | null; image: string | null };
@@ -282,13 +380,7 @@ export async function detachBlock(db: Database, sessionId: string, blockId: stri
     throw new NotFoundError("That block is not attached to this session.");
   }
 
-  const recorded = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(visits)
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .where(and(eq(visits.sessionId, sessionId), eq(households.blockId, blockId)));
-
-  if (firstOrThrow(recorded, "the visit count").total > 0) {
+  if (await blockHasSessionVisits(db, sessionId, blockId)) {
     throw new ConflictError(
       "block_in_use",
       "That block has visits recorded in this session, so it cannot be detached.",

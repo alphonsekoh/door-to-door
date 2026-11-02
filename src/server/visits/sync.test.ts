@@ -36,7 +36,7 @@ describe("unexpected failures", () => {
     const [result] = await syncVisits(
       stub,
       [{ ...item, description: "private note" }],
-      "u1",
+      { id: "u1", role: "member" },
       clock,
     );
 
@@ -64,7 +64,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const results = await syncVisits(stub, [item, item, item], "u1", clock);
+    const results = await syncVisits(stub, [item, item, item], { id: "u1", role: "member" }, clock);
     expect(results.map((r) => r.status)).toEqual(["rejected", "rejected", "rejected"]);
     expect(logged).toHaveBeenCalledTimes(1);
     expect(String(logged.mock.calls[0]?.[0])).not.toContain("10.0.0.12");
@@ -83,7 +83,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const results = await syncVisits(stub, [item], "u1", clock);
+    const results = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
     expect(results).toHaveLength(1);
     expect(results[0]?.status).toBe("rejected");
   });
@@ -97,7 +97,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const [result] = await syncVisits(stub, [item], "u1", clock);
+    const [result] = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
     expect(result?.error?.code).toBe("internal_error");
   });
 
@@ -112,7 +112,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const [result] = await syncVisits(stub, [item], "u1", clock);
+    const [result] = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
     expect(result?.error?.message).not.toMatch(/hunter2/);
     expect(result?.error?.message).toBe("Could not save this record right now. Try again.");
   });

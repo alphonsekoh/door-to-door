@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { BlockScreen } from "@/components/blocks/block-screen";
 import { ApiRequestError } from "@/lib/api-client";
+import { knownSessionKind } from "@/lib/session/known-kind";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
 
@@ -14,9 +15,13 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-const { noteOuting, noteBlock } = vi.hoisted(() => ({ noteOuting: vi.fn(), noteBlock: vi.fn() }));
+const { noteOuting, noteBlock, noteRevisits } = vi.hoisted(() => ({
+  noteOuting: vi.fn(),
+  noteBlock: vi.fn(),
+  noteRevisits: vi.fn(),
+}));
 vi.mock("@/components/sync/local-copy-writer", () => ({
-  useLocalCopyWriter: () => ({ noteOuting, noteBlock }),
+  useLocalCopyWriter: () => ({ noteOuting, noteBlock, noteRevisits }),
 }));
 
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
@@ -71,7 +76,13 @@ const list = (units: string[], author: Author = BEN, teamId: string | null = nul
   pagination: { limit: 100, offset: 0, total: units.length, hasMore: false },
 });
 
-const active = { session: { id: "s1", title: "Tonight" }, blocks: [] };
+const B1 = {
+  block: { id: "b1", name: "123", street: "Ang Mo Kio Ave 3", postalCode: null, createdAt: "" },
+  visitCount: 0,
+  householdCount: 0,
+  activeMembers: [],
+};
+const active = { session: { id: "s1", title: "Tonight", kind: "regular" }, blocks: [B1] };
 
 /* Routes by path so the two loads can differ, and so a test that breaks one
    does not silently satisfy the other. */
@@ -118,23 +129,7 @@ beforeEach(() => {
 
 describe("BlockScreen", () => {
   it("is named for its block once the outing says which one it is, with a way back", async () => {
-    serve(list([]), {
-      ...active,
-      blocks: [
-        {
-          block: {
-            id: "b1",
-            name: "123",
-            street: "Ang Mo Kio Ave 3",
-            postalCode: null,
-            createdAt: "",
-          },
-          visitCount: 0,
-          householdCount: 0,
-          activeMembers: [],
-        },
-      ],
-    });
+    serve(list([]));
     render(<BlockScreen blockId="b1" />);
     // Generic only until the outing answers.
     expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
@@ -143,13 +138,45 @@ describe("BlockScreen", () => {
     expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
   });
 
-  it("stays generic for a block the outing does not have", async () => {
-    serve(list([]));
+  it.each([
+    ["door-to-door", "regular", "Visits can be recorded only in the session's blocks."],
+    [
+      "follow-up",
+      "follow_up",
+      "Visits can be recorded only at the households on the session's list.",
+    ],
+  ])(
+    "says a block its %s session does not cover is not in it, and offers no form",
+    async (_, kind, rule) => {
+      // Opened from a bookmark or a stale tab.
+      serve(list(["#05-123"]), { ...active, session: { ...active.session, kind }, blocks: [] });
+      render(<BlockScreen blockId="b1" />);
+      const notice = await screen.findByRole("status");
+      expect(notice).toHaveTextContent("This block is not in the running session.");
+      expect(notice).toHaveTextContent(`${rule} Pick one on the Session screen.`);
+      expect(within(notice).getByRole("link", { name: "Go to Session" })).toHaveAttribute(
+        "href",
+        "/",
+      );
+      expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+      expect(screen.queryByText("One unit at a time.")).toBeNull();
+      expect(screen.queryByLabelText("Unit number")).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
+    },
+  );
+
+  it("offers the form while no session is known, as a save asks again", async () => {
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions/active")
+        ? Promise.reject(new ApiRequestError(404, undefined))
+        : Promise.resolve(list([])),
+    );
     render(<BlockScreen blockId="b1" />);
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
     });
-    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Unit number")).toBeInTheDocument();
+    expect(screen.getByText("One unit at a time.")).toBeInTheDocument();
   });
 
   it("loads the units already recorded on this block", async () => {
@@ -164,7 +191,8 @@ describe("BlockScreen", () => {
     serve(list([]));
     const container = document.createElement("div");
     container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-    const first = within(container).getByRole("button", { name: "Save and next" });
+    // The server cannot know the kind of session, so it promises no next unit.
+    const first = within(container).getByRole("button", { name: "Save" });
     // At the end of the screen, where it can rise to the nav at any text
     // size; and, with no script yet to save, a tap must not reload the page.
     expect(container.querySelector("form")).not.toContainElement(first);
@@ -205,7 +233,86 @@ describe("BlockScreen", () => {
     render(<BlockScreen blockId="b1" />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
-    expect(screen.getByRole("button", { name: "Save and next" })).toBeInTheDocument();
+    // Nor on the session: unknown, it is a plain Save.
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
+  describe("Save's promise of a next unit", () => {
+    const followUpSession = { ...active, session: { ...active.session, kind: "follow_up" } };
+
+    it("is not made until the session is known, then kept for door-to-door", async () => {
+      let answer: (value: unknown) => void = () => undefined;
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) {
+          return new Promise((resolve) => {
+            answer = resolve;
+          });
+        }
+        return Promise.resolve(path.startsWith("/households") ? list([]) : { data: [] });
+      });
+      render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (0)" });
+      expect(screen.getByRole("button", { name: "Save" })).toHaveAttribute("type", "submit");
+
+      act(() => {
+        answer(active);
+      });
+      expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
+    });
+
+    it("is never made in a follow-up session, from the server's HTML on", async () => {
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) return Promise.resolve(followUpSession);
+        return Promise.resolve(path.startsWith("/households") ? list([]) : { data: [] });
+      });
+      const container = document.createElement("div");
+      container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
+      expect(within(container).getByRole("button", { name: "Save" })).toHaveAttribute(
+        "type",
+        "button",
+      );
+
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/revisits");
+      });
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Save and next" })).toBeNull();
+    });
+
+    it.each([
+      ["a follow-up session", "follow_up", "Save"],
+      ["a door-to-door session", "regular", "Save and next"],
+      ["no session", null, "Save and next"],
+    ] as const)(
+      "is what the screen before it learnt, %s, from the first frame",
+      (_, kind, label) => {
+        knownSessionKind.note(kind);
+        apiFetch.mockReturnValue(new Promise(() => undefined));
+        render(<BlockScreen blockId="b1" />);
+        expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      },
+    );
+
+    it("tells the next screen what it learnt", async () => {
+      serve(list([]), followUpSession);
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(knownSessionKind.getSnapshot()).toBe("follow_up");
+      });
+    });
+
+    it("tells the next screen no session is running", async () => {
+      apiFetch.mockImplementation((path: string) =>
+        path.startsWith("/sessions/active")
+          ? Promise.reject(new ApiRequestError(404, undefined))
+          : Promise.resolve(list([])),
+      );
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(knownSessionKind.getSnapshot()).toBeNull();
+      });
+    });
   });
 
   it("copes with a non-Error failure", async () => {
@@ -226,7 +333,7 @@ describe("BlockScreen", () => {
 
     await user.click(screen.getByRole("tab", { name: "All units (1)" }));
     expect(screen.getByText("#05-123")).toBeInTheDocument();
-    expect(screen.queryByText("tonight")).not.toBeInTheDocument();
+    expect(screen.queryByText("this session")).not.toBeInTheDocument();
   });
 
   it("reloads the unit list after a visit is recorded", async () => {
@@ -434,24 +541,28 @@ describe("BlockScreen", () => {
       expect(screen.getByText("#05-124").closest("li")).toHaveTextContent("Not sent");
     });
 
-    /* Both refuse the save; only one is fixed by finding signal. */
+    /* Both refuse the save; only one is fixed by finding signal. Save makes
+       no promise of a next unit while the session is unknown. */
     it.each([
       [
         "the server says no outing is running",
         () => Promise.reject(new ApiRequestError(404, undefined)),
         "No session is running, so this visit is not saved yet.",
+        "Save and next",
       ],
       [
         "the outing cannot be loaded",
         () => Promise.reject(new TypeError("Failed to fetch")),
         "Could not load the session, so this visit is not saved yet. Check your signal",
+        "Save",
       ],
       [
         "the server fails",
         () => Promise.reject(new ApiRequestError(500, undefined)),
         "Could not load the session, so this visit is not saved yet. Check your signal",
+        "Save",
       ],
-    ])("refuses to queue a save when %s", async (_, outing, message) => {
+    ])("refuses to queue a save when %s", async (_, outing, message, label) => {
       const enqueue = vi.fn();
       useSyncQueue.mockReturnValue({ ...NO_QUEUE, enqueue });
       apiFetch.mockImplementation((path: string) =>
@@ -463,7 +574,7 @@ describe("BlockScreen", () => {
 
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
       await user.click(screen.getByRole("radio", { name: "Low" }));
-      await user.click(screen.getByRole("button", { name: "Save and next" }));
+      await user.click(screen.getByRole("button", { name: label }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent(message);
       expect(enqueue).not.toHaveBeenCalled();
@@ -548,5 +659,292 @@ describe("the offline copy", () => {
     render(<BlockScreen blockId="b1" />);
     await screen.findByRole("alert");
     expect(noteBlock).not.toHaveBeenCalled();
+  });
+});
+
+describe("in a follow-up session", () => {
+  const followUp = {
+    session: { id: "s1", title: "Revisits", kind: "follow_up" },
+    blocks: [
+      {
+        block: {
+          id: "b1",
+          name: "123",
+          street: "Ang Mo Kio Ave 3",
+          postalCode: null,
+          createdAt: "",
+        },
+        visitCount: 0,
+        householdCount: 0,
+        activeMembers: [],
+      },
+    ],
+    picks: [],
+  };
+  const revisits = {
+    data: [
+      {
+        household: { ...list(["#05-123"]).data[0]?.household, blockId: "b1" },
+        block: followUp.blocks[0]?.block,
+        notes: [{ id: "n1", doneAt: null }],
+        latestVisit: null,
+        visitedInSession: false,
+      },
+    ],
+  };
+
+  function serveFollowUp(listAnswer: () => Promise<unknown> = () => Promise.resolve(revisits)) {
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") return listAnswer();
+      return Promise.resolve(list(["#05-123"]));
+    });
+  }
+
+  it("says only listed units can be recorded, and offers them", async () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    expect(
+      await screen.findByText(/Only units on the list can be recorded\.$/),
+    ).toBeInTheDocument();
+    const chips = within(await screen.findByRole("list", { name: "On the list in this block" }));
+    expect(chips.getByRole("button", { name: "#05-123" })).toBeInTheDocument();
+  });
+
+  it("keeps the list on the phone for the offline shell", async () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(noteRevisits).toHaveBeenCalledWith(followUp, revisits.data);
+    });
+  });
+
+  it("tells an admin they can record any unit", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" />);
+    expect(await screen.findByText(/As an admin you can record any unit\./)).toBeInTheDocument();
+  });
+
+  it("says it could not check the list when it cannot be read", async () => {
+    serveFollowUp(() => Promise.reject(new TypeError("offline")));
+    const user = userEvent.setup();
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByText(/Only units on the list can be recorded/);
+    await user.type(screen.getByLabelText("Unit number"), "#05-124");
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      /^Could not check this session's list\./,
+    );
+    expect(noteRevisits).not.toHaveBeenCalled();
+  });
+
+  it("arrives with the unit picked from the list", () => {
+    serveFollowUp();
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  it("asks for no list in a door-to-door session", async () => {
+    serve(list([]), { ...followUp, session: { ...followUp.session, kind: "regular" } });
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("heading", { level: 1, name: "Blk 123" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/revisits");
+    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+  });
+
+  it("lets only the newest list land when the session answers twice", async () => {
+    let late: (value: unknown) => void = () => undefined;
+    let calls = 0;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") {
+        calls += 1;
+        return calls === 1
+          ? new Promise((resolve) => {
+              late = resolve;
+            })
+          : Promise.resolve({ data: [] });
+      }
+      return Promise.resolve(list(["#05-123"]));
+    });
+    const queue = { ...NO_QUEUE };
+    useSyncQueue.mockReturnValue(queue);
+    const view = render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(calls).toBe(1);
+    });
+    // A record reaching the server re-reads the list.
+    useSyncQueue.mockReturnValue({ ...queue, syncedVersion: 1 });
+    view.rerender(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(calls).toBe(2);
+    });
+    await act(async () => {
+      late(revisits);
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole("list", { name: "On the list in this block" })).toBeNull();
+  });
+
+  describe("when the list may have moved under the screen", () => {
+    const entry = (unitNumber: string) => ({
+      ...revisits.data[0],
+      household: { ...revisits.data[0]?.household, id: `h-${unitNumber}`, unitNumber },
+    });
+    const listOf = (...units: string[]) => ({ data: units.map(entry) });
+    const chipNames = () =>
+      within(screen.getByRole("list", { name: "On the list in this block" }))
+        .getAllByRole("button")
+        .map((chip) => chip.textContent);
+    const reads = () => apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1/revisits");
+
+    /* Answers each read of the list with the next of `answers`, the last for good. */
+    function serveLists(...answers: (() => Promise<unknown>)[]) {
+      let read = 0;
+      serveFollowUp(() => {
+        const answer = answers[Math.min(read, answers.length - 1)];
+        read += 1;
+        return answer === undefined ? Promise.resolve(revisits) : answer();
+      });
+    }
+
+    const held = (unitNumber: string, code: string): QueuedVisit => ({
+      ...buildQueuedVisit(
+        {
+          blockId: "b1",
+          unitNumber,
+          interestLevel: "high",
+          description: "",
+          name: "",
+          contact: "",
+          religion: "",
+          sessionId: "s1",
+        },
+        "u1",
+        Date.parse("2026-10-15T10:00:00.000Z"),
+      ),
+      state: "held",
+      lastError: { code },
+    });
+
+    it("stops offering a unit once the server holds a record there as off the list", async () => {
+      // An admin took #05-124 off the list after this screen read it.
+      serveLists(
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+        () => Promise.resolve(listOf("#05-123")),
+      );
+      const queue = { ...NO_QUEUE };
+      useSyncQueue.mockReturnValue(queue);
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      });
+
+      // Held for another reason, the list is not the question.
+      useSyncQueue.mockReturnValue({ ...queue, records: [held("#05-124", "session_not_active")] });
+      view.rerender(<BlockScreen blockId="b1" />);
+      expect(reads()).toHaveLength(1);
+
+      useSyncQueue.mockReturnValue({
+        ...queue,
+        records: [held("#05-124", "not_on_follow_up_list")],
+      });
+      view.rerender(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
+    });
+
+    it("reads the list again when the member comes back to the app", async () => {
+      // Asked to add a unit, the admin may have while the phone was away.
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+      );
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+
+      // Put away, nothing is read: nobody is looking.
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      Reflect.deleteProperty(document, "visibilityState");
+      expect(document.visibilityState).toBe("visible");
+      expect(reads()).toHaveLength(1);
+
+      act(() => {
+        window.dispatchEvent(new Event("focus"));
+      });
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      });
+    });
+
+    it("keeps the list it has when a later read fails", async () => {
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.reject(new TypeError("offline")),
+      );
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await waitFor(() => {
+        expect(reads()).toHaveLength(2);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(chipNames()).toEqual(["#05-123"]);
+    });
+
+    it("says nothing about the list while it is first read", async () => {
+      // The usual way in: a household tapped on the list, on weak signal.
+      serveLists(() => new Promise(() => undefined));
+      render(<BlockScreen blockId="b1" initialUnit="#05-124" />);
+      await screen.findByText(/Only units on the list can be recorded/);
+      await waitFor(() => {
+        expect(reads()).toHaveLength(1);
+      });
+      expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(screen.queryByText(/is not on this session's list/)).toBeNull();
+    });
+
+    it("saves a unit an admin added since the list was read, and shows it on the list", async () => {
+      serveLists(
+        () => Promise.resolve(listOf("#05-123")),
+        () => Promise.resolve(listOf("#05-123", "#05-124")),
+      );
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123"]);
+      });
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith(
+          "/visits",
+          expect.objectContaining({ method: "POST" }),
+        );
+      });
+      expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      expect(screen.queryByText(/Not saved/)).toBeNull();
+    });
   });
 });

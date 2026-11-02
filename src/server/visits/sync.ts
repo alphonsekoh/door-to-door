@@ -1,10 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel } from "@/db/schema";
+import type { InterestLevel, Role } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
+import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { markDoneByVisit, notesMarkedDoneBy } from "@/server/follow-ups/marked-by-visit";
 import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
@@ -38,10 +40,14 @@ export type SyncOutcome = {
   id: string;
   status: SyncStatus;
   visit: VisitRow | null;
+  markedDone: string[];
   error: ApiError | null;
 };
 
-type ResolvedSession = { id: string; startedAt: Date };
+type ResolvedSession = RevisitSession & { startedAt: Date };
+
+/* Whoever's queue is flushing; the cookie decides it, never the request. */
+export type SyncCaller = { id: string; role: Role };
 
 async function resolveSession(
   db: Database,
@@ -51,6 +57,7 @@ async function resolveSession(
     const found = await db
       .select({
         id: outingSessions.id,
+        kind: outingSessions.kind,
         status: outingSessions.status,
         startedAt: outingSessions.startedAt,
       })
@@ -75,12 +82,17 @@ async function resolveSession(
     }
     return {
       id: session.id,
+      kind: session.kind,
       startedAt: presentOrThrow(session.startedAt, "an active session start"),
     };
   }
 
   const active = await db
-    .select({ id: outingSessions.id, startedAt: outingSessions.startedAt })
+    .select({
+      id: outingSessions.id,
+      kind: outingSessions.kind,
+      startedAt: outingSessions.startedAt,
+    })
     .from(outingSessions)
     .where(eq(outingSessions.status, "active"))
     .limit(1);
@@ -91,6 +103,7 @@ async function resolveSession(
   }
   return {
     id: session.id,
+    kind: session.kind,
     startedAt: presentOrThrow(session.startedAt, "an active session start"),
   };
 }
@@ -98,9 +111,10 @@ async function resolveSession(
 async function applyItem(
   db: Database,
   item: SyncItem,
-  memberId: string,
+  caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome> {
+  const memberId = caller.id;
   const incomingUpdatedAt = new Date(item.updatedAt);
   const incomingCreatedAt = new Date(item.clientCreatedAt);
   const blockExists = await db
@@ -156,11 +170,11 @@ async function applyItem(
        * An older edit arriving after a newer one. Acknowledged so the client
        * clears it from the queue, but not applied - last write wins.
        */
-      return { id: item.id, status: "stale", visit: await getVisit(db, item.id), error: null };
+      return answer(db, item.id, "stale");
     }
     if (incomingUpdatedAt.getTime() === stored.updatedAt.getTime()) {
       // A replay of something already stored: the normal retry outcome.
-      return { id: item.id, status: "unchanged", visit: await getVisit(db, item.id), error: null };
+      return answer(db, item.id, "unchanged");
     }
   }
 
@@ -174,7 +188,6 @@ async function applyItem(
 
   // A stored visit keeps its own outing even when the item names none.
   const session = await resolveSession(db, stored?.sessionId ?? item.sessionId);
-  const sessionId = session.id;
 
   /*
    * After the session check, so an ended session still reports itself first.
@@ -183,20 +196,18 @@ async function applyItem(
   assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
   assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
 
-  const attached = await db
-    .select({ blockId: sessionBlocks.blockId })
-    .from(sessionBlocks)
-    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, item.blockId)))
-    .limit(1);
-
-  if (attached.length === 0) {
-    throw new ConflictError("conflict", "That block is not part of the session.");
-  }
-
   const write = {
     item,
     memberId,
-    sessionId,
+    caller,
+    session,
+    /*
+     * Only a new record is judged against the follow-up list: an amend
+     * corrects a visit already stored, wherever it was allowed at the time.
+     * The caller's role decides there, though canAmend above still asks the
+     * member question.
+     */
+    judgeList: !stored,
     createdAt: incomingCreatedAt,
     updatedAt: incomingUpdatedAt,
   };
@@ -213,16 +224,69 @@ async function applyItem(
     status = await persist(db, write);
   }
 
-  return { id: item.id, status, visit: await getVisit(db, item.id), error: null };
+  return answer(db, item.id, status);
+}
+
+async function answer(
+  db: Database,
+  id: string,
+  status: "applied" | "unchanged" | "stale",
+): Promise<SyncOutcome> {
+  return {
+    id,
+    status,
+    visit: await getVisit(db, id),
+    markedDone: await notesMarkedDoneBy(db, id),
+    error: null,
+  };
 }
 
 type Write = {
   item: SyncItem;
   memberId: string;
-  sessionId: string;
+  caller: SyncCaller;
+  session: ResolvedSession;
+  judgeList: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/*
+ * The first thing a write does: lock its session's row (FOR KEY SHARE), as
+ * changing a follow-up session's households does (FOR UPDATE), then judge
+ * where the item may land. So a record and a household change always wait
+ * for each other in one order, and whichever goes second sees what the
+ * other committed: a remove sees this visit, or this sees the remove.
+ */
+async function assertMayLand(
+  tx: Database,
+  { item, caller, session, judgeList }: Write,
+): Promise<void> {
+  const locked = await tx
+    .select({ status: outingSessions.status })
+    .from(outingSessions)
+    .where(eq(outingSessions.id, session.id))
+    .for("key share");
+  if (firstOrThrow(locked, "the session lock").status !== "active") {
+    throw new ConflictError(
+      "session_not_active",
+      "That session has ended. Ask an admin to reopen it.",
+    );
+  }
+
+  const attached = await tx
+    .select({ blockId: sessionBlocks.blockId })
+    .from(sessionBlocks)
+    .where(and(eq(sessionBlocks.sessionId, session.id), eq(sessionBlocks.blockId, item.blockId)))
+    .limit(1);
+  if (attached.length === 0) {
+    throw new ConflictError("conflict", "That block is not part of the session.");
+  }
+
+  if (judgeList) {
+    await assertMayRecordHere(tx, caller, session, item.blockId, item.unitNumber);
+  }
+}
 
 /* Thrown inside the transaction to roll its writes back without failing the item. */
 class NotApplied extends Error {
@@ -233,8 +297,9 @@ class NotApplied extends Error {
 
 /*
  * Writes one item atomically. The checks in applyItem ran on a read that other
- * requests may have outdated, so the decisive ones are repeated here in SQL:
+ * requests may have outdated, so the decisive ones are made or repeated here:
  *
+ * - Where it may land (assertMayLand) is judged first, under the session lock.
  * - INSERT ... ON CONFLICT DO NOTHING says whether this call created the row,
  *   which is what decides who writes the teammate snapshot when two flushes
  *   race. Only one inserts.
@@ -246,12 +311,12 @@ class NotApplied extends Error {
  * Author, session, team, household and clientCreatedAt are set at insert and
  * never in the UPDATE (D-29-2, D-74-16).
  */
-async function persist(
-  db: Database,
-  { item, memberId, sessionId, createdAt, updatedAt }: Write,
-): Promise<"applied" | "unchanged" | "stale"> {
+async function persist(db: Database, write: Write): Promise<"applied" | "unchanged" | "stale"> {
+  const { item, memberId, session, createdAt, updatedAt } = write;
+  const sessionId = session.id;
   try {
     await db.transaction(async (tx) => {
+      await assertMayLand(tx, write);
       const household = await upsertHousehold(tx, {
         blockId: item.blockId,
         unitNumber: item.unitNumber,
@@ -281,6 +346,7 @@ async function persist(
       if (inserted.length > 0) {
         await stampVisit(tx, item.id, teamId, memberId);
         await autoJoin(tx, sessionId, memberId);
+        await markDoneByVisit(tx, session, household.id, item.id, memberId);
         return;
       }
 
@@ -344,13 +410,13 @@ const logSyncFailure = createThrottledLog();
 export async function syncVisits(
   db: Database,
   items: SyncItem[],
-  memberId: string,
+  caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome[]> {
   const outcomes: SyncOutcome[] = [];
   for (const item of items) {
     try {
-      outcomes.push(await applyItem(db, item, memberId, clock));
+      outcomes.push(await applyItem(db, item, caller, clock));
     } catch (error) {
       // The client gets only the generic message; the cause stays in the logs.
       if (!(error instanceof ApiError)) {
@@ -360,6 +426,7 @@ export async function syncVisits(
         id: item.id,
         status: "rejected",
         visit: null,
+        markedDone: [],
         /*
          * Anything that is not a deliberate refusal - a dropped connection, a
          * deadlock - is the server's failure, not the record's. It is reported

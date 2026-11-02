@@ -64,6 +64,7 @@ describe("applyResult", () => {
       clientCreatedAt: "2026-10-15T09:00:00.000Z",
       createdAt: "2026-10-15T09:00:00.000Z",
       updatedAt: "2026-10-15T09:00:00.000Z",
+      followUpsMarkedDone: [],
     };
     const next = applyResult(
       record({ state: "failed", lastError: { code: "internal_error" } }),
@@ -131,6 +132,16 @@ describe("applyResult", () => {
   it("holds an ended outing and looks again in five minutes", () => {
     const next = applyResult(record(), rejected("session_not_active"), NOW, half);
     expect(next).toMatchObject({ state: "held", nextAttemptAt: NOW + PROBE_MS });
+  });
+
+  it("holds a unit off the follow-up list and looks again in five minutes", () => {
+    // An admin adding the unit to the list lets the same record through.
+    const next = applyResult(record(), rejected("not_on_follow_up_list"), NOW, half);
+    expect(next).toMatchObject({
+      state: "held",
+      nextAttemptAt: NOW + PROBE_MS,
+      lastError: { code: "not_on_follow_up_list" },
+    });
   });
 
   it.each(["not_found", "validation_failed"])("holds %s for a tap", (code) => {

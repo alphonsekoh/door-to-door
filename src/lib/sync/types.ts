@@ -1,4 +1,4 @@
-import type { Visit, VisitSyncItem, VisitSyncResult } from "@/generated/types.gen";
+import type { RecordedVisit, Visit, VisitSyncItem, VisitSyncResult } from "@/generated/types.gen";
 
 /*
  * The offline write queue (#33).
@@ -15,6 +15,9 @@ export type QueuedItem = VisitSyncItem & { sessionId: string };
 
 export type RecordState = "queued" | "failed" | "held" | "quarantined" | "synced";
 
+/* What a build from before RecordedVisit kept: the row alone. */
+type EarlierVisit = Visit & { followUpsMarkedDone?: undefined };
+
 export type QueuedVisit = {
   /* The visit id: a client UUIDv7, which is what makes a replay idempotent. */
   id: string;
@@ -30,8 +33,9 @@ export type QueuedVisit = {
   lastError: { code: string } | null;
   enqueuedAt: number;
   syncedAt: number | null;
-  /* The server's row once accepted, for anything that needs its household. */
-  serverVisit: Visit | null;
+  /* The server's row once accepted, for anything that needs its household,
+     with what storing it marked done. */
+  serverVisit: RecordedVisit | EarlierVisit | null;
 };
 
 export type SyncQueue = {

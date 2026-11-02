@@ -11,6 +11,7 @@ export function toOutingSession(row: SessionRow): OutingSession {
   return {
     id: row.id,
     title: row.title,
+    kind: row.kind,
     status: row.status,
     startedAt: row.startedAt?.toISOString() ?? null,
     endedAt: row.endedAt?.toISOString() ?? null,

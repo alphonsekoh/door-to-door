@@ -11,7 +11,7 @@ const { usePathname, useRole, loadCurrentUser, hasUnsynced } = vi.hoisted(() => 
   hasUnsynced: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment: () => null }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 vi.mock("@/lib/session/users", () => ({ loadCurrentUser }));
 vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));

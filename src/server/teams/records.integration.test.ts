@@ -56,10 +56,12 @@ const item = (overrides: Partial<SyncItem> = {}): SyncItem => ({
 });
 
 const flush = (items: SyncItem[], memberId: string, withClock: Clock = clock) =>
-  syncVisits(db, items, memberId, withClock);
+  syncVisits(db, items, { id: memberId, role: "member" }, withClock);
 
 const record = (memberId: string, id = V1, unitNumber = "#05-123") =>
-  createVisit(db, { id, blockId: BLOCK, unitNumber, interestLevel: "low", memberId }, clock);
+  createVisit(db, { id, blockId: BLOCK, unitNumber, interestLevel: "low", memberId }, clock, {
+    role: "member",
+  });
 
 async function makeTeam(name: string, userIds: string[]): Promise<string> {
   const { rows } = await pool.query<{ id: string }>(
@@ -185,6 +187,7 @@ describe("recording stamps the author's team", () => {
       db,
       { id: V1, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low", memberId: ALICE },
       clock,
+      { role: "admin" },
     );
     expect(visit.teamId).toBe(team);
     expect(visit.team?.members.map((m) => m.id)).toEqual([BEN]);
@@ -284,6 +287,7 @@ describe("recording joins the outing", () => {
       db,
       { id: V1, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low", memberId: ADMIN },
       clock,
+      { role: "admin" },
     );
     expect(await participants()).toEqual([]);
   });
@@ -293,6 +297,7 @@ describe("recording joins the outing", () => {
       db,
       { id: V1, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low", memberId: BEN },
       clock,
+      { role: "admin" },
     );
     expect(await participants()).toEqual([BEN]);
   });

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { RecordVisitForm } from "@/components/visits/record-visit-form";
+import { type FollowUpRule, RecordVisitForm } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { UnitList } from "@/components/ui/unit-list";
-import type { HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { UnitRow } from "@/lib/sync/unit-overlay";
+import { useRole } from "@/lib/hooks/use-role";
 
 type Tab = "record" | "units";
 
@@ -22,6 +23,13 @@ type Props = {
   /* The offline shell: nothing that needs the server's row is offered. */
   offline?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
+  /* A follow-up session's list rule; null for door-to-door. */
+  followUp?: FollowUpRule | null;
+  active?: ActiveSession | null;
+  initialUnit?: string;
+  guessNext?: boolean;
+  /* Said above the units, where they are not all of the block's. */
+  unitsNote?: string | null;
 };
 
 /* A block's two views, the form and its units, for the block screen and the
@@ -36,12 +44,27 @@ export function BlockViews({
   teamIds,
   offline = false,
   onDirtyChange,
+  followUp = null,
+  active = null,
+  initialUnit = "",
+  guessNext = true,
+  unitsNote = null,
 }: Props) {
   const { inFlight } = useSyncQueue();
+  const { isAdmin } = useRole();
   const [tab, setTab] = useState<Tab>("record");
 
   return (
     <>
+      {/* Online and in the offline shell alike, so the chips below never
+          turn up unexplained. */}
+      {followUp === null ? null : (
+        <p className="notice-info text-caption">
+          <span className="font-semibold">Follow-up session</span> · Only units on the list can be
+          recorded.{isAdmin ? " As an admin you can record any unit." : ""}
+        </p>
+      )}
+
       {/*
         Two views, one tap apart. The list must not push the recording form
         down the page: at a door the form is the whole job, and the list is
@@ -90,6 +113,10 @@ export function BlockViews({
           <RecordVisitForm
             blockId={blockId}
             known={known}
+            followUp={followUp}
+            active={active}
+            initialUnit={initialUnit}
+            guessNext={guessNext}
             sessionId={sessionId}
             loadSession={loadSession}
             onRecorded={onRecorded}
@@ -98,6 +125,9 @@ export function BlockViews({
         </div>
       ) : (
         <div role="tabpanel" id="panel-units" aria-labelledby="tab-units">
+          {unitsNote === null ? null : (
+            <p className="mb-2 text-caption text-foreground-muted">{unitsNote}</p>
+          )}
           <UnitList
             rows={rows}
             inFlight={inFlight}

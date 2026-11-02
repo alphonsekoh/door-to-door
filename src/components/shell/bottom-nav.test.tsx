@@ -1,15 +1,20 @@
 import { act, render, screen } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BottomNav } from "@/components/shell/bottom-nav";
 import { accountStore } from "@/lib/session/account-state";
 import { shellState } from "@/lib/offline/shell-state";
 import type * as UseRoleModule from "@/lib/hooks/use-role";
 
-const { usePathname } = vi.hoisted(() => ({ usePathname: vi.fn<() => string>() }));
+const { usePathname, useSelectedLayoutSegment } = vi.hoisted(() => ({
+  usePathname: vi.fn<() => string>(),
+  useSelectedLayoutSegment: vi.fn<() => string | null>(),
+}));
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 const { useSession } = vi.hoisted(() => ({ useSession: vi.fn() }));
 
-vi.mock("next/navigation", () => ({ usePathname }));
+vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment }));
 vi.mock("next-auth/react", () => ({ useSession }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
@@ -25,6 +30,7 @@ const asRole = (isAdmin: boolean) =>
 
 beforeEach(() => {
   asRole(false);
+  useSelectedLayoutSegment.mockReturnValue(null);
 });
 
 describe("BottomNav", () => {
@@ -137,6 +143,31 @@ describe("BottomNav", () => {
 });
 
 describe("BottomNav on the offline shell (#77)", () => {
+  /* The worker serves the prerendered /offline page at the address that
+     failed: the server rendered /offline, the browser reads /blocks/b1. */
+  it("hydrates the offline page served at another address as the server drew it", async () => {
+    useSelectedLayoutSegment.mockReturnValue("offline");
+    usePathname.mockReturnValue("/offline");
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<BottomNav />);
+    document.body.append(container);
+
+    usePathname.mockReturnValue("/blocks/b1");
+    const mismatches: unknown[] = [];
+    const root = await act(() =>
+      hydrateRoot(container, <BottomNav />, {
+        onRecoverableError: (error) => mismatches.push(error),
+      }),
+    );
+    const drawn = container.innerHTML;
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    expect(mismatches).toEqual([]);
+    expect(drawn).toBe("");
+  });
+
   it("is hidden while the shell is shown, at any address", () => {
     usePathname.mockReturnValue("/blocks/b1");
     act(() => {

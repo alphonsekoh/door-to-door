@@ -1,6 +1,5 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { type ReactNode, createContext, useContext, useEffect, useState } from "react";
 import {
   type SyncController,
@@ -16,6 +15,7 @@ import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
 import { sendBatch } from "@/lib/sync/transport";
 import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
 import { useRole } from "@/lib/hooks/use-role";
+import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { isPublicPath } from "@/server/auth/routes";
 
 /*
@@ -84,7 +84,7 @@ export function SyncProvider({
   signedIn?: () => Promise<SignedIn>;
 }) {
   const { userId } = useRole();
-  const pathname = usePathname();
+  const pathname = useRoutePathname();
   /* The last member confirmed signed in on this page. Auth.js refetches the
      session when the app comes back into view, and a refetch that fails for
      want of signal reads as signed out until the next page load; the queue

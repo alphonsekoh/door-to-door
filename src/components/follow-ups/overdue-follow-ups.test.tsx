@@ -14,14 +14,22 @@ vi.mock("@/lib/api-client", async () => {
 const note = (id: string): FollowUp => ({
   id,
   householdId: `h-${id}`,
+  blockId: "b1",
   blockName: "123",
   unitNumber: `#05-${id}`,
   visitId: null,
+  status: "listed",
   author: { id: "u1", name: "Alice", image: null },
   note: `Note ${id}`,
   dueDate: "2020-01-01T00:00:00.000Z",
   doneAt: null,
   doneBy: null,
+  listedAt: null,
+  listedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  deleteReason: null,
+  waitingSuggestionBy: null,
   createdAt: "2019-12-01T00:00:00.000Z",
 });
 
@@ -40,7 +48,7 @@ describe("OverdueFollowUps", () => {
     render(<OverdueFollowUps />);
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith(
-        `/follow-ups?outstanding=true&dueBefore=${encodeURIComponent(startOfToday(new Date()))}&limit=5`,
+        `/follow-ups?status=listed&outstanding=true&dueBefore=${encodeURIComponent(startOfToday(new Date()))}&limit=5`,
       );
     });
   });
@@ -68,7 +76,11 @@ describe("OverdueFollowUps", () => {
       "/households/h-1",
     );
     expect(screen.getAllByRole("link", { name: /Blk 123/ })).toHaveLength(5);
-    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute("href", "/follow-ups");
+    // The admin's own list, where an overdue note can be changed or removed.
+    expect(screen.getByRole("link", { name: "See all" })).toHaveAttribute(
+      "href",
+      "/admin/follow-ups?tab=list",
+    );
   });
 
   it("uses the singular for one", async () => {

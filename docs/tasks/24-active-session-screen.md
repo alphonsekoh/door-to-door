@@ -11,7 +11,8 @@ The first screen a member uses: the running outing and its blocks.
 ## Decisions
 
 - **D-24-1 · Blocks show who is there, but never read as taken.** Relies on blocks being
-  shared.
+  shared. _Refined by D-117-24:_ in a follow-up session members see the households to
+  revisit, grouped by block, instead of block cards.
 - **D-24-2 · 30s poll plus a Refresh button; polling stops on unmount.** _Why:_ blocks
   attached mid-outing (D-18-1) must appear without a restart.
 - **D-24-3 · "No outing is running" is a statement, not an alert.** Relies on D-10-7.

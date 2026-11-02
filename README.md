@@ -36,12 +36,18 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Join the session and pair up in a team; teammates see and amend each other's records.
 - Amend their own (and their team's) records while the session runs.
 - Review their own history, or their team's, with the blocks and sessions they worked.
-- Leave follow-up notes on a unit, with an optional due date, and mark them done.
+- Suggest a household for a return visit; an admin adds it to the follow-up list or
+  declines it, and the member is told which, and why.
+- In a follow-up session, work through the households on its list and mark each
+  follow-up done. Members record only at those households in such a session.
 
 **Admins**
 
-- Create a session, attach blocks, start it, add blocks while it runs, end it, and
-  reopen one ended by mistake.
+- Create a door-to-door session and attach blocks, adding more while it runs; or a
+  follow-up session from households picked off the follow-up list (at least one), whose
+  blocks follow them. Start it, end it, and reopen one ended by mistake.
+- Decide the follow-up list: review members' suggestions, add households that showed
+  interest, take them off again (soft, always with a reason the author sees).
 - View and amend every record, current and historical; see a unit's consolidated history.
 - Manage members (add, change role, deactivate, restore) and session teams.
 
@@ -139,7 +145,7 @@ first.
 3. **Account** → **Sign out**, then sign in as `alice@example.com` / `password123`.
 4. The **Session** tab lists the running session's blocks. Tap `Blk 456`.
 5. Type a unit number, e.g. `#04-12`, tap an interest level, then **Save and next**.
-6. The **All units** tab shows the unit with your record, marked "tonight". **History**
+6. The **All units** tab shows the unit with your record, marked "this session". **History**
    shows the session.
 
 The admin follows progress on the session screen and taps **End session** when done.
@@ -164,10 +170,14 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
 - **Households and visits.** A household is one `(block, unit_number)`; its name, contact
   and religion are the latest known and only ever updated with non-null values. A visit
   is one knock; its interest level and notes are never overwritten by a later visit, so
-  the trajectory over time stays visible. Follow-ups attach to the household.
+  the trajectory over time stays visible. Follow-ups attach to the household. A
+  follow-up is on the list (`listed`, an admin's call) or `suggested` by a member, and
+  removing one is a soft delete with a reason.
 - **Sessions** (`outing_sessions` in the schema, `/sessions` in the API) go
   `draft → active → ended` and can be reopened. At most one is active app-wide, enforced
-  by the database.
+  by the database. A session is door-to-door or follow-up, fixed when it is created. A
+  follow-up session goes back to households an admin picked from the follow-up list,
+  and its blocks follow them; members record only at households on its list.
 - **Auth** is Auth.js v5 with email and password (argon2id), on JWT sessions. Every
   handler re-reads the user's role and deactivation from the database; the token's role
   is a UI hint only.
@@ -197,15 +207,16 @@ The least obvious part of the system. In short (details in
    Each item's `status` is `applied`, `unchanged`, `stale` or `rejected`; a rejected item
    also carries an `error` whose `code` says why.
 
-   | Status, or code when `rejected`     | Meaning                                              | The phone                        |
-   | ----------------------------------- | ---------------------------------------------------- | -------------------------------- |
-   | `applied`                           | Created, or a newer edit was written                 | Marks it sent                    |
-   | `unchanged`                         | Already stored: a replay of the same id (D-21-1)     | Marks it sent                    |
-   | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)   | Marks it sent; the server's wins |
-   | `rejected`: `session_not_active`    | Its session has ended (D-21-4)                       | Holds it; a reopen lets it in    |
-   | `rejected`: `clock_skew`            | Stamped in the future or before its session (D-76-4) | Restamps and resends (D-33-3)    |
-   | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit   | Holds it for a tap (D-33-16)     |
-   | `rejected`: `internal_error`        | Something failed on the server                       | Retries with backoff (D-33-4)    |
+   | Status, or code when `rejected`     | Meaning                                               | The phone                             |
+   | ----------------------------------- | ----------------------------------------------------- | ------------------------------------- |
+   | `applied`                           | Created, or a newer edit was written                  | Marks it sent                         |
+   | `unchanged`                         | Already stored: a replay of the same id (D-21-1)      | Marks it sent                         |
+   | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)    | Marks it sent; the server's wins      |
+   | `rejected`: `session_not_active`    | Its session has ended (D-21-4)                        | Holds it; a reopen lets it in         |
+   | `rejected`: `not_on_follow_up_list` | A new visit off a follow-up session's list (D-117-15) | Holds it; picking the unit lets it in |
+   | `rejected`: `clock_skew`            | Stamped in the future or before its session (D-76-4)  | Restamps and resends (D-33-3)         |
+   | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit    | Holds it for a tap (D-33-16)          |
+   | `rejected`: `internal_error`        | Something failed on the server                        | Retries with backoff (D-33-4)         |
 
 4. **Conflicts resolve last-write-wins on `updatedAt`**, within what a sync may change.
    Replaying is harmless because the id is the idempotency key. An update can change only
@@ -439,10 +450,12 @@ Playwright builds the app, serves the standalone output and drives it on two pho
 profiles, **Pixel 5 (Chromium)** and **iPhone 13 (WebKit)**. It creates and reseeds its
 own `door_to_door_e2e` database, so it never disturbs the integration suite. The specs in
 `e2e/` cover signing in and the role split, recording a visit (with and without signal),
-a session's lifecycle, teams, the account screen and sign-out, and the PWA (the worker,
-offline fallback, caching and phone layout). Three offline-navigation tests are skipped
-on WebKit because Playwright's WebKit offline emulation bypasses the service worker
-(D-32-18).
+a session's lifecycle, a follow-up session, teams, the account screen and sign-out, and
+the PWA (the worker, offline fallback, caching and phone layout). Three offline-navigation
+tests are skipped on WebKit because Playwright's WebKit offline emulation bypasses the
+service worker (D-32-18). The browser runs at UTC+14 and the server at UTC−12, so their
+dates always differ, and a spec fails on any hydration mismatch on a page it loads,
+attributes included (D-117-64).
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.
@@ -521,6 +534,7 @@ docker run -p 3000:3000 \
 | `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
+| "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
 | A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
 | The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
 | The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
@@ -534,7 +548,8 @@ src/
                 sync, visits, households, history, follow-ups, sessions, blocks, teams,
                 admin, account
   lib/          framework-free helpers, one folder per domain: pwa, teams, units,
-                history, hooks, session, sync (offline queue), offline (local copy)
+                history, follow-ups, hooks, session, sync (offline queue), offline
+                (local copy)
   auth/         the Auth.js entrypoint, imported as @/auth; Google sign-in (#14) goes here
   server/       server-only services, auth guards, withContract
   db/           Drizzle schema, client and seed data

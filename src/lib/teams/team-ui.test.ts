@@ -6,9 +6,7 @@ import {
   describeAdminTeamFailure,
   defaultTeamName,
   describeTeamFailure,
-  displayName,
   findMyTeam,
-  firstName,
   hasJoined,
   isNetworkFailure,
   pickerCandidates,
@@ -26,17 +24,6 @@ const error = (status: number, code: string) =>
   new ApiRequestError(status, { error: { code, message: "server words" } } as never);
 
 describe("names", () => {
-  it("takes the first word of a name", () => {
-    expect(firstName("Ann Tan")).toBe("Ann");
-    expect(firstName("  Ben  ")).toBe("Ben");
-  });
-
-  it("falls back for a person with no name", () => {
-    expect(displayName(null)).toBe("Someone");
-    expect(displayName("   ")).toBe("Someone");
-    expect(firstName(null)).toBe("Someone");
-  });
-
   it("builds 'Ann & Ben' from first names", () => {
     expect(defaultTeamName("Ann Tan", "Ben Lim")).toBe("Ann & Ben");
   });

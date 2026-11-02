@@ -29,6 +29,7 @@ function summary(id: string, title: string): SessionHistorySummary {
     session: {
       id,
       title,
+      kind: "regular",
       status: "ended",
       startedAt: null,
       endedAt: null,
@@ -98,7 +99,10 @@ describe("OwnHistoryScreen", () => {
     render(<OwnHistoryScreen />);
 
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/follow-ups?authorId=u1&outstanding=true&limit=10");
+      // Only what is owed: a suggestion is not a promise until an admin lists it.
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/follow-ups?authorId=u1&status=listed&outstanding=true&limit=10",
+      );
     });
   });
 
@@ -244,6 +248,7 @@ function record(unitNumber: string, author = { id: "u2", name: "Ben Lim" }): His
     session: {
       id: "s1",
       title: "June outing",
+      kind: "regular",
       status: "active",
       startedAt: null,
       endedAt: null,

@@ -54,6 +54,7 @@ describe("migrations", () => {
       "households",
       "outing_sessions",
       "session_blocks",
+      "session_households",
       "session_participants",
       "session_team_members",
       "session_teams",

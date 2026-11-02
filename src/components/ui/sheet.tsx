@@ -279,12 +279,15 @@ export function Sheet({
                 />
               ) : null}
               {/* At large text Cancel drops under the title rather than
-                  squeeze it to a letter a line. */}
+                  squeeze it below 12ch of body text, the width title rows
+                  keep (D-111-25). The basis sits on a body-size box so it
+                  is measured in body text: 8ch of the larger title let "Add
+                  households" stand a word a line beside Cancel. */}
               {title === undefined ? null : (
                 <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-                  <p className="min-w-0 flex-[1_1_8ch] text-title font-semibold break-words">
-                    {title}
-                  </p>
+                  <div className="min-w-0 flex-[1_1_12ch] text-body">
+                    <p className="text-title font-semibold break-words">{title}</p>
+                  </div>
                   <button
                     type="button"
                     onClick={onClose}

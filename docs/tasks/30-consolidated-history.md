@@ -13,7 +13,8 @@ never revisited.
 
 - **D-30-1 · New `GET /households/attention`.** Only the latest visit counts; a household
   with an outstanding follow-up is excluded; oldest first; `minimumInterest` defaults to
-  `high`.
+  `high`. _Refined by D-117-22:_ a pending suggestion also excludes it, and removed notes
+  don't count.
 - **D-30-2 · History groups by household, visits oldest first.**
 - **D-30-3 · CSV export walks every page of the filtered set, capped at 20 pages**, and
   says so when capped.

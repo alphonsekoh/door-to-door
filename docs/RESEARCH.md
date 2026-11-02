@@ -64,7 +64,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
     correlated subquery silently compares against the wrong table.
   - `references()` callbacks are lazy.
 - **Source:** Integration tests in #17, #27, #31; schema tests in #7
-- **Used by:** D-17-3, D-27-2, D-31-3
+- **Used by:** D-17-3, D-27-2, D-31-3, D-117-7
 
 ### R-8 · Postgres NULL ordering
 
@@ -286,7 +286,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   real row lock from a second connection); the general rules are from the PostgreSQL
   docs.
 - **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
-- **Used by:** D-74-31, D-74-23
+- **Used by:** D-74-31, D-74-23, D-117-9
 
 ### R-36 · A fetch `TypeError` cannot tell "not sent" from "reply lost"
 
@@ -794,3 +794,128 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [ESLint, specifying files and ignores](https://eslint.org/docs/latest/use/configure/configuration-files#specifying-files-and-ignores);
   measured in PR #116
 - **Used by:** D-115-10
+
+### R-80 · `useSyncExternalStore` renders the server snapshot while hydrating
+
+- **Finding:** `getServerSnapshot` is used on the server and during hydration on the
+  client; React then re-renders with `getSnapshot` if it differs. So a value only the
+  phone knows (`localStorage`, what another screen heard) can differ from the server's
+  HTML without a hydration mismatch, and is drawn one render later.
+- **Source:** [React, `useSyncExternalStore`](https://react.dev/reference/react/useSyncExternalStore);
+  not measured here
+- **Used by:** D-117-19, D-117-29
+
+### R-81 · `localStorage` is per origin and can throw
+
+- **Finding:** Storage is per origin in one browser, so on a shared phone it belongs to
+  the phone, not the signed-in account. Reading `window.localStorage` throws
+  `SecurityError` where storage is blocked, and `setItem` throws `QuotaExceededError` when
+  the quota is used up.
+- **Source:** [MDN, `Window.localStorage`](https://developer.mozilla.org/en-US/docs/Web/API/Window/localStorage),
+  [MDN, `Storage.setItem`](https://developer.mozilla.org/en-US/docs/Web/API/Storage/setItem);
+  not measured here
+- **Used by:** D-117-29
+
+### R-82 · `FOR KEY SHARE` conflicts only with `FOR UPDATE`
+
+- **Finding:** Of PostgreSQL's row-level locks, `FOR KEY SHARE` conflicts only with
+  `FOR UPDATE`, which a `DELETE` or an update of a key column also takes; it is
+  compatible with itself, `FOR SHARE` and `FOR NO KEY UPDATE`. So any number of visit writes can hold a session row at once,
+  while an admin's change to its households, or a transition, waits for them and they
+  for it. Verified by the parked-lock tests in
+  `src/server/follow-ups/races.integration.test.ts`, which hold a real lock from a
+  second connection.
+- **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS); #117
+- **Used by:** D-117-45
+
+### R-83 · A DELETE body has no defined meaning; a query string is logged
+
+- **Finding:** RFC 9110 gives content in a DELETE request no generally defined
+  semantics and warns some implementations may reject it. A query string is part of the
+  request target, which access logs record by default (nginx's `combined` format logs
+  `$request`, the whole request line). Not measured here.
+- **Source:** [RFC 9110 §9.3.5, DELETE](https://www.rfc-editor.org/rfc/rfc9110#section-9.3.5),
+  [nginx, `log_format`](https://nginx.org/en/docs/http/ngx_http_log_module.html#log_format)
+- **Used by:** D-117-34
+
+### R-84 · Offset pages need a unique order
+
+- **Finding:** PostgreSQL returns rows that tie on `ORDER BY` in no defined order, and
+  the planner takes `LIMIT` and `OFFSET` into account, so different pages of one query
+  can use different plans and order ties differently. Pages read with a non-unique order
+  can repeat or skip rows; a unique last key (the id) makes the order total. Not
+  measured here.
+- **Source:** [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html)
+- **Used by:** D-117-51
+
+### R-85 · Scroll anchoring moves a growing line above the anchor (measured)
+
+- **Finding:** With scroll anchoring, when content above the anchor node changes size,
+  the browser adjusts the scroll position so the anchor stays put. In the follow-up
+  form, the status line above the unit field grew a row just after Save scrolled it into
+  view; the page scrolled to hold the field, and the line's top went under the pinned
+  "1 waiting to send". The E2E measured the line at 56px while sending and 86px once
+  saved before the fix. Observed on Chromium; WebKit not checked here.
+- **Source:** [CSS Scroll Anchoring Module Level 1](https://drafts.csswg.org/css-scroll-anchoring/);
+  #117, `e2e/follow-up-session.spec.ts`
+- **Used by:** D-117-59
+
+### R-86 · React keeps a differing server attribute, and warns only in development
+
+- **Finding:** React does not promise to patch attribute differences found while
+  hydrating. In development it warns ("…some attributes of the server rendered HTML
+  didn't match the client properties. This won't be patched up.") and names browser
+  extensions among the causes; in production it keeps the server's value and reports
+  nothing. Text and structure differences still throw #418 and re-render. Grammarly
+  writes `data-new-gr-c-s-check-loaded` and `data-gr-ext-installed` on `<body>` before
+  hydration, which raises that warning on every page. A hydrated element holds the props
+  React rendered in an undocumented `__reactProps$<id>` property, and Chromium drops
+  console messages a page logs as it is left, so a check must keep its findings
+  elsewhere.
+- **Source:** [React, `hydrateRoot` caveats](https://react.dev/reference/react-dom/client/hydrateRoot);
+  the Docker dev server's forwarded browser log; measured in #117 with a throwaway
+  `data-tz-probe` attribute, which failed account and teams specs only with the sweep
+- **Used by:** D-117-62, D-117-64
+
+### R-87 · `usePathname()` reads the browser's address on a page served at another
+
+- **Finding:** A prerendered page reached at a different URL (a rewrite, or here the
+  worker's `/offline` fallback at the failed address) hydrates with `usePathname()`
+  giving the browser's address, not the path the server rendered, so anything derived
+  from it can mismatch. `useSelectedLayoutSegment()` comes from the rendered route tree
+  and agrees on both sides. The offline-fallback specs in `pwa.spec.ts` failed with React
+  #418 before the fix.
+- **Source:** [Next.js, `usePathname`, avoid hydration mismatch with rewrites](https://nextjs.org/docs/app/api-reference/functions/use-pathname#avoid-hydration-mismatch-with-rewrites)
+  (also `node_modules/next/dist/docs`); #117
+- **Used by:** D-117-63
+
+### R-88 · `Etc/GMT+12` is UTC−12
+
+- **Finding:** The IANA `Etc/GMT±n` zones keep the POSIX sign, the reverse of what is
+  usual: `Etc/GMT+12` is twelve hours behind UTC. `Pacific/Kiritimati` is UTC+14, the
+  furthest ahead, so the two are 26 hours apart and never share a date. Asia/Singapore
+  (UTC+8) and UTC differ in date only from 16:00 to 24:00 UTC. Not measured here.
+- **Source:** [IANA tz database, `etcetera`](https://data.iana.org/time-zones/tzdb/etcetera)
+- **Used by:** D-117-64
+
+### R-89 · `scrollIntoView({ block: "nearest" })` aligns the far edge of a tall element
+
+- **Finding:** With `nearest`, an element taller than the scrollport whose top is above
+  the view is aligned by its bottom edge, so its top stays out of view. The recording
+  form's wrapper (the Saved line, the unit field and a dozen chips) outgrew a Pixel 5,
+  and the line ended above the screen; the E2E failed on both browsers before the fix.
+- **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
+  #117, `e2e/follow-up-session.spec.ts`
+- **Used by:** D-117-77
+
+### R-90 · `additionalProperties` does not see through `allOf`
+
+- **Finding:** In JSON Schema 2020-12 (OpenAPI 3.1), `additionalProperties` knows only
+  its own subschema's properties, so `false` on a base used in an `allOf` rejects every
+  field another branch adds; `unevaluatedProperties: false` beside the `allOf` sees what
+  every branch evaluated. The hey-api Zod plugin ignores both and emits a plain
+  `z.object` (and `.and()` for the `allOf`), so an extra field is caught by
+  `withContract`'s parsed-versus-returned comparison (R-6), not by the schema.
+- **Source:** [JSON Schema 2020-12 Core, `unevaluatedProperties`](https://json-schema.org/draft/2020-12/json-schema-core#name-unevaluatedproperties);
+  generated `src/generated/zod.gen.ts` (#117)
+- **Used by:** D-117-68

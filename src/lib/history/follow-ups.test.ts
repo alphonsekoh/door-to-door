@@ -9,7 +9,8 @@ import {
   dueDayToInstant,
   instantToDueDay,
   isOverdue,
-  mayEditFollowUp,
+  listedByline,
+  removedByline,
   sortOutstanding,
   startOfToday,
 } from "@/lib/history/follow-ups";
@@ -21,14 +22,22 @@ function note(overrides: Partial<FollowUp> = {}): FollowUp {
   return {
     id: "f1",
     householdId: "h1",
+    blockId: "b1",
     blockName: "123",
     unitNumber: "#05-123",
     visitId: null,
+    status: "listed",
     author: { id: "u1", name: "Alice Tan", image: null },
     note: "Bring the flyer.",
     dueDate: null,
     doneAt: null,
     doneBy: null,
+    listedAt: null,
+    listedBy: null,
+    deletedAt: null,
+    deletedBy: null,
+    deleteReason: null,
+    waitingSuggestionBy: null,
     createdAt: "2026-03-03T04:00:00.000Z",
     ...overrides,
   };
@@ -144,24 +153,6 @@ describe("buildTimeline", () => {
   });
 });
 
-describe("mayEditFollowUp", () => {
-  it("lets the author edit", () => {
-    expect(mayEditFollowUp(note(), { userId: "u1", isAdmin: false })).toBe(true);
-  });
-
-  it("lets an admin edit anyone's note", () => {
-    expect(mayEditFollowUp(note(), { userId: "u9", isAdmin: true })).toBe(true);
-  });
-
-  it("does not offer another member the edit", () => {
-    expect(mayEditFollowUp(note(), { userId: "u2", isAdmin: false })).toBe(false);
-  });
-
-  it("does not offer it before the viewer is known", () => {
-    expect(mayEditFollowUp(note(), { userId: undefined, isAdmin: false })).toBe(false);
-  });
-});
-
 describe("bylines", () => {
   it("says who added it and when", () => {
     const added = note({ createdAt: local(2026, 3, 3, 12).toISOString() });
@@ -190,6 +181,70 @@ describe("bylines", () => {
   it("has no resolver line while outstanding", () => {
     expect(doneByline(note())).toBeNull();
   });
+
+  const admin = { id: "a1", name: "Admin", image: null };
+  const listedAt = local(2026, 3, 4, 12).toISOString();
+  const createdAt = local(2026, 3, 3, 12).toISOString();
+
+  it("marks a suggestion as waiting for review", () => {
+    expect(addedByline(note({ status: "suggested", createdAt }))).toBe(
+      "Suggested by Alice Tan · 3 Mar 2026 · Waiting for review",
+    );
+  });
+
+  it("says a member's words an admin listed were suggested, and who listed them", () => {
+    const promoted = note({ createdAt, listedAt, listedBy: admin });
+    expect(addedByline(promoted)).toBe("Suggested by Alice Tan · 3 Mar 2026");
+    expect(listedByline(promoted)).toBe("Added to the list by Admin · 4 Mar 2026");
+  });
+
+  it("names no lister for an admin's own note, a suggestion, or an older note", () => {
+    const own = note({ author: admin, createdAt, listedAt, listedBy: admin });
+    expect(addedByline(own)).toBe("Added by Admin · 3 Mar 2026");
+    expect(listedByline(own)).toBeNull();
+    expect(listedByline(note({ status: "suggested" }))).toBeNull();
+    expect(listedByline(note())).toBeNull();
+    expect(listedByline(note({ listedBy: admin }))).toBeNull();
+  });
+
+  it("calls the viewer you, wherever they are named, and nobody else", () => {
+    const promoted = note({ status: "suggested", createdAt });
+    expect(addedByline(promoted, "u1")).toBe("Suggested by you · 3 Mar 2026 · Waiting for review");
+    expect(addedByline(promoted, "u2")).toMatch(/^Suggested by Alice Tan · /);
+
+    const listed = note({ createdAt, listedAt, listedBy: admin });
+    expect(listedByline(listed, "a1")).toBe("Added to the list by you · 4 Mar 2026");
+
+    const done = note({
+      doneAt: local(2026, 6, 9, 12).toISOString(),
+      doneBy: { id: "u2", name: "Ben Lim", image: null },
+    });
+    expect(doneByline(done, "u2")).toBe("Done by you · 9 Jun 2026");
+    expect(doneByline({ ...done, doneBy: null }, "u2")).toBe("Done by Someone · 9 Jun 2026");
+  });
+
+  it("says how a removed note left", () => {
+    const deletedAt = local(2026, 3, 5, 12).toISOString();
+    expect(removedByline(note())).toBeNull();
+    expect(removedByline(note({ deletedAt, deletedBy: admin }))).toBe(
+      "Removed from the list by Admin · 5 Mar 2026",
+    );
+    expect(removedByline(note({ status: "suggested", deletedAt, deletedBy: admin }))).toBe(
+      "Dismissed by Admin · 5 Mar 2026",
+    );
+    expect(
+      removedByline(
+        note({
+          status: "suggested",
+          deletedAt,
+          deletedBy: { id: "u1", name: "Alice Tan", image: null },
+        }),
+      ),
+    ).toBe("Withdrawn by Alice Tan · 5 Mar 2026");
+    expect(removedByline(note({ status: "suggested", deletedAt, deletedBy: null }))).toBe(
+      "Dismissed by Someone · 5 Mar 2026",
+    );
+  });
 });
 
 describe("describeFollowUpFailure", () => {
@@ -200,15 +255,41 @@ describe("describeFollowUpFailure", () => {
   });
 
   it.each<[number, ErrorCode, string]>([
-    [400, "validation_failed", "That note was not accepted. Check it is not empty."],
+    [
+      400,
+      "validation_failed",
+      "That was not accepted. Check the note is not empty and the reason is short.",
+    ],
     [401, "unauthenticated", "Your sign-in has ended. Sign in again."],
     [403, "account_deactivated", "Your sign-in has ended. Sign in again."],
-    [403, "forbidden", "Only the person who wrote this note, or an admin, can change it."],
+    [403, "forbidden", "Only the person who wrote this, or an admin, can change it."],
     [404, "not_found", "That note or unit is no longer there. Refresh to see the latest."],
+    [
+      409,
+      "follow_up_exists",
+      "This household is already on the follow-up list or has a suggestion waiting.",
+    ],
+    [
+      409,
+      "not_on_follow_up_list",
+      "You can mark this done during a follow-up session that includes this household.",
+    ],
+    [409, "conflict", "Add it to the follow-up list before marking it done."],
     [500, "internal_error", "Could not save the follow-up. Try again."],
   ])("words a %i (%s) without the server's text", (status, code, message) => {
     const error = new ApiRequestError(status, { error: { code, message: "raw server text" } });
     expect(describeFollowUpFailure(error)).toBe(message);
+  });
+
+  it("says a reopen met a suggestion that reached the door meanwhile", () => {
+    const error = new ApiRequestError(409, {
+      error: { code: "follow_up_exists", message: "raw server text" },
+    });
+    // The re-read that follows names whose suggestion it is, so the alert does not.
+    expect(describeFollowUpFailure(error, "reopen")).toBe("Not reopened.");
+    expect(describeFollowUpFailure(error, "save")).toBe(
+      "This household is already on the follow-up list or has a suggestion waiting.",
+    );
   });
 
   it("falls back for anything else thrown", () => {

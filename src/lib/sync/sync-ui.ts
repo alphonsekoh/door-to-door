@@ -38,9 +38,14 @@ export function recordReason(record: QueuedVisit): string | null {
     case "quarantined":
       return "Could not send after several tries.";
     case "held":
-      return code === "session_not_active"
-        ? "The session has ended. Sends if an admin reopens it."
-        : REFUSED;
+      switch (code) {
+        case "session_not_active":
+          return "The session has ended. Sends if an admin reopens it.";
+        case "not_on_follow_up_list":
+          return "Not on this session's list. Sends once an admin adds this unit.";
+        default:
+          return REFUSED;
+      }
     case "queued":
       /* The second refusal in a row: restamping did not help. */
       return code === "clock_skew" && record.skewCount > 1 ? CLOCK : null;
