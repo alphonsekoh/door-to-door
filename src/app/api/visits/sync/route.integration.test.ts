@@ -123,6 +123,19 @@ describe("POST /api/visits/sync", () => {
     expect((await sync({ items })).status).toBe(400);
   });
 
+  it("refuses an oversized batch on its length alone, without parsing an item", async () => {
+    /*
+     * Zod before 4.6.6 parsed every item before checking the bound, so one
+     * huge body could exhaust the server's memory (GHSA-mrhx-c7xc-m3w5, #118).
+     * Parsed items would each report their missing fields here.
+     */
+    asAlice();
+    const response = await sync({ items: Array.from({ length: 101 }, () => ({})) });
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toEqual(["/items"]);
+  });
+
   it("accepts a batch at exactly the limit", async () => {
     asAlice();
     const items = Array.from({ length: 100 }, (_, i) => item({ unitNumber: `#01-${String(i)}` }));
