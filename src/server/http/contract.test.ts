@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { zError } from "@/generated/zod.gen";
 import {
   ResponseContractError,
   coerceQuery,
@@ -68,7 +69,11 @@ describe("request validation", () => {
 
   it("rejects a body that is not valid JSON", async () => {
     const response = await route(
-      new Request("https://test.local/api/widgets", { method: "POST", body: "{oops" }),
+      new Request("https://test.local/api/widgets", {
+        method: "POST",
+        body: "{oops",
+        headers: { "content-type": "application/json" },
+      }),
     );
     expect(response.status).toBe(400);
     const payload = (await response.json()) as { error: { message: string } };
@@ -80,6 +85,104 @@ describe("request validation", () => {
     expect(response.status).toBe(400);
     const payload = (await response.json()) as { error: { message: string } };
     expect(payload.error.message).toMatch(/request body/i);
+  });
+});
+
+describe("requests from another origin, and bodies that are not JSON (#121)", () => {
+  const handler = vi.fn(() => Promise.resolve({ status: 201, body: widget }));
+  const route = withContract(
+    {
+      operationId: "createWidget",
+      path: z.object({ id: z.uuid() }),
+      body: z.object({ name: z.string().min(1), size: z.number().int() }),
+      responses: { 201: zWidget },
+    },
+    handler,
+  );
+  const ID = "00000000-0000-4000-8000-000000000001";
+  const params = (id = ID) => ({ params: Promise.resolve({ id }) });
+  const send = (body: BodyInit | null, headers: Record<string, string> = {}) =>
+    new Request("https://test.local/api/widgets", { method: "POST", body, headers });
+  const valid = JSON.stringify({ name: "w1", size: 3 });
+  const errorOf = async (response: Response) => zError.parse(await response.json()).error;
+
+  beforeEach(() => {
+    handler.mockClear();
+  });
+
+  it("refuses a cross-site write with 403 before reading its path or body", async () => {
+    // A 400 here would mean the request was parsed first, and say what was wrong with it.
+    const response = await route(send("{oops", { "sec-fetch-site": "cross-site" }), params("x"));
+    expect(response.status).toBe(403);
+    expect((await errorOf(response)).code).toBe("forbidden");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("refuses a write whose Origin is another host when there is no Sec-Fetch-Site", async () => {
+    const response = await route(
+      send(valid, {
+        "content-type": "application/json",
+        origin: "https://other.example.org",
+        host: "app.example.org",
+      }),
+      params(),
+    );
+    expect(response.status).toBe(403);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("still answers a cross-site read", async () => {
+    const read = withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
+      Promise.resolve({ status: 200, body: widget }),
+    );
+    const response = await read(
+      new Request("https://test.local/api/widgets/1", {
+        headers: { "sec-fetch-site": "cross-site" },
+      }),
+    );
+    expect(response.status).toBe(200);
+  });
+
+  it("refuses a text/plain body with 415 in the error envelope", async () => {
+    // CORS-simple: a page on another origin can send it without a preflight.
+    const response = await route(
+      send(valid, { "content-type": "text/plain", "sec-fetch-site": "same-origin" }),
+      params(),
+    );
+    expect(response.status).toBe(415);
+    expect(await errorOf(response)).toEqual({
+      code: "unsupported_media_type",
+      message: "Send the request body as JSON.",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("refuses a body with no Content-Type at all", async () => {
+    // A string body is labelled text/plain; a Blob with no type sends no header.
+    const request = send(new Blob([valid]));
+    expect(request.headers.get("content-type")).toBeNull();
+    const response = await route(request, params());
+    expect(response.status).toBe(415);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("reports an empty text/plain body as missing, not as the wrong type", async () => {
+    const response = await route(send("", { "content-type": "text/plain" }), params());
+    expect(response.status).toBe(400);
+    expect((await errorOf(response)).code).toBe("validation_failed");
+  });
+
+  it("accepts JSON that names its charset, from the app's own origin", async () => {
+    const response = await route(
+      send(valid, {
+        "content-type": "application/json; charset=utf-8",
+        "sec-fetch-site": "same-origin",
+        origin: "https://app.example.org",
+      }),
+      params(),
+    );
+    expect(response.status).toBe(201);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });
 

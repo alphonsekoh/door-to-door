@@ -58,6 +58,15 @@ info:
     re-checked on every request: a deactivated account receives
     `403 account_deactivated` from **every** operation, including `/users/me`.
 
+    ## Same origin only
+
+    Every operation other than a `GET` refuses, with `403 forbidden` and before
+    its request is read, a request the browser marks as sent by another
+    origin: a `Sec-Fetch-Site` other than `same-origin`, or, when that header is
+    absent, an `Origin` whose host is not this server's. A request body must be
+    `application/json`; any other `Content-Type` is
+    `415 unsupported_media_type`.
+
 servers:
   - url: /api
     description: Same-origin API
@@ -154,6 +163,7 @@ components:
         - not_on_follow_up_list
         - follow_up_exists
         - rate_limited
+        - unsupported_media_type
         - internal_error
 
     FieldError:
@@ -1329,7 +1339,13 @@ components:
       description: |
         Authenticated, but not permitted. Returned to members calling
         admin-only operations, to members amending another member's record, and
-        to any account deactivated after its session was issued.
+        to any account deactivated after its session was issued. Also returned
+        to a write sent from another origin (see "Same origin only").
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnsupportedMediaType:
+      description: The request has a body that is not `application/json`.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1406,6 +1422,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/active:
     get:
@@ -1593,6 +1610,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/{id}/blocks/{blockId}:
     delete:
@@ -1721,6 +1739,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/{id}/households/{householdId}:
     delete:
@@ -1873,6 +1892,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /teams/{id}:
     patch:
@@ -1906,6 +1926,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
     delete:
       tags: [Teams]
       operationId: deleteTeam
@@ -1967,6 +1988,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /teams/{id}/members/{userId}:
     delete:
@@ -2049,6 +2071,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /blocks/{id}:
     patch:
@@ -2077,6 +2100,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   # ============================================================ Households
   /households:
@@ -2264,6 +2288,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422":
           description: |
             `clock_skew`: `clientCreatedAt` is more than the tolerance ahead of
@@ -2309,6 +2334,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /visits/sync:
     post:
@@ -2389,6 +2415,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422":
           description: |
             `clock_skew`: the phone's clock (`sentAt`) is off from the server's
@@ -2512,6 +2539,7 @@ paths:
               schema: { $ref: "#/components/schemas/FollowUp" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: The household, or the referenced visit, does not exist.
           content:
@@ -2525,6 +2553,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /follow-ups/{id}:
     patch:
@@ -2598,6 +2627,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /follow-ups/{id}/remove:
     post:
@@ -2635,6 +2665,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   # =============================================================== History
   /history:
@@ -2804,6 +2835,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /users/me:
     get:
@@ -2867,6 +2899,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /users/{id}:
     patch:
@@ -2899,3 +2932,4 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }

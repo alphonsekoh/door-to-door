@@ -105,6 +105,7 @@ export const ErrorCode = {
     NOT_ON_FOLLOW_UP_LIST: 'not_on_follow_up_list',
     FOLLOW_UP_EXISTS: 'follow_up_exists',
     RATE_LIMITED: 'rate_limited',
+    UNSUPPORTED_MEDIA_TYPE: 'unsupported_media_type',
     INTERNAL_ERROR: 'internal_error'
 } as const;
 
@@ -1035,7 +1036,8 @@ export type ListSessionsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1074,7 +1076,8 @@ export type CreateSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1088,6 +1091,10 @@ export type CreateSessionErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type CreateSessionError = CreateSessionErrors[keyof CreateSessionErrors];
@@ -1155,7 +1162,8 @@ export type GetSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1196,7 +1204,8 @@ export type StartSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1246,7 +1255,8 @@ export type EndSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1291,7 +1301,8 @@ export type ReopenSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1374,7 +1385,8 @@ export type AttachSessionBlocksErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1386,6 +1398,10 @@ export type AttachSessionBlocksErrors = {
      * `conflict`: the session is a follow-up session.
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type AttachSessionBlocksError = AttachSessionBlocksErrors[keyof AttachSessionBlocksErrors];
@@ -1420,7 +1436,8 @@ export type DetachSessionBlockErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1467,7 +1484,8 @@ export type ListSessionRevisitsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1512,7 +1530,8 @@ export type ListSessionHouseholdsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1561,7 +1580,8 @@ export type AddSessionHouseholdsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1576,6 +1596,10 @@ export type AddSessionHouseholdsErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type AddSessionHouseholdsError = AddSessionHouseholdsErrors[keyof AddSessionHouseholdsErrors];
@@ -1610,7 +1634,8 @@ export type RemoveSessionHouseholdErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1661,7 +1686,8 @@ export type ListParticipantsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1702,7 +1728,8 @@ export type JoinSessionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1749,7 +1776,8 @@ export type ListTeamsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1794,7 +1822,8 @@ export type CreateTeamErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1810,6 +1839,10 @@ export type CreateTeamErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type CreateTeamError = CreateTeamErrors[keyof CreateTeamErrors];
@@ -1843,7 +1876,8 @@ export type DeleteTeamErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1894,7 +1928,8 @@ export type UpdateTeamErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1906,6 +1941,10 @@ export type UpdateTeamErrors = {
      * `session_not_active`: the outing is not active (members only).
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateTeamError = UpdateTeamErrors[keyof UpdateTeamErrors];
@@ -1943,7 +1982,8 @@ export type AddTeamMemberErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -1958,6 +1998,10 @@ export type AddTeamMemberErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type AddTeamMemberError = AddTeamMemberErrors[keyof AddTeamMemberErrors];
@@ -1992,7 +2036,8 @@ export type RemoveTeamMemberErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2083,7 +2128,8 @@ export type CreateBlockErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2091,6 +2137,10 @@ export type CreateBlockErrors = {
      * A block with this name and street already exists.
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type CreateBlockError = CreateBlockErrors[keyof CreateBlockErrors];
@@ -2128,7 +2178,8 @@ export type UpdateBlockErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2140,6 +2191,10 @@ export type UpdateBlockErrors = {
      * Another block already uses this name and street.
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateBlockError = UpdateBlockErrors[keyof UpdateBlockErrors];
@@ -2235,7 +2290,8 @@ export type ListHouseholdsNeedingAttentionErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2323,7 +2379,8 @@ export type ListVisitsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2375,6 +2432,10 @@ export type CreateVisitErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
     /**
      * `clock_skew`: `clientCreatedAt` is more than the tolerance ahead of
      * the server's clock.
@@ -2431,6 +2492,10 @@ export type UpdateVisitErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateVisitError = UpdateVisitErrors[keyof UpdateVisitErrors];
@@ -2471,6 +2536,10 @@ export type SyncVisitsErrors = {
      *
      */
     403: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
     /**
      * `clock_skew`: the phone's clock (`sentAt`) is off from the server's
      * by more than the tolerance. Nothing in the batch was applied. The
@@ -2564,7 +2633,8 @@ export type ListFollowUpsErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2601,6 +2671,14 @@ export type CreateFollowUpErrors = {
      */
     401: Error;
     /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record, and
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
+     *
+     */
+    403: Error;
+    /**
      * The household, or the referenced visit, does not exist.
      */
     404: Error;
@@ -2611,6 +2689,10 @@ export type CreateFollowUpErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type CreateFollowUpError = CreateFollowUpErrors[keyof CreateFollowUpErrors];
@@ -2664,6 +2746,10 @@ export type UpdateFollowUpErrors = {
      *
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateFollowUpError = UpdateFollowUpErrors[keyof UpdateFollowUpErrors];
@@ -2701,7 +2787,8 @@ export type RemoveFollowUpErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2709,6 +2796,10 @@ export type RemoveFollowUpErrors = {
      * No such resource, or not visible to this user.
      */
     404: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type RemoveFollowUpError = RemoveFollowUpErrors[keyof RemoveFollowUpErrors];
@@ -2761,7 +2852,8 @@ export type ListHistoryErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2890,7 +2982,8 @@ export type ListUsersErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2929,7 +3022,8 @@ export type CreateUserErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -2937,6 +3031,10 @@ export type CreateUserErrors = {
      * That email address already belongs to someone.
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type CreateUserError = CreateUserErrors[keyof CreateUserErrors];
@@ -3016,6 +3114,10 @@ export type UpdateOwnProfileErrors = {
      *
      */
     404: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateOwnProfileError = UpdateOwnProfileErrors[keyof UpdateOwnProfileErrors];
@@ -3053,7 +3155,8 @@ export type UpdateUserErrors = {
     /**
      * Authenticated, but not permitted. Returned to members calling
      * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued.
+     * to any account deactivated after its session was issued. Also returned
+     * to a write sent from another origin (see "Same origin only").
      *
      */
     403: Error;
@@ -3065,6 +3168,10 @@ export type UpdateUserErrors = {
      * An admin attempting to demote or deactivate themselves.
      */
     409: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
 };
 
 export type UpdateUserError = UpdateUserErrors[keyof UpdateUserErrors];

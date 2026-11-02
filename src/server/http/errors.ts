@@ -86,6 +86,14 @@ export class ConflictError extends ApiError {
   }
 }
 
+export class UnsupportedMediaTypeError extends ApiError {
+  /* 415, not 400: the sync engine quarantines a lone record refused with 400. */
+  constructor(message = "Send the request body as JSON.") {
+    super(415, "unsupported_media_type", message);
+    this.name = "UnsupportedMediaTypeError";
+  }
+}
+
 export class ClockSkewError extends ApiError {
   constructor(message = "Your clock is out of step with the server.") {
     super(422, "clock_skew", message);

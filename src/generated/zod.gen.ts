@@ -67,6 +67,7 @@ export const zErrorCode = z.enum([
     'not_on_follow_up_list',
     'follow_up_exists',
     'rate_limited',
+    'unsupported_media_type',
     'internal_error'
 ]);
 
