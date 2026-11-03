@@ -68,6 +68,11 @@ export const appConfigSchema = z.strictObject({
   auth: z
     .strictObject({
       trustHost: z.boolean().default(true),
+      /*
+       * Otherwise Auth.js takes the cookie flags from the scheme it sees, and
+       * behind a TLS proxy that sends no X-Forwarded-Proto that is http.
+       */
+      secureCookies: z.boolean().default(true),
       google: z.strictObject({ clientId: z.string().min(1) }).optional(),
     })
     .prefault({}),

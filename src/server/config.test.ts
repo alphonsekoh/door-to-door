@@ -154,7 +154,7 @@ describe("loadConfig", () => {
       databaseUrl: "postgresql://app:pw@db:5432/door_to_door",
       authSecret: SECRET,
       rateLimit: { signInAttempts: 4, signInWindowSeconds: 300 },
-      auth: { trustHost: true },
+      auth: { trustHost: true, secureCookies: true },
     });
   });
 

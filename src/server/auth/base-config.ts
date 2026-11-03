@@ -3,7 +3,7 @@ import { applyTokenToSession, applyUpdateToToken, applyUserToToken } from "@/ser
 
 export type BaseAuthSettings = {
   authSecret: string;
-  auth: { trustHost: boolean };
+  auth: { trustHost: boolean; secureCookies: boolean };
 };
 
 /*
@@ -16,6 +16,10 @@ export type BaseAuthSettings = {
  * The secret and trustHost are passed explicitly rather than left to Auth.js's
  * own AUTH_* lookups, because the secret may arrive through AUTH_SECRET_FILE
  * and Auth.js knows nothing of that.
+ *
+ * useSecureCookies is passed too, so the route handlers and the proxy agree on
+ * the cookie names whatever scheme the request arrived with: the __Secure-
+ * session cookie one issues is the one the other looks for.
  */
 export function buildBaseAuthConfig({ authSecret, auth }: BaseAuthSettings) {
   return {
@@ -44,6 +48,7 @@ export function buildBaseAuthConfig({ authSecret, auth }: BaseAuthSettings) {
     },
     secret: authSecret,
     trustHost: auth.trustHost,
+    useSecureCookies: auth.secureCookies,
     // Providers are supplied by each consumer: the full config adds
     // credentials, the proxy needs none to verify a JWT.
     providers: [],

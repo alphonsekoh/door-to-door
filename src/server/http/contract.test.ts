@@ -382,6 +382,89 @@ describe("errors thrown by handlers", () => {
   });
 });
 
+describe("caching (#122)", () => {
+  /*
+   * Answers name households and members: no shared cache may keep one, and
+   * the phone's HTTP cache must not still hold it after sign-out. A refusal
+   * is no exception, since a cached 401 or 403 would outlive the sign-in
+   * that fixes it.
+   */
+  const write = withContract(
+    {
+      operationId: "createWidget",
+      body: z.object({ name: z.string() }),
+      responses: { 201: zWidget },
+    },
+    () => Promise.resolve({ status: 201, body: widget }),
+  );
+  const cases: [string, () => Promise<Response>, number][] = [
+    [
+      "a 200 with a body",
+      () =>
+        withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
+          Promise.resolve({ status: 200, body: widget }),
+        )(get("https://test.local/api/widgets/1")),
+      200,
+    ],
+    [
+      "a 204 with none",
+      () =>
+        withContract({ operationId: "deleteWidget", responses: { 204: z.undefined() } }, () =>
+          Promise.resolve({ status: 204 }),
+        )(get("https://test.local/api/widgets/1")),
+      204,
+    ],
+    [
+      "a handler's own refusal",
+      () =>
+        withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
+          Promise.reject(new NotFoundError()),
+        )(get("https://test.local/api/widgets/1")),
+      404,
+    ],
+    [
+      "a cross-site write",
+      () =>
+        write(
+          new Request("https://test.local/api/widgets", {
+            method: "POST",
+            body: "{}",
+            headers: { "sec-fetch-site": "cross-site" },
+          }),
+        ),
+      403,
+    ],
+    [
+      "a body that is not JSON",
+      () =>
+        write(
+          new Request("https://test.local/api/widgets", {
+            method: "POST",
+            body: "name=w1",
+            headers: { "content-type": "text/plain" },
+          }),
+        ),
+      415,
+    ],
+    [
+      "an unexpected failure",
+      () => {
+        vi.spyOn(console, "error").mockImplementation(() => undefined);
+        return withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
+          Promise.reject(new Error("boom")),
+        )(get("https://test.local/api/widgets/1"));
+      },
+      500,
+    ],
+  ];
+
+  it.each(cases)("marks %s no-store", async (_name, respond, status) => {
+    const response = await respond();
+    expect(response.status).toBe(status);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+});
+
 describe("logging an unexpected error", () => {
   const USER = "0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b";
   const outage = () => {

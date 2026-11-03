@@ -152,13 +152,18 @@ function canonicalize(value: unknown): string {
   });
 }
 
+/*
+ * Every withContract answer, refusals and 500s included, is no-store: they
+ * name households and members, so no shared cache may keep one, and the
+ * phone's own HTTP cache must not still hold it after sign-out.
+ */
 function jsonResponse(status: number, body: unknown): Response {
   if (body === undefined) {
-    return new Response(null, { status });
+    return new Response(null, { status, headers: { "cache-control": "no-store" } });
   }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "cache-control": "no-store" },
   });
 }
 

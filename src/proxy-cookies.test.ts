@@ -7,7 +7,10 @@ import { describe, expect, it, vi } from "vitest";
  * header it adds, which a stubbed NextAuth cannot show.
  */
 vi.mock("@/server/config", () => ({
-  getConfig: () => ({ authSecret: "s".repeat(40), auth: { trustHost: true } }),
+  getConfig: () => ({
+    authSecret: "s".repeat(40),
+    auth: { trustHost: true, secureCookies: true },
+  }),
 }));
 
 const { default: proxy } = await import("@/proxy");

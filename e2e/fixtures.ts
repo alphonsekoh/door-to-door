@@ -205,10 +205,80 @@ async function watchHydration(page: Page): Promise<() => Promise<void>> {
   };
 }
 
+/* Every CSP violation a page saw, kept in its tab as the mismatches are. */
+const VIOLATIONS = "e2e:csp-violations";
+
+/*
+ * Runs in the page. The policy only reports (#146), so a violation breaks
+ * nothing and no test would notice one; but the browser fires this event for
+ * a report-only policy as for an enforced one, and a suite that records none
+ * on either engine is the evidence for enforcing it. Nothing is filtered: a
+ * violation is either the app's to fix or the policy's.
+ */
+function recordCspViolations(violations: string): void {
+  /* Dispatched at the document or the offending element, and it bubbles. */
+  document.addEventListener("securitypolicyviolation", (event) => {
+    const blocked = event.blockedURI === "" ? "(inline)" : event.blockedURI;
+    const sample = event.sample === "" ? "" : ` "${event.sample}"`;
+    const line =
+      `${location.href}: CSP ${event.disposition} violation of ${event.effectiveDirective}: ` +
+      `${blocked}${sample} from ${event.sourceFile}:${String(event.lineNumber)}`;
+    console.error(line);
+    try {
+      const kept: unknown = JSON.parse(sessionStorage.getItem(violations) ?? "[]");
+      const lines = Array.isArray(kept)
+        ? kept.filter((stored): stored is string => typeof stored === "string")
+        : [];
+      if (!lines.includes(line)) {
+        sessionStorage.setItem(violations, JSON.stringify([...lines, line]));
+      }
+    } catch {
+      /* No storage here: the console still has it. */
+    }
+  });
+}
+
+const CSP_LINE = /: CSP (report|enforce) violation of /;
+
+async function watchCsp(page: Page): Promise<() => Promise<void>> {
+  await page.addInitScript(recordCspViolations, VIOLATIONS);
+  const seen: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && CSP_LINE.test(message.text())) seen.push(message.text());
+  });
+  return async () => {
+    let kept: string[] = [];
+    try {
+      kept = await page.evaluate((violations) => {
+        const stored: unknown = JSON.parse(sessionStorage.getItem(violations) ?? "[]");
+        return Array.isArray(stored)
+          ? stored.filter((line): line is string => typeof line === "string")
+          : [];
+      }, VIOLATIONS);
+    } catch {
+      /* A page closed, between documents or off the app's origin. */
+    }
+    for (const line of kept) {
+      if (!seen.includes(line)) seen.push(line);
+    }
+    expect(seen, "CSP violations").toEqual([]);
+  };
+}
+
+/* Both watchers on one page; run the result before the page closes. */
+async function watch(page: Page): Promise<() => Promise<void>> {
+  const hydration = await watchHydration(page);
+  const csp = await watchCsp(page);
+  return async () => {
+    await hydration();
+    await csp();
+  };
+}
+
 /*
  * Signed-in pages for both roles, plus the one piece of setup more than one
  * spec needs: an outing that is actually running. Every page a fixture hands
- * out is watched for hydration errors.
+ * out is watched for hydration errors and CSP violations.
  */
 
 type Fixtures = {
@@ -223,7 +293,7 @@ type Fixtures = {
 
 export const test = base.extend<Fixtures>({
   page: async ({ page }, use) => {
-    const check = await watchHydration(page);
+    const check = await watch(page);
     await use(page);
     await check();
   },
@@ -231,7 +301,7 @@ export const test = base.extend<Fixtures>({
   adminPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: ADMIN_STATE });
     const page = await context.newPage();
-    const check = await watchHydration(page);
+    const check = await watch(page);
     await use(page);
     try {
       await check();
@@ -243,7 +313,7 @@ export const test = base.extend<Fixtures>({
   memberPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: MEMBER_STATE });
     const page = await context.newPage();
-    const check = await watchHydration(page);
+    const check = await watch(page);
     await use(page);
     try {
       await check();
@@ -255,7 +325,7 @@ export const test = base.extend<Fixtures>({
   partnerPage: async ({ browser }, use) => {
     const context = await browser.newContext({ storageState: PARTNER_STATE });
     const page = await context.newPage();
-    const check = await watchHydration(page);
+    const check = await watch(page);
     await use(page);
     try {
       await check();
