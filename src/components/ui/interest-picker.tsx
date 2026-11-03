@@ -1,5 +1,6 @@
 "use client";
 
+import type { RefObject } from "react";
 import type { InterestLevel } from "@/generated/types.gen";
 
 /*
@@ -26,9 +27,19 @@ type Props = {
   value: InterestLevel | null;
   onChange: (value: InterestLevel) => void;
   describedBy?: string | undefined;
+  /* "No response", for a form to send focus to when none is chosen. */
+  firstRef?: RefObject<HTMLButtonElement | null>;
+  /* Added to every option: scroll margins clearing a form's pinned chrome. */
+  optionClassName?: string;
 };
 
-export function InterestPicker({ value, onChange, describedBy }: Props) {
+export function InterestPicker({
+  value,
+  onChange,
+  describedBy,
+  firstRef,
+  optionClassName = "",
+}: Props) {
   return (
     <div
       role="radiogroup"
@@ -36,18 +47,19 @@ export function InterestPicker({ value, onChange, describedBy }: Props) {
       aria-describedby={describedBy}
       className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,--spacing(24)),1fr))] gap-2"
     >
-      {OPTIONS.map((option) => {
+      {OPTIONS.map((option, index) => {
         const selected = value === option.value;
         return (
           <button
             key={option.value}
+            ref={index === 0 ? firstRef : undefined}
             type="button"
             role="radio"
             aria-checked={selected}
             onClick={() => {
               onChange(option.value);
             }}
-            className={`min-h-14 press rounded-xl border-2 px-2 text-body font-medium break-words ${
+            className={`min-h-14 press rounded-xl border-2 px-2 text-body font-medium break-words ${optionClassName} ${
               option.value === "no_response" ? "col-span-full" : ""
             } ${option.className} ${
               selected ? "bg-primary text-primary-foreground" : "bg-surface"

@@ -292,7 +292,7 @@ rely on one:
 | `npm run start:standalone`                    | **No.** The standalone output holds no `.env` and no `config.yaml`       |
 | `npm run db:generate`, `db:push`, `db:studio` | Yes: drizzle-kit loads it                                                |
 | `npm run db:migrate`, `db:seed`, `db:reset`   | **No.** These run under `tsx`; the variables must be exported            |
-| `npm run create-admin`                        | **No.** As above                                                         |
+| `npm run create-admin`, `db:check-blank`      | **No.** As above                                                         |
 
 Because Next still loads a `.env`, a stale one can look as though it configures the app.
 The server therefore warns once at startup when it finds one (D-75-16): settings belong in
@@ -384,6 +384,7 @@ to `medium` between March and June.
 | `npm run db:seed`          | Seed deterministic demo data                                                 |
 | `npm run db:reset`         | Migrate, then seed. Does not delete anything                                 |
 | `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))  |
+| `npm run db:check-blank`   | List blank units, notes, block names and streets; changes nothing (exit 1)   |
 | `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)     |
 | `npm run db:studio`        | Open Drizzle Studio                                                          |
 | `npm run spec:lint`        | Lint `openapi.yaml`                                                          |
@@ -498,6 +499,17 @@ docker run -p 3000:3000 \
   checkout, or from a `dev`-stage container as the Compose `migrate` service does, with
   the production `config.yaml` and credentials. Never run `db:seed` in production: it
   creates the demo logins.
+- **Before migration `0005_not_blank_text`**, run `npm run db:check-blank` the same way.
+  Until #119 a unit number, follow-up note, block name or street of nothing but spaces
+  was stored as an empty string, and the migration's `CHECK` constraints refuse those
+  rows. The script lists each one with its ids, block, unit, author and created time,
+  changes nothing, and exits `0` when there are none, `1` when there are, and `2` when it
+  could not check. Correct what it lists by hand, as you decide, then migrate. Deleting a
+  household also deletes everything recorded at it, its visits and follow-up notes
+  included, so give it its real unit number instead; if that unit already exists in the
+  block (`households_block_unit_unique` allows only one), move the visits and notes there
+  first. A blank note can be corrected or deleted on its own; one removed in the app still
+  counts until it is. A block cannot be deleted while households or sessions use it.
 - **HTTPS** is required for the service worker and installing outside `localhost`. Behind
   a reverse proxy keep `auth.trustHost: true`; if the app is exposed directly with
   `trustHost: false`, set `AUTH_URL`.
@@ -539,6 +551,7 @@ docker run -p 3000:3000 \
 | `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` from the directory the server runs in. Move settings to `config.yaml`, export secrets, delete it.          |
 | `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
+| `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.        |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
 | Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).             |
@@ -565,7 +578,8 @@ src/
 drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
 test/           Vitest setup files
-scripts/        migrate, seed, create-admin, generate-icons, check-standalone (postbuild)
+scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
+                check-standalone (postbuild)
 docs/           architecture, research and per-issue decisions
 ```
 

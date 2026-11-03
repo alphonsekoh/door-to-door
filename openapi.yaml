@@ -768,18 +768,24 @@ components:
       type: object
       additionalProperties: false
       required: [name, street]
+      description: |
+        `name` and `street` must contain something other than spaces, and are
+        stored trimmed.
       properties:
-        name: { type: string, minLength: 1, maxLength: 16 }
-        street: { type: string, minLength: 1, maxLength: 120 }
+        name: { type: string, minLength: 1, maxLength: 16, pattern: "\\S" }
+        street: { type: string, minLength: 1, maxLength: 120, pattern: "\\S" }
         postalCode: { type: [string, "null"], maxLength: 16 }
 
     UpdateBlockRequest:
       type: object
       additionalProperties: false
       minProperties: 1
+      description: |
+        `name` and `street` must contain something other than spaces, and are
+        stored trimmed.
       properties:
-        name: { type: string, minLength: 1, maxLength: 16 }
-        street: { type: string, minLength: 1, maxLength: 120 }
+        name: { type: string, minLength: 1, maxLength: 16, pattern: "\\S" }
+        street: { type: string, minLength: 1, maxLength: 120, pattern: "\\S" }
         postalCode: { type: [string, "null"], maxLength: 16 }
 
     AttachBlocksRequest:
@@ -807,9 +813,10 @@ components:
     HouseholdIdentity:
       description: |
         Identity fields are optional and nullable. Omitting a field leaves the
-        stored value untouched; sending `null` also leaves it untouched. Only a
-        non-null value updates it — a later visit that learns nothing must not
-        erase what an earlier visit recorded.
+        stored value untouched; sending `null` also leaves it untouched, and so
+        does a `name` or `contact` with nothing but spaces. Only a value with
+        something in it updates it, stored trimmed — a later visit that learns
+        nothing must not erase what an earlier visit recorded.
       type: object
       properties:
         name: { type: [string, "null"], maxLength: 160 }
@@ -836,7 +843,10 @@ components:
               type: string
               minLength: 1
               maxLength: 32
-              description: The household is created on first contact if new.
+              pattern: "\\S"
+              description: |
+                The household is created on first contact if new. Must contain
+                something other than spaces; stored trimmed.
             interestLevel: { $ref: "#/components/schemas/InterestLevel" }
             description: { type: string, maxLength: 4000, default: "" }
             memberId:
@@ -877,7 +887,15 @@ components:
           properties:
             id: { type: string, format: uuid }
             blockId: { type: string, format: uuid }
-            unitNumber: { type: string, minLength: 1, maxLength: 32 }
+            unitNumber:
+              type: string
+              minLength: 1
+              maxLength: 32
+              pattern: "\\S"
+              description: |
+                Must contain something other than spaces; stored trimmed. Like
+                any item that breaks this schema, a blank one refuses the whole
+                batch with `400`.
             sessionId:
               type: string
               format: uuid
@@ -979,7 +997,12 @@ components:
       properties:
         householdId: { type: string, format: uuid }
         visitId: { type: [string, "null"], format: uuid }
-        note: { type: string, minLength: 1, maxLength: 2000 }
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+          description: Must contain something other than spaces; stored trimmed.
         dueDate: { type: [string, "null"], format: date-time }
 
     UpdateFollowUpRequest:
@@ -987,7 +1010,12 @@ components:
       additionalProperties: false
       minProperties: 1
       properties:
-        note: { type: string, minLength: 1, maxLength: 2000 }
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          pattern: "\\S"
+          description: Must contain something other than spaces; stored trimmed.
         dueDate: { type: [string, "null"], format: date-time }
         done:
           type: boolean

@@ -587,12 +587,22 @@ export type CreateSessionRequest = {
     householdIds?: Array<string>;
 };
 
+/**
+ * `name` and `street` must contain something other than spaces, and are
+ * stored trimmed.
+ *
+ */
 export type CreateBlockRequest = {
     name: string;
     street: string;
     postalCode?: string | null;
 };
 
+/**
+ * `name` and `street` must contain something other than spaces, and are
+ * stored trimmed.
+ *
+ */
 export type UpdateBlockRequest = {
     name?: string;
     street?: string;
@@ -609,9 +619,10 @@ export type AddSessionHouseholdsRequest = {
 
 /**
  * Identity fields are optional and nullable. Omitting a field leaves the
- * stored value untouched; sending `null` also leaves it untouched. Only a
- * non-null value updates it — a later visit that learns nothing must not
- * erase what an earlier visit recorded.
+ * stored value untouched; sending `null` also leaves it untouched, and so
+ * does a `name` or `contact` with nothing but spaces. Only a value with
+ * something in it updates it, stored trimmed — a later visit that learns
+ * nothing must not erase what an earlier visit recorded.
  *
  */
 export type HouseholdIdentity = {
@@ -629,7 +640,9 @@ export type CreateVisitRequest = HouseholdIdentity & {
     id: string;
     blockId: string;
     /**
-     * The household is created on first contact if new.
+     * The household is created on first contact if new. Must contain
+     * something other than spaces; stored trimmed.
+     *
      */
     unitNumber: string;
     interestLevel: InterestLevel;
@@ -662,6 +675,12 @@ export type UpdateVisitRequest = HouseholdIdentity & {
 export type VisitSyncItem = HouseholdIdentity & {
     id: string;
     blockId: string;
+    /**
+     * Must contain something other than spaces; stored trimmed. Like
+     * any item that breaks this schema, a blank one refuses the whole
+     * batch with `400`.
+     *
+     */
     unitNumber: string;
     /**
      * The session the record was captured in. Omit to attach it to the
@@ -757,11 +776,17 @@ export type VisitSyncResponse = {
 export type CreateFollowUpRequest = {
     householdId: string;
     visitId?: string | null;
+    /**
+     * Must contain something other than spaces; stored trimmed.
+     */
     note: string;
     dueDate?: string | null;
 };
 
 export type UpdateFollowUpRequest = {
+    /**
+     * Must contain something other than spaces; stored trimmed.
+     */
     note?: string;
     dueDate?: string | null;
     /**

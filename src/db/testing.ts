@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Pool } from "pg";
+import type { Database } from "@/db/client";
 import { attachPoolErrorHandler } from "@/db/pool-errors";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 
@@ -66,4 +67,19 @@ export function applyTestConfig(env: Record<string, string | undefined> = proces
   const path = join(dir, "config.yaml");
   writeFileSync(path, `database:\n  url: ${JSON.stringify(url.toString())}\n`);
   env["CONFIG_PATH"] = path;
+}
+
+/*
+ * A database that fails the test on any use at all, for proving a request is
+ * refused before anything is read, locked or written.
+ */
+export function untouchableDatabase(): Database {
+  return new Proxy(
+    {},
+    {
+      get: (_target, key) => {
+        throw new Error(`the database was used: ${String(key)}`);
+      },
+    },
+  ) as Database;
 }

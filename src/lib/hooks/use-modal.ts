@@ -98,6 +98,54 @@ function handleKey(layer: Layer, event: KeyboardEvent): void {
   (items[(from + step + items.length) % items.length] ?? layer.panel).focus();
 }
 
+/* The <label> a member knows the field by, if it has one. */
+function labelOf(field: HTMLElement): HTMLLabelElement | undefined {
+  if (
+    field instanceof HTMLInputElement ||
+    field instanceof HTMLTextAreaElement ||
+    field instanceof HTMLSelectElement
+  ) {
+    return field.labels?.[0];
+  }
+  return undefined;
+}
+
+/*
+ * The field, then its label, brought into view clear of the pinned chrome,
+ * the label winning where both will not fit. `nearest` alone lined a tall
+ * note's foot up with a sheet's docked Send at large text, its label and top
+ * under the sheet's header. A label already whole is left where it is; one
+ * that `nearest` had to move was cut off, and goes to the top with `start`,
+ * since `nearest` lines up the foot of a label taller than the room.
+ */
+function bringIntoView(field: HTMLElement): void {
+  field.scrollIntoView({ block: "nearest" });
+  const label = labelOf(field);
+  if (label === undefined) return;
+  const top = label.getBoundingClientRect().top;
+  label.scrollIntoView({ block: "nearest" });
+  if (label.getBoundingClientRect().top !== top) label.scrollIntoView({ block: "start" });
+}
+
+/*
+ * The element `returnFocus` holds as the modal closes, not as it opened: the
+ * field a dialog was about may have re-rendered since. Brought into view, as
+ * it may be the one thing on the form the member cannot see. Otherwise focus
+ * goes back to what opened the modal, where it was, if that is still there.
+ */
+function giveFocusBack(
+  returnFocus: RefObject<HTMLElement | null> | undefined,
+  trigger: Element | null,
+): void {
+  const named = returnFocus?.current;
+  if (named?.isConnected === true) {
+    named.focus({ preventScroll: true });
+    bringIntoView(named);
+  } else if (trigger instanceof HTMLElement && trigger.isConnected) {
+    trigger.focus({ preventScroll: true });
+  }
+}
+
 /*
  * Attach `overlay` to the full-screen element holding the backdrop and
  * `panel` to the element with role="dialog". The panel needs tabIndex={-1}:
@@ -110,11 +158,15 @@ function handleKey(layer: Layer, event: KeyboardEvent): void {
  * `active` false lets go while the element is still on screen: a sheet
  * animating out hands back focus, the page and scrolling as its exit starts,
  * so nothing waits on the animation. True again takes them back.
+ *
+ * `returnFocus` names where focus goes on close instead of what opened it:
+ * the field a Not saved dialog was about (D-119-15).
  */
 export function useModal<Panel extends HTMLElement = HTMLDivElement>(
   onClose: (() => void) | null,
   initialFocus?: RefObject<HTMLElement | null>,
   active = true,
+  returnFocus?: RefObject<HTMLElement | null>,
 ): { overlay: RefObject<HTMLDivElement | null>; panel: RefObject<Panel | null> } {
   const overlay = useRef<HTMLDivElement>(null);
   const panel = useRef<Panel>(null);
@@ -151,7 +203,11 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
     else layers.splice(blocker, 0, layer);
     syncInert();
     document.addEventListener("keydown", onKey);
-    if (layers.at(-1) === layer) (initialFocus?.current ?? panelElement).focus();
+    // Without a scroll: a modal opens at its top, so a long one's heading is
+    // read before the OK at its foot that takes focus.
+    if (layers.at(-1) === layer) {
+      (initialFocus?.current ?? panelElement).focus({ preventScroll: true });
+    }
 
     return () => {
       document.removeEventListener("keydown", onKey);
@@ -160,13 +216,10 @@ export function useModal<Panel extends HTMLElement = HTMLDivElement>(
       syncInert();
       if (layers.length === 0) document.body.style.overflow = lockedOverflow;
       // Focus stays in a blocking modal when something beneath it closes.
-      const stillBlocked = layers.at(-1)?.blocking === true;
-      if (!stillBlocked && trigger instanceof HTMLElement && trigger.isConnected) {
-        trigger.focus({ preventScroll: true });
-      }
+      if (layers.at(-1)?.blocking !== true) giveFocusBack(returnFocus, trigger);
     };
-    // A ref object, so this still runs once per open.
-  }, [initialFocus, active]);
+    // Ref objects, so this still runs once per open.
+  }, [initialFocus, active, returnFocus]);
 
   return { overlay, panel };
 }

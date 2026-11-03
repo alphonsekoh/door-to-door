@@ -13,6 +13,7 @@ import {
 import * as m from "motion/react-m";
 import {
   Fragment,
+  useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -85,6 +86,8 @@ export type Discard = { title: string; detail: string };
 type SheetProps = {
   /* The dialog's accessible name. */
   label: string;
+  /* The id of what it says, read out with its name as it opens. */
+  describedBy?: string | undefined;
   /* Shown beside the close button; without it there is no header row. */
   title?: ReactNode;
   closeLabel?: string;
@@ -94,6 +97,8 @@ type SheetProps = {
   layer?: keyof typeof OVERLAY;
   role?: "dialog" | "alertdialog";
   initialFocus?: RefObject<HTMLElement | null>;
+  /* Where focus goes on close, instead of back to what opened it. */
+  returnFocus?: RefObject<HTMLElement | null> | undefined;
   /* Drag the handle down to dismiss. Off for confirmations, which should
      take a deliberate answer. */
   draggable?: boolean;
@@ -108,6 +113,7 @@ type SheetProps = {
 
 export function Sheet({
   label,
+  describedBy,
   title,
   closeLabel = "Cancel",
   backdropLabel = "Close",
@@ -115,6 +121,7 @@ export function Sheet({
   layer = "sheet",
   role = "dialog",
   initialFocus,
+  returnFocus,
   draggable = true,
   discard,
   bodyClassName = "",
@@ -122,7 +129,14 @@ export function Sheet({
 }: SheetProps) {
   const present = useIsPresent();
   const reduce = useReducedMotion() === true;
-  const { overlay, panel } = useModal(onClose, initialFocus, present);
+  const { overlay, panel } = useModal(onClose, initialFocus, present, returnFocus);
+  const body = useRef<HTMLDivElement>(null);
+  /* Opens at its top, after the modal has focused it. Focus on an alert's
+     OK, at its foot, scrolls the body down to it, and at large text a tall
+     one opened with its heading cut away. */
+  useEffect(() => {
+    if (body.current !== null) body.current.scrollTop = 0;
+  }, []);
   /* Px while dragged; the percentage it rises from while it opens. */
   const y = useMotionValue<number | string>(0);
   const gesture = useRef<Gesture | null>(null);
@@ -256,6 +270,7 @@ export function Sheet({
           role={role}
           aria-modal="true"
           aria-label={label}
+          aria-describedby={describedBy}
           onPointerMove={move}
           onPointerUp={(event) => {
             release(event, false);
@@ -304,6 +319,7 @@ export function Sheet({
               the sticky Save: WebKit leaves one that is partly visible where
               it is, half under the header, with the keyboard up. */}
           <div
+            ref={body}
             onFocus={(event) => {
               event.target.scrollIntoView({ block: "nearest" });
             }}

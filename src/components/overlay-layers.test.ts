@@ -55,6 +55,7 @@ describe("overlay stacking", () => {
       "visits/record-on-behalf-form.tsx",
       "sync/sync-queue-sheet.tsx",
       "teams/team-sheet.tsx",
+      "ui/not-saved-dialog.tsx",
     ]) {
       expect(readFileSync(join(DIR, file), "utf8"), file).toMatch(/<Sheet\b/);
     }
@@ -85,6 +86,9 @@ describe("overlay stacking", () => {
     expect(layerOf("dialog")).toBeGreaterThan(layerOf("sheet"));
     // ConfirmDialog lives beside Sheet, so the two never import each other.
     expect(sheet).toMatch(/export function ConfirmDialog\b[\s\S]*?<Sheet\b[^>]*?layer="dialog"/);
+    // So is Not saved, which a Save inside a sheet can raise (#119).
+    const notSaved = readFileSync(join(DIR, "ui/not-saved-dialog.tsx"), "utf8");
+    expect(notSaved).toMatch(/<Sheet\b[^>]*?layer="dialog"/);
   });
 
   it("keeps the install and update banners beneath the nav and every sheet", () => {

@@ -45,7 +45,9 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 - **D-74-7 · The Account screen reads the current name from `GET /users/me`, not the
   JWT.** _Why:_ the token can be stale until it is refreshed.
 - **D-74-8 · A live "N of 80" counter replaces a silent `maxLength`.** _Why:_ a
-  browser that truncates input hides why a name was cut.
+  browser that truncates input hides why a name was cut. _Extended by D-119-26 (owner,
+  2026-11-03):_ the rule holds for every field, so a unit past 32 characters is refused
+  with its reason, never cut.
 - **D-74-9 · Sign-out clears the block cache before signing out; a failed clear never
   blocks sign-out.** It warns first if `hasUnsyncedItems()` is true (made real by D-33-15).
   _Why:_ the cookie is what protects the account, and clearing first leaves a cache

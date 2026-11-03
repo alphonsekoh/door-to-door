@@ -906,7 +906,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   and the line ended above the screen; the E2E failed on both browsers before the fix.
 - **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
   #117, `e2e/follow-up-session.spec.ts`
-- **Used by:** D-117-77
+- **Used by:** D-117-77, D-119-22
 
 ### R-90 · `additionalProperties` does not see through `allOf`
 
@@ -1040,3 +1040,73 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [HTML, serialization of an origin](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin);
   [nginx, `$server_port`](https://nginx.org/en/docs/http/ngx_http_core_module.html#var_server_port)
 - **Used by:** D-121-10
+
+### R-101 · JavaScript's `\s` and `trim()` strip the same characters (measured)
+
+- **Finding:** ECMAScript defines both over WhiteSpace and LineTerminator. A check of
+  every code point in Node 24.19 found no difference between `/^\s$/u` and `trim()`
+  leaving `""`. So a value that matches `\S` is never empty after `trim()`. U+200B (zero
+  width space) is neither, so it matches `\S` and survives `trim()`. U+00A0 and U+FEFF
+  are both.
+- **Source:** [ECMA-262, `String.prototype.trim`](https://tc39.es/ecma262/#sec-string.prototype.trim)
+  and CharacterClassEscape `\s`; measured on the #119 worktree
+- **Used by:** D-119-1, D-119-8
+
+### R-102 · PostgreSQL's `btrim(text)` strips only spaces (measured)
+
+- **Finding:** With one argument, `btrim` removes U+0020 and nothing else. On
+  PostgreSQL 17.11, `btrim(E'\t x \n')` keeps the tab and the newline, while
+  `btrim('   ')` is `''`. So `btrim(col) <> ''` refuses `''` and values of only spaces,
+  but not a value of only tabs.
+- **Source:** [PostgreSQL, string functions](https://www.postgresql.org/docs/current/functions-string.html);
+  measured with `psql`
+- **Used by:** D-119-4, D-119-10
+
+### R-103 · A new CHECK is tested against existing rows, and pending migrations share one transaction
+
+- **Finding:** Unless the constraint is added `NOT VALID`, `ALTER TABLE … ADD CONSTRAINT …
+CHECK` scans the table. On a row that fails, it stops with SQLSTATE 23514, `check
+constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
+  0.45.2's `migrate()` runs every pending migration inside one `session.transaction`,
+  so that failure applies nothing from the run.
+- **Source:** [PostgreSQL, ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html);
+  `node_modules/drizzle-orm/pg-core/dialect.js` (`migrate`)
+- **Used by:** D-119-5, D-119-9
+
+### R-104 · A read-only transaction refuses writes
+
+- **Finding:** In drizzle-orm 0.45.2, `transaction(fn, { accessMode: "read only" })`
+  opens with `begin read only`. In such a transaction PostgreSQL refuses `INSERT`,
+  `UPDATE` and `DELETE` on permanent tables, as well as DDL.
+- **Source:** [PostgreSQL, SET TRANSACTION](https://www.postgresql.org/docs/current/sql-set-transaction.html);
+  `node_modules/drizzle-orm/node-postgres/session.js` (`transaction`)
+- **Used by:** D-119-9
+
+### R-105 · An alert dialog is described by its message
+
+- **Finding:** The ARIA alert dialog pattern gives `role="alertdialog"` an accessible
+  name, and an `aria-describedby` that points at the alert's message, so that the
+  message is announced with the dialog even when focus goes to a button inside it. Taken
+  from the pattern page; not checked with a screen reader here.
+- **Source:** [WAI-ARIA APG, Alert and Message Dialogs](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/)
+- **Used by:** D-119-19
+
+### R-106 · Focusing a control scrolls it into view unless `preventScroll` is set
+
+- **Finding:** `focus()` scrolls each scroll container that holds the element until the
+  element is in view, unless it is called with `{ preventScroll: true }`. With focus on
+  OK, a Not saved pop-up taller than the screen opened scrolled to its foot, its heading
+  cut away. This was seen at the largest text in #119's `e2e/large-text.spec.ts`.
+- **Source:** [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
+- **Used by:** D-119-21
+
+### R-107 · Playwright fails a `test.fail` test that passes
+
+- **Finding:** In Playwright 1.62.1, `test.fail(condition, description)` marks the test
+  "should fail" when the condition is true. The runner then checks that it really
+  fails: a failure counts as a pass, and a pass fails the run. So a known failure turns
+  the run red once it is fixed, and the mark has to come off then. Taken from the API
+  docs; not run here.
+- **Source:** [Playwright, `test.fail`](https://playwright.dev/docs/api/class-test#test-fail);
+  `node_modules/playwright/types/test.d.ts`
+- **Used by:** D-119-33

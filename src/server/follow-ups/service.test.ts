@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
+import { untouchableDatabase } from "@/db/testing";
 import { ConflictError } from "@/server/http/errors";
-import { createFollowUp, ONE_OPEN_SUGGESTION } from "@/server/follow-ups/service";
+import { createFollowUp, ONE_OPEN_SUGGESTION, updateFollowUp } from "@/server/follow-ups/service";
 
 /* A database whose household lock finds the household, which finds no open
    note, and whose insert fails with `failure`. */
@@ -43,5 +44,26 @@ describe("createFollowUp", () => {
     await expect(
       createFollowUp(failingInsert(clash), input, { id: "u1", role: "member" }),
     ).rejects.toBeInstanceOf(ConflictError);
+  });
+});
+
+describe("a blank note", () => {
+  const untouchable = untouchableDatabase();
+  const blank = { path: "/note", message: "Must contain something other than spaces." };
+
+  it("is refused before a new note's transaction opens", async () => {
+    await expect(
+      createFollowUp(
+        untouchable,
+        { householdId: "h1", note: " \n\t " },
+        { id: "u1", role: "admin" },
+      ),
+    ).rejects.toMatchObject({ status: 400, code: "validation_failed", details: [blank] });
+  });
+
+  it("is refused before an edited note is read or locked", async () => {
+    await expect(
+      updateFollowUp(untouchable, "f1", { note: "   " }, { id: "u1", role: "member" }),
+    ).rejects.toMatchObject({ status: 400, code: "validation_failed", details: [blank] });
   });
 });

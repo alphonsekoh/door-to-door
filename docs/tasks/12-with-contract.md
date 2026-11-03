@@ -1,6 +1,6 @@
 # #12 · withContract() and contract coverage
 
-- **Status:** Done (PR #51)
+- **Status:** Done (PR #51); D-12-5 refined by #119
 - **Phase:** 1 - Data & Contract
 - **Depends on:** #11
 
@@ -22,3 +22,6 @@ a test that every operation has a handler.
 - **D-12-4 · Unimplemented operations are listed in `PENDING_OPERATIONS`, and a test
   fails if a listed one is implemented.** _Why:_ keeps the list shrinking. Empty since #31.
 - **D-12-5 · Delete unreachable defensive branches rather than cover them.**
+  _Refined by D-119-3 (owner, 2026-11-03):_ a domain rule stated in its own service, such
+  as `requireText`, is not a defensive branch. It stays even though `withContract`
+  refuses the same input first.

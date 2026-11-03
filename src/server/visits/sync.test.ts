@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
+import { untouchableDatabase } from "@/db/testing";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
 const clock = { now: new Date("2026-03-14T12:00:00.000Z"), toleranceMs: 300_000 };
@@ -115,5 +116,26 @@ describe("unexpected failures", () => {
     const [result] = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
     expect(result?.error?.message).not.toMatch(/hunter2/);
     expect(result?.error?.message).toBe("Could not save this record right now. Try again.");
+  });
+});
+
+describe("a blank unit number", () => {
+  it("is that item's own refusal, made before the database is asked anything", async () => {
+    // Reached only by a caller that skips the contract, which refuses the batch.
+    logged.mockReset();
+    const [result] = await syncVisits(
+      untouchableDatabase(),
+      [{ ...item, unitNumber: " \t " }],
+      { id: "u1", role: "member" },
+      clock,
+    );
+    expect(result).toMatchObject({ id: item.id, status: "rejected", visit: null });
+    expect(result?.error).toMatchObject({
+      status: 400,
+      code: "validation_failed",
+      details: [{ path: "/unitNumber", message: "Must contain something other than spaces." }],
+    });
+    // A deliberate refusal, not a failure worth a log line.
+    expect(logged).not.toHaveBeenCalled();
   });
 });

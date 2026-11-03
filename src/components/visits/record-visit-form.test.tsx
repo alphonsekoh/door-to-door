@@ -10,6 +10,7 @@ import {
   validateVisit,
 } from "@/components/visits/record-visit-form";
 import type { ActiveSession, FollowUp, HouseholdSummary } from "@/generated/types.gen";
+import { UNIT_TOO_LONG } from "@/lib/not-saved";
 import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
@@ -44,6 +45,9 @@ const NO_QUEUE = {
 };
 
 const BLOCK = "b1";
+/* One past the contract's 32 characters, and the longest it takes. */
+const TOO_LONG = "#".padEnd(33, "1");
+const LONGEST = "#".padEnd(32, "1");
 const noSession = vi.fn((): Promise<OutingAnswer> => Promise.resolve({ kind: "unknown" }));
 
 const summary = (unitNumber: string, id = "h1"): HouseholdSummary => ({
@@ -83,6 +87,8 @@ const history = (over: Record<string, unknown> = {}) => ({
 });
 
 type Late = { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
+
+const notSaved = () => within(screen.getByRole("alertdialog", { name: "Not saved" }));
 
 const body = () =>
   JSON.parse((apiFetch.mock.calls[0]?.[1] as { body: string }).body) as Record<string, unknown>;
@@ -146,6 +152,13 @@ describe("validateVisit", () => {
     expect(validateVisit("  ", "low").unitNumber).toBe("Enter the unit number.");
   });
 
+  it("refuses a unit past the contract's 32 characters, not counting spaces around it", () => {
+    expect(validateVisit(TOO_LONG, "low").unitNumber).toBe(
+      "The unit number is too long (32 characters at most).",
+    );
+    expect(validateVisit(`  ${LONGEST}  `, "low")).toEqual({});
+  });
+
   it("requires an interest level", () => {
     expect(validateVisit("#05-123", null).interestLevel).toBe("Choose an interest level.");
   });
@@ -163,6 +176,15 @@ describe("blockedMessage", () => {
     expect(blockedMessage(validateVisit("", "low"))).toBe("Not saved. Enter the unit number.");
     expect(blockedMessage(validateVisit("#05-01", null))).toBe(
       "Not saved. Choose an interest level.",
+    );
+  });
+
+  it("says a unit is too long rather than ask for one", () => {
+    expect(blockedMessage(validateVisit(TOO_LONG, "low"))).toBe(
+      "Not saved. The unit number is too long (32 characters at most).",
+    );
+    expect(blockedMessage(validateVisit(TOO_LONG, null))).toBe(
+      "Not saved. The unit number is too long (32 characters at most). Choose an interest level.",
     );
   });
 
@@ -934,6 +956,7 @@ describe("validation and failure", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
 
     expect(await screen.findByText("Enter the unit number.")).toBeInTheDocument();
     expect(screen.getByText("Choose an interest level.")).toBeInTheDocument();
@@ -963,6 +986,8 @@ describe("validation and failure", () => {
     expect(screen.getByRole("button", { name: "Save and next" }).parentElement).toContainElement(
       alert,
     );
+    // A choice not made is not blank text: the line alone says so (#119).
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -978,6 +1003,7 @@ describe("validation and failure", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Not saved. Enter the unit number and choose an interest level.",
     );
@@ -1022,6 +1048,7 @@ describe("validation and failure", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
     expect(screen.getByLabelText("Unit number")).toHaveAttribute("aria-invalid", "true");
   });
 
@@ -1066,6 +1093,213 @@ describe("validation and failure", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this visit.");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+});
+
+describe("the Not saved pop-up (#119)", () => {
+  const renderForm = () => {
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    return user;
+  };
+  const save = () => screen.getByRole("button", { name: "Save and next" });
+
+  it("refuses a unit past the contract's 32 characters and says why, cutting nothing", async () => {
+    const user = renderForm();
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, TOO_LONG);
+    expect(unit).toHaveValue(TOO_LONG);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The unit number is too long (32 characters at most)."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+
+    expect(unit).toHaveFocus();
+    expect(unit).toHaveValue(TOO_LONG);
+    expect(unit).toHaveAttribute("aria-invalid", "true");
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    expect(screen.getByRole("alert")).toHaveTextContent(`Not saved. ${UNIT_TOO_LONG}`);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("sends a unit of exactly 32 characters", async () => {
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), LONGEST);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalled();
+    });
+    expect(body()).toMatchObject({ unitNumber: LONGEST });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("says what is wrong with the unit as it is fixed, until it is", async () => {
+    const user = renderForm();
+    await user.click(save());
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    const unit = screen.getByLabelText("Unit number");
+    expect(unit).toHaveAccessibleDescription("Enter the unit number.");
+
+    await user.click(unit);
+    await user.paste(TOO_LONG);
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    // Typing on is not fixing it: the red stays.
+    await user.type(unit, "1");
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    await user.type(unit, "{Backspace}{Backspace}");
+    expect(unit).toHaveValue(LONGEST);
+    expect(unit).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("lists every reason refused at once, and OK goes back to the unit", async () => {
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), "   ");
+    await user.click(save());
+
+    expect(notSaved().getByText("This visit could not be saved because:")).toBeInTheDocument();
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The unit number is blank.", "No interest level is chosen."]);
+    expect(notSaved().getByRole("button", { name: "OK" })).toHaveFocus();
+
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveFocus();
+    // What was said before is still said, for anyone who missed the pop-up.
+    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+      "Enter the unit number.",
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not saved. Enter the unit number and choose an interest level.",
+    );
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("names the unit alone when the interest level was chosen", async () => {
+    const user = renderForm();
+    await user.click(screen.getByRole("radio", { name: "Medium" }));
+    await user.click(save());
+
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The unit number is blank."]);
+  });
+
+  it("is dismissed by Escape too, with focus on the unit", async () => {
+    const user = renderForm();
+    await user.click(save());
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(screen.getByLabelText("Unit number")).toHaveFocus();
+  });
+
+  it("opens for the server's refusal too, pointing at the field it named", async () => {
+    // The server's issue does not say which of its rules the unit broke.
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(400, {
+        error: {
+          code: "validation_failed",
+          message: "Invalid request body.",
+          details: [
+            { path: "/unitNumber", message: "Too big: expected string to have <=32 characters" },
+          ],
+        },
+      }),
+    );
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toBeInTheDocument();
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The unit number is blank or too long."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+
+    const unit = screen.getByLabelText("Unit number");
+    expect(unit).toHaveFocus();
+    expect(unit).toHaveValue("#05-123");
+    expect(unit).toHaveAttribute("aria-invalid", "true");
+    expect(unit).toHaveAccessibleDescription("The unit number is blank or too long.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Not saved. The unit number is blank or too long.",
+    );
+  });
+
+  it("keeps the server's words for a field it has no place for, and gives focus back to Save", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(400, {
+        error: {
+          code: "validation_failed",
+          message: "Invalid request body.",
+          details: [{ path: "/description", message: "Too big" }],
+        },
+      }),
+    );
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toBeInTheDocument();
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Too big"]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(save()).toHaveFocus();
+    expect(screen.getByLabelText("Unit number")).toHaveAttribute("aria-invalid", "false");
+  });
+
+  it("sends focus to the first interest level when that is what the server named", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(400, {
+        error: {
+          code: "validation_failed",
+          message: "Invalid request body.",
+          details: [{ path: "/interestLevel", message: "Invalid option" }],
+        },
+      }),
+    );
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    // One was chosen, so the refusal does not say none was.
+    expect(
+      within(await screen.findByRole("alertdialog", { name: "Not saved" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The interest level was not accepted."]);
+    expect(screen.getByRole("radiogroup", { name: "Interest level" })).toHaveAccessibleDescription(
+      "The interest level was not accepted.",
+    );
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(screen.getByRole("radio", { name: "No response" })).toHaveFocus();
   });
 });
 
@@ -1291,6 +1525,28 @@ describe("saving into the offline queue", () => {
       expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sessionId: SESSION }));
     });
     expect(loadSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("never queues a unit the server would refuse as too long", async () => {
+    const queue = withQueue();
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={SESSION}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), TOO_LONG);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    expect(notSaved().getByRole("listitem")).toHaveTextContent(UNIT_TOO_LONG);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue(TOO_LONG);
   });
 
   it("never queues a visit without its outing, and keeps everything typed", async () => {

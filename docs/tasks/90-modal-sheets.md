@@ -1,7 +1,8 @@
 # #90 · Make sheets and confirm dialogs real modals
 
 - **Status:** Done (PR #97); D-90-5, D-90-7, D-90-9 amended by #85; D-90-1 partly
-  superseded, D-90-7 to D-90-11 refined by #111
+  superseded, D-90-7 to D-90-11 refined by #111; D-90-9 partly superseded, D-90-2 and
+  D-90-3 refined by #119
 - **Phase:** 7 - Hardening
 - **Depends on:** #30, #35, #74
 
@@ -20,9 +21,11 @@ shared primitive fixes every one of them.
   built on a shared `Sheet` component, which calls this hook.
 - **D-90-2 · Focus goes to the panel (`tabIndex={-1}`) on open, not the first control.**
   _Why:_ a screen reader announces the label first, and a phone does not raise the
-  keyboard into a field nobody tapped.
+  keyboard into a field nobody tapped. _Refined by D-119-21:_ the panel or control is
+  focused without a scroll, and a sheet opens at its top.
 - **D-90-3 · `ConfirmDialog` focuses "Keep as it is", never the destructive button.**
-  _Why:_ Enter on open must not take something away.
+  _Why:_ Enter on open must not take something away. _Refined by D-119-21:_ it is
+  focused without a scroll, and the dialog opens at its top.
 - **D-90-4 · Tab is moved by hand inside the panel and wraps at both ends; the backdrop
   button is outside the trap.** _Why:_ wrap does not depend on browser `inert` support,
   and a keyboard user closes with Escape or Cancel.
@@ -53,7 +56,10 @@ shared primitive fixes every one of them.
 - **D-90-9 · On close, focus returns to the element focused at open, only if it is still
   in the page, with `preventScroll`.** _Why:_ a row the save removed or re-rendered must
   not throw or jump the list. _Amended by D-85-12:_ not while a blocking modal is still on
-  top. _Refined by D-111-14:_ focus returns as the exit starts.
+  top. _Refined by D-111-14:_ focus returns as the exit starts. _Partly superseded by
+  D-119-15 (owner, 2026-11-03):_ a modal given `returnFocus` (only Not saved is) sends
+  focus to that field instead, and brings it into view under its label (D-119-22). Every
+  other modal keeps this.
 - **D-90-10 · `RecordOnBehalfForm` gains `role="dialog" aria-modal="true"`.** _Why:_ it was
   the one sheet without them, so it was not announced as a dialog. _Refined by D-111-13:_
   the roles now come from `Sheet`, and the `<form>` sits inside the panel.

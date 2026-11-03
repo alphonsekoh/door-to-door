@@ -21,7 +21,15 @@ import {
 } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRole } from "@/lib/hooks/use-role";
-import { Sheet, SheetActions } from "@/components/ui/sheet";
+import {
+  NOTE_NOT_SAVED,
+  type NotSaved,
+  notSavedByForm,
+  notSavedFromServer,
+  notSavedLine,
+} from "@/lib/not-saved";
+import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
+import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
 export type FollowUpSheetMode =
@@ -121,6 +129,9 @@ export function FollowUpSheet({
   const [failure, setFailure] = useState<string | null>(null);
   /* Under the field it is about, not in the banner a request failure uses. */
   const [noteError, setNoteError] = useState<string | null>(null);
+  /* Why a blank note, or one the server refused, was not saved. */
+  const [notSaved, setNotSaved] = useState<NotSaved | null>(null);
+  const noteField = useRef<HTMLTextAreaElement>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
 
@@ -149,7 +160,17 @@ export function FollowUpSheet({
       const message = await request();
       if (message !== null) onSaved(message);
     } catch (error) {
-      setFailure(describeFollowUpFailure(error));
+      const refused = notSavedFromServer(error, ["note"]);
+      if (refused === null) {
+        setFailure(describeFollowUpFailure(error));
+      } else {
+        const note = refused.fields.note;
+        setNoteError(note ?? null);
+        // A refusal the note has no error for, of the due date say, goes in
+        // the banner, or the sheet would show nothing once OK is tapped.
+        if (note === undefined) setFailure(notSavedLine(refused));
+        setNotSaved(refused);
+      }
     } finally {
       sending.current = false;
       setBusy(false);
@@ -159,7 +180,11 @@ export function FollowUpSheet({
   function submit(): void {
     const problem = checkNote(text);
     setNoteError(problem);
-    if (problem !== null) return;
+    if (problem !== null) {
+      // Only a blank one: past the limit, the count and the error say enough.
+      setNotSaved(notSavedByForm(text.trim() === "" ? ["note"] : [], ["note"]));
+      return;
+    }
     if (mode.kind === "create") {
       const create = () =>
         apiFetch("/follow-ups", {
@@ -212,131 +237,147 @@ export function FollowUpSheet({
   const unit = mode.kind === "create" ? mode.unitNumber : mode.note.unitNumber;
 
   return (
-    <Sheet
-      label={`${copy.title}, ${unit}`}
-      title={
-        <>
-          {copy.title}
-          <span className="block text-body font-normal text-foreground-muted tabular-nums">
-            <UnitNumber value={unit} />
-          </span>
-        </>
-      }
-      onClose={
-        partial === null
-          ? onClose
-          : () => {
-              onSaved(ADDED_TO_LIST);
-            }
-      }
-      discard={discard}
-    >
-      {copy.hint === null ? null : (
-        <p className="mt-2 text-body text-foreground-muted">{copy.hint}</p>
-      )}
-      {mode.kind === "create" && mode.context !== undefined ? (
-        <p className="mt-2 text-body text-foreground-muted">{mode.context}</p>
-      ) : null}
+    <>
+      <Sheet
+        label={`${copy.title}, ${unit}`}
+        title={
+          <>
+            {copy.title}
+            <span className="block text-body font-normal text-foreground-muted tabular-nums">
+              <UnitNumber value={unit} />
+            </span>
+          </>
+        }
+        onClose={
+          partial === null
+            ? onClose
+            : () => {
+                onSaved(ADDED_TO_LIST);
+              }
+        }
+        discard={discard}
+      >
+        {copy.hint === null ? null : (
+          <p className="mt-2 text-body text-foreground-muted">{copy.hint}</p>
+        )}
+        {mode.kind === "create" && mode.context !== undefined ? (
+          <p className="mt-2 text-body text-foreground-muted">{mode.context}</p>
+        ) : null}
 
-      {failure === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
-          {failure}
-        </p>
-      )}
-      {partial === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
-          {partialMessage(partial)}
-        </p>
-      )}
+        {failure === null ? null : (
+          <p role="alert" className="mt-3 notice-danger">
+            {failure}
+          </p>
+        )}
+        {partial === null ? null : (
+          <p role="alert" className="mt-3 notice-danger">
+            {partialMessage(partial)}
+          </p>
+        )}
 
-      <div className="mt-3">
-        <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
-          <label htmlFor="follow-up-note" className="text-body font-medium">
-            {copy.field}
-          </label>
-          <span className="text-caption text-foreground-muted">
-            {String(length)} of {String(MAX_NOTE_LENGTH)}
-          </span>
+        <div className="mt-3">
+          <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
+            <label htmlFor="follow-up-note" className="text-body font-medium">
+              {copy.field}
+            </label>
+            <span className="text-caption text-foreground-muted">
+              {String(length)} of {String(MAX_NOTE_LENGTH)}
+            </span>
+          </div>
+          <textarea
+            ref={noteField}
+            id="follow-up-note"
+            rows={4}
+            value={text}
+            placeholder={copy.placeholder}
+            aria-invalid={noteError !== null}
+            aria-describedby={noteError === null ? undefined : "follow-up-note-error"}
+            onChange={(event) => {
+              setText(event.target.value);
+              // Cleared as soon as it is fixed, never raised while typing.
+              if (noteError !== null && checkNote(event.target.value) === null) setNoteError(null);
+            }}
+            className="field py-2"
+          />
+          {noteError === null ? null : (
+            <p id="follow-up-note-error" className="mt-1 field-error">
+              {noteError}
+            </p>
+          )}
         </div>
-        <textarea
-          id="follow-up-note"
-          rows={4}
-          value={text}
-          placeholder={copy.placeholder}
-          aria-invalid={noteError !== null}
-          aria-describedby={noteError === null ? undefined : "follow-up-note-error"}
-          onChange={(event) => {
-            setText(event.target.value);
-            // Cleared as soon as it is fixed, never raised while typing.
-            if (noteError !== null && checkNote(event.target.value) === null) setNoteError(null);
-          }}
-          className="field py-2"
-        />
-        {noteError === null ? null : (
-          <p id="follow-up-note-error" className="mt-1 field-error">
-            {noteError}
-          </p>
-        )}
-      </div>
 
-      <div className="mt-3">
-        <label htmlFor="follow-up-due" className="mb-1 block text-body font-medium">
-          {copy.due}
-        </label>
-        {/* h-12, not min-h: iOS WebKit ignores min-height on native date
+        <div className="mt-3">
+          <label htmlFor="follow-up-due" className="mb-1 block text-body font-medium">
+            {copy.due}
+          </label>
+          {/* h-12, not min-h: iOS WebKit ignores min-height on native date
             and select controls (D-74-62). */}
-        <input
-          id="follow-up-due"
-          type="date"
-          value={day}
-          onChange={(event) => {
-            setDay(event.target.value);
-          }}
-          className="h-12 min-h-12 field"
-        />
-      </div>
-
-      {partial === null ? <AlsoAddRow also={also} /> : null}
-
-      <SheetActions>
-        {online ? null : (
-          <p className="mb-2 text-center text-caption text-foreground-muted">
-            {FOLLOW_UP_OFFLINE_NOTE}
-          </p>
-        )}
-        {partial === null ? null : partial.refused === null ? (
-          <button
-            type="button"
-            disabled={busy || !online}
-            onClick={() => {
-              retry(partial);
+          <input
+            id="follow-up-due"
+            type="date"
+            value={day}
+            onChange={(event) => {
+              setDay(event.target.value);
             }}
-            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold break-words"
-          >
-            {busy ? "Saving…" : `Add to ${partial.target.title}`}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              onSaved(ADDED_TO_LIST);
+            className="h-12 min-h-12 field"
+          />
+        </div>
+
+        {partial === null ? <AlsoAddRow also={also} /> : null}
+
+        <SheetActions>
+          {online ? null : (
+            <p className="mb-2 text-center text-caption text-foreground-muted">
+              {FOLLOW_UP_OFFLINE_NOTE}
+            </p>
+          )}
+          {partial === null ? null : partial.refused === null ? (
+            <button
+              type="button"
+              disabled={busy || !online}
+              onClick={() => {
+                retry(partial);
+              }}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold break-words"
+            >
+              {busy ? "Saving…" : `Add to ${partial.target.title}`}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                onSaved(ADDED_TO_LIST);
+              }}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+            >
+              Done
+            </button>
+          )}
+          {partial !== null ? null : (
+            <button
+              type="button"
+              disabled={busy || !online || also.looking}
+              onClick={submit}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+            >
+              {busy ? "Saving…" : copy.submit}
+            </button>
+          )}
+        </SheetActions>
+      </Sheet>
+      {/* Beside the sheet, not in it, as Sheet keeps its own confirmation. */}
+      <SheetPresence>
+        {notSaved === null ? null : (
+          <NotSavedDialog
+            lead={NOTE_NOT_SAVED}
+            reasons={notSaved.reasons}
+            returnFocus={notSaved.field === "note" ? noteField : undefined}
+            onDismiss={() => {
+              setNotSaved(null);
             }}
-            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-          >
-            Done
-          </button>
+          />
         )}
-        {partial !== null ? null : (
-          <button
-            type="button"
-            disabled={busy || !online || also.looking}
-            onClick={submit}
-            className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-          >
-            {busy ? "Saving…" : copy.submit}
-          </button>
-        )}
-      </SheetActions>
-    </Sheet>
+      </SheetPresence>
+    </>
   );
 }

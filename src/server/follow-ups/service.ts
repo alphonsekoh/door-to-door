@@ -12,6 +12,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/server/http/errors";
+import { requireText } from "@/server/http/text";
 import { type FollowUpRow, selectFollowUps } from "@/server/visits/queries";
 
 /*
@@ -176,12 +177,17 @@ export type NewFollowUp = {
   dueDate?: string | null | undefined;
 };
 
-export function createFollowUp(
+/*
+ * A blank note is refused before the transaction opens, so it reads, locks
+ * and writes nothing; what is stored is the note trimmed.
+ */
+export async function createFollowUp(
   db: Database,
   input: NewFollowUp,
   actor: Actor,
 ): Promise<FollowUpRow> {
-  return db.transaction((tx) => insertFollowUp(tx, input, actor));
+  const note = requireText(input.note, "/note");
+  return db.transaction((tx) => insertFollowUp(tx, { ...input, note }, actor));
 }
 
 async function insertFollowUp(
@@ -224,7 +230,7 @@ async function insertFollowUp(
       .values({
         householdId: input.householdId,
         visitId: input.visitId ?? null,
-        note: input.note.trim(),
+        note: input.note,
         dueDate: input.dueDate == null ? null : new Date(input.dueDate),
         authorId: actor.id,
         status: listed ? "listed" : "suggested",
@@ -349,13 +355,16 @@ async function assertStillMarkedBy(
   );
 }
 
-export function updateFollowUp(
+export async function updateFollowUp(
   db: Database,
   id: string,
   changes: FollowUpChanges,
   actor: Actor,
 ): Promise<FollowUpRow> {
-  return db.transaction((tx) => applyUpdate(tx, id, changes, actor));
+  /* As a new note's: refused before anything is read or locked. */
+  const checked =
+    changes.note === undefined ? changes : { ...changes, note: requireText(changes.note, "/note") };
+  return db.transaction((tx) => applyUpdate(tx, id, checked, actor));
 }
 
 async function applyUpdate(
@@ -410,7 +419,7 @@ async function applyUpdate(
   }
 
   const values: Record<string, unknown> = { updatedAt: now };
-  if (changes.note !== undefined) values["note"] = changes.note.trim();
+  if (changes.note !== undefined) values["note"] = changes.note;
   if (changes.dueDate !== undefined) {
     values["dueDate"] = changes.dueDate == null ? null : new Date(changes.dueDate);
   }

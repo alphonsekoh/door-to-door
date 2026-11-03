@@ -9,6 +9,7 @@ import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
+import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
   ActiveSession,
@@ -41,6 +42,17 @@ import {
   householdAction,
 } from "@/lib/follow-ups/rights";
 import { useOnline } from "@/lib/hooks/use-online";
+import {
+  type NotSaved,
+  type NotSavedField,
+  type Refusal,
+  UNIT_REFUSAL,
+  UNIT_TOO_LONG,
+  VISIT_NOT_SAVED,
+  notSavedByForm,
+  notSavedFromServer,
+  notSavedLine,
+} from "@/lib/not-saved";
 import { useRole } from "@/lib/hooks/use-role";
 import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
@@ -51,7 +63,12 @@ import {
   within,
 } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
-import { normaliseUnitNumber, nextUnitNumber } from "@/lib/units/unit-number";
+import {
+  type UnitFault,
+  nextUnitNumber,
+  normaliseUnitNumber,
+  unitNumberFault,
+} from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
@@ -64,12 +81,21 @@ const RELIGIONS: { value: Religion; label: string }[] = [
 
 export type FormErrors = { unitNumber?: string; interestLevel?: string };
 
+/* The form's fields that can refuse a Save, in the order they are shown. */
+const FIELDS = ["unitNumber", "interestLevel"] as const satisfies readonly NotSavedField[];
+
+const UNIT_ERRORS: Record<UnitFault, string> = {
+  blank: "Enter the unit number.",
+  too_long: UNIT_TOO_LONG,
+};
+
 /* Validated here so a member sees the problem before a round trip; the
  * contract's generated schema still validates it on arrival. */
 export function validateVisit(unitNumber: string, interestLevel: InterestLevel | null): FormErrors {
   const errors: FormErrors = {};
-  if (unitNumber.trim() === "") {
-    errors.unitNumber = "Enter the unit number.";
+  const fault = unitNumberFault(unitNumber);
+  if (fault !== null) {
+    errors.unitNumber = UNIT_ERRORS[fault];
   }
   if (interestLevel === null) {
     errors.interestLevel = "Choose an interest level.";
@@ -83,12 +109,13 @@ export function validateVisit(unitNumber: string, interestLevel: InterestLevel |
  * a visit lost at the next door (D-33-29's slot, for validation too).
  */
 export function blockedMessage(errors: FormErrors): string | null {
-  if (errors.unitNumber !== undefined && errors.interestLevel !== undefined) {
-    return "Not saved. Enter the unit number and choose an interest level.";
+  if (errors.unitNumber === UNIT_ERRORS.blank) {
+    return errors.interestLevel === undefined
+      ? "Not saved. Enter the unit number."
+      : "Not saved. Enter the unit number and choose an interest level.";
   }
-  if (errors.unitNumber !== undefined) return "Not saved. Enter the unit number.";
-  if (errors.interestLevel !== undefined) return "Not saved. Choose an interest level.";
-  return null;
+  const said = [errors.unitNumber, errors.interestLevel].filter((error) => error !== undefined);
+  return said.length === 0 ? null : `Not saved. ${said.join(" ")}`;
 }
 
 /*
@@ -209,6 +236,8 @@ export function RecordVisitForm({
      slower read may not have updated yet. */
   const [offList, setOffList] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* Why a Save with a blank unit, or one the server refused, did nothing. */
+  const [notSaved, setNotSaved] = useState<NotSaved | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
@@ -219,6 +248,9 @@ export function RecordVisitForm({
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
   const savedLine = useRef<HTMLDivElement>(null);
+  /* Where OK on the Not saved dialog sends focus. */
+  const unitField = useRef<HTMLInputElement>(null);
+  const firstInterest = useRef<HTMLButtonElement>(null);
   /* Synchronous, so two taps in one frame save one visit, even while the
      first waits on the follow-up list (D-74-44). */
   const sending = useRef(false);
@@ -358,10 +390,16 @@ export function RecordVisitForm({
 
   async function save(): Promise<void> {
     if (sending.current) return;
-    const found = validateVisit(unitNumber, interestLevel);
-    setErrors(found);
-    if (Object.keys(found).length > 0 || interestLevel === null) {
+    const fault = unitNumberFault(unitNumber);
+    setErrors(validateVisit(unitNumber, interestLevel));
+    // Refused before the queue too, so a unit the server would refuse is
+    // never held on the phone to fail later.
+    if (fault !== null || interestLevel === null) {
+      const refused: Refusal[] = [];
+      if (fault !== null) refused.push(UNIT_REFUSAL[fault]);
+      if (interestLevel === null) refused.push("interestLevel");
       setRefused(true);
+      setNotSaved(notSavedByForm(refused, FIELDS));
       return;
     }
 
@@ -465,13 +503,25 @@ export function RecordVisitForm({
       });
       onRecorded();
     } catch (error) {
-      setFailure(
-        error instanceof ApiRequestError && error.code === "not_on_follow_up_list"
-          ? OFF_THE_LIST
-          : error instanceof Error
-            ? error.message
-            : "Could not save this visit.",
-      );
+      const refused = notSavedFromServer(error, FIELDS);
+      if (refused === null) {
+        setFailure(
+          error instanceof ApiRequestError && error.code === "not_on_follow_up_list"
+            ? OFF_THE_LIST
+            : error instanceof Error
+              ? error.message
+              : "Could not save this visit.",
+        );
+      } else {
+        const named: FormErrors = {};
+        for (const field of FIELDS) {
+          const reason = refused.fields[field];
+          if (reason !== undefined) named[field] = reason;
+        }
+        setErrors(named);
+        setFailure(notSavedLine(refused));
+        setNotSaved(refused);
+      }
     } finally {
       setSaving(false);
       sending.current = false;
@@ -612,10 +662,16 @@ export function RecordVisitForm({
       ) : null}
 
       <div>
-        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+        {/* Brought into view with the field after a refused Save (D-119-15),
+            so it too must clear the pinned sync row. */}
+        <label
+          htmlFor="unitNumber"
+          className="mb-1 block scroll-clear-chrome text-body font-medium"
+        >
           Unit number
         </label>
         <input
+          ref={unitField}
           id="unitNumber"
           value={unitNumber}
           onChange={(event) => {
@@ -623,12 +679,17 @@ export function RecordVisitForm({
             setSaved(null);
             setSuggestSent(false);
             setOffList(false);
-            // Cleared the moment it is fixed, so no red lingers while typing.
-            if (event.target.value.trim() !== "") clearError("unitNumber");
+            // Cleared the moment it is fixed, so no red lingers while typing;
+            // until then it says what is wrong with the unit as it now is.
+            const now = unitNumberFault(event.target.value);
+            if (now === null) clearError("unitNumber");
+            else if (errors.unitNumber !== undefined) {
+              setErrors((current) => ({ ...current, unitNumber: UNIT_ERRORS[now] }));
+            }
           }}
           onBlur={() => {
             if (unitNumber.trim() === "") {
-              setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+              setErrors((current) => ({ ...current, unitNumber: UNIT_ERRORS.blank }));
             }
           }}
           inputMode="text"
@@ -642,7 +703,7 @@ export function RecordVisitForm({
                 ? undefined
                 : "unit-gate"
           }
-          className="min-h-12 field"
+          className="min-h-12 field scroll-clear-chrome"
         />
         {errors.unitNumber === undefined ? null : (
           <p id="unit-error" className="mt-1 field-error">
@@ -791,6 +852,8 @@ export function RecordVisitForm({
             clearError("interestLevel");
           }}
           describedBy={errors.interestLevel === undefined ? undefined : "interest-error"}
+          firstRef={firstInterest}
+          optionClassName="scroll-clear-chrome"
         />
         {errors.interestLevel === undefined ? null : (
           <p id="interest-error" className="mt-1 field-error">
@@ -882,6 +945,25 @@ export function RecordVisitForm({
           </div>
         </div>
       ) : null}
+
+      <SheetPresence>
+        {notSaved === null ? null : (
+          <NotSavedDialog
+            lead={VISIT_NOT_SAVED}
+            reasons={notSaved.reasons}
+            returnFocus={
+              notSaved.field === "unitNumber"
+                ? unitField
+                : notSaved.field === "interestLevel"
+                  ? firstInterest
+                  : undefined
+            }
+            onDismiss={() => {
+              setNotSaved(null);
+            }}
+          />
+        )}
+      </SheetPresence>
 
       {/*
         Sticky above the nav so the primary action stays reachable one-handed.

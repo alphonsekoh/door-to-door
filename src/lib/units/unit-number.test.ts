@@ -1,5 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { nextUnitNumber, normaliseUnitNumber, parseUnitNumber } from "@/lib/units/unit-number";
+import { loadOpenApiDocument } from "@/lib/openapi-document";
+import {
+  MAX_UNIT_NUMBER_LENGTH,
+  nextUnitNumber,
+  normaliseUnitNumber,
+  parseUnitNumber,
+  unitNumberFault,
+} from "@/lib/units/unit-number";
+
+type Property = { maxLength?: number };
+type Part = { properties?: Record<string, Property> };
+
+/* A request schema's unitNumber, wherever in its allOf it is declared. */
+function unitNumberIn(schema: string): Property | undefined {
+  const { allOf } = loadOpenApiDocument().components.schemas[schema] as { allOf: Part[] };
+  return allOf.find((part) => part.properties?.["unitNumber"] !== undefined)?.properties?.[
+    "unitNumber"
+  ];
+}
 
 describe("nextUnitNumber", () => {
   it("advances along a corridor", () => {
@@ -56,5 +74,41 @@ describe("parseUnitNumber", () => {
 
   it("returns null for an unrecognised format", () => {
     expect(parseUnitNumber("Penthouse")).toBeNull();
+  });
+});
+
+describe("MAX_UNIT_NUMBER_LENGTH", () => {
+  // The forms' copy says this number, so it must be the one the server holds.
+  it.each(["CreateVisitRequest", "VisitSyncItem"])(
+    "is %s's unitNumber.maxLength in openapi.yaml",
+    (schema) => {
+      expect(unitNumberIn(schema)?.maxLength).toBe(MAX_UNIT_NUMBER_LENGTH);
+    },
+  );
+});
+
+describe("unitNumberFault", () => {
+  it("calls a unit of only spaces blank", () => {
+    expect(unitNumberFault("")).toBe("blank");
+    expect(unitNumberFault("   ")).toBe("blank");
+  });
+
+  it("takes a unit of exactly 32 characters, spaces around it not counted", () => {
+    expect(unitNumberFault(`  ${"#".padEnd(32, "1")}  `)).toBeNull();
+  });
+
+  it("refuses one character more", () => {
+    expect(unitNumberFault("#".padEnd(33, "1"))).toBe("too_long");
+  });
+
+  it("judges the unit as it is sent, once normalised", () => {
+    // 34 typed, but "#05-" and 28 digits once the spaces round the dash go.
+    expect(unitNumberFault(`#05 - ${"1".repeat(28)}`)).toBeNull();
+    // 32 typed, but the hash the household key adds makes 33.
+    expect(unitNumberFault(`05-${"1".repeat(29)}`)).toBe("too_long");
+  });
+
+  it("finds nothing wrong with an ordinary unit", () => {
+    expect(unitNumberFault("#05-123")).toBeNull();
   });
 });

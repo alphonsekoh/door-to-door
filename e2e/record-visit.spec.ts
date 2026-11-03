@@ -677,6 +677,63 @@ test.describe("without signal", () => {
     await memberPage.context().setOffline(false);
   });
 
+  /* Without signal the earlier visits wait to send, so the sync row is pinned
+     at the top: the field OK goes back to must come to rest below it, not
+     under it. */
+  test("a Save with a blank unit says why above the nav, and OK goes back to the unit", async ({
+    memberPage,
+  }) => {
+    const QUEUED = "#21-27";
+    await memberPage.route("**/api/visits/sync", (route) => route.abort("internetdisconnected"));
+    await memberPage.goto("/");
+    await memberPage.getByRole("link", { name: /Blk 123/ }).click();
+    await untilLive(memberPage);
+
+    const unit = memberPage.getByLabel("Unit number");
+    await unit.fill(QUEUED);
+    await memberPage.getByRole("radio", { name: "Medium" }).click();
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+    await expect(memberPage.getByRole("status")).toContainText(`Saved ${QUEUED} on this phone`);
+    await expect(memberPage.getByRole("button", { name: /1 waiting to send/ })).toBeVisible();
+
+    /* Spaces only, chosen and then scrolled away from, as a member does who
+       fills the details in before the unit. */
+    await unit.fill("   ");
+    await memberPage.getByRole("radio", { name: "High" }).click();
+    await memberPage.getByRole("button", { name: "Add details" }).click();
+    await memberPage.getByLabel("Notes").fill("Asked us to come back on a weekend morning.");
+    await memberPage.evaluate(() => {
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+
+    const dialog = memberPage.getByRole("alertdialog", { name: "Not saved" });
+    await expect(dialog).toContainText("This visit could not be saved because:");
+    await expect(dialog.getByRole("listitem")).toHaveText(["The unit number is blank."]);
+    /* Read out as it opens: focus goes to OK, and the line beside Save is inert. */
+    await expect(dialog).toHaveAccessibleDescription(
+      /could not be saved because:\s*The unit number is blank\./,
+    );
+    /* Above the nav and the docked Save: what a tap there lands on is OK. */
+    const ok = dialog.getByRole("button", { name: "OK" });
+    await expect(ok).toBeFocused();
+    await expectTappable(ok);
+    await ok.click();
+
+    await expect(dialog).toBeHidden();
+    await expect(unit).toBeFocused();
+    /* Brought into view clear of the pinned sync row and the docked Save,
+       without the scroll this check would otherwise make. */
+    await expect(unit).toBeInViewport({ ratio: 1 });
+    const clear = await unit.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      return top === element;
+    });
+    expect(clear, "the unit field is under the pinned sync row").toBe(true);
+    await expect(unit).toHaveAttribute("aria-invalid", "true");
+  });
+
   test("a visit saved without signal waits on the phone, survives a reload and sends later", async ({
     memberPage,
   }) => {

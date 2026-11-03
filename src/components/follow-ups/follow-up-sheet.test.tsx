@@ -57,6 +57,19 @@ const WHY = "Why should we go back?";
 const WHAT = "What should the next visit do?";
 
 const sheet = () => within(screen.getByRole("dialog"));
+const notSaved = () => within(screen.getByRole("alertdialog", { name: "Not saved" }));
+const reasons = () =>
+  notSaved()
+    .getAllByRole("listitem")
+    .map((item) => item.textContent);
+const invalid = (path: string, message = "Invalid string: must match pattern /\\S/") =>
+  new ApiRequestError(400, {
+    error: {
+      code: "validation_failed",
+      message: "Invalid request body.",
+      details: [{ path, message }],
+    },
+  });
 const type = (label: string, value: string) => {
   fireEvent.change(sheet().getByLabelText(label), { target: { value } });
 };
@@ -131,6 +144,7 @@ describe("a member suggesting a return visit", () => {
   it("clears the note's error as soon as the note is fixed", () => {
     render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
     fireEvent.click(sheet().getByRole("button", { name: "Send suggestion" }));
+    fireEvent.click(notSaved().getByRole("button", { name: "OK" }));
     expect(sheet().getByText("Write the note first.")).toBeInTheDocument();
 
     type(WHY, "Call back");
@@ -152,6 +166,8 @@ describe("a member suggesting a return visit", () => {
     expect(sheet().getByLabelText(WHY)).toHaveAccessibleDescription(
       "Keep the note to 2000 characters.",
     );
+    // Not blank: the count and the field's error say enough (#119).
+    expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -608,6 +624,101 @@ describe("a stray tap or flick", () => {
     fireEvent.click(sheet().getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledOnce();
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+describe("the Not saved pop-up (#119)", () => {
+  it("opens for a blank note, and OK puts focus back in it", async () => {
+    const user = userEvent.setup();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, " \t ");
+    await user.click(sheet().getByRole("button", { name: "Send suggestion" }));
+
+    expect(notSaved().getByText("This note could not be saved because:")).toBeInTheDocument();
+    expect(reasons()).toEqual(["The note is blank."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    const note = sheet().getByLabelText(WHY);
+    expect(note).toHaveFocus();
+    expect(note).toHaveAccessibleDescription("Write the note first.");
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("opens for an edit that empties the note, and sends nothing", async () => {
+    const user = userEvent.setup();
+    asAdmin();
+    render(
+      <FollowUpSheet mode={{ kind: "edit", note: existing }} onClose={vi.fn()} onSaved={vi.fn()} />,
+    );
+    type(WHAT, "   ");
+    await user.click(sheet().getByRole("button", { name: "Save changes" }));
+
+    expect(reasons()).toEqual(["The note is blank."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(sheet().getByLabelText(WHAT)).toHaveFocus();
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("answers Escape and the backdrop itself, never the sheet's discard question", async () => {
+    // A due day is typed work, so the sheet would ask before closing.
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    render(<FollowUpSheet mode={create} onClose={onClose} onSaved={vi.fn()} />);
+    type("Go back by (optional)", "2026-12-24");
+    await user.click(sheet().getByRole("button", { name: "Send suggestion" }));
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(sheet().getByLabelText(WHY)).toHaveFocus();
+
+    await user.click(sheet().getByRole("button", { name: "Send suggestion" }));
+    const [backdrop] = screen
+      .getAllByRole("button", { name: "OK" })
+      .filter((button) => !screen.getByRole("alertdialog").contains(button));
+    if (backdrop === undefined) throw new Error("no backdrop");
+    await user.click(backdrop);
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog").closest("[inert]")).toBeNull();
+  });
+
+  it("opens for the server's refusal of the note, under the note and not in the banner", async () => {
+    apiFetch.mockRejectedValue(invalid("/note"));
+    const user = userEvent.setup();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, "Call back");
+    await user.click(sheet().getByRole("button", { name: "Send suggestion" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toBeInTheDocument();
+    expect(reasons()).toEqual(["The note is blank or too long."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+
+    const note = sheet().getByLabelText(WHY);
+    expect(note).toHaveFocus();
+    expect(note).toHaveValue("Call back");
+    expect(note).toHaveAccessibleDescription("The note is blank or too long.");
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("keeps the server's words for another field, and leaves the note unmarked", async () => {
+    apiFetch.mockRejectedValue(invalid("/dueDate", "Invalid ISO datetime"));
+    const user = userEvent.setup();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, "Call back");
+    await user.click(sheet().getByRole("button", { name: "Send suggestion" }));
+
+    expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toBeInTheDocument();
+    expect(reasons()).toEqual(["Invalid ISO datetime"]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(sheet().getByLabelText(WHY)).toHaveAttribute("aria-invalid", "false");
+    expect(sheet().getByRole("button", { name: "Send suggestion" })).toHaveFocus();
+    // Nothing on the sheet marks the due date, so the banner still says why.
+    expect(sheet().getByRole("alert")).toHaveTextContent("Not saved. Invalid ISO datetime");
   });
 });
 

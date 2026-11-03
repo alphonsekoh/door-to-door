@@ -16,6 +16,7 @@ import {
   type TeamStamp,
 } from "@/server/teams/access";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
+import { requireText } from "@/server/http/text";
 
 /*
  * Households and visits - the part of the model everything else exists to
@@ -37,11 +38,14 @@ export type HouseholdIdentity = {
  * Identity fields update only when a non-null value is supplied. A later visit
  * that learns nothing must not erase what an earlier one recorded - the member
  * who got a name in March should not lose it because nobody answered in June.
+ * Spaces alone are nothing learnt either (D-119-7).
  */
 function knownFieldsOnly(identity: HouseholdIdentity): Record<string, unknown> {
   const known: Record<string, unknown> = {};
-  if (identity.name != null) known["name"] = identity.name;
-  if (identity.contact != null) known["contact"] = identity.contact;
+  const name = identity.name?.trim();
+  const contact = identity.contact?.trim();
+  if (name !== undefined && name !== "") known["name"] = name;
+  if (contact !== undefined && contact !== "") known["contact"] = contact;
   if (identity.religion != null) known["religion"] = identity.religion;
   return known;
 }
@@ -61,7 +65,7 @@ export async function upsertHousehold(
   db: Database,
   input: { blockId: string; unitNumber: string } & HouseholdIdentity,
 ): Promise<HouseholdRow> {
-  const unitNumber = input.unitNumber.trim();
+  const unitNumber = requireText(input.unitNumber, "/unitNumber");
   const known = knownFieldsOnly(input);
 
   const inserted = await db
@@ -181,6 +185,8 @@ export async function createVisit(
   // Who is recording, which is not the author when an admin records for someone.
   actor: { role: Role },
 ): Promise<VisitRow> {
+  // Before anything is read: a blank unit is refused for every caller alike.
+  const unitNumber = requireText(input.unitNumber, "/unitNumber");
   if (input.clientCreatedAt !== undefined) {
     assertNotInFuture(new Date(input.clientCreatedAt), clock);
   }
@@ -215,12 +221,12 @@ export async function createVisit(
    */
   await db.transaction(async (tx) => {
     const session = await requireActiveSessionWithBlock(tx, input.blockId);
-    await assertMayRecordHere(tx, actor, session, input.blockId, input.unitNumber);
+    await assertMayRecordHere(tx, actor, session, input.blockId, unitNumber);
     const sessionId = session.id;
 
     const household = await upsertHousehold(tx, {
       blockId: input.blockId,
-      unitNumber: input.unitNumber,
+      unitNumber,
       name: input.name,
       contact: input.contact,
       religion: input.religion,

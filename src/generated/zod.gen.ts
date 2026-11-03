@@ -315,15 +315,25 @@ export const zCreateSessionRequest = z.object({
     householdIds: z.array(z.uuid()).min(1).max(200).optional()
 });
 
+/**
+ * `name` and `street` must contain something other than spaces, and are
+ * stored trimmed.
+ *
+ */
 export const zCreateBlockRequest = z.object({
-    name: z.string().min(1).max(16),
-    street: z.string().min(1).max(120),
+    name: z.string().min(1).max(16).regex(/\S/),
+    street: z.string().min(1).max(120).regex(/\S/),
     postalCode: z.string().max(16).nullish()
 });
 
+/**
+ * `name` and `street` must contain something other than spaces, and are
+ * stored trimmed.
+ *
+ */
 export const zUpdateBlockRequest = z.object({
-    name: z.string().min(1).max(16).optional(),
-    street: z.string().min(1).max(120).optional(),
+    name: z.string().min(1).max(16).regex(/\S/).optional(),
+    street: z.string().min(1).max(120).regex(/\S/).optional(),
     postalCode: z.string().max(16).nullish()
 });
 
@@ -337,9 +347,10 @@ export const zAddSessionHouseholdsRequest = z.object({
 
 /**
  * Identity fields are optional and nullable. Omitting a field leaves the
- * stored value untouched; sending `null` also leaves it untouched. Only a
- * non-null value updates it — a later visit that learns nothing must not
- * erase what an earlier visit recorded.
+ * stored value untouched; sending `null` also leaves it untouched, and so
+ * does a `name` or `contact` with nothing but spaces. Only a value with
+ * something in it updates it, stored trimmed — a later visit that learns
+ * nothing must not erase what an earlier visit recorded.
  *
  */
 export const zHouseholdIdentity = z.object({
@@ -351,7 +362,7 @@ export const zHouseholdIdentity = z.object({
 export const zCreateVisitRequest = zHouseholdIdentity.and(z.object({
     id: z.uuid(),
     blockId: z.uuid(),
-    unitNumber: z.string().min(1).max(32),
+    unitNumber: z.string().min(1).max(32).regex(/\S/),
     interestLevel: zInterestLevel,
     description: z.string().max(4000).optional().default(''),
     memberId: z.uuid().optional(),
@@ -366,7 +377,7 @@ export const zUpdateVisitRequest = zHouseholdIdentity.and(z.object({
 export const zVisitSyncItem = zHouseholdIdentity.and(z.object({
     id: z.uuid(),
     blockId: z.uuid(),
-    unitNumber: z.string().min(1).max(32),
+    unitNumber: z.string().min(1).max(32).regex(/\S/),
     sessionId: z.uuid().optional(),
     interestLevel: zInterestLevel,
     description: z.string().max(4000).optional().default(''),
@@ -411,12 +422,12 @@ export const zVisitSyncResponse = z.object({
 export const zCreateFollowUpRequest = z.object({
     householdId: z.uuid(),
     visitId: z.uuid().nullish(),
-    note: z.string().min(1).max(2000),
+    note: z.string().min(1).max(2000).regex(/\S/),
     dueDate: z.iso.datetime().nullish()
 });
 
 export const zUpdateFollowUpRequest = z.object({
-    note: z.string().min(1).max(2000).optional(),
+    note: z.string().min(1).max(2000).regex(/\S/).optional(),
     dueDate: z.iso.datetime().nullish(),
     done: z.boolean().optional(),
     markedByVisit: z.uuid().optional(),

@@ -215,3 +215,79 @@ describe("visit identity", () => {
     ).rejects.toThrow(/foreign key/i);
   });
 });
+
+describe("text nothing can be read back without", () => {
+  /*
+   * A blank unit or note fails the response contract, so one stored row made
+   * every read that included it a 500 (#119). The services refuse one first;
+   * this is what holds if anything gets past them.
+   */
+  /* One household for every note, however many inserts are tried. */
+  async function household(): Promise<string> {
+    const { rows } = await pool.query<{ id: string }>(
+      `INSERT INTO households (block_id, unit_number) VALUES ($1, '#05-123')
+       ON CONFLICT (block_id, unit_number) DO UPDATE SET unit_number = excluded.unit_number
+       RETURNING id`,
+      [BLOCK_A],
+    );
+    return rows[0]?.id ?? "";
+  }
+
+  const columns: {
+    constraint: string;
+    column: string;
+    insert: (value: string) => Promise<unknown>;
+  }[] = [
+    {
+      constraint: "households_unit_number_not_blank",
+      column: "households.unit_number",
+      insert: (value) =>
+        pool.query(`INSERT INTO households (block_id, unit_number) VALUES ($1, $2)`, [
+          BLOCK_B,
+          value,
+        ]),
+    },
+    {
+      constraint: "follow_ups_note_not_blank",
+      column: "follow_ups.note",
+      insert: async (value) =>
+        pool.query(`INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1, $2, $3)`, [
+          await household(),
+          ADMIN,
+          value,
+        ]),
+    },
+    {
+      constraint: "blocks_name_not_blank",
+      column: "blocks.name",
+      insert: (value) =>
+        pool.query(`INSERT INTO blocks (name, street) VALUES ($1, 'Third Ave')`, [value]),
+    },
+    {
+      constraint: "blocks_street_not_blank",
+      column: "blocks.street",
+      insert: (value) =>
+        pool.query(`INSERT INTO blocks (name, street) VALUES ('789', $1)`, [value]),
+    },
+  ];
+
+  for (const { constraint, column, insert } of columns) {
+    it(`refuses an empty or all-space ${column} with ${constraint}`, async () => {
+      for (const value of ["", "  "]) {
+        await expect(insert(value), JSON.stringify(value)).rejects.toMatchObject({
+          code: "23514",
+          constraint,
+        });
+      }
+      await expect(insert(" A ")).resolves.toBeDefined();
+    });
+
+    it(`refuses an update that blanks ${column}`, async () => {
+      await insert("A");
+      const [table, name] = column.split(".");
+      await expect(
+        pool.query(`UPDATE ${String(table)} SET ${String(name)} = '   '`),
+      ).rejects.toMatchObject({ code: "23514", constraint });
+    });
+  }
+});
