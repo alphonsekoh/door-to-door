@@ -90,7 +90,8 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   OWNER-APPROVED. _Consequence:_ someone can be put on a team they did not choose, and
   then teammates can edit their records and be named on theirs; they leave with a tap
   (D-74-14). `CreateTeamRequest.memberIds` has no cap. A member who creates a team is
-  always on it; an admin is on it only if they list themselves.
+  always on it; an admin is on it only if they list themselves. _Contested by D-118-6,
+  awaiting the owner:_ the contract on #118's branch caps `memberIds` at 50 per request.
 - **D-74-16 · `visits.team_id` is stamped once on insert and never updated.** It is the
   author's team at the moment the SERVER first stores the visit, so an offline record is
   stamped when it syncs, not when it was knocked. Nullable, `ON DELETE restrict`.
