@@ -43,7 +43,7 @@ flowchart LR
 | `src/server/http/`    | `withContract`, `ApiError`s, route registry                     | 100%     | Validates request _and_ response; maps errors to the envelope.                        |
 | `src/server/auth/`    | Auth.js config, guards, rate limit                              | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
-| `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users.                    |
+| `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
 | `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
@@ -51,7 +51,7 @@ flowchart LR
 | `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
 | `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()` → 404 for members.                              |
 | `drizzle/`            | Generated migrations                                            | excluded | From `drizzle-kit generate` only.                                                     |
-| `scripts/`            | `migrate.ts`, `seed.ts`, `create-admin.ts`, `generate-icons.ts` | excluded | Glue over `src/db` and `src/server/users`; `check-standalone.ts` runs as `postbuild`. |
+| `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
 | `test/`               | Vitest setup and global setup                                   | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
@@ -71,7 +71,12 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
 ```
 
 - **Household** = `(block_id, unit_number)`, unique. Name, contact, religion are
-  latest-known and only ever updated with non-null values.
+  latest-known and only ever updated with non-null values; a name or contact of only
+  spaces is not learnt either (D-119-7).
+- A unit number, note, block name or street is never blank: the contract, the service
+  (`requireText`) and a `CHECK` each refuse it (D-119-1, D-119-3, D-119-4).
+  `npm run db:check-blank` lists rows stored blank before #119, and changes nothing
+  (D-119-9).
 - **Visit** = one knock. `interest_level` and `description` never overwritten.
   `id` is a client-generated UUIDv7 with no database default.
 - **Follow-up** attaches to the household, so it outlives the session. It is `listed`
@@ -194,7 +199,9 @@ authoritative, and a change to any of them needs the owner.
    primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
    Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
    `500`, never allowed.
-4. The service does the work. Sync and `POST /visits` also run the clock rules
+4. The service does the work. Text that must say something (a unit number, note, block
+   name or street) is refused blank before anything is read (D-119-3). Sync and
+   `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
    transaction they lock the session row (`FOR KEY SHARE`) and judge the session, the
    block and, in a follow-up session, the list rule for a member's new visit
@@ -249,15 +256,23 @@ Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
   per document load.
 - Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
-  `z-30`, bottom nav `z-40`, sheets `z-50`, confirm dialogs `z-60`, account screen `z-70`.
+  `z-30`, bottom nav `z-40`, sheets `z-50`, confirm and Not saved dialogs `z-60`, account
+  screen `z-70`.
   Guarded by `src/components/overlay-layers.test.ts`, which walks every component folder
   and reads the sheet and dialog layers from `src/components/ui/sheet.tsx`.
 - Every sheet and `ConfirmDialog` is built on `Sheet`, both in `src/components/ui/sheet.tsx`,
   portalled to `<body>` and made modal by `useModal` (`src/lib/hooks/use-modal.ts`). Focus moves
   in, Tab is trapped, Escape closes the top layer only, the page behind is `inert` and
-  unscrollable, and focus goes back to the trigger (D-90-2 to D-90-9). A blocking modal
+  unscrollable, and focus goes back to the trigger, or to the sheet's `returnFocus`
+  (D-90-2 to D-90-9, D-119-15). A blocking modal
   stays on top of the stack, and siblings mounted later go inert too (D-85-12, D-85-14).
   The account message calls `useModal` directly.
+- A Save of a visit or a note that is refused for a blank unit number or note, or
+  answered `400 validation_failed`, opens `NotSavedDialog`
+  (`src/components/ui/not-saved-dialog.tsx`), which lists every reason. The reasons are
+  built by `src/lib/not-saved.ts`, which matches the server's `details` (kept on
+  `ApiRequestError`) to the form's fields. Field errors and the line beside Save stay
+  (D-119-13 to D-119-19).
 - Inside `SheetPresence`, a sheet rises and leaves on a Motion spring and drags down to
   dismiss, its scrim following it. The physics is in `src/lib/session/sheet-motion.ts`.
   `useModal` gives back focus, the page and scrolling as the exit starts (D-111-13 to

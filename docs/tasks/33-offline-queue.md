@@ -159,7 +159,8 @@ Owner decisions are marked **(owner)**.
   at the top of a long form it could be off screen. Trade-off: a two-line message makes
   the bar taller until the next attempt. Focus stays where the disabled button dropped
   it (see known limits). _Extended by D-111-26:_ the same slot says why a Save was
-  refused for validation.
+  refused for validation. _Refined by D-119-13 (owner):_ a Save refused for a blank unit
+  number or note also opens a Not saved pop-up listing every reason; the line stays.
 - **D-33-30 · Only a `404` means "no outing running".** Refines D-33-25: asking for the
   outing answers running (with id), none, or unknown; a network error, `5xx` or the 4 s
   timeout is unknown. None says "No outing is running"; unknown keeps "Could not load

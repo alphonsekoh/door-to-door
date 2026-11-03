@@ -225,7 +225,9 @@ round 8, and they are in the PR #112 body too.
   soon as the field is fixed, and an empty unit number is flagged on blur. The follow-up
   note's error sits under its field, with `aria-invalid` and `aria-describedby`. Extends
   D-33-29; there is no scroll to the field. _Why:_ with details open, the faulty fields
-  were off screen and Save did nothing visible.
+  were off screen and Save did nothing visible. _Refined by D-119-13 and D-119-17:_ when
+  a blank unit number or note is among the reasons, a Not saved pop-up lists them too; a
+  missing choice alone keeps to this line.
 - **D-111-27 · Destructive confirmations look destructive.** `ConfirmDialog` takes a
   `tone`, and it is destructive (a red fill) by default, since every use takes something
   away. `ActionSpec.destructive` is true only for ending a session, which shows as a

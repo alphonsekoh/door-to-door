@@ -919,3 +919,53 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [JSON Schema 2020-12 Core, `unevaluatedProperties`](https://json-schema.org/draft/2020-12/json-schema-core#name-unevaluatedproperties);
   generated `src/generated/zod.gen.ts` (#117)
 - **Used by:** D-117-68
+
+### R-95 · JavaScript's `\s` and `trim()` strip the same characters (measured)
+
+- **Finding:** ECMAScript defines both over WhiteSpace and LineTerminator. A check of
+  every code point in Node 24.19 found no difference between `/^\s$/u` and `trim()`
+  leaving `""`. So a value that matches `\S` is never empty after `trim()`. U+200B (zero
+  width space) is neither, so it matches `\S` and survives `trim()`. U+00A0 and U+FEFF
+  are both.
+- **Source:** [ECMA-262, `String.prototype.trim`](https://tc39.es/ecma262/#sec-string.prototype.trim)
+  and CharacterClassEscape `\s`; measured on the #119 worktree
+- **Used by:** D-119-1, D-119-8
+
+### R-96 · PostgreSQL's `btrim(text)` strips only spaces (measured)
+
+- **Finding:** With one argument, `btrim` removes U+0020 and nothing else. On
+  PostgreSQL 17.11, `btrim(E'\t x \n')` keeps the tab and the newline, while
+  `btrim('   ')` is `''`. So `btrim(col) <> ''` refuses `''` and values of only spaces,
+  but not a value of only tabs.
+- **Source:** [PostgreSQL, string functions](https://www.postgresql.org/docs/current/functions-string.html);
+  measured with `psql`
+- **Used by:** D-119-4, D-119-10
+
+### R-97 · A new CHECK is tested against existing rows, and pending migrations share one transaction
+
+- **Finding:** Unless the constraint is added `NOT VALID`, `ALTER TABLE … ADD CONSTRAINT …
+CHECK` scans the table. On a row that fails, it stops with SQLSTATE 23514, `check
+constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
+  0.45.2's `migrate()` runs every pending migration inside one `session.transaction`,
+  so that failure applies nothing from the run.
+- **Source:** [PostgreSQL, ALTER TABLE](https://www.postgresql.org/docs/current/sql-altertable.html);
+  `node_modules/drizzle-orm/pg-core/dialect.js` (`migrate`)
+- **Used by:** D-119-5, D-119-9
+
+### R-98 · A read-only transaction refuses writes
+
+- **Finding:** In drizzle-orm 0.45.2, `transaction(fn, { accessMode: "read only" })`
+  opens with `begin read only`. In such a transaction PostgreSQL refuses `INSERT`,
+  `UPDATE` and `DELETE` on permanent tables, as well as DDL.
+- **Source:** [PostgreSQL, SET TRANSACTION](https://www.postgresql.org/docs/current/sql-set-transaction.html);
+  `node_modules/drizzle-orm/node-postgres/session.js` (`transaction`)
+- **Used by:** D-119-9
+
+### R-99 · An alert dialog is described by its message
+
+- **Finding:** The ARIA alert dialog pattern gives `role="alertdialog"` an accessible
+  name, and an `aria-describedby` that points at the alert's message, so that the
+  message is announced with the dialog even when focus goes to a button inside it. Taken
+  from the pattern page; not checked with a screen reader here.
+- **Source:** [WAI-ARIA APG, Alert and Message Dialogs](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/)
+- **Used by:** D-119-19

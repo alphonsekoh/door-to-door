@@ -18,7 +18,8 @@ behaviour change, no renamed exports.
   `units`, `history`, `hooks`, `session`, beside the unchanged `sync` and `offline`;
   `config`, `openapi-document`, `api-client`, `clock`, `csv` and `uuid` stay at its top.
   _Why:_ no coverage glob, ESLint rule (D-75-17) or `@/` alias root changes, so every gate
-  carries over as it was. _Extended by D-117-31:_ `src/lib/follow-ups/`.
+  carries over as it was. _Extended by D-117-31:_ `src/lib/follow-ups/`. _Extended by
+  D-119-18:_ `not-saved` at the top of `src/lib`.
 - **D-115-2 · Scope (owner).** `src/app`, `src/server`, `src/db`, `src/generated` and
   `drizzle/` do not move. Each file moves with its test; only imports, mocks, path
   strings and comments that name a moved file change. _Why:_ routes and server code are

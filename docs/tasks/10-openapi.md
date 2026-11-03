@@ -13,7 +13,8 @@ The API contract every handler and form validates against.
 - **D-10-2 · One error envelope with a closed `ErrorCode` set; every list paginated via
   `PaginationMeta`.**
 - **D-10-3 · `HouseholdIdentity`: omitting a field and sending `null` both leave it
-  untouched.** Implements D-07-1 at the API boundary.
+  untouched.** Implements D-07-1 at the API boundary. _Refined by D-119-7:_ so does a
+  `name` or `contact` of only spaces.
 - **D-10-4 · Every operation may return `403 account_deactivated`.** _Why:_ JWTs issued
   before deactivation stay valid, so deactivation is re-checked per request. _Research:_ R-2. _Since D-83-1:_ the `403` comes
   from the database row, not the token.
