@@ -1,6 +1,6 @@
 # #123 · Rights judged under the write's lock: amends and block detaches
 
-- **Status:** In progress (branch `fix/123-rights-in-transaction`, not pushed)
+- **Status:** In review (PR #153)
 - **Phase:** 7 - Hardening
 - **Depends on:** #18, #20, #74, #117
 
@@ -29,7 +29,7 @@ in a block no longer attached. Found by a security audit.
   one of its records (measured: `deadlock detected`, the disband a `500`). With
   `NO KEY UPDATE`, the disband's foreign-key check does not wait, so it is refused
   `409` (D-74-18) and the amend applies. It is the lock the UPDATE takes anyway, and it
-  still conflicts with every other amend and writer. _Research:_ R-82, R-120.
+  still conflicts with every other amend and writer. _Research:_ R-82, R-124.
 - **D-123-3 · `canAmend` reads the team membership `FOR KEY SHARE`.** On both amend
   paths, so a removal from the team waits for an amend that has passed its check.
   Extends D-74-17 and D-74-31. _Why:_ the issue's proposal; otherwise a removal could

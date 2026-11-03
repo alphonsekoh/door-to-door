@@ -1253,7 +1253,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   measured with curl (#122 verifier, rounds 0 and 1)
 - **Used by:** D-122-1, D-122-9, D-122-13
 
-### R-120 · An UPDATE of no key column takes `FOR NO KEY UPDATE`; deleting a parent checks its children `FOR KEY SHARE` (measured)
+### R-124 · An UPDATE of no key column takes `FOR NO KEY UPDATE`; deleting a parent checks its children `FOR KEY SHARE` (measured)
 
 - **Finding:** `FOR UPDATE` is taken by a `DELETE` and by an `UPDATE` that changes a
   column with a unique index a foreign key can use; any other `UPDATE` takes
