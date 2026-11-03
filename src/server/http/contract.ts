@@ -1,5 +1,13 @@
 import type { ZodError, ZodType } from "zod";
-import { ApiError, InternalError, ValidationError, type FieldIssue } from "@/server/http/errors";
+import {
+  ApiError,
+  ForbiddenError,
+  InternalError,
+  UnsupportedMediaTypeError,
+  ValidationError,
+  type FieldIssue,
+} from "@/server/http/errors";
+import { isCrossOriginWrite, isJsonMediaType } from "@/server/http/same-origin";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 
 /*
@@ -110,6 +118,9 @@ export function searchParamsToObject(params: URLSearchParams): Record<string, un
 async function readJsonBody(request: Request): Promise<unknown> {
   const text = await request.text();
   if (text.trim() === "") return undefined;
+  if (!isJsonMediaType(request.headers.get("content-type"))) {
+    throw new UnsupportedMediaTypeError();
+  }
   try {
     return JSON.parse(text);
   } catch {
@@ -166,6 +177,10 @@ export function withContract<TPath = undefined, TQuery = undefined, TBody = unde
 ): RouteHandler {
   return async function route(request: Request, context?: RouteContext): Promise<Response> {
     try {
+      // Before anything is parsed or authenticated: a forged write learns nothing.
+      if (isCrossOriginWrite(request.method, request.headers)) {
+        throw new ForbiddenError("Requests from other sites are not accepted.");
+      }
       const rawPath = (await context?.params) ?? {};
       const url = new URL(request.url);
 

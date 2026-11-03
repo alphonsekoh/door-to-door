@@ -5,7 +5,7 @@ import { createTestPool, truncateAll } from "@/db/testing";
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
 
-const { GET } = await import("./route");
+const { GET, POST } = await import("./route");
 
 const pool = createTestPool();
 const ADMIN = "cacacaca-0000-4000-8000-000000000001";
@@ -102,5 +102,56 @@ describe("GET /api/users", () => {
   it("rejects a role outside the contract", async () => {
     asAdmin();
     expect((await call("?role=superuser")).status).toBe(400);
+  });
+});
+
+describe("POST /api/users from a page on another origin (#121)", () => {
+  /*
+   * The audit's reproduction: a sibling subdomain posts text/plain, which needs
+   * no preflight, and the SameSite=Lax cookie goes with it because the site is
+   * the same. It created an admin.
+   */
+  const forged = (site: string, type = "text/plain") =>
+    new Request("https://test.local/api/users", {
+      method: "POST",
+      body: JSON.stringify({ email: "mallory@t.local", password: "correct horse", role: "admin" }),
+      headers: { "content-type": type, "sec-fetch-site": site },
+    });
+  const count = async () => {
+    const { rows } = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM users");
+    return Number(rows[0]?.n);
+  };
+
+  it("refuses it from a sibling site, before looking at the session", async () => {
+    asAdmin();
+    const before = await count();
+
+    const response = await POST(forged("same-site"));
+
+    expect(response.status).toBe(403);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("forbidden");
+    expect(auth).not.toHaveBeenCalled();
+    expect(await count()).toBe(before);
+  });
+
+  it("refuses the text/plain body even from the app's own origin", async () => {
+    asAdmin();
+    const before = await count();
+
+    const response = await POST(forged("same-origin"));
+
+    expect(response.status).toBe(415);
+    expect(await count()).toBe(before);
+  });
+
+  it("creates the account when the app itself sends that body as JSON", async () => {
+    // So the refusals above are about how the request came, not what it asked for.
+    asAdmin();
+    const before = await count();
+
+    const response = await POST(forged("same-origin", "application/json"));
+
+    expect(response.status).toBe(201);
+    expect(await count()).toBe(before + 1);
   });
 });
