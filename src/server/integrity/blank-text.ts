@@ -144,6 +144,11 @@ export async function findBlankText(db: Database): Promise<BlankText> {
 
 export const CLEAN_MESSAGE = "No blank unit numbers, follow-up notes, block names or streets.";
 
+export const HOUSEHOLD_CAUTION =
+  "Deleting a household also deletes its visits and follow-up notes, so give it its real unit " +
+  "number instead. If that unit already exists in the block, move the visits and notes there " +
+  "first. See Deployment in the README.";
+
 /* Quoted, so "" and "   " can be told apart from each other and from a name. */
 const quote = (value: string): string => JSON.stringify(value);
 const time = (value: Date): string => value.toISOString();
@@ -195,6 +200,9 @@ export function formatBlankReport(found: BlankText): { lines: string[]; exitCode
       ]),
       `${plural(total, "row holds", "rows hold")} blank text. Nothing was changed. ` +
         "The not-blank migration (0005_not_blank_text) fails until each is corrected or removed by hand.",
+      // Visits and notes cascade from a household: deleting one to get the
+      // migration through would lose the record the app exists to keep.
+      ...(found.households.length > 0 ? [HOUSEHOLD_CAUTION] : []),
     ],
     exitCode: 1,
   };

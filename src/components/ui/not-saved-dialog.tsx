@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type RefObject } from "react";
+import { useId, useRef, type RefObject } from "react";
 import { Sheet } from "@/components/ui/sheet";
 
 /*
@@ -26,10 +26,12 @@ export function NotSavedDialog({
   onDismiss: () => void;
 }) {
   const ok = useRef<HTMLButtonElement>(null);
+  const why = useId();
 
   return (
     <Sheet
       label="Not saved"
+      describedBy={why}
       role="alertdialog"
       layer="dialog"
       backdropLabel="OK"
@@ -40,14 +42,19 @@ export function NotSavedDialog({
       bodyClassName="pt-4"
     >
       <p className="text-title font-semibold">Not saved</p>
-      <p className="mt-1 text-body text-foreground-muted">{lead}</p>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-body">
-        {reasons.map((reason) => (
-          <li key={reason} className="break-words">
-            {reason}
-          </li>
-        ))}
-      </ul>
+      {/* Focus lands on OK, so without this a screen reader says "Not saved,
+          OK" and the member must go looking for why; the line beside Save is
+          inert behind the dialog. */}
+      <div id={why}>
+        <p className="mt-1 text-body text-foreground-muted">{lead}</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-body">
+          {reasons.map((reason) => (
+            <li key={reason} className="break-words">
+              {reason}
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="mt-4 pb-4">
         <button

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CLEAN_MESSAGE,
+  HOUSEHOLD_CAUTION,
   formatBlankReport,
   type BlankBlock,
   type BlankFollowUp,
@@ -52,7 +53,11 @@ describe("formatBlankReport", () => {
         "2 visits, the first v-first by alice@t.local at 2026-04-02T09:30:00.000Z",
       "1 row holds blank text. Nothing was changed. The not-blank migration (0005_not_blank_text) " +
         "fails until each is corrected or removed by hand.",
+      HOUSEHOLD_CAUTION,
     ]);
+    expect(HOUSEHOLD_CAUTION).toMatch(
+      /^Deleting a household also deletes its visits and follow-up notes/,
+    );
   });
 
   it("says when a blank household has no visits, and counts one visit as one", () => {
@@ -83,13 +88,17 @@ describe("formatBlankReport", () => {
         'at unit "#05-123" in Blk "123", "Test Ave" (household h-good)',
     ]);
     expect(lines[3]).toMatch(/^2 rows hold blank text\./);
+    // Deleting a note loses only the note, so no warning about cascades.
+    expect(lines).toHaveLength(4);
   });
 
   it("prints a block with both fields quoted", () => {
-    expect(formatBlankReport({ ...none, blocks: [block] }).lines.slice(0, 2)).toEqual([
+    const { lines } = formatBlankReport({ ...none, blocks: [block] });
+    expect(lines.slice(0, 2)).toEqual([
       "Blocks with a blank name or street (1):",
       '  block b-nameless: name "", street "Nameless Rd", created 2026-03-14T10:00:00.000Z',
     ]);
+    expect(lines).not.toContain(HOUSEHOLD_CAUTION);
   });
 
   it("heads only the kinds that have rows, in one order, and counts them all", () => {
@@ -103,6 +112,7 @@ describe("formatBlankReport", () => {
       "Households with a blank unit number (1):",
       "Blocks with a blank name or street (2):",
       expect.stringMatching(/^3 rows hold blank text\. Nothing was changed\./),
+      HOUSEHOLD_CAUTION,
     ]);
   });
 });

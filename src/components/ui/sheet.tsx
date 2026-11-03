@@ -85,6 +85,8 @@ export type Discard = { title: string; detail: string };
 type SheetProps = {
   /* The dialog's accessible name. */
   label: string;
+  /* The id of what it says, read out with its name as it opens. */
+  describedBy?: string | undefined;
   /* Shown beside the close button; without it there is no header row. */
   title?: ReactNode;
   closeLabel?: string;
@@ -110,6 +112,7 @@ type SheetProps = {
 
 export function Sheet({
   label,
+  describedBy,
   title,
   closeLabel = "Cancel",
   backdropLabel = "Close",
@@ -259,6 +262,7 @@ export function Sheet({
           role={role}
           aria-modal="true"
           aria-label={label}
+          aria-describedby={describedBy}
           onPointerMove={move}
           onPointerUp={(event) => {
             release(event, false);

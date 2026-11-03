@@ -23,6 +23,15 @@ describe("NotSavedDialog", () => {
     ).toEqual(REASONS);
   });
 
+  it("is described by its lead and every reason, so they are read out as it opens", () => {
+    render(
+      <NotSavedDialog lead={LEAD} reasons={REASONS} returnFocus={undefined} onDismiss={vi.fn()} />,
+    );
+    expect(screen.getByRole("alertdialog", { name: "Not saved" })).toHaveAccessibleDescription(
+      `${LEAD} ${REASONS.join(" ")}`,
+    );
+  });
+
   it("opens on OK, so Enter or a tap dismisses it", () => {
     render(
       <NotSavedDialog lead={LEAD} reasons={REASONS} returnFocus={undefined} onDismiss={vi.fn()} />,

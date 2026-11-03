@@ -504,7 +504,12 @@ docker run -p 3000:3000 \
   was stored as an empty string, and the migration's `CHECK` constraints refuse those
   rows. The script lists each one with its ids, block, unit, author and created time,
   changes nothing, and exits `0` when there are none, `1` when there are, and `2` when it
-  could not check. Correct or remove what it lists by hand, as you decide, then migrate.
+  could not check. Correct what it lists by hand, as you decide, then migrate. Deleting a
+  household also deletes everything recorded at it, its visits and follow-up notes
+  included, so give it its real unit number instead; if that unit already exists in the
+  block (`households_block_unit_unique` allows only one), move the visits and notes there
+  first. A blank note can be corrected or deleted on its own; one removed in the app still
+  counts until it is. A block cannot be deleted while households or sessions use it.
 - **HTTPS** is required for the service worker and installing outside `localhost`. Behind
   a reverse proxy keep `auth.trustHost: true`; if the app is exposed directly with
   `trustHost: false`, set `AUTH_URL`.

@@ -249,6 +249,10 @@ test("a Save with a blank unit says why above the nav, and OK goes back to the u
   const dialog = memberPage.getByRole("alertdialog", { name: "Not saved" });
   await expect(dialog).toContainText("This visit could not be saved because:");
   await expect(dialog.getByRole("listitem")).toHaveText(["The unit number is blank."]);
+  /* Read out as it opens: focus goes to OK, and the line beside Save is inert. */
+  await expect(dialog).toHaveAccessibleDescription(
+    /could not be saved because:\s*The unit number is blank\./,
+  );
   /* Above the nav and the docked Save: what a tap there lands on is OK. */
   const ok = dialog.getByRole("button", { name: "OK" });
   await expect(ok).toBeFocused();
