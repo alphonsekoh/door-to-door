@@ -150,7 +150,7 @@ describe("caching of the sign-in page (#150)", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("leaves Auth.js's own answers to its route, which marks them itself", async () => {
+  it("adds no Cache-Control of its own to an /api/auth answer that sets no cookie", async () => {
     const response = await proxy(request("/api/auth/session"));
     expect(response.headers.get("cache-control")).toBeNull();
   });
