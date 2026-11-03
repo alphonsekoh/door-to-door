@@ -9,7 +9,8 @@ const SIGN_OUT = `${AUTH_PREFIX}/signout`;
  * A sign-out also drops the phone's HTTP cache and bfcache. Only "cache":
  * the worker's precache and the IndexedDB queue (D-33-1), which can hold
  * another member's unsent records, fall under "storage", which is never
- * sent. It goes on a refused sign-out too, since clearing costs nothing.
+ * sent. It goes on a refused sign-out too, so a cross-site form POST can drop
+ * this origin's HTTP cache; nothing there is irreplaceable (D-122-10).
  *
  * The response is copied rather than edited because a Response.redirect has
  * immutable headers.
