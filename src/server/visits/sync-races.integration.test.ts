@@ -7,25 +7,35 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 import type { Clock } from "@/lib/clock";
 import type * as Access from "@/server/teams/access";
+import { updateVisit } from "@/server/visits/service";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
 type TeamIdFor = typeof Access.teamIdFor;
-const { teamIdFor, real } = vi.hoisted(() => ({
+type CanAmend = typeof Access.canAmend;
+const { teamIdFor, real, afterCheck } = vi.hoisted(() => ({
   teamIdFor: vi.fn<TeamIdFor>(),
   real: { fn: undefined as TeamIdFor | undefined },
+  // Set by a test to park an amend just after its rights check has run.
+  afterCheck: { hold: undefined as (() => Promise<void>) | undefined },
 }));
 vi.mock("@/server/teams/access", async (importOriginal) => {
   const actual = await importOriginal<typeof Access>();
   real.fn = actual.teamIdFor;
   teamIdFor.mockImplementation(actual.teamIdFor);
-  return { ...actual, teamIdFor };
+  const canAmend: CanAmend = async (...args) => {
+    const allowed = await actual.canAmend(...args);
+    await afterCheck.hold?.();
+    return allowed;
+  };
+  return { ...actual, teamIdFor, canAmend };
 });
 
 /*
- * The checks in applyItem read before they write, and other requests move in
- * between. These hold a real row lock from a second connection so a flush is
- * provably parked mid-write while the world changes, then released: no sleeps
- * deciding the outcome, no "either result is fine".
+ * The checks in applyItem and PATCH /visits/{id} read before they write, and
+ * other requests move in between. These hold a real row lock from a second
+ * connection so a flush or an amend is provably parked mid-write while the
+ * world changes, then released: no sleeps deciding the outcome, no "either
+ * result is fine".
  */
 
 const pool = createTestPool();
@@ -71,6 +81,24 @@ const POLL_BUDGET_MS = 4_000;
 // Well above the poll budget, so a flush that never parks fails with its own message.
 vi.setConfig({ testTimeout: 15_000 });
 
+/* Until a backend is blocked on a lock running a query like `pattern`. */
+async function waitingOn(pattern: string): Promise<void> {
+  const startedAt = Date.now();
+  for (;;) {
+    const { rows } = await controller.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE wait_event_type = 'Lock' AND datname = current_database()
+         AND pid <> pg_backend_pid() AND query ILIKE $1`,
+      [pattern],
+    );
+    if (rows.length > 0) return;
+    if (Date.now() - startedAt > POLL_BUDGET_MS) {
+      throw new Error(`nothing waited on ${pattern}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
 /*
  * Holds a transaction on a second connection (`setup` takes the lock or makes
  * the uncommitted row), starts the flush, waits until a backend is blocked
@@ -91,20 +119,7 @@ async function parkedFlush(options: {
     await client.query("BEGIN");
     await options.setup(query);
     pending = options.start();
-    const startedAt = Date.now();
-    for (;;) {
-      const { rows } = await controller.query(
-        `SELECT 1 FROM pg_stat_activity
-         WHERE wait_event_type = 'Lock' AND datname = current_database()
-           AND pid <> pg_backend_pid() AND query ILIKE $1`,
-        [options.waitingOn],
-      );
-      if (rows.length > 0) break;
-      if (Date.now() - startedAt > POLL_BUDGET_MS) {
-        throw new Error("the flush never reached the lock");
-      }
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
+    await waitingOn(options.waitingOn);
     await options.whileHeld?.(query);
     await client.query("COMMIT");
     return await pending;
@@ -123,6 +138,55 @@ const lockedFlush = (start: () => Promise<unknown>, whileHeld: (query: Query) =>
     waitingOn: "%for update%",
     start,
     whileHeld,
+  });
+
+const settle = (request: Promise<unknown>) =>
+  request.then(
+    (value) => ({ ok: value }),
+    (error: unknown) => ({ error }),
+  );
+
+/*
+ * Parks `first` inside its transaction, just after its `nth` rights check,
+ * starts `second`, waits until that is blocked on a lock in a statement like
+ * `secondWaitsOn`, then lets `first` go. A `second` that never waits fails
+ * the test. Both are settled before returning, whatever fails.
+ */
+async function parkedAfterCheck(options: {
+  first: () => Promise<unknown>;
+  nth?: number;
+  second: () => Promise<unknown>;
+  secondWaitsOn: string;
+}) {
+  const checked = Promise.withResolvers<undefined>();
+  const release = Promise.withResolvers<undefined>();
+  let checks = 0;
+  afterCheck.hold = () => {
+    checks += 1;
+    if (checks !== (options.nth ?? 1)) return Promise.resolve();
+    checked.resolve(undefined);
+    return release.promise;
+  };
+  const one = settle(options.first());
+  let two: Promise<unknown> | undefined;
+  try {
+    await Promise.race([checked.promise, one]);
+    two = settle(options.second());
+    await waitingOn(options.secondWaitsOn);
+  } finally {
+    release.resolve(undefined);
+    await Promise.all([one, two]);
+  }
+  return [await one, await two];
+}
+
+/* Ben leaves the team while an amend of his is parked after its check. */
+const removedAfterCheck = (first: () => Promise<unknown>, nth = 1) =>
+  parkedAfterCheck({
+    first,
+    nth,
+    second: () => controller.query(`DELETE FROM session_team_members WHERE user_id=$1`, [BEN]),
+    secondWaitsOn: "%delete from session_team_members%",
   });
 
 beforeEach(async () => {
@@ -149,6 +213,7 @@ beforeEach(async () => {
     `INSERT INTO session_team_members (team_id, session_id, user_id) VALUES ($1,$2,$3), ($1,$2,$4)`,
     [team.rows[0]?.id, SESSION, ALICE, BEN],
   );
+  afterCheck.hold = undefined;
   await flush([item()], ALICE);
   teamIdFor.mockReset();
   if (real.fn) teamIdFor.mockImplementation(real.fn);
@@ -214,6 +279,91 @@ describe("an amend that raced a concurrent write", () => {
     )) as Awaited<ReturnType<typeof flush>>;
     expect(result?.status).toBe("applied");
     expect(await row()).toMatchObject({ interest_level: "high", member_id: ALICE });
+  });
+
+  it("holds a removal from the team until an amend that passed its check commits", async () => {
+    // The first check is the pre-read; the second is the one made under the locks.
+    const [amended, removed] = await removedAfterCheck(
+      () => flush([item({ interestLevel: "high", updatedAt: T2 })], BEN),
+      2,
+    );
+
+    expect(amended).toMatchObject({ ok: [{ status: "applied" }] });
+    expect(removed).toMatchObject({ ok: { rowCount: 1 } });
+    expect(await row()).toMatchObject({ interest_level: "high" });
+  });
+});
+
+describe("a PATCH amend that raced a concurrent write", () => {
+  const ben = { id: BEN, role: "member" as const };
+  const amend = () =>
+    updateVisit(db, V1, { interestLevel: "high", description: "late", name: "Mr Late" }, ben);
+  const names = async () =>
+    (await pool.query<{ name: string | null }>(`SELECT name FROM households`)).rows;
+  const untouched = { interest_level: "low", description: "", member_id: ALICE };
+
+  it("is refused when the teammate was removed while it waited, changing nothing", async () => {
+    await expect(
+      lockedFlush(amend, async (q) => {
+        await q(`DELETE FROM session_team_members WHERE user_id=$1`, [BEN]);
+      }),
+    ).rejects.toMatchObject({ status: 403, code: "forbidden" });
+
+    expect(await row()).toMatchObject(untouched);
+    expect(await names()).toEqual([{ name: null }]);
+  });
+
+  it("is refused when the session ended while it waited, changing nothing", async () => {
+    // Held as ending the session holds it.
+    await expect(
+      parkedFlush({
+        setup: (q) => q(`SELECT 1 FROM outing_sessions WHERE id=$1 FOR UPDATE`, [SESSION]),
+        waitingOn: '%from "outing_sessions"%for key share%',
+        start: amend,
+        whileHeld: async (q) => {
+          await q(`UPDATE outing_sessions SET status='ended', ended_at=now() WHERE id=$1`, [
+            SESSION,
+          ]);
+        },
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "session_not_active" });
+
+    expect(await row()).toMatchObject(untouched);
+    expect(await names()).toEqual([{ name: null }]);
+  });
+
+  it("applies the visit and the household together when nothing changed while it waited", async () => {
+    await expect(lockedFlush(amend, () => Promise.resolve())).resolves.toMatchObject({
+      interestLevel: "high",
+      description: "late",
+      memberId: ALICE,
+    });
+    expect(await names()).toEqual([{ name: "Mr Late" }]);
+  });
+
+  it("holds a removal from the team until an amend that passed its check commits", async () => {
+    const [amended, removed] = await removedAfterCheck(amend);
+
+    expect(amended).toMatchObject({ ok: { interestLevel: "high" } });
+    expect(removed).toMatchObject({ ok: { rowCount: 1 } });
+    expect(await names()).toEqual([{ name: "Mr Late" }]);
+  });
+
+  /*
+   * Sync takes the household before the visit. Were the amend to hold the
+   * visit and reach for the household after, the two would deadlock here.
+   */
+  it("meets the author's queued amend at the household, so neither deadlocks", async () => {
+    const [amended, flushed] = await parkedAfterCheck({
+      first: amend,
+      second: () => flush([item({ interestLevel: "medium", updatedAt: T2 })], ALICE),
+      secondWaitsOn: '%insert into "households"%',
+    });
+
+    expect(amended).toMatchObject({ ok: { interestLevel: "high" } });
+    // The amend is stamped with the real time, which is after T2.
+    expect(flushed).toMatchObject({ ok: [{ status: "stale" }] });
+    expect(await row()).toMatchObject({ interest_level: "high", description: "late" });
   });
 });
 

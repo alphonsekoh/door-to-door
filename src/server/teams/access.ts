@@ -47,17 +47,19 @@ export async function snapshotTeammates(
   return found.map((row) => row.userId);
 }
 
+const membership = (db: Database, userId: string, teamId: string) =>
+  db
+    .select({ userId: sessionTeamMembers.userId })
+    .from(sessionTeamMembers)
+    .where(and(eq(sessionTeamMembers.teamId, teamId), eq(sessionTeamMembers.userId, userId)))
+    .limit(1);
+
 export async function isCurrentMember(
   db: Database,
   userId: string,
   teamId: string,
 ): Promise<boolean> {
-  const found = await db
-    .select({ userId: sessionTeamMembers.userId })
-    .from(sessionTeamMembers)
-    .where(and(eq(sessionTeamMembers.teamId, teamId), eq(sessionTeamMembers.userId, userId)))
-    .limit(1);
-  return found.length > 0;
+  return (await membership(db, userId, teamId)).length > 0;
 }
 
 /*
@@ -65,6 +67,10 @@ export async function isCurrentMember(
  * team it is stamped with. Whether the outing is still open is a separate
  * rule the caller applies, since sync and the REST endpoint report it
  * differently.
+ *
+ * The membership is read FOR KEY SHARE: inside an amend's transaction a
+ * removal from the team then waits for the amend to commit, rather than
+ * landing between this check and the write.
  */
 export async function canAmend(
   db: Database,
@@ -72,7 +78,8 @@ export async function canAmend(
   visit: { memberId: string; teamId: string | null },
 ): Promise<boolean> {
   if (actor.role === "admin" || visit.memberId === actor.id) return true;
-  return visit.teamId !== null && (await isCurrentMember(db, actor.id, visit.teamId));
+  if (visit.teamId === null) return false;
+  return (await membership(db, actor.id, visit.teamId).for("key share")).length > 0;
 }
 
 /*

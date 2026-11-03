@@ -368,26 +368,34 @@ export async function findActiveSession(db: Database): Promise<SessionRow | unde
  * Detaching a block that already has visits recorded in this session is
  * refused. History is never orphaned by a UI action - an admin tidying up the
  * block list must not silently strip a member's afternoon of work off it.
+ *
+ * Under the session's row lock, which recording a visit also takes (FOR KEY
+ * SHARE) before it checks the block is attached: a detach waits for a visit
+ * in flight and sees it, or the visit waits and finds the block gone.
  */
-export async function detachBlock(db: Database, sessionId: string, blockId: string): Promise<void> {
-  const attached = await db
-    .select({ blockId: sessionBlocks.blockId })
-    .from(sessionBlocks)
-    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)))
-    .limit(1);
+export function detachBlock(db: Database, sessionId: string, blockId: string): Promise<void> {
+  return db.transaction(async (tx) => {
+    await lockSession(tx, sessionId);
 
-  if (attached.length === 0) {
-    throw new NotFoundError("That block is not attached to this session.");
-  }
+    const attached = await tx
+      .select({ blockId: sessionBlocks.blockId })
+      .from(sessionBlocks)
+      .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)))
+      .limit(1);
 
-  if (await blockHasSessionVisits(db, sessionId, blockId)) {
-    throw new ConflictError(
-      "block_in_use",
-      "That block has visits recorded in this session, so it cannot be detached.",
-    );
-  }
+    if (attached.length === 0) {
+      throw new NotFoundError("That block is not attached to this session.");
+    }
 
-  await db
-    .delete(sessionBlocks)
-    .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)));
+    if (await blockHasSessionVisits(tx, sessionId, blockId)) {
+      throw new ConflictError(
+        "block_in_use",
+        "That block has visits recorded in this session, so it cannot be detached.",
+      );
+    }
+
+    await tx
+      .delete(sessionBlocks)
+      .where(and(eq(sessionBlocks.sessionId, sessionId), eq(sessionBlocks.blockId, blockId)));
+  });
 }
