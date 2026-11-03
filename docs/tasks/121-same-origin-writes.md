@@ -1,6 +1,6 @@
 # #121 · Refuse cross-origin writes and non-JSON bodies
 
-- **Status:** In progress (branch `fix/121-origin-check`)
+- **Status:** In review (PR #139)
 - **Phase:** 7 - Hardening
 - **Depends on:** #12, #13, #33
 
@@ -17,21 +17,26 @@ under, which is not decided yet.
 - **D-121-1 · `withContract` refuses a cross-origin write first, with `403 forbidden`.**
   Every method but `GET`, `HEAD` and `OPTIONS`, before path, query, body or session is
   read. _Why:_ every cookie-authenticated write already goes through it (D-12-1), so an
-  operation added later is covered, and a forged request learns nothing, not even
-  whether it is signed in. The proxy stays an affordance (D-16-2); Auth.js's own routes
-  are not wrapped and keep its CSRF token. D-10-4 and D-83-4 still hold for the app's own
-  requests; another origin's gets `forbidden` instead.
+  operation added later is covered, and a forged request learns nothing a handler would
+  tell it. The proxy stays an affordance (D-16-2), so it still answers one with no
+  session `401` first; Auth.js's own routes are not wrapped and keep its CSRF token.
+  D-10-4 and D-83-4 still hold for the app's own requests; another origin's gets
+  `forbidden` instead.
 - **D-121-2 · `Sec-Fetch-Site`, when present and not empty, decides alone.**
   `same-origin` and `none` pass; anything else, `same-site` included, is refused,
-  whatever `Origin` says. _Why:_ only a browser can set it, and `none` is a request the
-  user started, which no page can forge; checking `Origin` too would make every write
-  depend on the proxy passing the public host (D-121-5). _Research:_ R-91.
+  whatever `Origin` says. _Why:_ ~~only a browser can set it~~ a page's script can
+  neither set nor change it (a forbidden `Sec-` header; a client outside a browser can,
+  but carries no member's cookie), and `none` is a request the user started, which no
+  page can forge; checking `Origin` too would make every write depend on the proxy
+  passing the public host (D-121-5). Reason corrected by the owner (2026-11-03); the
+  decision stands. _Research:_ R-91.
 - **D-121-3 · Without it, the `Origin`'s host and port must be this server's.** A
   `null`, unparsable or foreign `Origin` is refused, and so is any `Origin` when there is
   no host to compare it with. _Why:_ Safari before 16.4, and any page on plain `http` (a
   phone on the LAN), send no `Sec-Fetch-Site`; `null` comes from sandboxed frames and
   `file:` pages, which still carry cookies. _Trade-off:_ the scheme is not compared, so
-  an `http` page on the app's own host would pass. _Research:_ R-91, R-92.
+  an `http` page on the app's own host would pass. _Research:_ R-91, R-92. _Refined by
+  D-121-10:_ a default port in the server's host counts as none.
 - **D-121-4 · A write with neither header passes.** _Why:_ a browser adds `Origin` to
   every write, so neither means a script, a test or a Playwright setup call, not a page
   acting with someone's cookie. _Trade-off:_ fails open for a client that sends neither.
@@ -65,6 +70,14 @@ under, which is not decided yet.
   cross-site request (refused before `auth()`) and a same-origin one (let past). _Why:_
   a test of `withContract` alone does not prove every route uses it, and an operation
   added later is swept without editing the test.
+- **D-121-10 · In that comparison, the `Origin`'s own scheme's default port on the
+  server's host counts as no port.** `:443` for an `https` `Origin`, `:80` for `http`,
+  in `Host` or the first `X-Forwarded-Host`; any other port, or the other scheme's
+  default, must match exactly. Owner ruling (2026-11-03); refines D-121-3. _Why:_ a
+  browser's `Origin` never names its default port, but a proxy forwarding
+  `$host:$server_port` does, and every browser without `Sec-Fetch-Site` would be locked
+  out. Only its own scheme's, so `:80` never stands in for an `https` page.
+  _Research:_ R-100.
 
 ## Relies on
 

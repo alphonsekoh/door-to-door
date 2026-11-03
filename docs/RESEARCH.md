@@ -966,3 +966,17 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [Caddy, `reverse_proxy` headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers);
   [Traefik, pass host header](https://doc.traefik.io/traefik/routing/services/#pass-host-header)
 - **Used by:** D-121-5
+
+### R-100 · An `Origin` never names its scheme's default port; a forwarded host may
+
+- **Finding:** The URL parser stores a port equal to the scheme's default as no port,
+  and an origin is serialized with its port only when it has one, so a browser sends
+  `Origin: https://app.example.org`, never `:443`. `new URL()` does the same (measured,
+  Node 24: `https://Example.org:443` has host `example.org`; `http://example.org:443`
+  keeps `:443`). nginx's `$server_port` is the port that accepted the request, so
+  `proxy_set_header Host $host:$server_port` forwards `app.example.org:443` (read, not
+  tested here).
+- **Source:** [URL Standard, port state](https://url.spec.whatwg.org/#port-state);
+  [HTML, serialization of an origin](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin);
+  [nginx, `$server_port`](https://nginx.org/en/docs/http/ngx_http_core_module.html#var_server_port)
+- **Used by:** D-121-10
