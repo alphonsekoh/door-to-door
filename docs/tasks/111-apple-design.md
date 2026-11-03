@@ -99,7 +99,8 @@ round 8, and they are in the PR #112 body too.
   component" clause; refines D-90-10. _Why:_ motion, drag and the portal live in one
   place. Before, an overlay inside a `space-y-*` parent took its margin, and the End
   confirm stopped 20px short of the bottom. _Research:_ R-63. _Refined by D-111-57:_
-  `ConfirmDialog` lives in `sheet.tsx`.
+  `ConfirmDialog` lives in `sheet.tsx`. _Refined by D-119-21:_ `Sheet` resets its body
+  to the top on open, after the focus scroll.
 - **D-111-14 · A closing sheet hands everything back as its exit starts.** In
   `useModal(onClose, initialFocus, active)`, when `active` turns false, focus returns,
   `inert` lifts and scrolling unlocks at once. The leaving copy is `inert` and
@@ -230,7 +231,9 @@ round 8, and they are in the PR #112 body too.
   lists them too; a missing choice alone keeps to this line. _The scroll clause is
   superseded by D-119-15 (owner, 2026-11-03) for a refusal the pop-up shows:_ its OK
   focuses the field at fault and scrolls it into view. A refusal shown only in this line
-  still does not scroll.
+  still does not scroll. _Refined by D-119-26, D-119-30 and D-119-32:_ a unit past 32
+  characters opens the pop-up too, and this line names it rather than ask for a unit. A
+  unit error already showing follows the unit as it is typed.
 - **D-111-27 · Destructive confirmations look destructive.** `ConfirmDialog` takes a
   `tone`, and it is destructive (a red fill) by default, since every use takes something
   away. `ActionSpec.destructive` is true only for ending a session, which shows as a

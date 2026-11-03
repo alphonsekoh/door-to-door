@@ -978,3 +978,14 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   cut away. This was seen at the largest text in #119's `e2e/large-text.spec.ts`.
 - **Source:** [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
 - **Used by:** D-119-21
+
+### R-101 · Playwright fails a `test.fail` test that passes
+
+- **Finding:** In Playwright 1.62.1, `test.fail(condition, description)` marks the test
+  "should fail" when the condition is true. The runner then checks that it really
+  fails: a failure counts as a pass, and a pass fails the run. So a known failure turns
+  the run red once it is fixed, and the mark has to come off then. Taken from the API
+  docs; not run here.
+- **Source:** [Playwright, `test.fail`](https://playwright.dev/docs/api/class-test#test-fail);
+  `node_modules/playwright/types/test.d.ts`
+- **Used by:** D-119-33

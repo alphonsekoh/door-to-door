@@ -1,6 +1,6 @@
 # #119 · Blank unit numbers and notes
 
-- **Status:** In progress (branch `fix/119-blank-values`, no PR yet)
+- **Status:** In review (PR #141)
 - **Phase:** 7 - Hardening
 - **Depends on:** #20, #21, #22, #117
 
@@ -129,7 +129,8 @@ and a pop-up that tells a member or admin why a Save was refused.
 - **D-119-17 · Only blank text opens the pop-up.** A missing choice on its own
   (interest level, member, block) keeps D-111-26's one line, and a note past the limit
   keeps its count and error. _Why:_ the owner asked about blank units and notes, and a
-  missing choice is already plain from the line beside Save.
+  missing choice is already plain from the line beside Save. _Refined by D-119-26
+  (owner):_ a unit too long opens it too.
 - **D-119-18 · The reasons are built in `src/lib/not-saved.ts`,** at the top of
   `src/lib`, beside `api-client`. Extends D-115-1. _Why:_ the visit forms and the
   follow-up sheet share it, so it belongs to neither domain.
@@ -139,11 +140,11 @@ and a pop-up that tells a member or admin why a Save was refused.
   said only "Not saved, OK". _Research:_ R-99.
 - **D-119-21 · Fix round 2: every modal opens at its top.** `useModal` focuses the
   panel or its first control with `preventScroll`. `Sheet` then resets its body to the
-  top, because its own focus scroll (D-111-31) still runs. Refines D-90-2, D-111-31 and
-  D-119-14. _Why:_ at the largest text, Not saved with three reasons is taller than the
-  screen, and focus on OK opened it at its foot with the heading cut away. Trade-off: in
-  a modal taller than the screen, the control that has focus can start below the view.
-  _Research:_ R-100.
+  top, because its own focus scroll (D-111-31) still runs. Refines D-90-2, D-90-3,
+  D-111-13, D-111-31 and D-119-14. _Why:_ at the largest text, Not saved with three
+  reasons is taller than the screen, and focus on OK opened it at its foot with the
+  heading cut away. Trade-off: in a modal taller than the screen, the control that has
+  focus can start below the view. _Research:_ R-100.
 - **D-119-22 · Fix round 2: OK brings the field back under its label.** The field is
   scrolled to `nearest`, then its `<label>`. A label that `nearest` had to move was cut
   off, so it goes to `start`, and where both cannot fit the label wins. A radio is named
@@ -153,13 +154,14 @@ and a pop-up that tells a member or admin why a Save was refused.
   `start` runs only for a label that was cut off, so at default sizes nothing moves (cf.
   D-111-69). Known limit: on an iPhone 13 at the largest text, the note's label and
   count fill the room above Send, so the field's top starts under Send. _Research:_
-  R-89.
-- **D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.** The
-  recording form and Record for a member set `maxLength` from `MAX_UNIT_NUMBER_LENGTH`
-  (`src/lib/units/unit-number.ts`). _Why:_ a unit the server would refuse is never
-  typed. Trade-offs: the constant copies `openapi.yaml`'s `maxLength` by hand, and no
-  test ties the two together. A paste past 32 characters is cut without a word. **This
-  conflicts with D-74-8; see Open questions.**
+  R-89. _Refined by D-119-33 (owner):_ that limit is deferred to #136.
+- ~~**D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.**
+  The recording form and Record for a member set `maxLength` from
+  `MAX_UNIT_NUMBER_LENGTH` (`src/lib/units/unit-number.ts`). _Why:_ a unit the server
+  would refuse is never typed. Trade-offs: the constant copies `openapi.yaml`'s
+  `maxLength` by hand, and no test ties the two together. A paste past 32 characters is
+  cut without a word. This conflicts with D-74-8.~~ Superseded by D-119-26 (owner,
+  2026-11-03).
 - **D-119-24 · Fix round 2: a choice the server refuses "was not accepted".** "The
   member (block, interest level) was not accepted." replaces "No … is chosen." Refines
   D-119-16. _Why:_ a choice was sent, so saying none was chosen was false.
@@ -168,37 +170,66 @@ and a pop-up that tells a member or admin why a Save was refused.
   tapped, the sheet would otherwise show nothing about why. The visit forms already
   keep every server refusal in the line beside Save.
 
+### Units too long
+
+- **D-119-26 · A unit past 32 characters is refused with its reason, and nothing is cut
+  (owner, 2026-11-03).** Both unit fields lose `maxLength`. Save opens Not saved with
+  "The unit number is too long (32 characters at most).", and the recording form never
+  queues such a unit on the phone. Supersedes D-119-23; D-74-8 stands. Refines D-119-17.
+  _Why:_ D-74-8's reason, that truncation hides why input was cut, holds for every
+  field.
+- **D-119-27 · The length is judged on the unit as sent, once normalised**
+  (`unitNumberFault`, `src/lib/units/unit-number.ts`). Spaces around it do not count,
+  and the `#` that normalising adds does. _Why:_ the contract's `maxLength` applies to
+  what arrives, so the form refuses exactly what the server would.
+- **D-119-28 · A test holds `MAX_UNIT_NUMBER_LENGTH` to `openapi.yaml`.** It reads
+  `unitNumber.maxLength` from `CreateVisitRequest` and `VisitSyncItem`. _Why:_ the
+  copy now states the number, so a drift would tell members a false limit. Answers
+  D-119-23's untested-constant trade-off.
+- **D-119-29 · One wording, `UNIT_TOO_LONG` (`src/lib/not-saved.ts`), in the pop-up,
+  under the field and in the line beside Save.** _Why:_ one fault should read the same
+  wherever the member looks.
+- **D-119-30 · The recording form's line beside Save names each field's fault.** A blank
+  unit keeps "Enter the unit number" (D-111-26). A unit too long is named as such, with
+  "Choose an interest level." after it if that is missing too. Refines D-111-26. _Why:_
+  asking for a unit that was given would not say why the Save was refused.
+- **D-119-31 · Record for a member's line at the top of its form does the same.** For a
+  unit too long, it shows the pop-up's reasons in one line, instead of "Choose a member,
+  a block, a unit and an interest level." _Why:_ the same as D-119-30.
+- **D-119-32 · A unit error already showing follows the unit as it is typed.** It
+  switches between blank and too long, and clears once the unit is fine. An error not
+  yet shown waits for Save (or blur, for a blank unit). Refines D-111-26's "clear as
+  soon as the field is fixed". _Why:_ typing on past the limit does not fix the unit,
+  so the error stays, and says what is wrong now.
+- **D-119-33 · The iPhone 13 case of D-119-22 is deferred to #136 (owner, 2026-11-03).**
+  `e2e/large-text.spec.ts` checks the note's top edge after OK. That test is marked
+  `test.fail` on WebKit, naming #136, and the label is still checked on both phones.
+  Refines D-119-22. _Why:_ #136 owns the largest-text layout under the docked action.
+  Playwright fails a marked test that passes, so the mark cannot outlive a fix.
+  Trade-off: #136's criteria do not list this case yet, so #136 could close with the
+  mark still in place. _Research:_ R-101.
+
 ### How existing decisions are handled
 
-| Decision          | Effect                                                                      | By                 |
-| ----------------- | --------------------------------------------------------------------------- | ------------------ |
-| D-33-29, D-111-26 | Focus and scroll clauses superseded (owner), for a refusal the pop-up shows | D-119-15           |
-| D-90-9            | Partly superseded (owner): `returnFocus` wins where it is given             | D-119-15, D-119-22 |
-| D-12-5            | Refined (owner): a domain rule in its own service is not a defensive branch | D-119-3            |
-| D-111-69          | Refined: a refusal the pop-up shows scrolls to the field after OK           | D-119-15           |
-| D-90-2, D-111-31  | Refined: focus on open does not scroll; a sheet opens at its top            | D-119-21           |
-| D-10-3            | Refined: a name or contact of only spaces is not learnt                     | D-119-7            |
-| D-115-1           | Extended: `src/lib/not-saved.ts`                                            | D-119-18           |
-| D-74-8            | In conflict, open                                                           | D-119-23           |
+| Decision           | Effect                                                                      | By                 |
+| ------------------ | --------------------------------------------------------------------------- | ------------------ |
+| D-33-29, D-111-26  | Focus and scroll clauses superseded (owner), for a refusal the pop-up shows | D-119-15           |
+| D-90-9             | Partly superseded (owner): `returnFocus` wins where it is given             | D-119-15, D-119-22 |
+| D-12-5             | Refined (owner): a domain rule in its own service is not a defensive branch | D-119-3            |
+| D-111-69           | Refined: a refusal the pop-up shows scrolls to the field after OK           | D-119-15           |
+| D-90-2, D-90-3     | Refined: focus on open does not scroll                                      | D-119-21           |
+| D-111-13, D-111-31 | Refined: `Sheet` opens at its top                                           | D-119-21           |
+| D-111-26           | Refined: the line names a unit too long; a showing error follows typing     | D-119-30, D-119-32 |
+| D-10-3             | Refined: a name or contact of only spaces is not learnt                     | D-119-7            |
+| D-115-1            | Extended: `src/lib/not-saved.ts`                                            | D-119-18           |
+| D-74-8             | Upheld (owner, 2026-11-03): units are refused, never cut                    | D-119-26           |
 
 ## Relies on
 
 D-07-1, D-07-2, D-08-1, D-08-2, D-08-4, D-10-1, D-10-3, D-12-1, D-12-5, D-21-3, D-25-6,
-D-33-6, D-33-29, D-74-4, D-74-5, D-90-2, D-90-3, D-90-9, D-111-26, D-111-31, D-111-69,
-D-115-1, D-117-33.
+D-33-6, D-33-29, D-74-4, D-74-5, D-74-8, D-90-2, D-90-3, D-90-9, D-111-13, D-111-26,
+D-111-31, D-111-69, D-115-1, D-117-33.
 
 ## Open questions
 
-- **D-119-23 against D-74-8: may a text field silently stop at its limit?**
-  - D-74-8 says "A live 'N of 80' counter replaces a silent `maxLength`. _Why:_ a
-    browser that truncates input hides why a name was cut."
-  - D-119-23 puts a silent `maxLength` of 32 on both unit fields. It is the only
-    `maxLength` in the UI; names and notes count instead.
-
-  D-74-8 was written for names, but its reason applies to any field. If both stand, a
-  later task can cite either to undo the other. A unit pasted past 32 characters is cut
-  without a word. The unit picks the household, and amending never moves a visit to
-  another unit. Options:
-  - keep `maxLength` and narrow D-74-8 to names, since units are short codes
-  - drop it and let the server's "blank or too long" (D-119-16) say why
-  - give the unit a count, as names and notes have
+None.

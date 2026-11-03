@@ -160,7 +160,8 @@ Owner decisions are marked **(owner)**.
   a two-line message makes the bar taller until the next attempt. Focus stays where the
   disabled button dropped it (see known limits). _Extended by D-111-26:_ the same slot says why a Save was
   refused for validation. _Refined by D-119-13 (owner):_ a Save refused for a blank unit
-  number or note also opens a Not saved pop-up listing every reason; the line stays.
+  number or note, or a unit too long (D-119-26), also opens a Not saved pop-up listing
+  every reason; the line stays.
   _The struck clauses are superseded by D-119-15 (owner, 2026-11-03) for a refusal the
   pop-up shows:_ its OK moves focus to the field at fault and scrolls it into view. Every
   other failure still leaves focus where it is, with no scroll.

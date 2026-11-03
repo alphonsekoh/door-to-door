@@ -1,8 +1,8 @@
 # #90 · Make sheets and confirm dialogs real modals
 
 - **Status:** Done (PR #97); D-90-5, D-90-7, D-90-9 amended by #85; D-90-1 partly
-  superseded, D-90-7 to D-90-11 refined by #111; D-90-9 partly superseded, D-90-2
-  refined by #119
+  superseded, D-90-7 to D-90-11 refined by #111; D-90-9 partly superseded, D-90-2 and
+  D-90-3 refined by #119
 - **Phase:** 7 - Hardening
 - **Depends on:** #30, #35, #74
 
@@ -24,7 +24,8 @@ shared primitive fixes every one of them.
   keyboard into a field nobody tapped. _Refined by D-119-21:_ the panel or control is
   focused without a scroll, and a sheet opens at its top.
 - **D-90-3 · `ConfirmDialog` focuses "Keep as it is", never the destructive button.**
-  _Why:_ Enter on open must not take something away.
+  _Why:_ Enter on open must not take something away. _Refined by D-119-21:_ it is
+  focused without a scroll, and the dialog opens at its top.
 - **D-90-4 · Tab is moved by hand inside the panel and wraps at both ends; the backdrop
   button is outside the trap.** _Why:_ wrap does not depend on browser `inert` support,
   and a keyboard user closes with Escape or Cancel.
