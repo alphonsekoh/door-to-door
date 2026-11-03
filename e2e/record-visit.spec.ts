@@ -208,6 +208,29 @@ test.describe("typed before the page is live (#113)", () => {
     ).toBeVisible();
     await expect(unit).toHaveValue("#21-14");
   });
+
+  /* The browser gives a page loaded again from history what its form held.
+     The unit does not come back, so a level that did would be taken as
+     picked for whatever unit is typed next. */
+  test("a level left unsaved is not ticked again when the page comes back from history", async ({
+    memberPage,
+  }) => {
+    await memberPage.goto(`/blocks/${SEED_BLOCK}`);
+    await untilLive(memberPage);
+    await memberPage.getByLabel("Unit number").fill("#21-15");
+    const high = memberPage.getByRole("radio", { name: "High" });
+    await high.click();
+    await expect(high).toBeChecked();
+
+    /* Left by a full page load, as a sign-out or the offline page is, and
+       come back to with Back. */
+    await memberPage.goto("/history");
+    await memberPage.goBack();
+    await untilLive(memberPage);
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    await expect(memberPage.getByLabel("Unit number")).toHaveValue("");
+    await expect(memberPage.getByRole("radio", { checked: true })).toHaveCount(0);
+  });
 });
 
 test("what the member recorded is on their own history", async ({ memberPage }) => {

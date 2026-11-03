@@ -34,6 +34,17 @@ describe("InterestPicker", () => {
     expect(screen.getByRole("radio", { name: "High" })).not.toBeChecked();
   });
 
+  /* A page loaded again from history gets back what its form held, and a
+     level ticked that way is adopted as picked, with the unit it went with
+     gone (the unit field is off too). jsdom restores nothing; the browsers
+     honour this attribute. */
+  it("leaves no level for the browser to restore from history", () => {
+    render(<Picker />);
+    for (const radio of screen.getAllByRole("radio")) {
+      expect(radio).toHaveAttribute("autocomplete", "off");
+    }
+  });
+
   it("keeps a sheet's picker apart from the form's under it", async () => {
     const user = userEvent.setup();
     render(

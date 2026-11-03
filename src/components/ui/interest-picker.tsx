@@ -72,7 +72,10 @@ export function InterestPicker({
           {/* Over the tile inside its border, so a tap on it lands on the
               radio (one on the border reaches it through the label) and
               its focus ring goes round the tile. Not past the border: the
-              tile would then overflow its own box. */}
+              tile would then overflow its own box. Autocomplete off, as
+              on the unit field: a page loaded again from history came back
+              with the level ticked and the unit blank, and the level was
+              taken as picked for whatever unit came next. */}
           <input
             ref={index === 0 ? firstRef : undefined}
             type="radio"
@@ -82,6 +85,7 @@ export function InterestPicker({
             onChange={() => {
               onChange(option.value);
             }}
+            autoComplete="off"
             className={`absolute inset-0 appearance-none rounded-xl ${optionClassName}`}
           />
           {option.label}
