@@ -268,17 +268,27 @@ build: change a value, restart, no rebuild (D-75-1). Copy
 documented there. Unknown keys are errors, so a typo cannot silently fall back to a
 default (D-75-4).
 
-| Key                              | Default | Meaning                                                        |
-| -------------------------------- | ------- | -------------------------------------------------------------- |
-| `database.url`                   | -       | **Required.** Connection URL **without** username or password  |
-| `auth.trustHost`                 | `true`  | Trust the `Host` header from a reverse proxy                   |
-| `auth.google.clientId`           | unset   | Google client ID, reserved for Google sign-in (#14, not built) |
-| `rateLimit.signInAttempts`       | `10`    | Failed sign-in attempts per email within the window            |
-| `rateLimit.signInWindowSeconds`  | `300`   | Length of that window                                          |
-| `sync.clockSkewToleranceSeconds` | `300`   | Tolerated difference between a phone's clock and the server's  |
+| Key                                 | Default | Meaning                                                                               |
+| ----------------------------------- | ------- | ------------------------------------------------------------------------------------- |
+| `database.url`                      | -       | **Required.** Connection URL **without** username or password                         |
+| `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
+| `auth.google.clientId`              | unset   | Google client ID, reserved for Google sign-in (#14, not built)                        |
+| `rateLimit.signInAttempts`          | `10`    | Failed sign-in attempts per email within the window                                   |
+| `rateLimit.signInAttemptsPerClient` | `30`    | Failed sign-in attempts per client address within the window                          |
+| `rateLimit.signInAttemptsGlobal`    | unset   | Failed sign-in attempts app-wide: an incident switch, see below                       |
+| `rateLimit.signInWindowSeconds`     | `300`   | Length of that window                                                                 |
+| `rateLimit.trustedProxyHops`        | `0`     | Reverse proxies that append to `X-Forwarded-For`; `0` turns the per-client budget off |
+| `sync.clockSkewToleranceSeconds`    | `300`   | Tolerated difference between a phone's clock and the server's                         |
 
-Numbers must be whole and at least 1. `database.url` may carry only the `sslmode` and
-`application_name` query parameters; credentials in it are refused (D-75-3).
+Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
+`database.url` may carry only the `sslmode` and `application_name` query parameters;
+credentials in it are refused (D-75-3).
+
+`rateLimit.signInAttemptsGlobal` is an **incident switch**, off unless set. Once that many
+sign-ins have failed within the window, every new sign-in is refused, the correct password
+and admins included. Anyone can spend it, so setting it lets anyone block every new
+sign-in. Switch it on only during an attack and off afterwards; members already signed in
+stay signed in.
 
 ## Environment variables
 
@@ -519,6 +529,34 @@ docker run -p 3000:3000 \
   with that host, and refused with `403` if the server sees only the proxy's. Those
   members still sign in, but nothing they record ever sends. Caddy and Traefik pass it by
   default; nginx needs `proxy_set_header Host $host;` (or `X-Forwarded-Host $host`).
+- **`rateLimit.trustedProxyHops`:** set to the number of reverse proxies in front of the
+  app that append to `X-Forwarded-For`; leave `0` with none. The per-client sign-in budget
+  counts the entry that many places from the right, since anything further left the client
+  wrote itself; with `0` there is no per-client budget. Next only fills the header when it
+  is absent, so with no proxy every address in it is the client's to choose. **Get the
+  count right, and count every proxy that appends, the platform's load balancer
+  included.** Each wrong count fails differently:
+  - **Too low:** every client is keyed on a proxy's own address, so everyone shares one
+    bucket of `signInAttemptsPerClient` (30) that anyone can spend to block every new
+    sign-in. Nothing warns about this, because a proxy's address is a valid one.
+  - **Too high:** a client that sends its own `X-Forwarded-For` chooses its key, so it can
+    rotate past the per-client budget. Clients that send none get no usable entry.
+  - **A proxy that writes `ip:port` entries** (some do; Azure App Service is one reported
+    case) also leaves no usable entry.
+
+  With no usable entry, every sign-in lands in one unattributed bucket of 30 shared by
+  everyone, and the logs show the throttled warning
+  `Sign-in from no usable X-Forwarded-For entry`. After deploying, check the count
+  directly: in `X-Forwarded-For` as the app receives it (the innermost proxy's access log
+  shows it), the client's real address must be exactly `trustedProxyHops` places from
+  the right.
+
+- **Request bodies** are cut short at 2 MB (`experimental.proxyClientMaxBodySize` in
+  `next.config.ts`), on every path the proxy matches, which is all of `/api`. Next
+  truncates a longer body rather than refusing it: the handler reads only the first 2 MB,
+  which usually stops being valid JSON and gets a `400` (JSON padded at the end can still
+  parse), and Next logs a warning naming the route. Nothing answers `413`; an explicit
+  refusal is #126.
 - **Database connections:** one `pg` pool per process; changing `database.url` needs a
   restart. A dropped connection fails that request with a `500` and is replaced.
 - **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh

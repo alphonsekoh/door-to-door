@@ -59,6 +59,9 @@ and add Dependabot.
   the size of a team, because `POST /teams/{id}/members` still adds people one at a
   time. Why: the same memory exhaustion as D-118-5, reachable by any member. Conflicts
   with D-74-15.~~ The cap went in with `fc0859c` and came off in `e2dbb0c`.
+  _Exposure narrowed by D-120-7 (owner, 2026-11-03):_ Next now cuts every body at 2 MB
+  (`experimental.proxyClientMaxBodySize`). It truncates rather than refuses, so one
+  request still carries about 53k ids, past the `500` above. #126 is still open.
 - **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** npm has
   three groups: security, minor-and-patch, major. GitHub Actions has one. Version
   updates wait out a 7-day cooldown. PRs get a `chore` prefix and the existing

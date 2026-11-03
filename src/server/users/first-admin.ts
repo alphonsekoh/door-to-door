@@ -4,7 +4,7 @@ import { users } from "@/db/schema";
 import { zCreateUserRequest } from "@/generated/zod.gen";
 import { checkOwnName } from "@/lib/session/own-name";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
-import { assertPasswordAcceptable, hashPassword } from "@/server/password";
+import { MAX_PASSWORD_LENGTH, assertPasswordAcceptable, hashPassword } from "@/server/password";
 
 /*
  * Bootstraps the first admin of a fresh database (#105). There is no sign-up,
@@ -22,9 +22,6 @@ export class CreateAdminError extends Error {
 
 export const ADMIN_EXISTS_MESSAGE =
   "An admin already exists, so nothing was changed. Further admins are added in the app, on Admin > Team.";
-
-/* Matches CreateUserRequest.password.maxLength in the contract. */
-export const MAX_PASSWORD_LENGTH = 200;
 
 /* The same rules POST /users applies to an email and an initial password. */
 export function checkAdminEmail(raw: string): string {

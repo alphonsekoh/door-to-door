@@ -15,6 +15,9 @@ export class WeakPasswordError extends Error {
 
 export const MIN_PASSWORD_LENGTH = 8;
 
+/* Matches CreateUserRequest.password.maxLength in the contract. */
+export const MAX_PASSWORD_LENGTH = 200;
+
 export function assertPasswordAcceptable(password: string): void {
   if (password.length < MIN_PASSWORD_LENGTH) {
     throw new WeakPasswordError(

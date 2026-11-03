@@ -190,7 +190,10 @@ authoritative, and a change to any of them needs the owner.
 1. `src/proxy.ts` redirects page requests with no session to `/sign-in` and returns
    `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
    It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
-   return before `auth()` runs (D-32-19).
+   return before `auth()` runs (D-32-19). On every path it matches (all but static
+   files), Next buffers at most 2 MB of the body and hands the handler that much: a
+   longer body is cut short, not refused (`experimental.proxyClientMaxBodySize`,
+   D-120-7).
 2. The route handler is wrapped in `withContract(operation, handler)`. First, a write
    (not `GET`, `HEAD` or `OPTIONS`) another origin sent is `403 forbidden`: decided by
    `Sec-Fetch-Site`, else by `Origin` against `X-Forwarded-Host` or `Host`
@@ -200,7 +203,8 @@ authoritative, and a change to any of them needs the owner.
    This runs before any role check. Every request array but
    `CreateTeamRequest.memberIds` has a `maxItems`, so an oversized one is refused on its
    length before any item is parsed (D-118-5, R-91). `memberIds` is uncapped (D-74-15,
-   D-118-6), and no request body has a size limit yet (#126).
+   D-118-6); only step 1's 2 MB cut bounds it, and an explicit refusal of a large body is
+   #126.
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation from the database on every request (one
    primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
@@ -246,8 +250,16 @@ Auth.js v5, JWT strategy (forced: the Credentials provider cannot use database
 sessions). The token carries identity; its role and deactivation claims are UI hints and
 are never used for authorization, which reads the database per request (also for admin
 pages, with `admin/layout.tsx` as a structural guard). Credentials use argon2id
-(`@node-rs/argon2`) with a decoy hash for unknown emails and a per-email rate limit
-on failed attempts (a success clears it; a spent budget refuses even the right password).
+(`@node-rs/argon2`) with a decoy hash for unknown emails. An email or password longer
+than any account can hold is refused before anything else (D-120-1). Failed attempts are
+then counted in up to three in-memory budgets, charged in this order: app-wide (an
+incident switch, off unless `rateLimit.signInAttemptsGlobal` is set), per client (only
+when `rateLimit.trustedProxyHops` is at least 1), and per email. A spent budget refuses
+even the right password. A success clears the email's count, but gives back only its own
+attempt on the shared budgets (D-120-5, D-120-6, D-120-11). Limiter keys are HMAC
+digests, and a limiter holds only live windows, at most 100,000 of them (D-120-2 to
+D-120-4). The pieces are `rate-limit.ts`, `client-address.ts` and `sign-in-log.ts` in
+`src/server/auth/`.
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
 any admin exists (D-105-3).
 Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint

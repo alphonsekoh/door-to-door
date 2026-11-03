@@ -34,8 +34,43 @@ rateLimit:
   # successful sign-in clears the count. Whole number, at least 1. Default: 10.
   signInAttempts: 10
 
-  # Length of that window, in seconds. Whole number, at least 1. Default: 300.
+  # Failed sign-in attempts allowed per client address within the window,
+  # across every email it tries, so one client cannot try a common password
+  # against every account. A successful sign-in gives back only its own
+  # attempt. Counted only when trustedProxyHops is at least 1. Whole number, at
+  # least 1. Default: 30.
+  signInAttemptsPerClient: 30
+
+  # INCIDENT SWITCH, off by default (unset means no app-wide budget). Failed
+  # sign-in attempts allowed across the whole app within the window. Once it is
+  # spent, EVERY new sign-in is refused, the correct password and admins
+  # included, until the window passes. Anyone can spend it, so setting it lets
+  # anyone block every new sign-in. Set it only during an attack and remove it
+  # afterwards (each change needs a restart). Members already signed in stay
+  # signed in. Whole number, at least 1.
+  # signInAttemptsGlobal: 100
+
+  # Length of that window, in seconds, for all three budgets. Whole number, at
+  # least 1. Default: 300.
   signInWindowSeconds: 300
+
+  # How many reverse proxies in front of the app append to X-Forwarded-For.
+  # The client is the entry that many places from the right; anything further
+  # left the client may have written itself. Leave 0 with no proxy, or one you
+  # are not sure appends: 0 turns the per-client budget off. Whole number, at
+  # least 0. Default: 0.
+  #
+  # Get it right, and count every proxy that appends, the platform's load
+  # balancer included. Too LOW keys every client on a proxy's own address: one
+  # bucket of signInAttemptsPerClient shared by everyone, which anyone can spend
+  # to block every new sign-in, and nothing warns. Too HIGH lets a client that
+  # sends its own X-Forwarded-For choose its key; clients that send none, and
+  # proxies that write ip:port entries, leave no usable entry, so they share one
+  # unattributed bucket, and the logs show the throttled warning "Sign-in from
+  # no usable X-Forwarded-For entry". After deploying, check it directly: the
+  # client's real address must be exactly this many places from the right of
+  # X-Forwarded-For as the app receives it.
+  trustedProxyHops: 0
 
 sync:
   # How far a phone's clock may differ from the server's, in seconds, before
