@@ -1,4 +1,5 @@
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, APIResponse, Page } from "@playwright/test";
+import { securityHeaders } from "../src/server/http/security-headers";
 import { SEED_ADMIN, SEED_MEMBER, SEED_PASSWORD } from "./accounts";
 import { expect, test } from "./fixtures";
 
@@ -51,6 +52,43 @@ test.describe("signing in", () => {
   test("a signed-out visitor is sent to sign in", async ({ page }) => {
     await page.goto("/history");
     await expect(page).toHaveURL(/sign-in/);
+  });
+});
+
+test.describe("response headers", () => {
+  /* What the production build sends: the suite runs against it, not next dev. */
+  const expected = securityHeaders({ development: false });
+
+  const carriesThemAll = (response: APIResponse) => {
+    const headers = response.headers();
+    for (const { key, value } of expected) {
+      expect(headers[key.toLowerCase()], `${response.url()} ${key}`).toBe(value);
+    }
+    expect(headers["x-powered-by"], response.url()).toBeUndefined();
+  };
+
+  test("every response carries the security headers", async ({ request, adminApi }) => {
+    // Pages, the PWA paths the proxy skips, a static file, and the answers
+    // the proxy, withContract and Auth.js each write themselves.
+    for (const path of ["/sign-in", "/offline", "/serwist/sw.js", "/icon-192.png"]) {
+      const response = await request.get(path, { maxRedirects: 0 });
+      expect(response.status(), path).toBe(200);
+      carriesThemAll(response);
+    }
+
+    const signedOut = await request.get("/history", { maxRedirects: 0 });
+    expect(signedOut.status()).toBe(307);
+    carriesThemAll(signedOut);
+
+    for (const [response, status] of [
+      [await request.get("/api/blocks"), 401],
+      [await request.get("/api/auth/csrf"), 200],
+      [await adminApi.get("/api/blocks"), 200],
+    ] as const) {
+      expect(response.status(), response.url()).toBe(status);
+      expect(response.headers()["cache-control"], response.url()).toBe("no-store");
+      carriesThemAll(response);
+    }
   });
 });
 

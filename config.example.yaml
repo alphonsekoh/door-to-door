@@ -22,6 +22,15 @@ auth:
   # and its public URL is fixed with AUTH_URL. Default: true.
   trustHost: true
 
+  # Issue the session and CSRF cookies Secure, with the __Secure- and __Host-
+  # prefixes, whatever scheme the request arrived with. Keep it true for any
+  # deployment, so the cookies stay Secure even when the proxy forgets to send
+  # X-Forwarded-Proto: https. Set it false only for a plain-http run: Safari
+  # on localhost, or a phone on the LAN, will not keep a Secure cookie over
+  # http, so sign-in would say "Email or password is incorrect." even for the
+  # right password (MissingCSRF in the server log). Default: true.
+  secureCookies: true
+
   # Reserved for Google sign-in (#14), which is not built yet: setting it only
   # makes AUTH_GOOGLE_SECRET (or AUTH_GOOGLE_SECRET_FILE) required at startup.
   # The client ID is public; the secret never goes in this file.

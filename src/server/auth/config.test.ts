@@ -12,7 +12,7 @@ const { getConfig } = vi.hoisted(() => ({
   getConfig: vi.fn(() => ({
     databaseUrl: "postgresql://postgres:postgres@localhost:5432/nowhere",
     authSecret: "a-secret-that-is-long-enough-for-tests",
-    auth: { trustHost: false },
+    auth: { trustHost: false, secureCookies: false },
     rateLimit: {
       signInAttempts: 10,
       signInAttemptsPerClient: 30,
@@ -59,6 +59,11 @@ describe("settings from config", () => {
 
   it("honours auth.trustHost rather than always trusting the host header", () => {
     expect(config().trustHost).toBe(false);
+  });
+
+  it("takes the cookie flags from auth.secureCookies, not the request's scheme", () => {
+    // The proxy builds from the same base, so both name the cookies alike.
+    expect(config().useSecureCookies).toBe(false);
   });
 });
 

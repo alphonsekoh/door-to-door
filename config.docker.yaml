@@ -8,6 +8,8 @@ database:
 
 auth:
   trustHost: true
+  # Compose serves plain http, where a phone on the LAN drops a Secure cookie.
+  secureCookies: false
 
 rateLimit:
   signInAttempts: 10

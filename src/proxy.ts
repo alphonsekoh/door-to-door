@@ -49,7 +49,7 @@ const guard = auth((request) => {
   if (isApiPath(pathname)) {
     return NextResponse.json(
       { error: { code: "unauthenticated", message: "Sign in to continue." } },
-      { status: 401 },
+      { status: 401, headers: { "Cache-Control": "no-store" } },
     );
   }
 

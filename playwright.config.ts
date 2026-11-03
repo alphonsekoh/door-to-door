@@ -38,7 +38,11 @@ target.username = "";
 target.password = "";
 const CONFIG_PATH = resolve("e2e/.auth/config.yaml");
 mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-writeFileSync(CONFIG_PATH, stringify({ database: { url: target.toString() } }));
+/* The suite runs over plain http, where WebKit drops a Secure cookie. */
+writeFileSync(
+  CONFIG_PATH,
+  stringify({ database: { url: target.toString() }, auth: { secureCookies: false } }),
+);
 
 export default defineConfig({
   testDir: "./e2e",

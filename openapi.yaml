@@ -68,6 +68,13 @@ info:
     `application/json`; any other `Content-Type` is
     `415 unsupported_media_type`.
 
+    ## Caching
+
+    Every response, an error or an empty one included, carries
+    `Cache-Control: no-store`. Answers name households and members, so no shared
+    cache may keep them, and the phone's own HTTP cache must not still hold them
+    after sign-out.
+
 servers:
   - url: /api
     description: Same-origin API
@@ -98,10 +105,15 @@ components:
     sessionCookie:
       type: apiKey
       in: cookie
-      name: authjs.session-token
+      name: __Secure-authjs.session-token
       description: |
         Auth.js session cookie, set by Google SSO or credentials sign-in.
         Sessions are JWTs: the Credentials provider cannot use database sessions.
+
+        Always `Secure`, with the `__Secure-` prefix, whatever scheme the server
+        sees behind its TLS proxy. Only a server configured with
+        `auth.secureCookies: false` (a local plain-http run, the E2E suite) names
+        it `authjs.session-token`, without `Secure`.
 
   schemas:
     # ------------------------------------------------------------ enumerations

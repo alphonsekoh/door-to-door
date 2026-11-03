@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
  * making the proxy callable directly with a request whose auth state we set.
  */
 const { NextAuth, getConfig } = vi.hoisted(() => ({
-  getConfig: vi.fn(() => ({ authSecret: "s".repeat(40), auth: { trustHost: false } })),
+  getConfig: vi.fn(() => ({
+    authSecret: "s".repeat(40),
+    auth: { trustHost: false, secureCookies: true },
+  })),
   NextAuth: vi.fn((_config: unknown) => ({
     // The lazy form of NextAuth hands back a promise of the wrapped handler.
     auth: (handler: (request: unknown) => unknown) =>
@@ -82,6 +85,12 @@ describe("unauthenticated visitors", () => {
     const body = (await response.json()) as { error: { code: string } };
     expect(body.error.code).toBe("unauthenticated");
   });
+
+  it("marks that 401 no-store, like every other API answer", async () => {
+    const response = await proxy(request("/api/households"));
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
 });
 
 describe("authenticated visitors", () => {
@@ -108,6 +117,18 @@ describe("Auth.js configuration", () => {
     const factory = NextAuth.mock.calls[0]?.[0] as () => unknown;
     expect(factory()).toMatchObject({ secret: "s".repeat(40), trustHost: false });
   });
+
+  it.each([true, false])(
+    "names the session cookie as auth.secureCookies: %s says, so it finds the one sign-in set",
+    (secureCookies) => {
+      getConfig.mockReturnValueOnce({
+        authSecret: "s".repeat(40),
+        auth: { trustHost: false, secureCookies },
+      });
+      const factory = NextAuth.mock.calls[0]?.[0] as () => unknown;
+      expect(factory()).toMatchObject({ useSecureCookies: secureCookies });
+    },
+  );
 });
 
 describe("caching of signed-in pages", () => {

@@ -133,6 +133,12 @@ variables must be exported in every shell that runs the app or a `db:*` script (
 file covers only some commands; see [Environment variables](#environment-variables)).
 [`.env.example`](.env.example) lists them all and shows one way to keep them in a file.
 
+The sign-in cookies are always `Secure`. Chrome and Firefox keep them on `localhost`
+over plain http; Safari, or a phone opening the app on your LAN over http, drops them.
+Sign-in then says "Email or password is incorrect." even for the right password: the
+CSRF cookie never came back, so Auth.js refused the attempt (`MissingCSRF` in the
+server log). For such a run, set `auth.secureCookies: false` in `config.yaml`.
+
 ### Record your first visit
 
 The seed has two ended sessions and one draft, `Bedok · upcoming session`, with `Blk 456`
@@ -272,6 +278,7 @@ default (D-75-4).
 | ----------------------------------- | ------- | ------------------------------------------------------------------------------------- |
 | `database.url`                      | -       | **Required.** Connection URL **without** username or password                         |
 | `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
+| `auth.secureCookies`                | `true`  | Cookies `Secure` whatever the scheme; `false` for plain http                          |
 | `auth.google.clientId`              | unset   | Google client ID, reserved for Google sign-in (#14, not built)                        |
 | `rateLimit.signInAttempts`          | `10`    | Failed sign-in attempts per email within the window                                   |
 | `rateLimit.signInAttemptsPerClient` | `30`    | Failed sign-in attempts per client address within the window                          |
@@ -466,7 +473,8 @@ the PWA (the worker, offline fallback, caching and phone layout). Three offline-
 tests are skipped on WebKit because Playwright's WebKit offline emulation bypasses the
 service worker (D-32-18). The browser runs at UTC+14 and the server at UTC−12, so their
 dates always differ, and a spec fails on any hydration mismatch on a page it loads,
-attributes included (D-117-64).
+attributes included (D-117-64). It fails on any Content Security Policy violation too:
+the policy only reports for now (#146), so nothing else would notice one.
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.
@@ -521,8 +529,16 @@ docker run -p 3000:3000 \
   first. A blank note can be corrected or deleted on its own; one removed in the app still
   counts until it is. A block cannot be deleted while households or sessions use it.
 - **HTTPS** is required for the service worker and installing outside `localhost`. Behind
-  a reverse proxy keep `auth.trustHost: true`; if the app is exposed directly with
-  `trustHost: false`, set `AUTH_URL`.
+  a reverse proxy keep `auth.trustHost: true`, and have it send `X-Forwarded-Proto: https`;
+  if the app is exposed directly with `trustHost: false`, set `AUTH_URL`. The session
+  cookie is `Secure` (`__Secure-authjs.session-token`) whatever scheme the proxy forwards,
+  as long as `auth.secureCookies` stays `true`, its default; keep it so in any deployment.
+- **The app sends its own security headers.** Every response carries a Content Security
+  Policy (Report-Only for now, #146), HSTS (`max-age=63072000`, no `includeSubDomains`),
+  `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
+  `X-Frame-Options: DENY`; API responses are `Cache-Control: no-store`. A proxy should not
+  add a second CSP, since browsers enforce both and allow only what both allow, and an
+  HSTS it adds should match this one.
 - **The proxy must pass the public host:** forward the original `Host`, or set
   `X-Forwarded-Host` to it. A write from a browser that sends no `Sec-Fetch-Site` (Safari
   before 16.4, so iPhones on iOS 15 and 16.0 to 16.3) is checked by comparing its `Origin`
@@ -592,6 +608,7 @@ docker run -p 3000:3000 \
 | `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.        |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
+| "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.  |
 | Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).             |
 | A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
 | The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |

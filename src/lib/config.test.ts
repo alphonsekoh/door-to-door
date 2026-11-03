@@ -31,7 +31,7 @@ describe("parseConfig defaults", () => {
   it("accepts a file with only the database and fills in the rest", () => {
     expect(parseConfig(MINIMAL, SOURCE)).toEqual({
       database: { url: "postgresql://localhost:5432/door_to_door" },
-      auth: { trustHost: true },
+      auth: { trustHost: true, secureCookies: true },
       rateLimit: {
         signInAttempts: 10,
         signInAttemptsPerClient: 30,
@@ -51,6 +51,7 @@ describe("parseConfig defaults", () => {
     const config = parseConfig(
       `${MINIMAL}auth:
   trustHost: false
+  secureCookies: false
   google:
     clientId: abc.apps.googleusercontent.com
 rateLimit:
@@ -66,6 +67,7 @@ sync:
     );
     expect(config.auth).toEqual({
       trustHost: false,
+      secureCookies: false,
       google: { clientId: "abc.apps.googleusercontent.com" },
     });
     expect(config.rateLimit).toEqual({
@@ -144,6 +146,25 @@ describe("rateLimit.trustedProxyHops", () => {
   it.each(["-1", "1.5", '"1"', "true", "null"])("rejects %s", (value) => {
     expect(problemsOf(`${MINIMAL}rateLimit:\n  trustedProxyHops: ${value}\n`)).toEqual([
       expect.stringMatching(/^rateLimit\.trustedProxyHops: /),
+    ]);
+  });
+});
+
+describe("auth.secureCookies", () => {
+  it("defaults to true, so a deployment's cookies are Secure without saying so", () => {
+    // The scheme Auth.js sees behind a TLS proxy may be http.
+    expect(parseConfig(MINIMAL, SOURCE).auth.secureCookies).toBe(true);
+  });
+
+  it("can be turned off for a plain-http run", () => {
+    expect(
+      parseConfig(`${MINIMAL}auth:\n  secureCookies: false\n`, SOURCE).auth.secureCookies,
+    ).toBe(false);
+  });
+
+  it.each(['"false"', "0", "no-thanks", "null"])("refuses %s, naming the key", (value) => {
+    expect(problemsOf(`${MINIMAL}auth:\n  secureCookies: ${value}\n`)).toEqual([
+      expect.stringMatching(/^auth\.secureCookies: /),
     ]);
   });
 });
@@ -337,7 +358,7 @@ describe("resolveAuthSecrets", () => {
   const config = parseConfig(MINIMAL, SOURCE);
   const withGoogle: AppConfig = {
     ...config,
-    auth: { trustHost: true, google: { clientId: "id" } },
+    auth: { trustHost: true, secureCookies: true, google: { clientId: "id" } },
   };
   const noFile = () => "";
 

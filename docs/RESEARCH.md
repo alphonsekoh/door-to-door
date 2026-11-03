@@ -1160,3 +1160,95 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [Node.js, `net.isIP`](https://nodejs.org/api/net.html#netisipinput);
   measured with `node -e`
 - **Used by:** D-120-12
+
+### R-113 · Auth.js names its cookies after the scheme unless `useSecureCookies` is set
+
+- **Finding:** In @auth/core 0.41.3, the cookie names and `Secure` flag come from
+  `useSecureCookies ?? url.protocol === "https:"`. With the flag on, the names are
+  `__Secure-authjs.session-token` and `__Host-authjs.csrf-token`. A route handler's `url`
+  is the request's own URL, and under Next its scheme comes from `X-Forwarded-Proto`,
+  which is `http` when the proxy sends none (R-98). In next-auth 5.0.0-beta.32, the
+  proxy's session lookup (`getSession`) builds its URL with `createActionURL`, which
+  falls back to `https` when no `X-Forwarded-Proto` arrives. So with the flag unset,
+  the two can disagree on the cookie name. This is the builder's finding; a test in
+  `src/proxy-secure-cookies.test.ts` covers the fixed path.
+- **Source:** `node_modules/@auth/core/lib/init.js`, `lib/utils/cookie.js`
+  (`defaultCookies`), `lib/utils/env.js` (`createActionURL`);
+  `node_modules/next-auth/lib/index.js` (`getSession`)
+- **Used by:** D-122-12
+
+### R-114 · zod 4 probes `new Function` once per page unless it is jitless
+
+- **Finding:** In zod 4.6.7, `util.allowsEval` tries `new Function("")` when the first
+  object schema is built, and caches the result for the rest of that page. Each object
+  schema reads `jitless` when it is built, so the setting must come before any schema.
+  zod catches the throw, but a CSP without `'unsafe-eval'` still reports the attempt.
+  zod's own comment says so. `config({ jitless: true })` skips the probe. Next runs
+  `instrumentation-client.ts` before the app becomes interactive.
+- **Source:** `node_modules/zod/v4/core/util.js` (`allowsEval`),
+  `node_modules/zod/v4/core/schemas.js` (object schema);
+  `node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/instrumentation-client.md`
+- **Used by:** D-122-7
+
+### R-115 · Chromium and WebKit report different violations under Report-Only (measured)
+
+- **Finding:** With zod's JIT left on, Playwright Chromium (Pixel 5) fired a
+  `securitypolicyviolation` for `script-src` eval under Report-Only, and 7 of 7 page
+  tests failed. Playwright WebKit (iPhone 13) fired none for eval under Report-Only. It
+  did fire for an off-site image, a fetch and an `<object>`. Under the enforced header,
+  both engines block eval and report it. WebKit logs on every page that a report-only
+  policy without `report-to` "will have no effect", yet it still fires the events.
+- **Source:** measured by #122's verifier (rounds 0 and 1) and builder, local
+  production build
+- **Used by:** D-122-3, D-122-7, D-122-8
+
+### R-116 · Which `Clear-Site-Data` type clears what
+
+- **Finding:** Per the spec, `"cache"` removes the origin's locally cached data. That
+  means the HTTP cache, and possibly others such as the bfcache. `"storage"` covers
+  localStorage, sessionStorage, IndexedDB, service worker registrations and Cache
+  Storage. The header is honoured only in a secure context, which includes `localhost`
+  and `127.0.0.1`. Measured by #122's verifier, against a real server on both
+  Playwright engines: `"storage"` wiped IndexedDB, Cache Storage and localStorage, and
+  `"cache"` left all three alone. A `route.fulfill` response does not trigger the header
+  in either engine. Not measured: whether either engine actually empties its HTTP cache
+  or bfcache on `"cache"`, and the same result on a real iPhone.
+- **Source:** [W3C Clear Site Data](https://w3c.github.io/webappsec-clear-site-data/);
+  [MDN, Clear-Site-Data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data);
+  measured (#122 verifier, round 1)
+- **Used by:** D-122-10
+
+### R-117 · What a Report-Only CSP cannot do, and how policies combine
+
+- **Finding:** A `Content-Security-Policy-Report-Only` policy blocks nothing, and that
+  includes `frame-ancestors`. `upgrade-insecure-requests` is ignored in a report-only
+  policy. When a response carries several policies, each one is enforced, so a request
+  must pass all of them. A second CSP added by a proxy can only narrow the app's. A
+  dedicated worker or service worker takes its policy from its own script's response,
+  and its violations fire in the worker's global scope, not in any document.
+- **Source:** [W3C CSP Level 3](https://www.w3.org/TR/CSP3/) (report-only, multiple
+  policies, worker policy);
+  [W3C Upgrade Insecure Requests](https://www.w3.org/TR/upgrade-insecure-requests/)
+- **Used by:** D-122-3, D-122-4, D-122-8
+
+### R-118 · HSTS is ignored over http, and `includeSubDomains` covers every subdomain
+
+- **Finding:** A browser must ignore `Strict-Transport-Security` that arrives over an
+  insecure transport. `includeSubDomains` applies the rule to every subdomain of the
+  host that sent it, for the whole `max-age`. Preload lists require `includeSubDomains`.
+- **Source:** [RFC 6797](https://www.rfc-editor.org/rfc/rfc6797) §6.1.2, §8.1;
+  [hstspreload.org](https://hstspreload.org/)
+- **Used by:** D-122-5
+
+### R-119 · What `next.config` `headers()` reaches (measured)
+
+- **Finding:** In Next 16.4.3, `headers()` is evaluated at `next build` and written to
+  `.next/routes-manifest.json`. Measured on the standalone build, its headers reach
+  pages, static files, route handlers, the PWA paths, and the `401` and `307` the proxy
+  writes. Next's own trailing-slash `308` carries none of them. Next's automatic
+  `OPTIONS` `204` and its `405` for a method a route does not export
+  (`new Response(null, { status })`) carry them, but get no `Cache-Control`.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/headers.md`;
+  `node_modules/next/dist/server/route-modules/app-route/helpers/auto-implement-methods.js`;
+  measured with curl (#122 verifier, rounds 0 and 1)
+- **Used by:** D-122-1, D-122-9, D-122-13
