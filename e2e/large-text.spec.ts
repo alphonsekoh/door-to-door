@@ -143,8 +143,11 @@ function layoutFaults(page: Page): Promise<string[]> {
         if (rows.size > 1) faults.push(`unit ${name(parent)} breaks across lines`);
       }
       const here = layer(parent);
+      /* An interest level's radio is laid over its own label's words. */
+      const ownLabel = parent.closest("label");
       for (const control of controls) {
         if (control.contains(parent) || layer(control) !== here) continue;
+        if (ownLabel?.contains(control) === true) continue;
         const box = control.getBoundingClientRect();
         const over = lines.some(
           (line) =>

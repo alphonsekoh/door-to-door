@@ -482,8 +482,9 @@
 
   /* Not filter: a press's brightness comes back at once. Easing it back
      crashed the compositor thread of WPE WebKit, the Linux WebKit the E2E
-     suite runs, in nearly every CI run, mostly on a tap that moves on. */
-  :where(a[href], button, summary, [role="button"]) {
+     suite runs, in nearly every CI run, mostly on a tap that moves on. An
+     interest level's tile is the label round its radio. */
+  :where(a[href], button, summary, [role="button"], label:has(> input[type="radio"])) {
     transition-property: opacity, transform;
     transition-duration: var(--press-release);
     transition-timing-function: var(--ease-out-soft);

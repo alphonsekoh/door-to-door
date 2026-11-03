@@ -59,7 +59,7 @@ export function RecordOnBehalfForm({
   const memberField = useRef<HTMLSelectElement>(null);
   const blockField = useRef<HTMLSelectElement>(null);
   const unitField = useRef<HTMLInputElement>(null);
-  const firstInterest = useRef<HTMLButtonElement>(null);
+  const firstInterest = useRef<HTMLInputElement>(null);
   const fieldRefs: Partial<Record<NotSavedField, RefObject<HTMLElement | null>>> = {
     memberId: memberField,
     blockId: blockField,

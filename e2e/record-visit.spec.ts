@@ -160,6 +160,56 @@ test("Save is on the first paint, above the nav, before any script has run", asy
   }
 });
 
+test.describe("typed before the page is live (#113)", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  test("keeps the unit and the interest level, and Save then saves them", async ({
+    memberPage,
+  }) => {
+    const EARLY_UNIT = "#21-13";
+    /* Weak signal: the server's HTML is up, and typed into, well before
+       its scripts arrive. Styles still load, so it is drawn as it will be. */
+    let arrive: () => void = () => undefined;
+    const scripts = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    await memberPage.route(/\/_next\/static\/chunks\/[^?]*\.js(\?|$)/, async (route) => {
+      await scripts;
+      await route.continue();
+    });
+    await memberPage.goto(`/blocks/${SEED_BLOCK}`, { waitUntil: "commit" });
+
+    const unit = memberPage.getByLabel("Unit number");
+    await unit.fill(EARLY_UNIT);
+    /* Go on the keyboard: with no script, the form once submitted itself
+       and reloaded the page, emptying the field. */
+    await unit.press("Enter");
+    const high = memberPage.getByRole("radio", { name: "High" });
+    await high.click();
+    await expect(high).toBeChecked();
+    /* The stand-in Save: tapped before the page is live, it saves nothing. */
+    await memberPage.getByRole("button", { name: "Save", exact: true }).click();
+
+    arrive();
+    await untilLive(memberPage);
+    /* Once the session is known the form has drawn again, which is when
+       a field holding only the server's state lost what was typed. */
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    await expect(unit).toHaveValue(EARLY_UNIT);
+    await expect(high).toBeChecked();
+    /* Nothing claims the unit was left out (#119). */
+    await expect(memberPage.getByRole("alertdialog", { name: "Not saved" })).toHaveCount(0);
+    await expect(memberPage.getByRole("alert").filter({ hasText: "Not saved" })).toHaveCount(0);
+
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+    await expect(
+      memberPage.getByRole("status").filter({ hasText: `Saved ${EARLY_UNIT}` }),
+    ).toBeVisible();
+    await expect(unit).toHaveValue("#21-14");
+  });
+});
+
 test("what the member recorded is on their own history", async ({ memberPage }) => {
   await memberPage.goto("/history");
 
@@ -489,17 +539,19 @@ test.describe("the phone's display settings", () => {
       );
       expect(titleFits, "the title is squeezed").toBe(true);
 
-      // Interest levels wrap onto rows; no label spills out of its button.
+      // Interest levels wrap onto rows; no label spills out of its tile, the
+      // label round each radio.
       const levels = memberPage.getByRole("radio");
-      const boxes = await levels.evaluateAll((buttons) =>
-        buttons.map((button) => {
-          const box = button.getBoundingClientRect();
+      const boxes = await levels.evaluateAll((radios) =>
+        radios.map((radio) => {
+          const box = radio.getBoundingClientRect();
+          const tile = radio.closest("label") ?? radio;
           return {
             top: box.top,
             bottom: box.bottom,
             left: box.left,
             right: box.right,
-            fits: button.scrollWidth <= button.clientWidth,
+            fits: tile.scrollWidth <= tile.clientWidth,
           };
         }),
       );
@@ -508,7 +560,7 @@ test.describe("the phone's display settings", () => {
         for (const b of boxes.slice(i + 1)) {
           const apart =
             a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
-          expect(apart, "two interest buttons overlap").toBe(true);
+          expect(apart, "two interest levels overlap").toBe(true);
         }
       }
 
