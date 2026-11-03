@@ -102,6 +102,34 @@ describe("isCrossOriginWrite: Origin, when there is no Sec-Fetch-Site", () => {
     );
   });
 
+  describe("a default port in the Host", () => {
+    // The Origin never names its scheme's default port, but a proxy that
+    // forwards `$host:$server_port` does.
+    it.each([
+      ["https://example.org", "host", "example.org:443"],
+      ["http://example.org", "host", "example.org:80"],
+      ["https://example.org", "x-forwarded-host", "example.org:443, proxy.internal"],
+      ["http://example.org", "x-forwarded-host", "example.org:80"],
+      ["https://example.org", "host", "EXAMPLE.org:443"],
+      ["https://Example.ORG", "x-forwarded-host", "example.ORG:443"],
+      ["https://example.org:8443", "host", "example.org:8443"],
+    ])("lets %s through when %s is %s", (origin, header, value) => {
+      expect(refused("POST", { origin, host: "app:3000", [header]: value })).toBe(false);
+    });
+
+    it.each([
+      // Only the Origin's own scheme's default is dropped.
+      ["https://example.org", "example.org:80"],
+      ["http://example.org", "example.org:443"],
+      // Any other port has to match exactly.
+      ["https://example.org", "example.org:8443"],
+      ["https://example.org:8443", "example.org:443"],
+      ["https://example.org:8443", "example.org"],
+    ])("refuses %s when Host is %s", (origin, host) => {
+      expect(refused("POST", { origin, host })).toBe(true);
+    });
+  });
+
   it("compares hosts case-insensitively", () => {
     expect(refused("POST", { origin: "https://App.Example.org", host: "APP.example.ORG" })).toBe(
       false,

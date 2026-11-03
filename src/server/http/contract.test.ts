@@ -131,6 +131,21 @@ describe("requests from another origin, and bodies that are not JSON (#121)", ()
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("accepts a write whose Origin matches a forwarded host with its default port", async () => {
+    // Safari before 16.4 sends no Sec-Fetch-Site, and this proxy forwards `$host:443`.
+    const response = await route(
+      send(valid, {
+        "content-type": "application/json",
+        origin: "https://app.example.org",
+        "x-forwarded-host": "app.example.org:443",
+        host: "app:3000",
+      }),
+      params(),
+    );
+    expect(response.status).toBe(201);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
   it("still answers a cross-site read", async () => {
     const read = withContract({ operationId: "getWidget", responses: { 200: zWidget } }, () =>
       Promise.resolve({ status: 200, body: widget }),

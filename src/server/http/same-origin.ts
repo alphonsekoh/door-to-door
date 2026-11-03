@@ -24,18 +24,33 @@ function ownHosts(headers: Headers): string[] {
   );
 }
 
-function originHost(origin: string): string | null {
+/* URL drops a default port from the Origin, but a proxy may still forward it
+   (`X-Forwarded-Host: app.example.org:443`). Only the Origin's own scheme's
+   default goes, so `:80` never stands in for an https page. */
+const DEFAULT_PORTS = new Map([
+  ["https:", ":443"],
+  ["http:", ":80"],
+]);
+
+function withoutDefaultPort(host: string, protocol: string): string {
+  const port = DEFAULT_PORTS.get(protocol);
+  return port !== undefined && host.endsWith(port) ? host.slice(0, -port.length) : host;
+}
+
+function isOwnOrigin(origin: string, headers: Headers): boolean {
+  let url: URL;
   try {
-    return new URL(origin).host;
+    url = new URL(origin);
   } catch {
-    return null;
+    return false;
   }
+  return ownHosts(headers).some((host) => withoutDefaultPort(host, url.protocol) === url.host);
 }
 
 export function isCrossOriginWrite(method: string, headers: Headers): boolean {
   if (SAFE_METHODS.has(method.toUpperCase())) return false;
 
-  // Only a browser can set it, so when present it decides alone (D-121-2).
+  // A page's script can neither set nor change it, so when present it decides alone (D-121-2).
   const site = headers.get("sec-fetch-site");
   if (site !== null && site !== "") return !TRUSTED_FETCH_SITES.has(site);
 
@@ -43,8 +58,7 @@ export function isCrossOriginWrite(method: string, headers: Headers): boolean {
   const origin = headers.get("origin");
   if (origin === null) return false;
 
-  const host = originHost(origin);
-  return host === null || !ownHosts(headers).includes(host);
+  return !isOwnOrigin(origin, headers);
 }
 
 /* The essence of the media type, so `application/json; charset=utf-8` passes
