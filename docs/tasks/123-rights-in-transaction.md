@@ -24,7 +24,7 @@ in a block no longer attached. Found by a security audit.
   the amend waits is seen, a failure between the UPDATEs changes nothing, and it is
   sync's order, so the two never deadlock. _Research:_ R-35, R-82.
 - **D-123-2 · The amended visit is locked `FOR NO KEY UPDATE`, on PATCH and sync
-  (awaiting the owner).** Departs from the issue's `FOR UPDATE` and refines D-74-31's
+  (owner).** Departs from the issue's `FOR UPDATE` and refines D-74-31's
   lock mode. _Why:_ with `FOR UPDATE`, disbanding a team deadlocks against an amend of
   one of its records (measured: `deadlock detected`, the disband a `500`). With
   `NO KEY UPDATE`, the disband's foreign-key check does not wait, so it is refused
