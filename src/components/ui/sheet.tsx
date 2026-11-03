@@ -13,6 +13,7 @@ import {
 import * as m from "motion/react-m";
 import {
   Fragment,
+  useEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -129,6 +130,13 @@ export function Sheet({
   const present = useIsPresent();
   const reduce = useReducedMotion() === true;
   const { overlay, panel } = useModal(onClose, initialFocus, present, returnFocus);
+  const body = useRef<HTMLDivElement>(null);
+  /* Opens at its top, after the modal has focused it. Focus on an alert's
+     OK, at its foot, scrolls the body down to it, and at large text a tall
+     one opened with its heading cut away. */
+  useEffect(() => {
+    if (body.current !== null) body.current.scrollTop = 0;
+  }, []);
   /* Px while dragged; the percentage it rises from while it opens. */
   const y = useMotionValue<number | string>(0);
   const gesture = useRef<Gesture | null>(null);
@@ -311,6 +319,7 @@ export function Sheet({
               the sticky Save: WebKit leaves one that is partly visible where
               it is, half under the header, with the keyboard up. */}
           <div
+            ref={body}
             onFocus={(event) => {
               event.target.scrollIntoView({ block: "nearest" });
             }}

@@ -14,7 +14,7 @@ import {
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
-import { normaliseUnitNumber } from "@/lib/units/unit-number";
+import { MAX_UNIT_NUMBER_LENGTH, normaliseUnitNumber } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
 
 /* In the order the form shows them. */
@@ -197,6 +197,7 @@ export function RecordOnBehalfForm({
               onChange={(event) => {
                 setUnitNumber(event.target.value);
               }}
+              maxLength={MAX_UNIT_NUMBER_LENGTH}
               placeholder="#05-123"
               autoComplete="off"
               className="min-h-12 field"

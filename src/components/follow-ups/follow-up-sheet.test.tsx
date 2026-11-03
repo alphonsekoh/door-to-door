@@ -717,6 +717,8 @@ describe("the Not saved pop-up (#119)", () => {
     await user.click(notSaved().getByRole("button", { name: "OK" }));
     expect(sheet().getByLabelText(WHY)).toHaveAttribute("aria-invalid", "false");
     expect(sheet().getByRole("button", { name: "Send suggestion" })).toHaveFocus();
+    // Nothing on the sheet marks the due date, so the banner still says why.
+    expect(sheet().getByRole("alert")).toHaveTextContent("Not saved. Invalid ISO datetime");
   });
 });
 

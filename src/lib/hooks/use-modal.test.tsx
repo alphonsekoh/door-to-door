@@ -108,6 +108,14 @@ describe("useModal", () => {
     expect(screen.getByRole("button", { name: "Sheet second" })).toHaveFocus();
   });
 
+  it("opens without scrolling to the control it focuses, so it opens at its top", () => {
+    const focused = vi.spyOn(HTMLElement.prototype, "focus");
+    render(<Sheet label="Sheet" onClose={vi.fn()} focusSecond />);
+    expect(focused.mock.contexts).toEqual([screen.getByRole("button", { name: "Sheet second" })]);
+    expect(focused).toHaveBeenCalledWith({ preventScroll: true });
+    focused.mockRestore();
+  });
+
   it("cycles Tab through the dialog's enabled controls and wraps at both ends", async () => {
     const user = userEvent.setup();
     render(<Sheet label="Sheet" onClose={vi.fn()} />);
@@ -341,6 +349,117 @@ describe("useModal", () => {
 
       await user.keyboard("{Escape}");
       expect(screen.getByRole("button", { name: "Save" })).toHaveFocus();
+    });
+
+    describe("with its label", () => {
+      type Kind = "input" | "textarea" | "select" | "radio";
+
+      /* The field a dialog is about, under a <label> of its own, except for
+         a radio, which is named by its group. */
+      function Labelled({ kind }: { kind: Kind }) {
+        const field = useRef<HTMLElement | null>(null);
+        const [open, setOpen] = useState(false);
+        const attach = (element: HTMLElement | null) => {
+          field.current = element;
+        };
+        return (
+          <>
+            <main>
+              <label htmlFor="unit">Unit number</label>
+              {kind === "input" ? (
+                <input id="unit" ref={attach} />
+              ) : kind === "textarea" ? (
+                <textarea id="unit" ref={attach} />
+              ) : kind === "select" ? (
+                <select id="unit" ref={attach}>
+                  <option>One</option>
+                </select>
+              ) : (
+                <button ref={attach} type="button" role="radio" aria-checked="false">
+                  No response
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(true);
+                }}
+              >
+                Save
+              </button>
+            </main>
+            {open ? (
+              <Named
+                returnFocus={field}
+                onClose={() => {
+                  setOpen(false);
+                }}
+              />
+            ) : null}
+          </>
+        );
+      }
+
+      /*
+       * Lays the label out as a browser would, `from` px down the room it
+       * scrolls in, and has a scroll move it as one does: `nearest` only
+       * when part of it is out of the room, and `start` to the top of it.
+       * Answers with every scroll made, on what and how.
+       */
+      function layOut(from: number) {
+        const label = screen.getByText("Unit number");
+        let top = from;
+        vi.spyOn(label, "getBoundingClientRect").mockImplementation(() =>
+          DOMRect.fromRect({ y: top, width: 200, height: 24 }),
+        );
+        const scrolls: string[] = [];
+        vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (
+          this: Element,
+          options?: boolean | ScrollIntoViewOptions,
+        ) {
+          const block = typeof options === "object" ? options.block : undefined;
+          const what = this === label ? "label" : "field";
+          scrolls.push(`${what} ${String(block)}`);
+          if (this !== label) return;
+          if (block === "start" || top < 0) top = 0;
+        });
+        return scrolls;
+      }
+
+      async function sendFocusBack(kind: Kind, from: number) {
+        const user = userEvent.setup();
+        render(<Labelled kind={kind} />);
+        await user.click(screen.getByRole("button", { name: "Save" }));
+        const scrolls = layOut(from);
+        await user.keyboard("{Escape}");
+        return scrolls;
+      }
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      it.each(["input", "textarea", "select"] as const)(
+        "puts the label of a %s cut off at the top at the top, with the field under it",
+        async (kind) => {
+          const scrolls = await sendFocusBack(kind, -12);
+          expect(screen.getByLabelText("Unit number")).toHaveFocus();
+          expect(scrolls).toEqual(["field nearest", "label nearest", "label start"]);
+          expect(screen.getByText("Unit number").getBoundingClientRect().top).toBe(0);
+        },
+      );
+
+      it("leaves a label already in view where it is", async () => {
+        const scrolls = await sendFocusBack("input", 80);
+        expect(scrolls).toEqual(["field nearest", "label nearest"]);
+        expect(screen.getByText("Unit number").getBoundingClientRect().top).toBe(80);
+      });
+
+      it("brings only the field into view when it has no label of its own", async () => {
+        const scrolls = await sendFocusBack("radio", -12);
+        expect(screen.getByRole("radio", { name: "No response" })).toHaveFocus();
+        expect(scrolls).toEqual(["field nearest"]);
+      });
     });
   });
 

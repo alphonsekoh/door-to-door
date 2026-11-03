@@ -1092,6 +1092,13 @@ describe("the Not saved pop-up (#119)", () => {
   };
   const save = () => screen.getByRole("button", { name: "Save and next" });
 
+  it("stops a unit at the contract's 32 characters, so one the server would refuse is never typed", async () => {
+    const user = renderForm();
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#".padEnd(40, "1"));
+    expect(unit).toHaveValue("#".padEnd(32, "1"));
+  });
+
   it("lists every reason refused at once, and OK goes back to the unit", async () => {
     const user = renderForm();
     await user.type(screen.getByLabelText("Unit number"), "   ");
@@ -1215,8 +1222,14 @@ describe("the Not saved pop-up (#119)", () => {
     await user.click(screen.getByRole("radio", { name: "High" }));
     await user.click(save());
 
-    expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toHaveTextContent(
-      "No interest level is chosen.",
+    // One was chosen, so the refusal does not say none was.
+    expect(
+      within(await screen.findByRole("alertdialog", { name: "Not saved" }))
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The interest level was not accepted."]);
+    expect(screen.getByRole("radiogroup", { name: "Interest level" })).toHaveAccessibleDescription(
+      "The interest level was not accepted.",
     );
     await user.click(notSaved().getByRole("button", { name: "OK" }));
     expect(screen.getByRole("radio", { name: "No response" })).toHaveFocus();

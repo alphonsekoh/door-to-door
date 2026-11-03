@@ -29,13 +29,16 @@ export const REASONS: Record<NotSavedField, string> = {
 const BLANK_TEXT: readonly NotSavedField[] = ["unitNumber", "note"];
 
 /*
- * The server refuses these for more than being blank (a unit past 32
- * characters, say), and the forms send them trimmed, so its refusal names the
- * rule rather than claim the field was empty.
+ * What the server's refusal of each field says. The forms send text trimmed,
+ * and the server refuses it for more than being blank (a unit past 32
+ * characters, say), so it names the rule rather than claim the field was
+ * empty. A choice it refuses was made, so it is not called missing.
  */
 const REFUSED_BY_SERVER: Record<NotSavedField, string> = {
-  ...REASONS,
+  memberId: "The member was not accepted.",
+  blockId: "The block was not accepted.",
   unitNumber: "The unit number is blank or too long.",
+  interestLevel: "The interest level was not accepted.",
   note: "The note is blank or too long.",
 };
 

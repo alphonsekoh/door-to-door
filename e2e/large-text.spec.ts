@@ -498,6 +498,57 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
   await expectFits(page, "Team", page.getByRole("button", { name: "Make an admin" }).first());
 });
 
+/*
+ * Not saved at the largest text (D-119-13 to D-119-15). With three reasons it
+ * is taller than the screen, and focus on OK had opened it scrolled to its
+ * foot, the heading half cut away. OK then sends focus to the field at
+ * fault, which a sheet's tall note had brought back with its foot on the
+ * docked Send and its label and top under the sheet's header. Its label now
+ * comes first, whole, with the field under it. On an iPhone 13 the room
+ * between the header and Send is shorter than that label and its count, so
+ * the field itself starts under Send there; on a Pixel 5 its top edge shows.
+ */
+test("Not saved opens at its top, and OK brings the field back below its label", async ({
+  memberPage,
+  adminPage,
+}) => {
+  await memberPage.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+  await atCap(memberPage);
+  await memberPage.getByRole("button", { name: "Suggest a return visit" }).first().click();
+  const sheet = memberPage.getByRole("dialog", { name: /^Suggest a return visit/ });
+  const note = sheet.getByRole("textbox", { name: "Why should we go back?" });
+  await note.fill("   ");
+  await sheet.getByRole("button", { name: "Send suggestion" }).click();
+  const blank = memberPage.getByRole("alertdialog", { name: "Not saved" });
+  await blank.getByRole("button", { name: "OK" }).click();
+  await expect(blank).toBeHidden();
+  await expect(note).toBeFocused();
+  await expectInView(
+    sheet.getByText("Why should we go back?", { exact: true }),
+    "the note's label after OK",
+  );
+
+  await adminPage.goto("/admin/records");
+  await atCap(adminPage);
+  await adminPage.getByRole("button", { name: "Record for a member" }).click();
+  const record = adminPage.getByRole("dialog", { name: "Record on behalf of a member" });
+  await record.getByRole("button", { name: "Save the record" }).click();
+  const refused = adminPage.getByRole("alertdialog", { name: "Not saved" });
+  await expect(refused.getByRole("listitem")).toHaveCount(3);
+  const ok = refused.getByRole("button", { name: "OK" });
+  await expect(ok).toBeFocused();
+  await expectInView(
+    refused.getByText("Not saved", { exact: true }),
+    "the pop-up's heading as it opens",
+  );
+  await ok.click();
+  await expect(record.getByLabel("Recorded by")).toBeFocused();
+  await expectInView(
+    record.getByText("Recorded by", { exact: true }),
+    "the member's label after OK",
+  );
+});
+
 /* From the default to the cap: the iOS sizes past Large (21px, 23px), and
    either side of where each phone turns compact (about 25px on an iPhone
    13, 27px on a Pixel 5). */

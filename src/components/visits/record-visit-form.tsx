@@ -60,7 +60,11 @@ import {
   within,
 } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
-import { normaliseUnitNumber, nextUnitNumber } from "@/lib/units/unit-number";
+import {
+  MAX_UNIT_NUMBER_LENGTH,
+  nextUnitNumber,
+  normaliseUnitNumber,
+} from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const RELIGIONS: { value: Religion; label: string }[] = [
@@ -647,7 +651,12 @@ export function RecordVisitForm({
       ) : null}
 
       <div>
-        <label htmlFor="unitNumber" className="mb-1 block text-body font-medium">
+        {/* Brought into view with the field after a refused Save (D-119-15),
+            so it too must clear the pinned sync row. */}
+        <label
+          htmlFor="unitNumber"
+          className="mb-1 block scroll-clear-chrome text-body font-medium"
+        >
           Unit number
         </label>
         <input
@@ -668,6 +677,7 @@ export function RecordVisitForm({
             }
           }}
           inputMode="text"
+          maxLength={MAX_UNIT_NUMBER_LENGTH}
           autoComplete="off"
           placeholder="#05-123"
           aria-invalid={errors.unitNumber !== undefined}

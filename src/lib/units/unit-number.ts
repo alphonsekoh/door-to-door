@@ -8,6 +8,10 @@
 
 const DIGITS = /^\d+$/;
 
+/* The contract's unitNumber.maxLength: a form stops the typing there, rather
+   than send a unit the server will refuse. */
+export const MAX_UNIT_NUMBER_LENGTH = 32;
+
 export type ParsedUnit = { floor: string; unit: string; unitWidth: number };
 
 /*

@@ -186,6 +186,13 @@ describe("RecordOnBehalfForm", () => {
       expect(apiFetch).not.toHaveBeenCalled();
     });
 
+    it("stops a unit at the contract's 32 characters, so one the server would refuse is never typed", async () => {
+      const user = renderForm();
+      const unit = screen.getByLabelText("Unit number");
+      await user.type(unit, "#".padEnd(40, "1"));
+      expect(unit).toHaveValue("#".padEnd(32, "1"));
+    });
+
     it("goes back to the unit when that is all that is wrong", async () => {
       const user = renderForm();
       await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
@@ -234,11 +241,12 @@ describe("RecordOnBehalfForm", () => {
       await user.click(screen.getByRole("button", { name: "Save the record" }));
 
       expect(await screen.findByRole("alertdialog", { name: "Not saved" })).toBeInTheDocument();
-      expect(reasons()).toEqual(["No interest level is chosen."]);
+      // One was chosen, so the refusal does not say none was.
+      expect(reasons()).toEqual(["The interest level was not accepted."]);
       await user.click(notSaved().getByRole("button", { name: "OK" }));
       expect(screen.getByRole("radio", { name: "No response" })).toHaveFocus();
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Not saved. No interest level is chosen.",
+        "Not saved. The interest level was not accepted.",
       );
       expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
     });

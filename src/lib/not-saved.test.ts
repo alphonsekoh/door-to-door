@@ -83,12 +83,31 @@ describe("notSavedFromServer", () => {
     );
     expect(refused).toEqual({
       reasons: [
-        "No interest level is chosen.",
+        "The interest level was not accepted.",
         "Too big: expected string to have <=4000 characters",
       ],
       field: "interestLevel",
-      fields: { interestLevel: "No interest level is chosen." },
+      fields: { interestLevel: "The interest level was not accepted." },
     });
+  });
+
+  it("never calls a choice the server refused missing: one was sent", () => {
+    const refused = notSavedFromServer(
+      invalid([
+        { path: "/memberId", message: "Invalid UUID" },
+        { path: "/blockId", message: "Invalid UUID" },
+        { path: "/interestLevel", message: "Invalid option" },
+      ]),
+      ON_BEHALF,
+    );
+    expect(refused?.reasons).toEqual([
+      "The member was not accepted.",
+      "The block was not accepted.",
+      "The interest level was not accepted.",
+    ]);
+    for (const reason of refused?.reasons ?? []) {
+      expect(Object.values(REASONS)).not.toContain(reason);
+    }
   });
 
   it("points at nothing when the server named none of the form's fields", () => {

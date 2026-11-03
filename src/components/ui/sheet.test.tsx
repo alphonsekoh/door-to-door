@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MotionGlobalConfig } from "motion/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Sheet, SheetPresence } from "@/components/ui/sheet";
 
@@ -288,6 +288,37 @@ describe("Sheet", () => {
     await userEvent.setup().click(screen.getByLabelText("Name"));
     expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
     expect(scrolled.mock.contexts[0]).toBe(screen.getByLabelText("Name"));
+  });
+
+  it("opens at its top, though the control it focuses is at its foot", () => {
+    /* As a browser does at large text: bringing OK into view scrolls the
+       body down to it, past the heading. */
+    vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(function (this: Element) {
+      const body = this.closest('[role="alertdialog"] > div');
+      if (body instanceof HTMLElement) body.scrollTop = 400;
+    });
+    function Tall() {
+      const ok = useRef<HTMLButtonElement>(null);
+      return (
+        <Sheet
+          label="Not saved"
+          role="alertdialog"
+          layer="dialog"
+          draggable={false}
+          initialFocus={ok}
+          onClose={vi.fn()}
+        >
+          <p>Not saved</p>
+          <button ref={ok} type="button">
+            OK
+          </button>
+        </Sheet>
+      );
+    }
+    render(<Tall />);
+    const ok = screen.getByRole("button", { name: "OK" });
+    expect(ok).toHaveFocus();
+    expect(ok.parentElement?.scrollTop).toBe(0);
   });
 
   it("lightens its scrim as it is pulled down, and darkens it again as it settles", async () => {

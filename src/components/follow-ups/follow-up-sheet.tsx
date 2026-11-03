@@ -26,6 +26,7 @@ import {
   type NotSaved,
   notSavedForBlank,
   notSavedFromServer,
+  notSavedLine,
 } from "@/lib/not-saved";
 import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
@@ -163,7 +164,11 @@ export function FollowUpSheet({
       if (refused === null) {
         setFailure(describeFollowUpFailure(error));
       } else {
-        setNoteError(refused.fields.note ?? null);
+        const note = refused.fields.note;
+        setNoteError(note ?? null);
+        // A refusal the note has no error for, of the due date say, goes in
+        // the banner, or the sheet would show nothing once OK is tapped.
+        if (note === undefined) setFailure(notSavedLine(refused));
         setNotSaved(refused);
       }
     } finally {
