@@ -34,20 +34,27 @@ and add Dependabot.
   optimizer is where the SSRF and the SVG remote-code-execution advisories were. Only a
   production build shows what the endpoint does. _Research:_ R-93, R-94.
 - **D-118-5 · `CreateSessionRequest.blockIds` takes at most 50 items**, the same as
-  `AttachBlocksRequest`. Apart from `memberIds` (D-118-6), every request array in
-  `openapi.yaml` now has a `maxItems`. _Why:_ zod 4.6.6 stops early on an oversized
+  `AttachBlocksRequest`. Apart from `CreateTeamRequest.memberIds`, which stays uncapped
+  under D-74-15 (see D-118-6), every request array in `openapi.yaml` now has a `maxItems`. _Why:_ zod 4.6.6 stops early on an oversized
   array only when the array has a max. Without one, every bad element is its own issue,
   and `withContract` parses the body before the handler checks the role, so any member
   could send millions of ids. No screen sends `blockIds` when it creates a session.
   _Relies on:_ D-12-1. _Research:_ R-91.
 - **D-118-6 · The cap stops at `CreateSessionRequest.blockIds` (D-118-5);
   `CreateTeamRequest.memberIds` stays uncapped (owner, 2026-11-03).** Reaffirms D-74-15.
-  _Why:_ the owner chose to keep team creation unlimited. _Trade-off:_
-  GHSA-mrhx-c7xc-m3w5 stays reachable: any signed-in member can `POST /teams` with a
-  huge `memberIds`, and `withContract` builds one issue per bad item before the handler
-  runs. The remaining mitigation is a request body size limit, tracked in #126, which
-  bounds the list without capping team size; #126's own proposal of a `maxItems` on
-  `memberIds` would contradict D-74-15. _Research:_ R-91. _Narrowed from:_ ~~Proposed:
+  _Why:_ the owner chose to keep team creation unlimited. _Trade-off, accepted by the
+  owner:_ GHSA-mrhx-c7xc-m3w5 stays reachable. Any signed-in member can
+  `POST /sessions/{id}/teams` with a huge `memberIds`, and `withContract` builds one
+  issue per bad item before the handler runs. Nothing in the app limits the body today:
+  `readJsonBody` reads it whole, and the only ceiling is Next's proxy buffer
+  (`experimental.proxyClientMaxBodySize`, 10 MB by default). A request body size limit,
+  proposed in #126 (open), would bound the list without capping team size; #126's other
+  proposal, a `maxItems` on `memberIds`, would contradict D-74-15. Also known: about
+  21,846 valid ids would exceed Postgres's 65,535 bind parameters in one insert and
+  answer an undeclared `500`. _Built as:_ a YAML comment on `memberIds` marks it
+  deliberately uncapped, and an integration test forms a team of 200 active people in
+  one request (it is a `400` with the cap restored). _Research:_ R-91.
+  _Narrowed from:_ ~~Proposed:
   `CreateTeamRequest.memberIds` takes at most 50 items. It bounds a single request, not
   the size of a team, because `POST /teams/{id}/members` still adds people one at a
   time. Why: the same memory exhaustion as D-118-5, reachable by any member. Conflicts
