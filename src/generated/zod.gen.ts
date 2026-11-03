@@ -311,7 +311,7 @@ export const zSessionHouseholdList = z.object({
 export const zCreateSessionRequest = z.object({
     title: z.string().min(1).max(160),
     kind: zSessionKind.optional().default('regular'),
-    blockIds: z.array(z.uuid()).optional(),
+    blockIds: z.array(z.uuid()).max(50).optional(),
     householdIds: z.array(z.uuid()).min(1).max(200).optional()
 });
 

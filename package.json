@@ -42,14 +42,14 @@
     "esbuild-wasm": "^0.28.2",
     "idb": "^8.0.4",
     "motion": "14.3.1",
-    "next": "16.3.3",
+    "next": "16.4.3",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "serwist": "^9.5.13",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@hey-api/openapi-ts": "^0.99.0",
@@ -67,7 +67,7 @@
     "@vitest/coverage-v8": "^4.1.11",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9",
-    "eslint-config-next": "16.3.3",
+    "eslint-config-next": "16.4.3",
     "eslint-config-prettier": "^10.1.8",
     "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.10.2",
@@ -79,5 +79,8 @@
     "typescript": "^5",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "zod": "$zod"
   }
 }

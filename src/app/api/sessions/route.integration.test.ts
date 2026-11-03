@@ -109,6 +109,33 @@ describe("POST /api/sessions", () => {
     );
     expect(response.status).toBe(404);
   });
+
+  it("refuses an oversized block list on its length alone, without parsing an id", async () => {
+    /*
+     * The body is parsed before the role check, so a member reaches this too.
+     * Unbounded, every bad id was its own issue, so one huge body could exhaust
+     * the server's memory (GHSA-mrhx-c7xc-m3w5, #118).
+     */
+    asMember();
+    const response = await POST(
+      create({ title: "Outing", blockIds: Array.from({ length: 51 }, () => "x") }),
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { details: { path: string }[] } };
+    expect(body.error.details.map((d) => d.path)).toEqual(["/blockIds"]);
+    const { rows } = await pool.query<{ n: string }>("SELECT count(*) AS n FROM outing_sessions");
+    expect(rows[0]?.n).toBe("0");
+  });
+
+  it("takes a block list at exactly the limit through to the check that they exist", async () => {
+    asAdmin();
+    const blockIds = Array.from(
+      { length: 50 },
+      (_, i) => `eeeeeeee-0000-4000-8001-${String(i).padStart(12, "0")}`,
+    );
+    const response = await POST(create({ title: "Outing", blockIds }));
+    expect(response.status).toBe(404);
+  });
 });
 
 describe("GET /api/sessions", () => {

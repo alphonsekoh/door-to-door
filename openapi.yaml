@@ -752,6 +752,7 @@ components:
             A regular session only: blocks to attach immediately. More may be
             added later. Sent with `kind: follow_up` it is `400`, since a
             follow-up session's blocks come from its households.
+          maxItems: 50
           items: { type: string, format: uuid }
         householdIds:
           type: array
@@ -1057,6 +1058,7 @@ components:
       required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
+        # Deliberately uncapped (D-74-15), unlike every other request array.
         memberIds:
           type: array
           uniqueItems: true

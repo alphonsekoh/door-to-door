@@ -29,18 +29,18 @@ under, which is not decided yet.
   but carries no member's cookie), and `none` is a request the user started, which no
   page can forge; checking `Origin` too would make every write depend on the proxy
   passing the public host (D-121-5). Reason corrected by the owner (2026-11-03); the
-  decision stands. _Research:_ R-91.
+  decision stands. _Research:_ R-96.
 - **D-121-3 · Without it, the `Origin`'s host and port must be this server's.** A
   `null`, unparsable or foreign `Origin` is refused, and so is any `Origin` when there is
   no host to compare it with. _Why:_ Safari before 16.4, and any page on plain `http` (a
   phone on the LAN), send no `Sec-Fetch-Site`; `null` comes from sandboxed frames and
   `file:` pages, which still carry cookies. _Trade-off:_ the scheme is not compared, so
-  an `http` page on the app's own host would pass. _Research:_ R-91, R-92. _Refined by
+  an `http` page on the app's own host would pass. _Research:_ R-96, R-97. _Refined by
   D-121-10:_ a default port in the server's host counts as none.
 - **D-121-4 · A write with neither header passes.** _Why:_ a browser adds `Origin` to
   every write, so neither means a script, a test or a Playwright setup call, not a page
   acting with someone's cookie. _Trade-off:_ fails open for a client that sends neither.
-  _Research:_ R-92.
+  _Research:_ R-97.
 - **D-121-5 · The server's own host is the first `X-Forwarded-Host` entry, else `Host`;
   no config key, not `request.url`.** _Why:_ Next builds `request.url` from the bind
   address, so behind a proxy it names `localhost`; `auth.trustHost: true` already needs a
@@ -48,13 +48,13 @@ under, which is not decided yet.
   `Host`, nor `X-Forwarded-Host` without a preflight the app never grants. The first
   entry, because a proxy appends. _Trade-off:_ a proxy that rewrites `Host` and sets no
   `X-Forwarded-Host` (nginx's default) gets every write refused from a browser without
-  `Sec-Fetch-Site`; README Deployment says how to configure it. _Research:_ R-93, R-94.
+  `Sec-Fetch-Site`; README Deployment says how to configure it. _Research:_ R-98, R-99.
 - **D-121-6 · A non-empty request body must be `application/json`, else
   `415 unsupported_media_type`.** Parameters such as `charset` pass; a missing
   `Content-Type` or a `+json` type is refused; a blank body is still reported missing
   (`400`). Checked after the origin check, before `JSON.parse`, only where the operation
   takes a body. New `ErrorCode` (D-10-2). _Why:_ `text/plain`, form and multipart are
-  the bodies another origin can send without a preflight. _Research:_ R-92.
+  the bodies another origin can send without a preflight. _Research:_ R-97.
 - **D-121-7 · `415`, not `400`, and neither refusal is charged to a queued record.**
   _Why:_ a lone record refused `400` is quarantined (D-33-4, D-33-6), but the record is
   not at fault. A `415` or a plain `403 forbidden` is a whole-request answer D-33-17 does

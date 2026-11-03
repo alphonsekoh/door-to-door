@@ -469,7 +469,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** `writeStandaloneDirectory` in `next/dist/build/index.js` copies `.env` and
   `.env.production` into `.next/standalone/` whenever the build loaded them. No config
   option disables it; `outputFileTracingExcludes` filters traces only, not this copy.
-- **Source:** `node_modules/next/dist/build/index.js` (Next 16.3.3);
+- **Source:** `node_modules/next/dist/build/index.js` (Next 16.3.3, unchanged in 16.4.3);
   `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`
 - **Used by:** D-106-2
 
@@ -624,7 +624,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   navigation commit at once, showing that file's UI. With neither, a tap on a dynamic route
   that is not prefetched shows nothing until the server answers.
 - **Source:** `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
-  (Next 16.3.3)
+  (Next 16.3.3, unchanged in 16.4.3)
 - **Used by:** D-111-12
 
 ### R-67 · Layout at the 32px text cap (measured)
@@ -920,7 +920,67 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   generated `src/generated/zod.gen.ts` (#117)
 - **Used by:** D-117-68
 
-### R-91 · Who sets `Sec-Fetch-Site`, and when
+### R-91 · zod 4.6.6 checks an array's size before its elements, but only with a max
+
+- **Finding:** Up to 4.6.5, `$ZodArray` parses every element and keeps one issue per
+  failing element, with no early stop, so one large array can exhaust memory. 4.6.6
+  checks the array, set and map size bounds before it parses any element. An array with
+  no `max` is still parsed element by element. Measured: 101 empty items sent to
+  `/visits/sync` and 51 bad ids sent to `blockIds` each give one detail, on the array.
+- **Source:** [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5);
+  [zod v4.6.6 release](https://github.com/colinhacks/zod/releases/tag/v4.6.6) (#6652);
+  the #118 integration tests
+- **Used by:** D-118-3, D-118-5, D-118-6
+
+### R-92 · npm `overrides` against an exact pin, and where Serwist uses zod
+
+- **Finding:** An override of a package the root depends on directly must have the same
+  spec as that dependency, or npm fails with `EOVERRIDE`. Writing `"$zod"` makes the
+  override follow the root's spec. `@serwist/build` and `@serwist/turbopack` 9.5.13
+  depend on `zod` exactly `4.6.5`. `createSerwistRoute` is `force-static` with
+  `dynamicParams = false`, so its zod validation and its `glob` run at `next build`,
+  never per request.
+- **Source:** [npm, package.json `overrides`](https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides);
+  `npm view @serwist/turbopack dependencies.zod`;
+  `node_modules/@serwist/turbopack/dist/index.mjs`
+- **Used by:** D-118-3, D-118-9
+
+### R-93 · With `images.unoptimized`, `/_next/image` is a 404
+
+- **Finding:** With `images: { unoptimized: true }` in `next.config.ts`, the standalone
+  server answers `404` to `/_next/image?url=%2Ficon-192.png&w=64&q=75`, while
+  `/icon-192.png` is `200`. The Next docs say only that images are then served as they
+  are.
+- **Source:** measured, `e2e/pwa.spec.ts` (#118);
+  `node_modules/next/dist/docs/01-app/03-api-reference/02-components/image.md` (Next 16.4.3)
+- **Used by:** D-118-4
+
+### R-94 · `npm audit --omit=dev` before and after #118
+
+- **Finding:** At `95f591f` (run with `--package-lock-only`): 8 vulnerable packages,
+  1 critical, 5 high and 2 moderate. `next` 16.0.0 to 16.4.0 is critical, with 11
+  advisories, among them the image-optimizer SSRF (fixed in 16.3.8) and the SVG
+  remote-code-execution one (fixed in 16.4.1). `zod` <4.6.6, `sharp` <0.35.5 and
+  `source-map-js` 1.0.0 to 1.2.1 are high, and so are both `@serwist` packages, through
+  zod. `glob` and `minimatch` are moderate. On the branch: 4 moderates, `glob` 3.0.0 to
+  14.0.1 (GHSA-3g3m-2fjr-6pw4), `minimatch` <11.0.1 (GHSA-g3hv-75wg-m249) and the two
+  `@serwist` packages that pull them in, with no fix available. A full `npm audit` still
+  finds 7 high and 27 moderate, all in dev dependencies.
+- **Source:** measured with `npm audit` on 2026-11-03; the first patched versions come
+  from the GitHub advisory database (`gh api /advisories/<id>`)
+- **Used by:** D-118-1, D-118-4, D-118-9
+
+### R-95 · Dependabot groups and cooldown
+
+- **Finding:** Groups whose `applies-to` is `security-updates` collect security PRs, and
+  the default `version-updates` groups collect the scheduled ones. `update-types` can
+  split majors from minor and patch updates. `cooldown.default-days` holds a new
+  release back for that many days, for version updates only. Security updates also
+  need Dependabot security updates turned on in the repository settings.
+- **Source:** [GitHub Docs, Dependabot options reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference)
+- **Used by:** D-118-7
+
+### R-96 · Who sets `Sec-Fetch-Site`, and when
 
 - **Finding:** The browser sets it: `same-origin`, `same-site`, `cross-site`, or `none`
   for a request the user started (address bar, bookmark). A `Sec-` header is a forbidden
@@ -932,7 +992,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [MDN, `Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site)
 - **Used by:** D-121-2, D-121-3
 
-### R-92 · What another origin can send without a preflight
+### R-97 · What another origin can send without a preflight
 
 - **Finding:** A cross-origin form or `fetch` sends a body with no preflight only as
   `text/plain`, `application/x-www-form-urlencoded` or `multipart/form-data`, and only
@@ -947,7 +1007,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   [RFC 6265bis, `SameSite`](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)
 - **Used by:** D-121-3, D-121-4, D-121-5, D-121-6
 
-### R-93 · Next.js builds `request.url` from the bind address
+### R-98 · Next.js builds `request.url` from the bind address
 
 - **Finding:** Unless `experimental.trustHostHeader` is set, a route handler's
   `request.url` is the server's own `hostname:port` (default `localhost`), with the
@@ -956,7 +1016,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** `next` 16.3.3, `dist/server/lib/router-utils/resolve-routes.js` (`initUrl`)
 - **Used by:** D-121-5
 
-### R-94 · Which reverse proxies pass the public `Host`
+### R-99 · Which reverse proxies pass the public `Host`
 
 - **Finding:** nginx sends the upstream's host (`proxy_set_header Host $proxy_host` is
   its default) and no `X-Forwarded-Host`. Caddy passes `Host` through and sets

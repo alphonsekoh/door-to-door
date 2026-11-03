@@ -192,6 +192,10 @@ authoritative, and a change to any of them needs the owner.
    (`src/server/http/same-origin.ts`, D-121-1 to D-121-5). Then path, query
    (schema-driven coercion) and body are parsed with generated Zod; a body that is not
    `application/json` is `415` (D-121-6); PATCH bodies go through `requireChanges`.
+   This runs before any role check. Every request array but
+   `CreateTeamRequest.memberIds` has a `maxItems`, so an oversized one is refused on its
+   length before any item is parsed (D-118-5, R-91). `memberIds` is uncapped (D-74-15,
+   D-118-6), and no request body has a size limit yet (#126).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation from the database on every request (one
    primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
@@ -485,7 +489,7 @@ out fails its test on a hydration mismatch, attributes included (D-117-64).
   `node .next/standalone/server.js`.
   The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
   copies and fails the build on anything else (D-106-2, D-106-3). Settings and secrets
-  arrive at runtime.
+  arrive at runtime. The image optimizer is off, so `/_next/image` is a `404` (D-118-4).
 - **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
   Next's separate module graphs share it; changing `database.url` needs a restart. Every
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`
@@ -493,4 +497,5 @@ out fails its test on a hydration mismatch, attributes included (D-117-64).
   on the next query. The query in flight rejects, so the request is a `500` and never
   crashes the process.
 - **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
-  tests with coverage against Postgres, production build, E2E.
+  tests with coverage against Postgres, production build, E2E. Dependabot
+  (`.github/dependabot.yml`) opens grouped npm and Actions updates weekly (D-118-7).
