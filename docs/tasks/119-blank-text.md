@@ -205,9 +205,9 @@ and a pop-up that tells a member or admin why a Save was refused.
   `e2e/large-text.spec.ts` checks the note's top edge after OK. That test is marked
   `test.fail` on WebKit, naming #136, and the label is still checked on both phones.
   Refines D-119-22. _Why:_ #136 owns the largest-text layout under the docked action.
-  Playwright fails a marked test that passes, so the mark cannot outlive a fix.
-  Trade-off: #136's criteria do not list this case yet, so #136 could close with the
-  mark still in place. _Research:_ R-107.
+  Playwright fails a marked test that passes, so the mark cannot outlive a fix. The
+  owner added the case to #136 on 2026-11-03, for the add and the edit sheets, so #136
+  is not done until the mark comes off. _Research:_ R-107.
 
 ### How existing decisions are handled
 

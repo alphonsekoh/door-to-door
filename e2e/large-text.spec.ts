@@ -314,7 +314,7 @@ async function expectInView(
           const inset = 2;
           const bottom = edgeOnly ? box.top + inset * 2 : box.bottom;
           if (box.top < 0 || bottom > window.innerHeight) return "out of view";
-          const top = [
+          const edge = [
             [box.left + inset, box.top + inset],
             [box.left + box.width / 2, box.top + inset],
             [box.right - inset, box.top + inset],
@@ -324,7 +324,7 @@ async function expectInView(
             [box.left + inset, box.bottom - inset],
             [box.right - inset, box.bottom - inset],
           ] as const;
-          const points = edgeOnly ? top : [...top, ...rest];
+          const points = edgeOnly ? edge : [...edge, ...rest];
           const covered = points.some(([x, y]) => {
             const top = document.elementFromPoint(x, y);
             return top === null || !(element.contains(top) || top.contains(element));

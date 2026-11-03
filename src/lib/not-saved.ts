@@ -20,8 +20,8 @@ export const NOTE_NOT_SAVED = "This note could not be saved because:";
 
 /*
  * What a form refuses a field for: blank, or a choice not made, or a unit
- * number past the contract's limit. Only a unit is refused for its length; a
- * note counts down to its own (D-74-8).
+ * number past the contract's limit. Only a unit's length opens the pop-up; a
+ * note past its limit keeps its count and the error under it (D-119-17).
  */
 export type Refusal = NotSavedField | "unitNumberTooLong";
 
