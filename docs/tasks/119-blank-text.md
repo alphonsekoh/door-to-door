@@ -31,7 +31,9 @@ and a pop-up that tells a member or admin why a Save was refused.
   `requireText` (`src/server/http/text.ts`) returns the trimmed value, or throws
   `validation_failed` with the field's path. The visit, sync, follow-up and block
   services call it first. _Why:_ the rule belongs to the domain, not the transport, so it
-  also holds for a caller that skips `withContract`. See Open questions on D-12-5.
+  also holds for a caller that skips `withContract`. Refines D-12-5 (owner, 2026-11-03):
+  a domain rule stated in its own service is not an unreachable defensive branch, though
+  `withContract` refuses the same input first, so the checks stay.
 - **D-119-4 · `CHECK (btrim(col) <> '')` on `households.unit_number`,
   `follow_ups.note`, `blocks.name` and `blocks.street`.** They are declared with
   `check()` in `schema.ts` and generated as `0005_not_blank_text`. _Why:_ the last guard
@@ -91,24 +93,29 @@ and a pop-up that tells a member or admin why a Save was refused.
 ### The Not saved pop-up
 
 - **D-119-13 · A Save refused for a blank unit number or note opens a Not saved pop-up
-  (owner).** It reads "This visit (or note) could not be saved because:" and lists
-  every reason refused at that moment, such as "No interest level is chosen." It covers
-  the recording form, Record for a member, and the follow-up sheet's create and edit.
+  (owner, 2026-11-02).** It reads "This visit (or note) could not be saved because:"
+  and lists every reason refused at that moment, such as "No interest level is chosen."
+  It covers the recording form, Record for a member, and the follow-up sheet's create
+  and edit.
   Every note added or edited, an admin's included, goes through that sheet. The line
   beside Save and the field errors stay. Refines D-33-29 and D-111-26, whose one line
-  had been the only way the refusal was shown. _Why:_ the owner asked for it.
+  had been the only way the refusal was shown. _Why:_ the owner asked for it. _Refined
+  by D-119-25:_ the follow-up sheet's banner keeps what no field error says.
 - **D-119-14 · `NotSavedDialog` is a `Sheet` at the dialog layer, with
   `role="alertdialog"`.** It is laid out like `ConfirmDialog`, with one button, OK, and
   opens with focus on OK, as D-90-3 does for confirmations. A backdrop tap counts as OK,
   and it does not drag. It is rendered beside the form's sheet, in `SheetPresence`.
   _Why:_ it can be raised from a sheet and must sit above that sheet and the docked
-  Save. With only one way out, there is no choice to make.
+  Save. With only one way out, there is no choice to make. _Refined by D-119-21:_ it
+  opens at its top.
 - **D-119-15 · OK returns focus to the first field at fault, scrolled into view clear of
-  the pinned chrome.** `Sheet` and `useModal` take `returnFocus`, read as the dialog
-  closes; without it, D-90-9 holds. The unit and interest fields get
-  `scroll-clear-chrome`. Refines D-90-9. _Why:_ that field is what the member must fix,
-  and it may be off screen. **This conflicts with D-33-29 and D-111-26; see Open
-  questions.**
+  the pinned chrome (owner, 2026-11-03).** `Sheet` and `useModal` take `returnFocus`,
+  read as the dialog closes; without it, D-90-9 holds. The unit and interest fields get
+  `scroll-clear-chrome`. For a refusal shown in the pop-up, supersedes D-33-29's "focus
+  is not moved" and "chosen over scroll-and-focus", D-111-26's "there is no scroll to
+  the field", and D-90-9's return to the element focused at open. A refusal the pop-up
+  does not show keeps D-33-29. _Why:_ that field is what the member must fix, and it may
+  be off screen. _Refined by D-119-22:_ the field comes back under its label.
 - **D-119-16 · A `400 validation_failed` from the server opens the same pop-up.**
   - `ApiRequestError` keeps the error's `details`.
   - An issue is matched to a field by the last segment of its path, and worded "blank
@@ -116,7 +123,8 @@ and a pop-up that tells a member or admin why a Save was refused.
   - An issue that no field owns keeps the server's message.
   - Any `validation_failed` opens the pop-up, not only one about these fields.
 
-  _Why:_ a refusal the form did not foresee should still say why.
+  _Why:_ a refusal the form did not foresee should still say why. _Refined by
+  D-119-24:_ a refused choice "was not accepted".
 
 - **D-119-17 · Only blank text opens the pop-up.** A missing choice on its own
   (interest level, member, block) keeps D-111-26's one line, and a note past the limit
@@ -129,35 +137,68 @@ and a pop-up that tells a member or admin why a Save was refused.
   `aria-describedby`, set through a new `describedBy` prop on `Sheet`. _Why:_ focus
   lands on OK, and the line beside Save is inert behind the dialog, so a screen reader
   said only "Not saved, OK". _Research:_ R-99.
+- **D-119-21 · Fix round 2: every modal opens at its top.** `useModal` focuses the
+  panel or its first control with `preventScroll`. `Sheet` then resets its body to the
+  top, because its own focus scroll (D-111-31) still runs. Refines D-90-2, D-111-31 and
+  D-119-14. _Why:_ at the largest text, Not saved with three reasons is taller than the
+  screen, and focus on OK opened it at its foot with the heading cut away. Trade-off: in
+  a modal taller than the screen, the control that has focus can start below the view.
+  _Research:_ R-100.
+- **D-119-22 · Fix round 2: OK brings the field back under its label.** The field is
+  scrolled to `nearest`, then its `<label>`. A label that `nearest` had to move was cut
+  off, so it goes to `start`, and where both cannot fit the label wins. A radio is named
+  by its group, so only the radio moves. The recording form's unit label also gets
+  `scroll-clear-chrome`. Refines D-119-15. _Why:_ at the largest text, `nearest` lined a
+  tall note's foot up with the docked Send and left its label under the sheet's header.
+  `start` runs only for a label that was cut off, so at default sizes nothing moves (cf.
+  D-111-69). Known limit: on an iPhone 13 at the largest text, the note's label and
+  count fill the room above Send, so the field's top starts under Send. _Research:_
+  R-89.
+- **D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.** The
+  recording form and Record for a member set `maxLength` from `MAX_UNIT_NUMBER_LENGTH`
+  (`src/lib/units/unit-number.ts`). _Why:_ a unit the server would refuse is never
+  typed. Trade-offs: the constant copies `openapi.yaml`'s `maxLength` by hand, and no
+  test ties the two together. A paste past 32 characters is cut without a word. **This
+  conflicts with D-74-8; see Open questions.**
+- **D-119-24 · Fix round 2: a choice the server refuses "was not accepted".** "The
+  member (block, interest level) was not accepted." replaces "No … is chosen." Refines
+  D-119-16. _Why:_ a choice was sent, so saying none was chosen was false.
+- **D-119-25 · Fix round 2: the follow-up sheet's banner keeps a refusal its note has
+  no error for,** a bad due date for example. Refines D-119-13. _Why:_ once OK is
+  tapped, the sheet would otherwise show nothing about why. The visit forms already
+  keep every server refusal in the line beside Save.
+
+### How existing decisions are handled
+
+| Decision          | Effect                                                                      | By                 |
+| ----------------- | --------------------------------------------------------------------------- | ------------------ |
+| D-33-29, D-111-26 | Focus and scroll clauses superseded (owner), for a refusal the pop-up shows | D-119-15           |
+| D-90-9            | Partly superseded (owner): `returnFocus` wins where it is given             | D-119-15, D-119-22 |
+| D-12-5            | Refined (owner): a domain rule in its own service is not a defensive branch | D-119-3            |
+| D-111-69          | Refined: a refusal the pop-up shows scrolls to the field after OK           | D-119-15           |
+| D-90-2, D-111-31  | Refined: focus on open does not scroll; a sheet opens at its top            | D-119-21           |
+| D-10-3            | Refined: a name or contact of only spaces is not learnt                     | D-119-7            |
+| D-115-1           | Extended: `src/lib/not-saved.ts`                                            | D-119-18           |
+| D-74-8            | In conflict, open                                                           | D-119-23           |
 
 ## Relies on
 
-D-07-1, D-07-2, D-08-1, D-08-2, D-08-4, D-10-1, D-10-3, D-12-1, D-21-3, D-25-6, D-33-6,
-D-33-29, D-74-4, D-74-5, D-90-3, D-90-9, D-111-26, D-115-1, D-117-33.
+D-07-1, D-07-2, D-08-1, D-08-2, D-08-4, D-10-1, D-10-3, D-12-1, D-12-5, D-21-3, D-25-6,
+D-33-6, D-33-29, D-74-4, D-74-5, D-90-2, D-90-3, D-90-9, D-111-26, D-111-31, D-111-69,
+D-115-1, D-117-33.
 
 ## Open questions
 
-- **D-119-15 against D-33-29 and D-111-26: may a refused Save move focus to the field
-  and scroll to it?**
-  - D-33-29 says "A failed save is shown beside Save, and focus is not moved … Chosen
-    over scroll-and-focus."
-  - D-111-26 says "Extends D-33-29; there is no scroll to the field", and #111 lists
-    "D-33-29: a refused Save is explained beside Save; nothing scrolls to the field"
-    among the decisions that win over the design skill.
-  - D-119-15 does both after OK: it focuses the field at fault and calls
-    `scrollIntoView`.
+- **D-119-23 against D-74-8: may a text field silently stop at its limit?**
+  - D-74-8 says "A live 'N of 80' counter replaces a silent `maxLength`. _Why:_ a
+    browser that truncates input hides why a name was cut."
+  - D-119-23 puts a silent `maxLength` of 32 on both unit fields. It is the only
+    `maxLength` in the UI; names and notes count instead.
 
-  The owner asked for the pop-up, and a pop-up has to take focus. But the owner's own
-  words do not say where focus goes after it closes. If all three stand, the record
-  says the app never scrolls to a field while the code does, and a later task could
-  remove either behaviour and cite a decision for it. If the owner agrees, D-119-15
-  supersedes those clauses for a refusal shown in the pop-up. Otherwise, focus goes
-  back to Save (D-90-9) and nothing scrolls.
-
-- **D-119-3 against D-12-5: should the service checks stay?** D-12-5 says "Delete
-  unreachable defensive branches rather than cover them". Every production caller of
-  these services passes through `withContract`, which refuses blank text first, so
-  `requireText` runs only in service tests. The issue's own proposal asked for the
-  service check. If both stand, a later coverage pass could delete the checks and cite
-  D-12-5. The recommendation is to keep them, recorded as a refinement: a domain rule
-  stated in its service is not a defensive branch.
+  D-74-8 was written for names, but its reason applies to any field. If both stand, a
+  later task can cite either to undo the other. A unit pasted past 32 characters is cut
+  without a word. The unit picks the household, and amending never moves a visit to
+  another unit. Options:
+  - keep `maxLength` and narrow D-74-8 to names, since units are short codes
+  - drop it and let the server's "blank or too long" (D-119-16) say why
+  - give the unit a count, as names and notes have

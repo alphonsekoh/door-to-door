@@ -224,10 +224,13 @@ round 8, and they are in the PR #112 body too.
   `role="alert"` slot ("Not saved. Choose an interest level."). Field errors clear as
   soon as the field is fixed, and an empty unit number is flagged on blur. The follow-up
   note's error sits under its field, with `aria-invalid` and `aria-describedby`. Extends
-  D-33-29; there is no scroll to the field. _Why:_ with details open, the faulty fields
-  were off screen and Save did nothing visible. _Refined by D-119-13 and D-119-17:_ when
-  a blank unit number or note is among the reasons, a Not saved pop-up lists them too; a
-  missing choice alone keeps to this line.
+  D-33-29; ~~there is no scroll to the field~~. _Why:_ with details open, the faulty
+  fields were off screen and Save did nothing visible. _Refined by D-119-13 and
+  D-119-17:_ when a blank unit number or note is among the reasons, a Not saved pop-up
+  lists them too; a missing choice alone keeps to this line. _The scroll clause is
+  superseded by D-119-15 (owner, 2026-11-03) for a refusal the pop-up shows:_ its OK
+  focuses the field at fault and scrolls it into view. A refusal shown only in this line
+  still does not scroll.
 - **D-111-27 · Destructive confirmations look destructive.** `ConfirmDialog` takes a
   `tone`, and it is destructive (a red fill) by default, since every use takes something
   away. `ActionSpec.destructive` is true only for ending a session, which shows as a
@@ -261,7 +264,8 @@ round 8, and they are in the PR #112 body too.
   scrolling.** A focused field is scrolled fully into view
   (`scrollIntoView({ block: "nearest" })`, `scroll-pb-24`). Refines D-74-47, which set
   this per sheet. _Why:_ three sheets used `85vh`, which on iOS can be taller than the
-  visible area and push Cancel off the screen. _Research:_ R-63.
+  visible area and push Cancel off the screen. _Research:_ R-63. _Refined by D-119-21:_
+  a sheet opens at its top, even when the control focused on open is below the view.
 - **D-111-32 · The E2E adds one describe block, "the phone's display settings",** in
   `record-visit.spec.ts`. It covers:
   - press on touch-down;
@@ -526,11 +530,12 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   into view.** `scrollIntoView({ block: "nearest" })`, instant, before paint, with
   margins clearing the pinned sync row and the docked Save (`scroll-clear-chrome`).
   Nothing moves where they are already in view; a refused save does not scroll
-  (D-33-29). Refines D-25-5 and D-111-20. _Why:_ at large text the member scrolls down
-  to High, and a second tap recorded the suggested next unit unseen. Instant, as a
-  sheet's focus scroll is: a smooth scroll would carry the field under a moving thumb.
-  `block: "start"` was rejected: on WebKit it moved the page 60px at 16px. _Refined by
-  D-117-77:_ only the Saved line is scrolled; the unit field sits under it.
+  (D-33-29, except after the Not saved pop-up's OK, D-119-15). Refines D-25-5 and
+  D-111-20. _Why:_ at large text the member scrolls down to High, and a second tap
+  recorded the suggested next unit unseen. Instant, as a sheet's focus scroll is: a
+  smooth scroll would carry the field under a moving thumb. `block: "start"` was
+  rejected: on WebKit it moved the page 60px at 16px. _Refined by D-117-77:_ only the
+  Saved line is scrolled; the unit field sits under it.
 
 ## Audit
 
@@ -575,6 +580,8 @@ take something away, and specific nav labels.
 - **D-77-14:** `overscroll-behavior: none` stays, so pages do not rubber-band at their
   edges (skill §9).
 - **D-33-29:** a refused Save is explained beside Save; nothing scrolls to the field.
+  _Superseded by D-119-15 (owner) for a refusal the Not saved pop-up shows:_ its OK
+  scrolls to the field at fault.
 - **D-33-12:** the sync bar stays a solid, held row, not glass (skill §12).
 - **D-85-4:** the account message stays opaque; nothing may show through it.
 
@@ -608,7 +615,8 @@ take something away, and specific nav labels.
 ## Deferred
 
 - **Scrolling to the first invalid field on a refused Save.** D-33-29 chose the alert
-  beside Save, and D-111-26 puts the reason there.
+  beside Save, and D-111-26 puts the reason there. _Done by D-119-15 (owner) for a
+  refusal the Not saved pop-up shows._
 - **Anchoring sheets to their trigger** (skill §7). These are bottom sheets, and on iOS a
   bottom sheet rises from the bottom edge.
 - **Haptics** (skill §13). The audit did not raise them, and iOS has no Vibration API.

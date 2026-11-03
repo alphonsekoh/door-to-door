@@ -906,7 +906,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   and the line ended above the screen; the E2E failed on both browsers before the fix.
 - **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
   #117, `e2e/follow-up-session.spec.ts`
-- **Used by:** D-117-77
+- **Used by:** D-117-77, D-119-22
 
 ### R-90 · `additionalProperties` does not see through `allOf`
 
@@ -969,3 +969,12 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   from the pattern page; not checked with a screen reader here.
 - **Source:** [WAI-ARIA APG, Alert and Message Dialogs](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/)
 - **Used by:** D-119-19
+
+### R-100 · Focusing a control scrolls it into view unless `preventScroll` is set
+
+- **Finding:** `focus()` scrolls each scroll container that holds the element until the
+  element is in view, unless it is called with `{ preventScroll: true }`. With focus on
+  OK, a Not saved pop-up taller than the screen opened scrolled to its foot, its heading
+  cut away. This was seen at the largest text in #119's `e2e/large-text.spec.ts`.
+- **Source:** [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
+- **Used by:** D-119-21
