@@ -7,24 +7,27 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 import type { Clock } from "@/lib/clock";
 import type * as Access from "@/server/teams/access";
+import { deleteTeam } from "@/server/teams/service";
 import { updateVisit } from "@/server/visits/service";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
 type TeamIdFor = typeof Access.teamIdFor;
 type CanAmend = typeof Access.canAmend;
-const { teamIdFor, real, afterCheck } = vi.hoisted(() => ({
+type Hold = () => Promise<void>;
+const { teamIdFor, real, atCheck } = vi.hoisted(() => ({
   teamIdFor: vi.fn<TeamIdFor>(),
   real: { fn: undefined as TeamIdFor | undefined },
-  // Set by a test to park an amend just after its rights check has run.
-  afterCheck: { hold: undefined as (() => Promise<void>) | undefined },
+  // Set by a test to park an amend just before or just after its rights check reads.
+  atCheck: { before: undefined as Hold | undefined, after: undefined as Hold | undefined },
 }));
 vi.mock("@/server/teams/access", async (importOriginal) => {
   const actual = await importOriginal<typeof Access>();
   real.fn = actual.teamIdFor;
   teamIdFor.mockImplementation(actual.teamIdFor);
   const canAmend: CanAmend = async (...args) => {
+    await atCheck.before?.();
     const allowed = await actual.canAmend(...args);
-    await afterCheck.hold?.();
+    await atCheck.after?.();
     return allowed;
   };
   return { ...actual, teamIdFor, canAmend };
@@ -45,6 +48,7 @@ const db = drizzle(pool, { schema }) as unknown as Database;
 const ADMIN = "77777777-0000-4000-8000-000000000001";
 const ALICE = "77777777-0000-4000-8000-000000000002";
 const BEN = "77777777-0000-4000-8000-000000000003";
+const TEAM = "77777777-0000-4000-8004-000000000001";
 const BLOCK = "77777777-0000-4000-8001-000000000001";
 const SESSION = "77777777-0000-4000-8002-000000000001";
 const V1 = "01960000-0000-7000-8000-00000000ddd1";
@@ -75,16 +79,27 @@ const row = async () =>
     )
   ).rows[0] as Record<string, unknown>;
 
+const members = async () =>
+  (await pool.query(`SELECT 1 FROM session_team_members WHERE team_id=$1`, [TEAM])).rows.length;
+
 type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
 
 const POLL_BUDGET_MS = 4_000;
 // Well above the poll budget, so a flush that never parks fails with its own message.
 vi.setConfig({ testTimeout: 15_000 });
 
-/* Until a backend is blocked on a lock running a query like `pattern`. */
-async function waitingOn(pattern: string): Promise<void> {
+/*
+ * Until a backend is blocked on a lock running a query like `pattern`, or
+ * until `orSettled` settles, for a request that may finish without waiting.
+ */
+async function waitingOn(pattern: string, orSettled?: Promise<unknown>): Promise<void> {
+  const request = { settled: false };
+  void orSettled?.then(() => {
+    request.settled = true;
+  });
   const startedAt = Date.now();
   for (;;) {
+    if (request.settled) return;
     const { rows } = await controller.query(
       `SELECT 1 FROM pg_stat_activity
        WHERE wait_event_type = 'Lock' AND datname = current_database()
@@ -135,7 +150,7 @@ async function parkedFlush(options: {
 const lockedFlush = (start: () => Promise<unknown>, whileHeld: (query: Query) => Promise<void>) =>
   parkedFlush({
     setup: (q) => q("SELECT 1 FROM visits WHERE id=$1 FOR UPDATE", [V1]),
-    waitingOn: "%for update%",
+    waitingOn: '%from "visits"%for no key update%',
     start,
     whileHeld,
   });
@@ -147,21 +162,24 @@ const settle = (request: Promise<unknown>) =>
   );
 
 /*
- * Parks `first` inside its transaction, just after its `nth` rights check,
- * starts `second`, waits until that is blocked on a lock in a statement like
- * `secondWaitsOn`, then lets `first` go. A `second` that never waits fails
- * the test. Both are settled before returning, whatever fails.
+ * Parks `first` inside its transaction, just before or after its `nth` rights
+ * check reads, starts `second`, waits until that is blocked on a lock in a
+ * statement like `secondWaitsOn`, then lets `first` go. A `second` that never
+ * waits fails the test, unless `secondMayFinish` and it finished instead.
+ * Both are settled before returning, whatever fails.
  */
-async function parkedAfterCheck(options: {
+async function parkedAtCheck(options: {
+  at: "before" | "after";
   first: () => Promise<unknown>;
   nth?: number;
   second: () => Promise<unknown>;
   secondWaitsOn: string;
+  secondMayFinish?: boolean;
 }) {
   const checked = Promise.withResolvers<undefined>();
   const release = Promise.withResolvers<undefined>();
   let checks = 0;
-  afterCheck.hold = () => {
+  atCheck[options.at] = () => {
     checks += 1;
     if (checks !== (options.nth ?? 1)) return Promise.resolve();
     checked.resolve(undefined);
@@ -172,7 +190,7 @@ async function parkedAfterCheck(options: {
   try {
     await Promise.race([checked.promise, one]);
     two = settle(options.second());
-    await waitingOn(options.secondWaitsOn);
+    await waitingOn(options.secondWaitsOn, options.secondMayFinish ? two : undefined);
   } finally {
     release.resolve(undefined);
     await Promise.all([one, two]);
@@ -182,12 +200,62 @@ async function parkedAfterCheck(options: {
 
 /* Ben leaves the team while an amend of his is parked after its check. */
 const removedAfterCheck = (first: () => Promise<unknown>, nth = 1) =>
-  parkedAfterCheck({
+  parkedAtCheck({
+    at: "after",
     first,
     nth,
     second: () => controller.query(`DELETE FROM session_team_members WHERE user_id=$1`, [BEN]),
     secondWaitsOn: "%delete from session_team_members%",
   });
+
+/*
+ * Alice disbands the team while an amend of Ben's holds the visit, parked
+ * before its check reads his membership. The disband deletes the members,
+ * then checks for visits stamped with the team (FOR KEY SHARE): were the
+ * visit held FOR UPDATE, each would wait on the other.
+ */
+const disbandedBeforeCheck = (first: () => Promise<unknown>, nth = 1) =>
+  parkedAtCheck({
+    at: "before",
+    first,
+    nth,
+    second: () => deleteTeam(db, { id: ALICE, role: "member" }, TEAM),
+    secondWaitsOn: '%delete from "session_teams"%',
+    secondMayFinish: true,
+  });
+
+/*
+ * `hold` takes a row on a second connection, `first` parks on it, `second`
+ * parks behind `first`, then the row is let go: two requests queued in a
+ * fixed order. Both are settled before returning, whatever fails.
+ */
+async function queued(options: {
+  hold: (query: Query) => Promise<unknown>;
+  first: () => Promise<unknown>;
+  firstWaitsOn: string;
+  second: () => Promise<unknown>;
+  secondWaitsOn: string;
+}) {
+  const client = await controller.connect();
+  let one: Promise<unknown> | undefined;
+  let two: Promise<unknown> | undefined;
+  try {
+    await client.query("BEGIN");
+    await options.hold((sql, params) => client.query(sql, params));
+    one = settle(options.first());
+    await waitingOn(options.firstWaitsOn);
+    two = settle(options.second());
+    await waitingOn(options.secondWaitsOn);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await Promise.all([one, two]);
+  }
+  return [await one, await two];
+}
 
 beforeEach(async () => {
   await truncateAll(pool);
@@ -205,15 +273,16 @@ beforeEach(async () => {
     SESSION,
     BLOCK,
   ]);
-  const team = await pool.query<{ id: string }>(
-    `INSERT INTO session_teams (session_id, name, created_by) VALUES ($1,'Pair',$2) RETURNING id`,
-    [SESSION, ADMIN],
+  await pool.query(
+    `INSERT INTO session_teams (id, session_id, name, created_by) VALUES ($1,$2,'Pair',$3)`,
+    [TEAM, SESSION, ADMIN],
   );
   await pool.query(
     `INSERT INTO session_team_members (team_id, session_id, user_id) VALUES ($1,$2,$3), ($1,$2,$4)`,
-    [team.rows[0]?.id, SESSION, ALICE, BEN],
+    [TEAM, SESSION, ALICE, BEN],
   );
-  afterCheck.hold = undefined;
+  atCheck.before = undefined;
+  atCheck.after = undefined;
   await flush([item()], ALICE);
   teamIdFor.mockReset();
   if (real.fn) teamIdFor.mockImplementation(real.fn);
@@ -292,6 +361,18 @@ describe("an amend that raced a concurrent write", () => {
     expect(removed).toMatchObject({ ok: { rowCount: 1 } });
     expect(await row()).toMatchObject({ interest_level: "high" });
   });
+
+  it("refuses at once to disband the team while an amend holds its visit", async () => {
+    const [amended, disbanded] = await disbandedBeforeCheck(
+      () => flush([item({ interestLevel: "high", updatedAt: T2 })], BEN),
+      2,
+    );
+
+    expect(disbanded).toMatchObject({ error: { status: 409, code: "conflict" } });
+    expect(amended).toMatchObject({ ok: [{ status: "applied" }] });
+    expect(await members()).toBe(2);
+    expect(await row()).toMatchObject({ interest_level: "high" });
+  });
 });
 
 describe("a PATCH amend that raced a concurrent write", () => {
@@ -349,12 +430,19 @@ describe("a PATCH amend that raced a concurrent write", () => {
     expect(await names()).toEqual([{ name: "Mr Late" }]);
   });
 
-  /*
-   * Sync takes the household before the visit. Were the amend to hold the
-   * visit and reach for the household after, the two would deadlock here.
-   */
-  it("meets the author's queued amend at the household, so neither deadlocks", async () => {
-    const [amended, flushed] = await parkedAfterCheck({
+  it("refuses at once to disband the team while an amend holds its visit", async () => {
+    const [amended, disbanded] = await disbandedBeforeCheck(amend);
+
+    expect(disbanded).toMatchObject({ error: { status: 409, code: "conflict" } });
+    expect(amended).toMatchObject({ ok: { interestLevel: "high" } });
+    expect(await members()).toBe(2);
+    expect(await names()).toEqual([{ name: "Mr Late" }]);
+  });
+
+  /* The amend holds the household, not only the visit, until it commits. */
+  it("holds the author's queued amend at the household until it commits", async () => {
+    const [amended, flushed] = await parkedAtCheck({
+      at: "after",
       first: amend,
       second: () => flush([item({ interestLevel: "medium", updatedAt: T2 })], ALICE),
       secondWaitsOn: '%insert into "households"%',
@@ -364,6 +452,31 @@ describe("a PATCH amend that raced a concurrent write", () => {
     // The amend is stamped with the real time, which is after T2.
     expect(flushed).toMatchObject({ ok: [{ status: "stale" }] });
     expect(await row()).toMatchObject({ interest_level: "high", description: "late" });
+  });
+
+  /*
+   * Sync takes the household, then the visit. Were the amend to take the
+   * visit first, the flush would get the household when it is let go and
+   * reach for the visit the amend holds, while the amend waits for the
+   * household: a deadlock.
+   */
+  it("takes the household before the visit, as sync does, so the two never deadlock", async () => {
+    const [flushed, amended] = await queued({
+      hold: (q) =>
+        q(
+          `SELECT 1 FROM households WHERE id = (SELECT household_id FROM visits WHERE id=$1) FOR UPDATE`,
+          [V1],
+        ),
+      first: () => flush([item({ interestLevel: "medium", updatedAt: T2 })], ALICE),
+      firstWaitsOn: '%insert into "households"%',
+      second: amend,
+      secondWaitsOn: '%from "households"%for update%',
+    });
+
+    expect(flushed).toMatchObject({ ok: [{ status: "applied" }] });
+    expect(amended).toMatchObject({ ok: { interestLevel: "high" } });
+    expect(await row()).toMatchObject({ interest_level: "high", description: "late" });
+    expect(await names()).toEqual([{ name: "Mr Late" }]);
   });
 });
 

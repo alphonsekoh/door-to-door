@@ -310,10 +310,11 @@ class NotApplied extends Error {
  * - INSERT ... ON CONFLICT DO NOTHING says whether this call created the row,
  *   which is what decides who writes the teammate snapshot when two flushes
  *   race. Only one inserts.
- * - Otherwise the row is locked (SELECT ... FOR UPDATE) and re-judged: the
- *   amend applies only if the stored row is still older and the caller is
- *   still its author or a current teammate. A concurrent writer finishes
- *   first, and this sees what it committed.
+ * - Otherwise the row is locked (SELECT ... FOR NO KEY UPDATE, as PATCH
+ *   takes it; see lockForAmend) and re-judged: the amend applies only if the
+ *   stored row is still older and the caller is still its author or a
+ *   current teammate. A concurrent writer finishes first, and this sees what
+ *   it committed.
  *
  * Author, session, team, household and clientCreatedAt are set at insert and
  * never in the UPDATE (D-29-2, D-74-16).
@@ -374,7 +375,7 @@ async function persist(db: Database, write: Write): Promise<"applied" | "unchang
           })
           .from(visits)
           .where(eq(visits.id, item.id))
-          .for("update")
+          .for("no key update")
           .limit(1),
         "the stored visit",
       );

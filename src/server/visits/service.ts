@@ -277,8 +277,13 @@ type LockedVisit = {
  * Locks what an amend is judged on, in the order recording and sync take
  * them (D-117-45, D-117-9): the visit's session FOR KEY SHARE, so an end
  * waits for the amend or the amend reads what it committed, then the
- * household and the visit FOR UPDATE. A stored visit never changes
- * household or session, so where to lock is read before locking.
+ * household FOR UPDATE and the visit FOR NO KEY UPDATE. A stored visit never
+ * changes household or session, so where to lock is read before locking.
+ *
+ * NO KEY UPDATE, as sync's amend takes it: an amend changes no key, and
+ * FOR UPDATE would block the KEY SHARE that disbanding the team takes on its
+ * visits after deleting the membership canAmend then waits to read - a
+ * deadlock, where this way the disband is refused at once.
  */
 async function lockForAmend(tx: Database, id: string): Promise<LockedVisit> {
   const found = await tx
@@ -305,7 +310,7 @@ async function lockForAmend(tx: Database, id: string): Promise<LockedVisit> {
     .select({ memberId: visits.memberId, teamId: visits.teamId })
     .from(visits)
     .where(eq(visits.id, id))
-    .for("update");
+    .for("no key update");
 
   return {
     ...firstOrThrow(visit, "the visit lock"),
