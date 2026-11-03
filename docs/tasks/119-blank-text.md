@@ -1,6 +1,6 @@
 # #119 · Blank unit numbers and notes
 
-- **Status:** In review (PR #141)
+- **Status:** Done (PR #141)
 - **Phase:** 7 - Hardening
 - **Depends on:** #20, #21, #22, #117
 
