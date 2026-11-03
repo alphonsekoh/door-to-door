@@ -1047,10 +1047,10 @@ components:
       required: [name]
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
+        # Deliberately uncapped (D-74-15), unlike every other request array.
         memberIds:
           type: array
           uniqueItems: true
-          maxItems: 50
           items: { type: string, format: uuid }
           description: |
             Others to place on the team. A member creating a team is always

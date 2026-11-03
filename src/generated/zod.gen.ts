@@ -440,7 +440,7 @@ export const zCreateUserRequest = z.object({
 
 export const zCreateTeamRequest = z.object({
     name: z.string().min(1).max(60),
-    memberIds: z.array(z.uuid()).max(50).optional()
+    memberIds: z.array(z.uuid()).optional()
 });
 
 export const zUpdateTeamRequest = z.object({
