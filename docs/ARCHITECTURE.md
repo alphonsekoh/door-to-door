@@ -188,9 +188,10 @@ authoritative, and a change to any of them needs the owner.
    return before `auth()` runs (D-32-19).
 2. The route handler is wrapped in `withContract(operation, handler)`: path, query
    (schema-driven coercion) and body are parsed with generated Zod; PATCH bodies go
-   through `requireChanges`. This runs before any role check. Every request array has a
-   `maxItems`, so an oversized one is refused on its length before any item is parsed
-   (D-118-5, D-118-6, R-91).
+   through `requireChanges`. This runs before any role check. Every request array but
+   `CreateTeamRequest.memberIds` has a `maxItems`, so an oversized one is refused on its
+   length before any item is parsed (D-118-5, R-91). `memberIds` is uncapped (D-74-15,
+   D-118-6), and no request body has a size limit yet (#126).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation from the database on every request (one
    primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.

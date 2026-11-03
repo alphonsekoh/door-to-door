@@ -40,12 +40,18 @@ and add Dependabot.
   and `withContract` parses the body before the handler checks the role, so any member
   could send millions of ids. No screen sends `blockIds` when it creates a session.
   _Relies on:_ D-12-1. _Research:_ R-91.
-- **D-118-6 · Proposed, awaiting the owner: `CreateTeamRequest.memberIds` takes at most
-  50 items.** This is in the code and tested (51 is a `400` with one `/memberIds`
-  detail). It bounds a single request, not the size of a team, because
-  `POST /teams/{id}/members` still adds people one at a time. _Why:_ the same memory
-  exhaustion as D-118-5, reachable by any member. **Conflicts with D-74-15** (see Open
-  questions). _Research:_ R-91.
+- **D-118-6 · The cap stops at `CreateSessionRequest.blockIds` (D-118-5);
+  `CreateTeamRequest.memberIds` stays uncapped (owner, 2026-11-03).** Reaffirms D-74-15.
+  _Why:_ the owner chose to keep team creation unlimited. _Trade-off:_
+  GHSA-mrhx-c7xc-m3w5 stays reachable: any signed-in member can `POST /teams` with a
+  huge `memberIds`, and `withContract` builds one issue per bad item before the handler
+  runs. The remaining mitigation is a request body size limit, tracked in #126, which
+  bounds the list without capping team size; #126's own proposal of a `maxItems` on
+  `memberIds` would contradict D-74-15. _Research:_ R-91. _Narrowed from:_ ~~Proposed:
+  `CreateTeamRequest.memberIds` takes at most 50 items. It bounds a single request, not
+  the size of a team, because `POST /teams/{id}/members` still adds people one at a
+  time. Why: the same memory exhaustion as D-118-5, reachable by any member. Conflicts
+  with D-74-15.~~ The cap went in with `fc0859c` and came off in `e2dbb0c`.
 - **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** npm has
   three groups: security, minor-and-patch, major. GitHub Actions has one. Version
   updates wait out a 7-day cooldown. PRs get a `chore` prefix and the existing
@@ -66,21 +72,10 @@ and add Dependabot.
 
 ## Relies on
 
-D-02-3, D-06-1, D-10-1, D-12-1, D-21-7, D-32-2, D-74-15 (conflict, below).
+D-02-3, D-06-1, D-10-1, D-12-1, D-21-7, D-32-2, D-74-15 (reaffirmed, D-118-6).
 
 ## Open questions
 
-- **D-118-6 conflicts with D-74-15 (owner-approved).** D-74-15 says:
-  "`CreateTeamRequest.memberIds` has no cap." The contract now refuses more than 50
-  with a `400`. If both stand, the record promises something the server refuses, and
-  anything built on D-74-15 breaks at 51 people. That already includes the admin team
-  sheet: it has no limit on how many people can be ticked, and at 51 it shows the
-  generic message. The options are:
-  1. Accept D-118-6. It then says `Supersedes the "no cap" clause of D-74-15`, and that
-     clause is struck through. Team size stays unlimited through
-     `POST /teams/{id}/members`.
-  2. Keep D-74-15 and remove the cap. Any signed-in member could then reach
-     GHSA-mrhx-c7xc-m3w5 again.
 - **Owner action, not in the PR:** turn on Dependabot alerts and Dependabot security
   updates in the repository settings. This is one of the issue's acceptance criteria.
   D-118-7's `npm-security` group does nothing until security updates are on.

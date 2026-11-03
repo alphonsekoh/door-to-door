@@ -926,8 +926,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   failing element, with no early stop, so one large array can exhaust memory. 4.6.6
   checks the array, set and map size bounds before it parses any element. An array with
   no `max` is still parsed element by element. Measured: 101 empty items sent to
-  `/visits/sync` and 51 bad ids sent to `blockIds` or `memberIds` each give one detail,
-  on the array.
+  `/visits/sync` and 51 bad ids sent to `blockIds` each give one detail, on the array.
 - **Source:** [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5);
   [zod v4.6.6 release](https://github.com/colinhacks/zod/releases/tag/v4.6.6) (#6652);
   the #118 integration tests
