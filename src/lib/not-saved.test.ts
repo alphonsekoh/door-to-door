@@ -3,7 +3,9 @@ import { ApiRequestError } from "@/lib/api-client";
 import {
   type NotSavedField,
   REASONS,
-  notSavedForBlank,
+  UNIT_REFUSAL,
+  UNIT_TOO_LONG,
+  notSavedByForm,
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
@@ -20,9 +22,9 @@ const invalid = (details?: { path: string; message: string }[]) =>
     },
   });
 
-describe("notSavedForBlank", () => {
+describe("notSavedByForm", () => {
   it("lists every reason in the form's order, and points at the first", () => {
-    expect(notSavedForBlank(["interestLevel", "unitNumber", "memberId"], ON_BEHALF)).toEqual({
+    expect(notSavedByForm(["interestLevel", "unitNumber", "memberId"], ON_BEHALF)).toEqual({
       reasons: [
         "No member is chosen.",
         "The unit number is blank.",
@@ -32,8 +34,28 @@ describe("notSavedForBlank", () => {
     });
   });
 
+  it("says a unit number is too long, and how long it may be", () => {
+    expect(UNIT_TOO_LONG).toBe("The unit number is too long (32 characters at most).");
+    expect(notSavedByForm(["interestLevel", "unitNumberTooLong"], VISIT)).toEqual({
+      reasons: [UNIT_TOO_LONG, "No interest level is chosen."],
+      field: "unitNumber",
+    });
+  });
+
+  it("opens for a unit too long even when it is the only fault", () => {
+    expect(notSavedByForm(["unitNumberTooLong"], ON_BEHALF)).toEqual({
+      reasons: [UNIT_TOO_LONG],
+      field: "unitNumber",
+    });
+  });
+
+  it("names each fault of a unit number by its own reason", () => {
+    expect(REASONS[UNIT_REFUSAL.blank]).toBe("The unit number is blank.");
+    expect(REASONS[UNIT_REFUSAL.too_long]).toBe(UNIT_TOO_LONG);
+  });
+
   it("names a blank note", () => {
-    expect(notSavedForBlank(["note"], ["note"])).toEqual({
+    expect(notSavedByForm(["note"], ["note"])).toEqual({
       reasons: [REASONS.note],
       field: "note",
     });
@@ -41,12 +63,12 @@ describe("notSavedForBlank", () => {
 
   it("opens nothing when only a choice is missing", () => {
     // The owner's scope is blank text; the line beside Save says the rest.
-    expect(notSavedForBlank(["interestLevel"], VISIT)).toBeNull();
-    expect(notSavedForBlank(["memberId", "interestLevel"], ON_BEHALF)).toBeNull();
+    expect(notSavedByForm(["interestLevel"], VISIT)).toBeNull();
+    expect(notSavedByForm(["memberId", "interestLevel"], ON_BEHALF)).toBeNull();
   });
 
   it("opens nothing when nothing was refused", () => {
-    expect(notSavedForBlank([], VISIT)).toBeNull();
+    expect(notSavedByForm([], VISIT)).toBeNull();
   });
 });
 

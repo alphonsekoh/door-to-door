@@ -1,10 +1,12 @@
 import { ApiRequestError } from "@/lib/api-client";
+import { MAX_UNIT_NUMBER_LENGTH, type UnitFault } from "@/lib/units/unit-number";
 
 /*
  * What the Not saved pop-up lists (D-119-13). A Save of a visit or a note
- * refused for a blank unit number or note, or answered with a 400 by the
- * server, opens a dialog naming every reason refused at that moment, in the
- * form's own order, and OK returns focus to the first field at fault.
+ * refused for a blank unit number or note, or a unit number too long, or
+ * answered with a 400 by the server, opens a dialog naming every reason
+ * refused at that moment, in the form's own order, and OK returns focus to
+ * the first field at fault.
  *
  * Shared by the visit forms and the follow-up sheet, so it sits beside
  * api-client rather than in either domain's folder (D-119-18).
@@ -16,23 +18,43 @@ export type NotSavedField = "memberId" | "blockId" | "unitNumber" | "interestLev
 export const VISIT_NOT_SAVED = "This visit could not be saved because:";
 export const NOTE_NOT_SAVED = "This note could not be saved because:";
 
-export const REASONS: Record<NotSavedField, string> = {
+/*
+ * What a form refuses a field for: blank, or a choice not made, or a unit
+ * number past the contract's limit. Only a unit is refused for its length; a
+ * note counts down to its own (D-74-8).
+ */
+export type Refusal = NotSavedField | "unitNumberTooLong";
+
+/* Said in the pop-up and under the field alike. */
+export const UNIT_TOO_LONG = `The unit number is too long (${String(MAX_UNIT_NUMBER_LENGTH)} characters at most).`;
+
+export const REASONS: Record<Refusal, string> = {
   memberId: "No member is chosen.",
   blockId: "No block is chosen.",
   unitNumber: "The unit number is blank.",
+  unitNumberTooLong: UNIT_TOO_LONG,
   interestLevel: "No interest level is chosen.",
   note: "The note is blank.",
 };
 
-/* Typed text, where a blank opens the pop-up. A choice not made alone keeps
+/* What the pop-up names for each fault of a unit number. */
+export const UNIT_REFUSAL: Record<UnitFault, Refusal> = {
+  blank: "unitNumber",
+  too_long: "unitNumberTooLong",
+};
+
+const fieldOf = (refusal: Refusal): NotSavedField =>
+  refusal === "unitNumberTooLong" ? "unitNumber" : refusal;
+
+/* Typed text, whose refusal opens the pop-up. A choice not made alone keeps
    to the line beside Save (D-33-29). */
-const BLANK_TEXT: readonly NotSavedField[] = ["unitNumber", "note"];
+const TYPED: readonly Refusal[] = ["unitNumber", "unitNumberTooLong", "note"];
 
 /*
- * What the server's refusal of each field says. The forms send text trimmed,
- * and the server refuses it for more than being blank (a unit past 32
- * characters, say), so it names the rule rather than claim the field was
- * empty. A choice it refuses was made, so it is not called missing.
+ * What the server's refusal of each field says. Its issue does not say which
+ * rule the text broke, and the forms check both before sending, so it names
+ * both rather than claim the field was empty. A choice it refuses was made,
+ * so it is not called missing.
  */
 const REFUSED_BY_SERVER: Record<NotSavedField, string> = {
   memberId: "The member was not accepted.",
@@ -49,14 +71,14 @@ export type NotSaved = {
 };
 
 /* The reasons for a Save the form refused itself, or null for no pop-up. */
-export function notSavedForBlank(
-  refused: readonly NotSavedField[],
+export function notSavedByForm(
+  refused: readonly Refusal[],
   order: readonly NotSavedField[],
 ): NotSaved | null {
-  const atFault = order.filter((field) => refused.includes(field));
+  const atFault = order.flatMap((field) => refused.filter((refusal) => fieldOf(refusal) === field));
   const [first] = atFault;
-  if (first === undefined || !atFault.some((field) => BLANK_TEXT.includes(field))) return null;
-  return { reasons: atFault.map((field) => REASONS[field]), field: first };
+  if (first === undefined || !atFault.some((refusal) => TYPED.includes(refusal))) return null;
+  return { reasons: atFault.map((refusal) => REASONS[refusal]), field: fieldOf(first) };
 }
 
 export type ServerNotSaved = NotSaved & {

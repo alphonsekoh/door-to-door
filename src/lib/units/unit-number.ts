@@ -8,8 +8,8 @@
 
 const DIGITS = /^\d+$/;
 
-/* The contract's unitNumber.maxLength: a form stops the typing there, rather
-   than send a unit the server will refuse. */
+/* The contract's unitNumber.maxLength, which unit-number.test.ts holds this
+   to. A longer unit is refused with its reason, never cut short (D-74-8). */
 export const MAX_UNIT_NUMBER_LENGTH = 32;
 
 export type ParsedUnit = { floor: string; unit: string; unitWidth: number };
@@ -54,4 +54,16 @@ export function normaliseUnitNumber(value: string): string {
     return trimmed;
   }
   return `#${parsed.floor}-${parsed.unit}`;
+}
+
+export type UnitFault = "blank" | "too_long";
+
+/*
+ * What the server would refuse in a unit, judged on what the forms send: the
+ * normalised value, so spaces around it never count against the limit.
+ */
+export function unitNumberFault(value: string): UnitFault | null {
+  const unit = normaliseUnitNumber(value);
+  if (unit === "") return "blank";
+  return unit.length > MAX_UNIT_NUMBER_LENGTH ? "too_long" : null;
 }

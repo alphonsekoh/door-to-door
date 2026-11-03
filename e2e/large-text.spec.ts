@@ -298,28 +298,39 @@ async function expectTappable(target: Locator, what: string): Promise<void> {
  * In view and uncovered as the screen stands, without scrolling to it: a
  * check that scrolls first passes a field the docked Save sits on as the
  * screen opens. Its corners and middle are each what a tap there reaches.
+ * A field taller than the room left for it is checked by its top edge: its
+ * two corners and the middle of that edge.
  */
-async function expectInView(target: Locator, what: string): Promise<void> {
+async function expectInView(
+  target: Locator,
+  what: string,
+  part: "whole" | "top edge" = "whole",
+): Promise<void> {
   await expect
     .poll(
       () =>
-        target.evaluate((element) => {
+        target.evaluate((element, edgeOnly) => {
           const box = element.getBoundingClientRect();
-          if (box.top < 0 || box.bottom > window.innerHeight) return "out of view";
           const inset = 2;
-          const points = [
+          const bottom = edgeOnly ? box.top + inset * 2 : box.bottom;
+          if (box.top < 0 || bottom > window.innerHeight) return "out of view";
+          const top = [
             [box.left + inset, box.top + inset],
+            [box.left + box.width / 2, box.top + inset],
             [box.right - inset, box.top + inset],
+          ] as const;
+          const rest = [
             [box.left + box.width / 2, box.top + box.height / 2],
             [box.left + inset, box.bottom - inset],
             [box.right - inset, box.bottom - inset],
           ] as const;
+          const points = edgeOnly ? top : [...top, ...rest];
           const covered = points.some(([x, y]) => {
             const top = document.elementFromPoint(x, y);
             return top === null || !(element.contains(top) || top.contains(element));
           });
           return covered ? "covered" : "in view";
-        }),
+        }, part === "top edge"),
       { message: what },
     )
     .toBe("in view");
@@ -498,31 +509,35 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
   await expectFits(page, "Team", page.getByRole("button", { name: "Make an admin" }).first());
 });
 
+/* A blank suggestion refused at the cap, and its Not saved answered with OK. */
+async function refuseBlankNote(page: Page): Promise<{ sheet: Locator; note: Locator }> {
+  await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+  await atCap(page);
+  await page.getByRole("button", { name: "Suggest a return visit" }).first().click();
+  const sheet = page.getByRole("dialog", { name: /^Suggest a return visit/ });
+  const note = sheet.getByRole("textbox", { name: "Why should we go back?" });
+  await note.fill("   ");
+  await sheet.getByRole("button", { name: "Send suggestion" }).click();
+  const blank = page.getByRole("alertdialog", { name: "Not saved" });
+  await blank.getByRole("button", { name: "OK" }).click();
+  await expect(blank).toBeHidden();
+  await expect(note).toBeFocused();
+  return { sheet, note };
+}
+
 /*
  * Not saved at the largest text (D-119-13 to D-119-15). With three reasons it
  * is taller than the screen, and focus on OK had opened it scrolled to its
  * foot, the heading half cut away. OK then sends focus to the field at
  * fault, which a sheet's tall note had brought back with its foot on the
  * docked Send and its label and top under the sheet's header. Its label now
- * comes first, whole, with the field under it. On an iPhone 13 the room
- * between the header and Send is shorter than that label and its count, so
- * the field itself starts under Send there; on a Pixel 5 its top edge shows.
+ * comes first, whole, with the field under it.
  */
 test("Not saved opens at its top, and OK brings the field back below its label", async ({
   memberPage,
   adminPage,
 }) => {
-  await memberPage.goto(`/households/${RESOLVED_HOUSEHOLD}`);
-  await atCap(memberPage);
-  await memberPage.getByRole("button", { name: "Suggest a return visit" }).first().click();
-  const sheet = memberPage.getByRole("dialog", { name: /^Suggest a return visit/ });
-  const note = sheet.getByRole("textbox", { name: "Why should we go back?" });
-  await note.fill("   ");
-  await sheet.getByRole("button", { name: "Send suggestion" }).click();
-  const blank = memberPage.getByRole("alertdialog", { name: "Not saved" });
-  await blank.getByRole("button", { name: "OK" }).click();
-  await expect(blank).toBeHidden();
-  await expect(note).toBeFocused();
+  const { sheet } = await refuseBlankNote(memberPage);
   await expectInView(
     sheet.getByText("Why should we go back?", { exact: true }),
     "the note's label after OK",
@@ -547,6 +562,23 @@ test("Not saved opens at its top, and OK brings the field back below its label",
     record.getByText("Recorded by", { exact: true }),
     "the member's label after OK",
   );
+});
+
+/*
+ * Under its label, the note's own top edge. On an iPhone 13 at the cap the
+ * room between the sheet's header and the docked Send is shorter than the
+ * label and the count, so the note starts under Send (D-119-22's known
+ * limit). Deferred by the owner to #136, the largest-text layout under the
+ * docked action: a known failure there until #136 lands, when Playwright
+ * reports it passing and this mark must go.
+ */
+test("OK brings the note back with its top edge in view", async ({ memberPage, browserName }) => {
+  test.fail(
+    browserName === "webkit",
+    "#136: on an iPhone 13 at 32px the note starts under the docked Send",
+  );
+  const { note } = await refuseBlankNote(memberPage);
+  await expectInView(note, "the note's top edge after OK", "top edge");
 });
 
 /* From the default to the cap: the iOS sizes past Large (21px, 23px), and

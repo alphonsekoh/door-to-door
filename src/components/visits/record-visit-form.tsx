@@ -45,8 +45,11 @@ import { useOnline } from "@/lib/hooks/use-online";
 import {
   type NotSaved,
   type NotSavedField,
+  type Refusal,
+  UNIT_REFUSAL,
+  UNIT_TOO_LONG,
   VISIT_NOT_SAVED,
-  notSavedForBlank,
+  notSavedByForm,
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
@@ -61,9 +64,10 @@ import {
 } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import {
-  MAX_UNIT_NUMBER_LENGTH,
+  type UnitFault,
   nextUnitNumber,
   normaliseUnitNumber,
+  unitNumberFault,
 } from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
 
@@ -80,12 +84,18 @@ export type FormErrors = { unitNumber?: string; interestLevel?: string };
 /* The form's fields that can refuse a Save, in the order they are shown. */
 const FIELDS = ["unitNumber", "interestLevel"] as const satisfies readonly NotSavedField[];
 
+const UNIT_ERRORS: Record<UnitFault, string> = {
+  blank: "Enter the unit number.",
+  too_long: UNIT_TOO_LONG,
+};
+
 /* Validated here so a member sees the problem before a round trip; the
  * contract's generated schema still validates it on arrival. */
 export function validateVisit(unitNumber: string, interestLevel: InterestLevel | null): FormErrors {
   const errors: FormErrors = {};
-  if (unitNumber.trim() === "") {
-    errors.unitNumber = "Enter the unit number.";
+  const fault = unitNumberFault(unitNumber);
+  if (fault !== null) {
+    errors.unitNumber = UNIT_ERRORS[fault];
   }
   if (interestLevel === null) {
     errors.interestLevel = "Choose an interest level.";
@@ -99,12 +109,13 @@ export function validateVisit(unitNumber: string, interestLevel: InterestLevel |
  * a visit lost at the next door (D-33-29's slot, for validation too).
  */
 export function blockedMessage(errors: FormErrors): string | null {
-  if (errors.unitNumber !== undefined && errors.interestLevel !== undefined) {
-    return "Not saved. Enter the unit number and choose an interest level.";
+  if (errors.unitNumber === UNIT_ERRORS.blank) {
+    return errors.interestLevel === undefined
+      ? "Not saved. Enter the unit number."
+      : "Not saved. Enter the unit number and choose an interest level.";
   }
-  if (errors.unitNumber !== undefined) return "Not saved. Enter the unit number.";
-  if (errors.interestLevel !== undefined) return "Not saved. Choose an interest level.";
-  return null;
+  const said = [errors.unitNumber, errors.interestLevel].filter((error) => error !== undefined);
+  return said.length === 0 ? null : `Not saved. ${said.join(" ")}`;
 }
 
 /*
@@ -379,16 +390,16 @@ export function RecordVisitForm({
 
   async function save(): Promise<void> {
     if (sending.current) return;
-    const found = validateVisit(unitNumber, interestLevel);
-    setErrors(found);
-    if (Object.keys(found).length > 0 || interestLevel === null) {
+    const fault = unitNumberFault(unitNumber);
+    setErrors(validateVisit(unitNumber, interestLevel));
+    // Refused before the queue too, so a unit the server would refuse is
+    // never held on the phone to fail later.
+    if (fault !== null || interestLevel === null) {
+      const refused: Refusal[] = [];
+      if (fault !== null) refused.push(UNIT_REFUSAL[fault]);
+      if (interestLevel === null) refused.push("interestLevel");
       setRefused(true);
-      setNotSaved(
-        notSavedForBlank(
-          FIELDS.filter((field) => found[field] !== undefined),
-          FIELDS,
-        ),
-      );
+      setNotSaved(notSavedByForm(refused, FIELDS));
       return;
     }
 
@@ -668,16 +679,20 @@ export function RecordVisitForm({
             setSaved(null);
             setSuggestSent(false);
             setOffList(false);
-            // Cleared the moment it is fixed, so no red lingers while typing.
-            if (event.target.value.trim() !== "") clearError("unitNumber");
+            // Cleared the moment it is fixed, so no red lingers while typing;
+            // until then it says what is wrong with the unit as it now is.
+            const now = unitNumberFault(event.target.value);
+            if (now === null) clearError("unitNumber");
+            else if (errors.unitNumber !== undefined) {
+              setErrors((current) => ({ ...current, unitNumber: UNIT_ERRORS[now] }));
+            }
           }}
           onBlur={() => {
             if (unitNumber.trim() === "") {
-              setErrors((current) => ({ ...current, unitNumber: "Enter the unit number." }));
+              setErrors((current) => ({ ...current, unitNumber: UNIT_ERRORS.blank }));
             }
           }}
           inputMode="text"
-          maxLength={MAX_UNIT_NUMBER_LENGTH}
           autoComplete="off"
           placeholder="#05-123"
           aria-invalid={errors.unitNumber !== undefined}

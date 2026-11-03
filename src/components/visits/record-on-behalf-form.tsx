@@ -9,12 +9,14 @@ import { apiFetch } from "@/lib/api-client";
 import {
   type NotSaved,
   type NotSavedField,
+  type Refusal,
+  UNIT_REFUSAL,
   VISIT_NOT_SAVED,
-  notSavedForBlank,
+  notSavedByForm,
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
-import { MAX_UNIT_NUMBER_LENGTH, normaliseUnitNumber } from "@/lib/units/unit-number";
+import { normaliseUnitNumber, unitNumberFault } from "@/lib/units/unit-number";
 import { uuidv7 } from "@/lib/uuid";
 
 /* In the order the form shows them. */
@@ -72,20 +74,21 @@ export function RecordOnBehalfForm({
       : { title: "Discard this visit?", detail: "What you typed has not been saved." };
 
   async function save(): Promise<void> {
-    if (memberId === "" || blockId === "" || unitNumber.trim() === "" || interestLevel === null) {
-      setFailure("Choose a member, a block, a unit and an interest level.");
-      const missing = {
-        memberId: memberId === "",
-        blockId: blockId === "",
-        unitNumber: unitNumber.trim() === "",
-        interestLevel: interestLevel === null,
-      };
-      setNotSaved(
-        notSavedForBlank(
-          FIELDS.filter((field) => missing[field]),
-          FIELDS,
-        ),
+    const unitFault = unitNumberFault(unitNumber);
+    if (memberId === "" || blockId === "" || unitFault !== null || interestLevel === null) {
+      const refused: Refusal[] = [];
+      if (memberId === "") refused.push("memberId");
+      if (blockId === "") refused.push("blockId");
+      if (unitFault !== null) refused.push(UNIT_REFUSAL[unitFault]);
+      if (interestLevel === null) refused.push("interestLevel");
+      const found = notSavedByForm(refused, FIELDS);
+      // A unit too long was given, so asking for one would not say why.
+      setFailure(
+        found === null || unitFault !== "too_long"
+          ? "Choose a member, a block, a unit and an interest level."
+          : notSavedLine(found),
       );
+      setNotSaved(found);
       return;
     }
 
@@ -197,7 +200,6 @@ export function RecordOnBehalfForm({
               onChange={(event) => {
                 setUnitNumber(event.target.value);
               }}
-              maxLength={MAX_UNIT_NUMBER_LENGTH}
               placeholder="#05-123"
               autoComplete="off"
               className="min-h-12 field"

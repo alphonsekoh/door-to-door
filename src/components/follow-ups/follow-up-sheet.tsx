@@ -24,7 +24,7 @@ import { useRole } from "@/lib/hooks/use-role";
 import {
   NOTE_NOT_SAVED,
   type NotSaved,
-  notSavedForBlank,
+  notSavedByForm,
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
@@ -182,7 +182,7 @@ export function FollowUpSheet({
     setNoteError(problem);
     if (problem !== null) {
       // Only a blank one: past the limit, the count and the error say enough.
-      setNotSaved(notSavedForBlank(text.trim() === "" ? ["note"] : [], ["note"]));
+      setNotSaved(notSavedByForm(text.trim() === "" ? ["note"] : [], ["note"]));
       return;
     }
     if (mode.kind === "create") {

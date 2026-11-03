@@ -186,11 +186,50 @@ describe("RecordOnBehalfForm", () => {
       expect(apiFetch).not.toHaveBeenCalled();
     });
 
-    it("stops a unit at the contract's 32 characters, so one the server would refuse is never typed", async () => {
+    it("refuses a unit past the contract's 32 characters and says why, cutting nothing", async () => {
+      const tooLong = "#".padEnd(33, "1");
       const user = renderForm();
       const unit = screen.getByLabelText("Unit number");
-      await user.type(unit, "#".padEnd(40, "1"));
-      expect(unit).toHaveValue("#".padEnd(32, "1"));
+      await user.type(unit, tooLong);
+      expect(unit).toHaveValue(tooLong);
+      await user.click(screen.getByRole("radio", { name: "Low" }));
+      await user.click(screen.getByRole("button", { name: "Save the record" }));
+
+      expect(reasons()).toEqual([
+        "No member is chosen.",
+        "The unit number is too long (32 characters at most).",
+      ]);
+      // A unit was given, so the line does not ask for one.
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Not saved. No member is chosen. The unit number is too long (32 characters at most).",
+      );
+      await user.click(notSaved().getByRole("button", { name: "OK" }));
+      expect(screen.getByLabelText("Recorded by")).toHaveFocus();
+
+      await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+      await user.click(screen.getByRole("button", { name: "Save the record" }));
+      expect(reasons()).toEqual(["The unit number is too long (32 characters at most)."]);
+      await user.click(notSaved().getByRole("button", { name: "OK" }));
+      expect(unit).toHaveFocus();
+      expect(unit).toHaveValue(tooLong);
+      expect(apiFetch).not.toHaveBeenCalled();
+    });
+
+    it("sends a unit of exactly 32 characters", async () => {
+      apiFetch.mockResolvedValue({});
+      const longest = "#".padEnd(32, "1");
+      const user = renderForm();
+      await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+      await user.type(screen.getByLabelText("Unit number"), longest);
+      await user.click(screen.getByRole("radio", { name: "Low" }));
+      await user.click(screen.getByRole("button", { name: "Save the record" }));
+
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalled();
+      });
+      const [, init] = apiFetch.mock.calls[0] as [string, RequestInit];
+      expect(JSON.parse(init.body as string)).toMatchObject({ unitNumber: longest });
+      expect(screen.queryByRole("alertdialog")).toBeNull();
     });
 
     it("goes back to the unit when that is all that is wrong", async () => {

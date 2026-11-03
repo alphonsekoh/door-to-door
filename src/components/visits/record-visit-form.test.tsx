@@ -10,6 +10,7 @@ import {
   validateVisit,
 } from "@/components/visits/record-visit-form";
 import type { ActiveSession, FollowUp, HouseholdSummary } from "@/generated/types.gen";
+import { UNIT_TOO_LONG } from "@/lib/not-saved";
 import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
@@ -44,6 +45,9 @@ const NO_QUEUE = {
 };
 
 const BLOCK = "b1";
+/* One past the contract's 32 characters, and the longest it takes. */
+const TOO_LONG = "#".padEnd(33, "1");
+const LONGEST = "#".padEnd(32, "1");
 const noSession = vi.fn((): Promise<OutingAnswer> => Promise.resolve({ kind: "unknown" }));
 
 const summary = (unitNumber: string, id = "h1"): HouseholdSummary => ({
@@ -148,6 +152,13 @@ describe("validateVisit", () => {
     expect(validateVisit("  ", "low").unitNumber).toBe("Enter the unit number.");
   });
 
+  it("refuses a unit past the contract's 32 characters, not counting spaces around it", () => {
+    expect(validateVisit(TOO_LONG, "low").unitNumber).toBe(
+      "The unit number is too long (32 characters at most).",
+    );
+    expect(validateVisit(`  ${LONGEST}  `, "low")).toEqual({});
+  });
+
   it("requires an interest level", () => {
     expect(validateVisit("#05-123", null).interestLevel).toBe("Choose an interest level.");
   });
@@ -165,6 +176,15 @@ describe("blockedMessage", () => {
     expect(blockedMessage(validateVisit("", "low"))).toBe("Not saved. Enter the unit number.");
     expect(blockedMessage(validateVisit("#05-01", null))).toBe(
       "Not saved. Choose an interest level.",
+    );
+  });
+
+  it("says a unit is too long rather than ask for one", () => {
+    expect(blockedMessage(validateVisit(TOO_LONG, "low"))).toBe(
+      "Not saved. The unit number is too long (32 characters at most).",
+    );
+    expect(blockedMessage(validateVisit(TOO_LONG, null))).toBe(
+      "Not saved. The unit number is too long (32 characters at most). Choose an interest level.",
     );
   });
 
@@ -1092,11 +1112,58 @@ describe("the Not saved pop-up (#119)", () => {
   };
   const save = () => screen.getByRole("button", { name: "Save and next" });
 
-  it("stops a unit at the contract's 32 characters, so one the server would refuse is never typed", async () => {
+  it("refuses a unit past the contract's 32 characters and says why, cutting nothing", async () => {
     const user = renderForm();
     const unit = screen.getByLabelText("Unit number");
-    await user.type(unit, "#".padEnd(40, "1"));
-    expect(unit).toHaveValue("#".padEnd(32, "1"));
+    await user.type(unit, TOO_LONG);
+    expect(unit).toHaveValue(TOO_LONG);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    expect(
+      notSaved()
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["The unit number is too long (32 characters at most)."]);
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+
+    expect(unit).toHaveFocus();
+    expect(unit).toHaveValue(TOO_LONG);
+    expect(unit).toHaveAttribute("aria-invalid", "true");
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    expect(screen.getByRole("alert")).toHaveTextContent(`Not saved. ${UNIT_TOO_LONG}`);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("sends a unit of exactly 32 characters", async () => {
+    const user = renderForm();
+    await user.type(screen.getByLabelText("Unit number"), LONGEST);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(save());
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalled();
+    });
+    expect(body()).toMatchObject({ unitNumber: LONGEST });
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("says what is wrong with the unit as it is fixed, until it is", async () => {
+    const user = renderForm();
+    await user.click(save());
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    const unit = screen.getByLabelText("Unit number");
+    expect(unit).toHaveAccessibleDescription("Enter the unit number.");
+
+    await user.click(unit);
+    await user.paste(TOO_LONG);
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    // Typing on is not fixing it: the red stays.
+    await user.type(unit, "1");
+    expect(unit).toHaveAccessibleDescription(UNIT_TOO_LONG);
+    await user.type(unit, "{Backspace}{Backspace}");
+    expect(unit).toHaveValue(LONGEST);
+    expect(unit).toHaveAttribute("aria-invalid", "false");
   });
 
   it("lists every reason refused at once, and OK goes back to the unit", async () => {
@@ -1146,7 +1213,7 @@ describe("the Not saved pop-up (#119)", () => {
   });
 
   it("opens for the server's refusal too, pointing at the field it named", async () => {
-    // A unit past the contract's 32 characters is the one the form lets through.
+    // The server's issue does not say which of its rules the unit broke.
     apiFetch.mockRejectedValue(
       new ApiRequestError(400, {
         error: {
@@ -1458,6 +1525,28 @@ describe("saving into the offline queue", () => {
       expect(queue.enqueue).toHaveBeenCalledWith(expect.objectContaining({ sessionId: SESSION }));
     });
     expect(loadSession).toHaveBeenCalledTimes(1);
+  });
+
+  it("never queues a unit the server would refuse as too long", async () => {
+    const queue = withQueue();
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={SESSION}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), TOO_LONG);
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    expect(notSaved().getByRole("listitem")).toHaveTextContent(UNIT_TOO_LONG);
+    expect(queue.enqueue).not.toHaveBeenCalled();
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue(TOO_LONG);
   });
 
   it("never queues a visit without its outing, and keeps everything typed", async () => {
