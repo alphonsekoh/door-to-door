@@ -59,6 +59,14 @@ rateLimit:
   # left the client may have written itself. Leave 0 with no proxy, or one you
   # are not sure appends: 0 turns the per-client budget off. Whole number, at
   # least 0. Default: 0.
+  #
+  # Get it right. A count higher than the proxies that really append, or a
+  # proxy that writes ip:port entries (Azure App Service does), leaves no usable
+  # entry, so every sign-in lands in one unattributed bucket of
+  # signInAttemptsPerClient shared by everyone, which anyone can spend to block
+  # every new sign-in. After deploying, sign in once and check the logs for the
+  # throttled warning "Sign-in from no usable X-Forwarded-For entry"; if it is
+  # there, fix this count or the proxy.
   trustedProxyHops: 0
 
 sync:

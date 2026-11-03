@@ -59,12 +59,16 @@ test.describe("the request body cap (#120)", () => {
    * Next truncates a body the proxy sees past experimental.proxyClientMaxBodySize
    * rather than refusing it, so the cap shows as fields beyond it never being
    * read. Only the production build can show it: jsdom has no Next server.
+   *
+   * The CSRF token goes ahead of the padding, so a cut body still passes Auth.js's
+   * CSRF check and reaches authorize without the credentials; behind it, the
+   * refusal would be MissingCSRF and prove nothing about the credentials.
    */
-  async function signsInBehind(request: APIRequestContext, padding: number): Promise<boolean> {
+  async function signInBehind(request: APIRequestContext, padding: number) {
     const csrf = (await (await request.get("/api/auth/csrf")).json()) as { csrfToken: string };
     const body = new URLSearchParams({
-      pad: "x".repeat(padding),
       csrfToken: csrf.csrfToken,
+      pad: "x".repeat(padding),
       email: SEED_MEMBER,
       password: SEED_PASSWORD,
       callbackUrl: "/",
@@ -74,19 +78,27 @@ test.describe("the request body cap (#120)", () => {
       data: body.toString(),
       maxRedirects: 0,
     });
-    return response
+    const signedIn = response
       .headersArray()
       .some(
         ({ name, value }) =>
           name.toLowerCase() === "set-cookie" && value.includes("session-token="),
       );
+    const error = new URL(
+      response.headers()["location"] ?? "/",
+      "http://localhost",
+    ).searchParams.get("error");
+    return { signedIn, error };
   }
 
   test("signs in with the credentials behind a kilobyte of padding", async ({ request }) => {
-    expect(await signsInBehind(request, 1024)).toBe(true);
+    expect(await signInBehind(request, 1024)).toEqual({ signedIn: true, error: null });
   });
 
   test("never reads credentials that sit past the first 2 MB", async ({ request }) => {
-    expect(await signsInBehind(request, 2.5 * 1024 * 1024)).toBe(false);
+    expect(await signInBehind(request, 2.5 * 1024 * 1024)).toEqual({
+      signedIn: false,
+      error: "CredentialsSignin",
+    });
   });
 });

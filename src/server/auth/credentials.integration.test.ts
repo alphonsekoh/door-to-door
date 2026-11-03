@@ -516,6 +516,13 @@ describe("authorizeFromRawCredentials", () => {
 const CLIENT_X = "198.51.100.7";
 const CLIENT_Y = "203.0.113.9";
 
+/* A Request as Auth.js hands it to authorize, for authorizeFromRawCredentials. */
+const requestFrom = (forwardedFor?: string) =>
+  new Request("http://localhost/api/auth/callback/credentials", {
+    method: "POST",
+    headers: forwardedFor === undefined ? {} : { "x-forwarded-for": forwardedFor },
+  });
+
 type Outcome = "signed in" | "failed" | "limited";
 
 /* Which of the three ways an attempt ended, read from authorizeCredentials directly. */
@@ -639,13 +646,6 @@ describe("the per-client budget (#120)", () => {
 });
 
 describe("the client, from X-Forwarded-For (#120)", () => {
-  /* Through authorizeFromRawCredentials, with a Request as Auth.js builds it. */
-  const requestFrom = (forwardedFor?: string) =>
-    new Request("http://localhost/api/auth/callback/credentials", {
-      method: "POST",
-      headers: forwardedFor === undefined ? {} : { "x-forwarded-for": forwardedFor },
-    });
-
   function signInWith(clientLimiter: RateLimiter, log?: SignInLog) {
     return (request: Request | undefined, email: string, password: string) =>
       authorizeFromRawCredentials({ email, password }, request, {
@@ -815,5 +815,79 @@ describe("logging (#120)", () => {
       /^Sign-in refused: the account attempt budget is spent \(account [0-9a-f]{12}\)$/,
     );
     expect(lines.join("\n")).not.toContain("member@test.local");
+  });
+
+  it("keys and tags the client budget by digest, never by the address", async () => {
+    // D-120-4: the limiter's memory holds no address either.
+    settings.rateLimit.trustedProxyHops = 1;
+    await seedUser({ email: "alice@test.local" });
+    const lines: string[] = [];
+    const log = createSignInLog({ log: (line) => lines.push(line), quietMs: 0 });
+    const keys: string[] = [];
+    const real = createRateLimiter({ limit: 1, windowMs: 60_000 });
+    const clientLimiter: RateLimiter = {
+      ...real,
+      consume: (key) => {
+        keys.push(key);
+        return real.consume(key);
+      },
+      refund: (key) => {
+        keys.push(key);
+        real.refund(key);
+      },
+    };
+    const signIn = (email: string, password: string) =>
+      authorizeFromRawCredentials({ email, password }, requestFrom(CLIENT_X), {
+        db,
+        limiter: freshLimiter(),
+        clientLimiter,
+        log,
+      });
+
+    expect(await signIn("alice@test.local", PASSWORD)).toMatchObject({ email: "alice@test.local" });
+    expect(await signIn("nobody@test.local", "wrong")).toBeNull();
+    expect(await signIn("alice@test.local", PASSWORD)).toBeNull();
+
+    const digest = digestKey("client", CLIENT_X);
+    // Charged, refunded on the success, charged, then refused.
+    expect(keys).toEqual([digest, digest, digest, digest]);
+    expect(lines.at(-1)).toBe(
+      `Sign-in refused: the client attempt budget is spent (client ${digest.slice(0, 12)})`,
+    );
+  });
+
+  it("never writes an email or an address, whichever line it writes", async () => {
+    // Both are 12 characters, the length of a tag, so one passed as a tag would be written whole.
+    const email = "a@test.local";
+    settings.rateLimit.trustedProxyHops = 1;
+    const lines: string[] = [];
+    const deps = {
+      db,
+      limiter: createRateLimiter({ limit: 1, windowMs: 60_000 }),
+      clientLimiter: createRateLimiter({ limit: 2, windowMs: 60_000 }),
+      log: createSignInLog({ log: (line) => lines.push(line), quietMs: 0 }),
+    };
+    const from = (forwardedFor: string | undefined, tried: string, password = "wrong-password") =>
+      authorizeFromRawCredentials({ email: tried, password }, requestFrom(forwardedFor), deps);
+
+    await from(CLIENT_X, email, "p".repeat(MAX_PASSWORD_LENGTH + 1));
+    await from(CLIENT_X, email);
+    await from(CLIENT_X, email);
+    await from(CLIENT_X, "b@test.local");
+    await from(CLIENT_X, "c@test.local");
+    await from(undefined, "d@test.local");
+
+    expect(lines).toEqual([
+      expect.stringMatching(/^Sign-in refused: an email or password longer /),
+      expect.stringMatching(/^Sign-in failed: wrong email or password \(account /),
+      expect.stringMatching(/^Sign-in refused: the account attempt budget is spent \(account /),
+      expect.stringMatching(/^Sign-in failed: /),
+      expect.stringMatching(/^Sign-in refused: the client attempt budget is spent \(client /),
+      expect.stringMatching(/^Sign-in from no usable X-Forwarded-For entry: /),
+      expect.stringMatching(/^Sign-in failed: /),
+    ]);
+    const written = lines.join("\n");
+    expect(written).not.toContain(email);
+    expect(written).not.toContain(CLIENT_X);
   });
 });

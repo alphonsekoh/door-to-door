@@ -533,7 +533,14 @@ docker run -p 3000:3000 \
   app that append to `X-Forwarded-For`; leave `0` with none. The per-client sign-in budget
   counts the entry that many places from the right, since anything further left the client
   wrote itself; with `0` there is no per-client budget. Next only fills the header when it
-  is absent, so with no proxy every address in it is the client's to choose.
+  is absent, so with no proxy every address in it is the client's to choose. **Get the
+  count right.** A count higher than the proxies that really append, or a proxy that
+  writes `ip:port` entries (Azure App Service does), leaves no usable entry, so every
+  sign-in lands in one unattributed bucket of `signInAttemptsPerClient` (30) shared by
+  everyone, which anyone can spend to block every new sign-in. After deploying, sign in
+  once and check the logs for the throttled warning
+  `Sign-in from no usable X-Forwarded-For entry`; if it is there, fix the count or the
+  proxy.
 - **Request bodies** are cut short at 2 MB (`experimental.proxyClientMaxBodySize` in
   `next.config.ts`), on every path the proxy matches, which is all of `/api`. Next
   truncates a longer body rather than refusing it: the handler reads only the first 2 MB,
