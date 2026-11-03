@@ -133,10 +133,11 @@ variables must be exported in every shell that runs the app or a `db:*` script (
 file covers only some commands; see [Environment variables](#environment-variables)).
 [`.env.example`](.env.example) lists them all and shows one way to keep them in a file.
 
-The session cookie is always `Secure`. Chrome and Firefox keep it on `localhost` over
-plain http; Safari, or a phone opening the app on your LAN over http, can drop it, and
-sign-in then lands back on the sign-in page. For such a run, set
-`auth.secureCookies: false` in `config.yaml`.
+The sign-in cookies are always `Secure`. Chrome and Firefox keep them on `localhost`
+over plain http; Safari, or a phone opening the app on your LAN over http, drops them.
+Sign-in then says "Email or password is incorrect." even for the right password: the
+CSRF cookie never came back, so Auth.js refused the attempt (`MissingCSRF` in the
+server log). For such a run, set `auth.secureCookies: false` in `config.yaml`.
 
 ### Record your first visit
 
@@ -569,7 +570,7 @@ docker run -p 3000:3000 \
 | `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.        |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
-| Sign-in lands back on sign-in over plain http                   | Safari on `localhost`, or a phone on the LAN, dropped the `Secure` cookie. Set `auth.secureCookies: false` for that run.        |
+| "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.  |
 | Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).             |
 | A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
 | The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
