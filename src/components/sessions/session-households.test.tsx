@@ -565,16 +565,17 @@ describe("adding households", () => {
     });
   });
 
-  it("says when everything on the list is already in the session", async () => {
+  it("says when everything on the list is already in the session, and links to On the list", async () => {
     server({ listed: () => Promise.resolve(listedPage([note("h1"), note("h2")])) });
     mount();
     const sheet = await openSheet();
     expect(
       await sheet.findByText("Every household on the follow-up list is already in this session."),
     ).toBeVisible();
+    // Not the page's default, To review: the admin came to add households.
     expect(sheet.getByRole("link", { name: "Open the follow-up list" })).toHaveAttribute(
       "href",
-      "/admin/follow-ups",
+      "/admin/follow-ups?tab=list",
     );
   });
 
