@@ -261,14 +261,15 @@ describe("creating a follow-up session", () => {
     expect(create()).toBeEnabled();
   });
 
-  it("sends the admin to the follow-up list when it is empty", async () => {
+  it("sends the admin to On the list when the follow-up list is empty", async () => {
     server({ list: () => Promise.resolve(page([])) });
     const user = await open();
     const kinds = within(screen.getByRole("group", { name: "What kind of session?" }));
     expect(await kinds.findByText("Add households to the follow-up list first.")).toBeVisible();
+    // Not the page's default, To review: the admin came to add households.
     expect(kinds.getByRole("link", { name: "Open the follow-up list" })).toHaveAttribute(
       "href",
-      "/admin/follow-ups",
+      "/admin/follow-ups?tab=list",
     );
 
     await user.click(screen.getByRole("radio", { name: /Follow-up/ }));

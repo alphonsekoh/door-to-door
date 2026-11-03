@@ -1,6 +1,6 @@
 # #118 · Upgrade Next.js to 16.4.3 and move zod off 4.6.5
 
-- **Status:** In progress (branch `chore/118-next-zod-upgrade`, not yet pushed)
+- **Status:** Done (PR #140)
 - **Phase:** 7 - Hardening
 - **Depends on:** #12, #32, #74
 

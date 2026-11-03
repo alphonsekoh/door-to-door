@@ -401,7 +401,7 @@ function AddHouseholdsSheet({
               Every household on the follow-up list is already in this session.
             </p>
             <Link
-              href="/admin/follow-ups"
+              href="/admin/follow-ups?tab=list"
               className="mt-1 inline-flex min-h-11 items-center text-body font-medium btn-text"
             >
               Open the follow-up list
