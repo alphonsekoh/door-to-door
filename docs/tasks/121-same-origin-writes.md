@@ -41,14 +41,20 @@ under, which is not decided yet.
   every write, so neither means a script, a test or a Playwright setup call, not a page
   acting with someone's cookie. _Trade-off:_ fails open for a client that sends neither.
   _Research:_ R-97.
-- **D-121-5 · The server's own host is the first `X-Forwarded-Host` entry, else `Host`;
-  no config key, not `request.url`.** _Why:_ Next builds `request.url` from the bind
-  address, so behind a proxy it names `localhost`; `auth.trustHost: true` already needs a
-  right `Host`; a key would tie the app to a domain not chosen yet. A page cannot set
-  `Host`, nor `X-Forwarded-Host` without a preflight the app never grants. The first
-  entry, because a proxy appends. _Trade-off:_ a proxy that rewrites `Host` and sets no
-  `X-Forwarded-Host` (nginx's default) gets every write refused from a browser without
-  `Sec-Fetch-Site`; README Deployment says how to configure it. _Research:_ R-98, R-99.
+- **D-121-5 · The `Origin` passes if it matches either the first `X-Forwarded-Host`
+  entry or `Host`; no config key, not `request.url`.** ~~The server's own host is the
+  first `X-Forwarded-Host` entry, else `Host`.~~ _Why:_ Next builds `request.url` from
+  the bind address, so behind a proxy it names `localhost`; `auth.trustHost: true`
+  already needs a right `Host`; a key would tie the app to a domain not chosen yet. A
+  page cannot set `Host`, nor `X-Forwarded-Host` without a preflight the app never
+  grants. Either one, because neither is the page's to choose: when a proxy sets
+  `X-Forwarded-Host`, the extra name `Host` carries is the proxy's upstream host, which
+  is this server too. The first entry, because a proxy appends. Wording corrected by the
+  owner (2026-11-03): it said "else `Host`", but `ownHosts` in
+  `src/server/http/same-origin.ts` has always accepted either; the code stands.
+  _Trade-off:_ a proxy that rewrites `Host` and sets no `X-Forwarded-Host` (nginx's
+  default) gets every write refused from a browser without `Sec-Fetch-Site`; README
+  Deployment says how to configure it. _Research:_ R-98, R-99.
 - **D-121-6 · A non-empty request body must be `application/json`, else
   `415 unsupported_media_type`.** Parameters such as `charset` pass; a missing
   `Content-Type` or a `+json` type is refused; a blank body is still reported missing

@@ -125,4 +125,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 115 | [Domain folders](115-domain-folders.md)                 | Done (PR #116); D-115-1 extended (#117)                                                                                                             |
 | 117 | [Follow-up sessions](117-follow-up-sessions.md)         | In review (PR #117); D-117-4 partly, D-117-14, D-117-23 superseded (round 3); D-117-40 refined (round 4); D-117-15/19/24/25/45/59 refined (round 5) |
 | 118 | [Next and zod upgrade](118-next-zod-upgrade.md)         | In progress; D-118-6 narrowed by the owner, D-74-15 reaffirmed                                                                                      |
-| 121 | [Same-origin writes](121-same-origin-writes.md)         | In review (PR #139); D-121-2 reason corrected, D-121-3 refined by D-121-10 (owner)                                                                  |
+| 121 | [Same-origin writes](121-same-origin-writes.md)         | In review (PR #139); D-121-2 reason and D-121-5 wording corrected, D-121-3 refined by D-121-10 (owner)                                              |
