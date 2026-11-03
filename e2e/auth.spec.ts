@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { SEED_ADMIN, SEED_MEMBER, SEED_PASSWORD } from "./accounts";
 import { expect, test } from "./fixtures";
 
@@ -51,5 +51,42 @@ test.describe("signing in", () => {
   test("a signed-out visitor is sent to sign in", async ({ page }) => {
     await page.goto("/history");
     await expect(page).toHaveURL(/sign-in/);
+  });
+});
+
+test.describe("the request body cap (#120)", () => {
+  /*
+   * Next truncates a body the proxy sees past experimental.proxyClientMaxBodySize
+   * rather than refusing it, so the cap shows as fields beyond it never being
+   * read. Only the production build can show it: jsdom has no Next server.
+   */
+  async function signsInBehind(request: APIRequestContext, padding: number): Promise<boolean> {
+    const csrf = (await (await request.get("/api/auth/csrf")).json()) as { csrfToken: string };
+    const body = new URLSearchParams({
+      pad: "x".repeat(padding),
+      csrfToken: csrf.csrfToken,
+      email: SEED_MEMBER,
+      password: SEED_PASSWORD,
+      callbackUrl: "/",
+    });
+    const response = await request.post("/api/auth/callback/credentials", {
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      data: body.toString(),
+      maxRedirects: 0,
+    });
+    return response
+      .headersArray()
+      .some(
+        ({ name, value }) =>
+          name.toLowerCase() === "set-cookie" && value.includes("session-token="),
+      );
+  }
+
+  test("signs in with the credentials behind a kilobyte of padding", async ({ request }) => {
+    expect(await signsInBehind(request, 1024)).toBe(true);
+  });
+
+  test("never reads credentials that sit past the first 2 MB", async ({ request }) => {
+    expect(await signsInBehind(request, 2.5 * 1024 * 1024)).toBe(false);
   });
 });

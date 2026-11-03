@@ -16,6 +16,7 @@ import { z } from "zod";
 export const CONFIG_HINT = "Copy config.example.yaml to config.yaml, or set CONFIG_PATH.";
 
 const DEFAULT_SIGN_IN_ATTEMPTS = 10;
+const DEFAULT_SIGN_IN_ATTEMPTS_PER_CLIENT = 30;
 const DEFAULT_SIGN_IN_WINDOW_SECONDS = 300;
 const DEFAULT_CLOCK_SKEW_SECONDS = 300;
 
@@ -74,7 +75,12 @@ export const appConfigSchema = z.strictObject({
   rateLimit: z
     .strictObject({
       signInAttempts: positiveInteger.default(DEFAULT_SIGN_IN_ATTEMPTS),
+      signInAttemptsPerClient: positiveInteger.default(DEFAULT_SIGN_IN_ATTEMPTS_PER_CLIENT),
+      /* Unset means no app-wide budget: it is an incident switch, not a standing limit. */
+      signInAttemptsGlobal: positiveInteger.optional(),
       signInWindowSeconds: positiveInteger.default(DEFAULT_SIGN_IN_WINDOW_SECONDS),
+      /* 0, the default, means no proxy vouches for X-Forwarded-For, so there is no per-client budget. */
+      trustedProxyHops: z.number().int().nonnegative().default(0),
     })
     .prefault({}),
   sync: z

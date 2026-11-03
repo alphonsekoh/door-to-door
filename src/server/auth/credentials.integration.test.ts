@@ -3,7 +3,9 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
+import type { AppConfig } from "@/lib/config";
 import {
+  MAX_EMAIL_LENGTH,
   RATE_LIMITED_MESSAGE,
   SIGN_IN_FAILED_MESSAGE,
   SignInError,
@@ -11,14 +13,26 @@ import {
   authorizeFromRawCredentials,
   normaliseEmail,
   resetDefaultLimiter,
+  type AuthorizeDeps,
 } from "@/server/auth/credentials";
 import { createRateLimiter, type RateLimiter } from "@/server/auth/rate-limit";
-import { hashPassword } from "@/server/password";
+import { createSignInLog, digestKey, type SignInLog } from "@/server/auth/sign-in-log";
+import { MAX_PASSWORD_LENGTH, hashPassword } from "@/server/password";
 
+/* Reset before each test; a test changes a key before the first sign-in builds the limiters. */
+const settings = vi.hoisted(() => {
+  const base = (): AppConfig["rateLimit"] => ({
+    signInAttempts: 2,
+    signInAttemptsPerClient: 50,
+    signInWindowSeconds: 60,
+    trustedProxyHops: 0,
+  });
+  return { base, rateLimit: base() };
+});
 const { getConfig } = vi.hoisted(() => ({
   getConfig: vi.fn(() => ({
     databaseUrl: process.env["TEST_DATABASE_URL"],
-    rateLimit: { signInAttempts: 2, signInWindowSeconds: 60 },
+    rateLimit: settings.rateLimit,
   })),
 }));
 vi.mock("@/server/config", () => ({ getConfig }));
@@ -51,6 +65,7 @@ const freshLimiter = () => createRateLimiter({ limit: 50, windowMs: 60_000 });
 
 beforeEach(async () => {
   await truncateAll(pool);
+  settings.rateLimit = settings.base();
   resetDefaultLimiter();
 });
 
@@ -86,6 +101,18 @@ describe("successful sign-in", () => {
     );
     expect(JSON.stringify(user)).not.toMatch(/argon2/);
     expect(user).not.toHaveProperty("passwordHash");
+  });
+
+  it("authorises the longest email and password an account can have", async () => {
+    // The over-long refusal (#120) starts one character past these.
+    const email = `${"a".repeat(MAX_EMAIL_LENGTH - "@test.local".length)}@test.local`;
+    const password = "p".repeat(MAX_PASSWORD_LENGTH);
+    await seedUser({ email, password });
+    const user = await authorizeFromRawCredentials({ email, password }, undefined, {
+      db,
+      limiter: freshLimiter(),
+    });
+    expect(user).toMatchObject({ email });
   });
 
   it("accepts a differently-cased email", async () => {
@@ -483,5 +510,310 @@ describe("authorizeFromRawCredentials", () => {
       password: PASSWORD,
     });
     expect(user).toMatchObject({ email: "member@test.local" });
+  });
+});
+
+const CLIENT_X = "198.51.100.7";
+const CLIENT_Y = "203.0.113.9";
+
+type Outcome = "signed in" | "failed" | "limited";
+
+/* Which of the three ways an attempt ended, read from authorizeCredentials directly. */
+async function outcomeOf(
+  credentials: { email: string; password: string },
+  deps: AuthorizeDeps,
+): Promise<Outcome> {
+  try {
+    await authorizeCredentials(credentials, deps);
+    return "signed in";
+  } catch (error) {
+    if (error instanceof SignInError) {
+      return error.message === RATE_LIMITED_MESSAGE ? "limited" : "failed";
+    }
+    throw error;
+  }
+}
+
+describe("the per-client budget (#120)", () => {
+  it("refuses a client that has spent it, even with another account's correct password", async () => {
+    // Password spraying: one or two guesses at every account, which the
+    // per-account budget never sees.
+    await seedUser({ email: "alice@test.local" });
+    await seedUser({ email: "ben@test.local" });
+    const clientLimiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+    const from = (clientKey: string, email: string, password: string) =>
+      outcomeOf({ email, password }, { db, limiter: freshLimiter(), clientLimiter, clientKey });
+
+    expect(await from(CLIENT_X, "alice@test.local", "wrong-password")).toBe("failed");
+    expect(await from(CLIENT_X, "nobody@test.local", "wrong-password")).toBe("failed");
+    expect(await from(CLIENT_X, "ben@test.local", PASSWORD)).toBe("limited");
+    expect(await from(CLIENT_Y, "ben@test.local", PASSWORD)).toBe("signed in");
+  });
+
+  it("gives the client its attempt back when the account budget refuses", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const clientLimiter = createRateLimiter({ limit: 3, windowMs: 60_000 });
+    const deps = {
+      db,
+      limiter: createRateLimiter({ limit: 1, windowMs: 60_000 }),
+      clientLimiter,
+      clientKey: CLIENT_X,
+    };
+    const attempt = (email: string) => outcomeOf({ email, password: "wrong-password" }, deps);
+
+    expect(await attempt("alice@test.local")).toBe("failed");
+    for (let i = 0; i < 3; i += 1) {
+      expect(await attempt("alice@test.local")).toBe("limited");
+    }
+    // Only the first attempt is still charged to the client, so two more fit.
+    expect(await attempt("ben@test.local")).toBe("failed");
+    expect(await attempt("carol@test.local")).toBe("failed");
+    expect(await attempt("dan@test.local")).toBe("limited");
+  });
+
+  it("gives back only the success's own attempt, leaving the client's failures counted", async () => {
+    // A member signing in from a sprayer's address must not wipe its count.
+    await seedUser({ email: "alice@test.local" });
+    const clientLimiter = createRateLimiter({ limit: 3, windowMs: 60_000 });
+    const from = (email: string, password: string) =>
+      outcomeOf(
+        { email, password },
+        { db, limiter: freshLimiter(), clientLimiter, clientKey: CLIENT_X },
+      );
+
+    expect(await from("nobody-1@test.local", "wrong-password")).toBe("failed");
+    expect(await from("nobody-2@test.local", "wrong-password")).toBe("failed");
+    expect(await from("alice@test.local", PASSWORD)).toBe("signed in");
+    expect(await from("nobody-3@test.local", "wrong-password")).toBe("failed");
+    expect(await from("nobody-4@test.local", "wrong-password")).toBe("limited");
+  });
+
+  it("gives nothing back for a deactivated account's correct password", async () => {
+    await seedUser({ email: "gone@test.local", deactivated: true });
+    const clientLimiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+    const attempt = () =>
+      outcomeOf(
+        { email: "gone@test.local", password: PASSWORD },
+        { db, limiter: freshLimiter(), clientLimiter, clientKey: CLIENT_X },
+      );
+
+    expect(await attempt()).toBe("failed");
+    expect(await attempt()).toBe("failed");
+    expect(await attempt()).toBe("limited");
+  });
+
+  it("caps a concurrent burst of distinct emails from one client at its limit", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const deps = {
+      db,
+      limiter: freshLimiter(),
+      clientLimiter: createRateLimiter({ limit: 3, windowMs: 60_000 }),
+      clientKey: CLIENT_X,
+    };
+    const guesses = [
+      ...Array.from({ length: 7 }, (_, i) => ({
+        email: `user-${String(i)}@test.local`,
+        password: "wrong-password",
+      })),
+      { email: "alice@test.local", password: PASSWORD },
+    ];
+
+    const outcomes = await Promise.all(guesses.map((guess) => outcomeOf(guess, deps)));
+    expect(outcomes).toEqual([
+      ...Array.from({ length: 3 }, () => "failed"),
+      ...Array.from({ length: 5 }, () => "limited"),
+    ]);
+  });
+
+  it("is built from config with rateLimit.signInAttemptsPerClient", async () => {
+    settings.rateLimit.signInAttemptsPerClient = 2;
+    await seedUser({ email: "alice@test.local" });
+    const from = (clientKey: string, email: string, password: string) =>
+      outcomeOf({ email, password }, { db, clientKey });
+
+    expect(await from(CLIENT_X, "nobody-1@test.local", "wrong-password")).toBe("failed");
+    expect(await from(CLIENT_X, "nobody-2@test.local", "wrong-password")).toBe("failed");
+    expect(await from(CLIENT_X, "alice@test.local", PASSWORD)).toBe("limited");
+    expect(await from(CLIENT_Y, "alice@test.local", PASSWORD)).toBe("signed in");
+  });
+});
+
+describe("the client, from X-Forwarded-For (#120)", () => {
+  /* Through authorizeFromRawCredentials, with a Request as Auth.js builds it. */
+  const requestFrom = (forwardedFor?: string) =>
+    new Request("http://localhost/api/auth/callback/credentials", {
+      method: "POST",
+      headers: forwardedFor === undefined ? {} : { "x-forwarded-for": forwardedFor },
+    });
+
+  function signInWith(clientLimiter: RateLimiter, log?: SignInLog) {
+    return (request: Request | undefined, email: string, password: string) =>
+      authorizeFromRawCredentials({ email, password }, request, {
+        db,
+        limiter: freshLimiter(),
+        clientLimiter,
+        ...(log === undefined ? {} : { log }),
+      });
+  }
+
+  it("keys on the rightmost entry when one proxy is trusted, whatever the client wrote before it", async () => {
+    settings.rateLimit.trustedProxyHops = 1;
+    await seedUser({ email: "alice@test.local" });
+    const signIn = signInWith(createRateLimiter({ limit: 2, windowMs: 60_000 }));
+
+    expect(await signIn(requestFrom(`10.0.0.1, ${CLIENT_X}`), "a@test.local", "wrong")).toBeNull();
+    expect(await signIn(requestFrom(`10.0.0.2, ${CLIENT_X}`), "b@test.local", "wrong")).toBeNull();
+    // Refused although the password is right: the forged entry changed nothing.
+    expect(
+      await signIn(requestFrom(`10.0.0.3, ${CLIENT_X}`), "alice@test.local", PASSWORD),
+    ).toBeNull();
+    expect(
+      await signIn(requestFrom(`10.0.0.1, ${CLIENT_Y}`), "alice@test.local", PASSWORD),
+    ).toMatchObject({ email: "alice@test.local" });
+  });
+
+  it("ignores the header entirely when no proxy is trusted", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const clientLimiter = createRateLimiter({ limit: 1, windowMs: 60_000 });
+    const signIn = signInWith(clientLimiter);
+
+    expect(await signIn(requestFrom(CLIENT_X), "a@test.local", "wrong")).toBeNull();
+    expect(await signIn(requestFrom(CLIENT_X), "b@test.local", "wrong")).toBeNull();
+    expect(await signIn(requestFrom(CLIENT_X), "alice@test.local", PASSWORD)).toMatchObject({
+      email: "alice@test.local",
+    });
+    expect(clientLimiter.size()).toBe(0);
+  });
+
+  it("puts an attempt with no usable entry in one shared bucket, and says so", async () => {
+    settings.rateLimit.trustedProxyHops = 2;
+    await seedUser({ email: "alice@test.local" });
+    const lines: string[] = [];
+    const log = createSignInLog({ log: (line) => lines.push(line) });
+    const signIn = signInWith(createRateLimiter({ limit: 2, windowMs: 60_000 }), log);
+
+    expect(await signIn(requestFrom(CLIENT_X), "a@test.local", "wrong")).toBeNull();
+    expect(await signIn(undefined, "b@test.local", "wrong")).toBeNull();
+    expect(await signIn(requestFrom(), "alice@test.local", PASSWORD)).toBeNull();
+    expect(lines.filter((line) => line.includes("X-Forwarded-For"))).toHaveLength(1);
+  });
+});
+
+describe("the app-wide budget, an incident switch (#120)", () => {
+  it("is off unless rateLimit.signInAttemptsGlobal is set", async () => {
+    await seedUser({ email: "alice@test.local" });
+    for (let i = 0; i < 5; i += 1) {
+      expect(
+        await outcomeOf({ email: `nobody-${String(i)}@test.local`, password: "wrong" }, { db }),
+      ).toBe("failed");
+    }
+    expect(await outcomeOf({ email: "alice@test.local", password: PASSWORD }, { db })).toBe(
+      "signed in",
+    );
+  });
+
+  it("once spent, refuses every account, the correct password included", async () => {
+    settings.rateLimit.signInAttemptsGlobal = 2;
+    await seedUser({ email: "alice@test.local" });
+    const attempt = (email: string, password: string) => outcomeOf({ email, password }, { db });
+
+    expect(await attempt("nobody-1@test.local", "wrong")).toBe("failed");
+    expect(await attempt("nobody-2@test.local", "wrong")).toBe("failed");
+    expect(await attempt("alice@test.local", PASSWORD)).toBe("limited");
+  });
+
+  it("is charged first, then the client, then the account", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const order: string[] = [];
+    const recorded = (name: string, limit: number): RateLimiter => {
+      const real = createRateLimiter({ limit, windowMs: 60_000 });
+      return {
+        ...real,
+        consume: (key) => {
+          order.push(name);
+          return real.consume(key);
+        },
+      };
+    };
+    const deps = {
+      db,
+      globalLimiter: recorded("global", 1),
+      clientLimiter: recorded("client", 10),
+      limiter: recorded("account", 10),
+      clientKey: CLIENT_X,
+    };
+
+    expect(await outcomeOf({ email: "alice@test.local", password: "wrong" }, deps)).toBe("failed");
+    expect(order).toEqual(["global", "client", "account"]);
+
+    // A spent app-wide budget refuses before the others are charged at all.
+    order.length = 0;
+    expect(await outcomeOf({ email: "alice@test.local", password: PASSWORD }, deps)).toBe(
+      "limited",
+    );
+    expect(order).toEqual(["global"]);
+  });
+
+  it("gets its attempt back when the client budget refuses", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const globalLimiter = createRateLimiter({ limit: 2, windowMs: 60_000 });
+    const clientLimiter = createRateLimiter({ limit: 1, windowMs: 60_000 });
+    const from = (clientKey: string, email: string, password: string) =>
+      outcomeOf(
+        { email, password },
+        { db, limiter: freshLimiter(), globalLimiter, clientLimiter, clientKey },
+      );
+
+    expect(await from(CLIENT_X, "nobody-1@test.local", "wrong")).toBe("failed");
+    expect(await from(CLIENT_X, "nobody-2@test.local", "wrong")).toBe("limited");
+    expect(await from(CLIENT_Y, "nobody-3@test.local", "wrong")).toBe("failed");
+    expect(await from("192.0.2.1", "alice@test.local", PASSWORD)).toBe("limited");
+  });
+
+  it("gets back only the success's own attempt", async () => {
+    await seedUser({ email: "alice@test.local" });
+    const globalLimiter = createRateLimiter({ limit: 3, windowMs: 60_000 });
+    const attempt = (email: string, password: string) =>
+      outcomeOf({ email, password }, { db, limiter: freshLimiter(), globalLimiter });
+
+    expect(await attempt("nobody-1@test.local", "wrong")).toBe("failed");
+    expect(await attempt("nobody-2@test.local", "wrong")).toBe("failed");
+    expect(await attempt("alice@test.local", PASSWORD)).toBe("signed in");
+    expect(await attempt("nobody-3@test.local", "wrong")).toBe("failed");
+    expect(await attempt("nobody-4@test.local", "wrong")).toBe("limited");
+  });
+});
+
+describe("logging (#120)", () => {
+  it("writes one line for a failure, carrying a tag and never the email", async () => {
+    await seedUser({ email: "member@test.local" });
+    const lines: string[] = [];
+    const log = createSignInLog({ log: (line) => lines.push(line) });
+
+    await authorizeFromRawCredentials(
+      { email: "Member@Test.Local", password: "wrong-password" },
+      undefined,
+      { db, limiter: freshLimiter(), log },
+    );
+
+    expect(lines).toEqual([
+      `Sign-in failed: wrong email or password (account ${digestKey("account", "member@test.local").slice(0, 12)})`,
+    ]);
+    expect(lines.join("\n")).not.toMatch(/member@test\.local/i);
+  });
+
+  it("names the budget that refused, without the email", async () => {
+    const lines: string[] = [];
+    const log = createSignInLog({ log: (line) => lines.push(line), quietMs: 0 });
+    const limiter = createRateLimiter({ limit: 1, windowMs: 60_000 });
+    const attempt = () =>
+      outcomeOf({ email: "member@test.local", password: "wrong" }, { db, limiter, log });
+
+    expect(await attempt()).toBe("failed");
+    expect(await attempt()).toBe("limited");
+    expect(lines[1]).toMatch(
+      /^Sign-in refused: the account attempt budget is spent \(account [0-9a-f]{12}\)$/,
+    );
+    expect(lines.join("\n")).not.toContain("member@test.local");
   });
 });

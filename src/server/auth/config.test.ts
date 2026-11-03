@@ -13,7 +13,12 @@ const { getConfig } = vi.hoisted(() => ({
     databaseUrl: "postgresql://postgres:postgres@localhost:5432/nowhere",
     authSecret: "a-secret-that-is-long-enough-for-tests",
     auth: { trustHost: false },
-    rateLimit: { signInAttempts: 10, signInWindowSeconds: 300 },
+    rateLimit: {
+      signInAttempts: 10,
+      signInAttemptsPerClient: 30,
+      signInWindowSeconds: 300,
+      trustedProxyHops: 0,
+    },
   })),
 }));
 vi.mock("@/server/config", () => ({ getConfig }));
