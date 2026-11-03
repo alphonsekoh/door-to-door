@@ -392,6 +392,22 @@ describe("AdminFollowUps", () => {
     expect(replace).toHaveBeenCalledTimes(1);
   });
 
+  /* Open the follow-up list, from New session and Add households, asks for
+     the list (#137); a bare or mistyped URL still opens To review. */
+  it.each([
+    ["tab=list", /^On the list/, "The follow-up list is empty."],
+    ["", /^To review/, "No suggestions to review."],
+    ["tab=List", /^To review/, "No suggestions to review."],
+  ])("opens on the tab the URL names (%j), and To review otherwise", async (query, tab, empty) => {
+    search.value = query;
+    serve({});
+    render(<AdminFollowUps />);
+    expect(await screen.findByText(empty)).toBeInTheDocument();
+    const pressed = screen.getAllByRole("button", { pressed: true });
+    expect(pressed).toHaveLength(1);
+    expect(pressed[0]).toHaveAccessibleName(tab);
+  });
+
   it("pages with Show more", async () => {
     apiFetch.mockImplementation((path: string) => {
       if (path.endsWith("limit=1")) return Promise.resolve(page([note("1")], 2));

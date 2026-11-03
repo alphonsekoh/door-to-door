@@ -128,3 +128,4 @@ Decisions so load-bearing that every task inherits them. Changing one needs the 
 | 119 | [Blank units and notes](119-blank-text.md)              | Done (PR #141); partly supersedes D-33-29, D-111-26, D-90-9 (owner); refines D-10-3, D-12-5; D-119-23 superseded (D-74-8 upheld, owner)             |
 | 120 | [Sign-in limiter](120-sign-in-limiter.md)               | In progress (branch `fix/120-sign-in-limiter`, not pushed); D-15-3 kept and extended, D-86-5/6 extended; D-118-6 exposure narrowed (owner, D-120-7) |
 | 121 | [Same-origin writes](121-same-origin-writes.md)         | Done (PR #139); D-121-2 reason and D-121-5 wording corrected, D-121-3 refined by D-121-10 (owner)                                                   |
+| 137 | [Follow-up list tab](137-follow-up-list-tab.md)         | In progress; refines D-117-39 (both links open On the list); records the owner's D-117-65/66 rulings (#138); index statuses for merged work updated |

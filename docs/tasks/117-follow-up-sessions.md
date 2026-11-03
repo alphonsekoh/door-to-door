@@ -286,6 +286,7 @@ well." (D-117-62 onwards).
   Untick all / Tick all. Create draft waits and says why beside it; with nothing on the
   list the Follow-up card links to it. Refines D-117-20. _Why:_ the list is usually the
   session, so unticking is the exception; a held button says what it waits for.
+  _Refined by D-137-1:_ that link opens On the list.
 - **D-117-40 · The list rule: picked for the session, with a listed, live note owed or
   resolved since it started (a draft: owed only).** Still one predicate, `onRevisitList`,
   behind the revisits list, the recording refusal (D-117-15) and the member-edit check
@@ -473,13 +474,15 @@ well." (D-117-62 onwards).
   and `/visits/sync` alike, for members and admins, at any interest level (the brief's
   "every outstanding listed note"). An admin off the list, an amend, a replay or
   duplicate id, a regular session, a suggestion, a removed note or one already done
-  marks nothing. Refines D-117-15. _Why:_ the owner's request; on the server, so a
-  queued visit counts too. Whether "No response" should is an open question.
-- **D-117-66 · Credited to the visit's author, at the server's time. _Pending the
-  owner._** `doneBy` is the visit's member, so Record for a member credits the member,
-  not the admin that the brief's "the recorder" would name; `doneAt` is when the visit
-  is stored. _Why:_ the visit and its team stamp are the member's (D-29-2) and the admin
-  acts for them; every resolution is stamped by the server (D-35-9).
+  marks nothing. A "No response" visit marks them too (owner, 28 Oct 2026); Undo or
+  Reopen puts a note back. Refines D-117-15. _Why:_ the owner's request; on the server,
+  so a queued visit counts too.
+- **D-117-66 · Credited to the visit's author, at the server's time (owner, 29 Oct
+  2026).** `doneBy` is the visit's member, so Record for a member credits the member,
+  not the admin that the brief's "the recorder" would name; an admin who wants the
+  credit writes a note instead. `doneAt` is when the visit is stored. _Why:_ the visit
+  and its team stamp are the member's (D-29-2) and the admin acts for them; every
+  resolution is stamped by the server (D-35-9).
 - **D-117-67 · `follow_ups.done_visit_id` names the visit that marked a note (migration
   `0004`).** Nullable FK to `visits`, `on delete set null`, partial index, no backfill;
   null for a note marked by hand; any reopen clears it. Extends D-22-4. _Why:_ a replay
@@ -615,18 +618,11 @@ D-77-13, D-83-15, D-85-1, D-90-2, D-111-5, D-111-7, D-111-36.
 
 ## Open questions
 
-- **Should a "No response" visit close the note? (D-117-65)** As built, yes, as the
-  brief said. Then the row reads Done, and no later follow-up session can pick the
-  household (D-117-38) until someone taps Undo or Reopen. Excluding it is one condition
-  in `markDoneByVisit` plus the at-door caption and the hint.
-- **Who is credited when an admin records for a member? (D-117-66)** The brief named
-  the recorder; as built it is the visit's author. Switching is one argument in
-  `createVisit`'s call, and the records screen would then name the admin.
-- **A household recorded before it was picked reads Visited.** An admin's record
+- **A household recorded before it was picked reads Visited (#135).** An admin's record
   earlier in the session, before the household was listed and picked, makes the
   member's row Visited and counts it in "N of M visited or done" while its note is still
   owed. Changing it needs a "visited since picked" field on both lists, since
   `visitedInSession` also decides whether a pick may be removed (D-117-42).
 
-The owner's answers A to F, the third round's four points and the fourth round's
-rulings are recorded above.
+The owner's answers A to F, the third round's four points, the fourth round's rulings
+and the fifth round's two (D-117-65, D-117-66; #138) are recorded above.
