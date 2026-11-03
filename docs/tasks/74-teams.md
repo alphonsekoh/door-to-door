@@ -169,6 +169,8 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   `interest_level`, `description` and `updated_at` only. _Why not a plain `setWhere`:_
   a team removal committed during the lock wait slips past a subquery that uses the
   statement's snapshot; the lock then a fresh statement sees it (R-34, R-35).
+  _Lock mode refined by D-123-2 (awaiting the owner):_ the code now takes
+  `FOR NO KEY UPDATE`, and `canAmend` reads the membership `FOR KEY SHARE` (D-123-3).
 - **D-74-32 · A sync item cannot move a stored visit.** A different block, unit or outing
   is `conflict` for EVERYONE, the author included, and is also enforced under the lock
   (a concurrent first insert on another unit no longer leaves identity written to the

@@ -218,8 +218,12 @@ authoritative, and a change to any of them needs the owner.
    block and, in a follow-up session, the list rule for a member's new visit
    (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
    then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
-   the answer is a `RecordedVisit` naming them. Changing a follow-up session's households
-   and transitions lock that row `FOR UPDATE` (D-117-45).
+   the answer is a `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
+   sync item for a stored visit) is one transaction that locks the session
+   `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
+   `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
+   follow-up session's households, detaching a block and transitions lock that row
+   `FOR UPDATE` (D-117-45, D-123-4).
    Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
@@ -507,7 +511,7 @@ block is in it and, for a member's new visit in a follow-up session, the unit is
 list (D-117-45). Then `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
 snapshot, auto-join and, in a follow-up session, marking the household's notes done),
-otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
+otherwise `SELECT ... FOR NO KEY UPDATE` (D-123-2), re-judge under the lock
 (`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
 interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
 `internal_error` (retryable). The request path above is unchanged; the new endpoints

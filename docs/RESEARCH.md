@@ -286,7 +286,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   real row lock from a second connection); the general rules are from the PostgreSQL
   docs.
 - **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
-- **Used by:** D-74-31, D-74-23, D-117-9
+- **Used by:** D-74-31, D-74-23, D-117-9, D-123-1
 
 ### R-36 · A fetch `TypeError` cannot tell "not sent" from "reply lost"
 
@@ -826,7 +826,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   `src/server/follow-ups/races.integration.test.ts`, which hold a real lock from a
   second connection.
 - **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS); #117
-- **Used by:** D-117-45
+- **Used by:** D-117-45, D-123-1, D-123-2
 
 ### R-83 · A DELETE body has no defined meaning; a query string is logged
 
@@ -1252,3 +1252,20 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/next/dist/server/route-modules/app-route/helpers/auto-implement-methods.js`;
   measured with curl (#122 verifier, rounds 0 and 1)
 - **Used by:** D-122-1, D-122-9, D-122-13
+
+### R-120 · An UPDATE of no key column takes `FOR NO KEY UPDATE`; deleting a parent checks its children `FOR KEY SHARE` (measured)
+
+- **Finding:** `FOR UPDATE` is taken by a `DELETE` and by an `UPDATE` that changes a
+  column with a unique index a foreign key can use; any other `UPDATE` takes
+  `FOR NO KEY UPDATE`. An amend changes only interest, description and `updated_at`, so
+  its UPDATE holds what an explicit `FOR NO KEY UPDATE` does. Deleting a referenced row
+  runs the foreign key's check on the referencing rows `FOR KEY SHARE`, which waits for
+  `FOR UPDATE` but not `FOR NO KEY UPDATE` (R-82). Measured: with an amend holding its
+  visit `FOR UPDATE` and parked before reading the membership, disbanding the visit's
+  team (members deleted, then the team) and the amend each waited on the other, and
+  PostgreSQL reported `deadlock detected`; with `FOR NO KEY UPDATE` the disband was
+  refused at once by the foreign key and the amend applied.
+- **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS);
+  PostgreSQL `src/backend/utils/adt/ri_triggers.c` (the restrict check's
+  `FOR KEY SHARE OF x`); measured (#123 builder, `src/server/visits/sync-races.integration.test.ts`)
+- **Used by:** D-123-2

@@ -330,7 +330,8 @@ well." (D-117-62 onwards).
   _Why:_ a remove and a record each see the other, two admins cannot remove the last two
   picks at once, and record versus add cannot deadlock; parked-lock tests hold each.
   _Research:_ R-82, R-35. _Refined by D-117-69:_ a visit's transaction marks notes last,
-  after the household.
+  after the household. _Extended by D-123-1 and D-123-4:_ an amend takes the same order,
+  and a block detach takes the row `FOR UPDATE`.
 - **D-117-46 · "Also add to {session}" wherever an admin lists a door.** The household
   page, a "Needs a return visit" row, the recording form and listing a suggestion (now a
   sheet that shows it first) offer it, ticked, for the running follow-up session, else
