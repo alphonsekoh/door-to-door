@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   // Emits a self-contained server bundle for the Docker runner stage.
   output: "standalone",
+  // Nothing uses next/image, and /_next/image would otherwise fetch and decode
+  // images for anyone who asks: with this set it answers 404 (#118).
+  images: { unoptimized: true },
   async headers() {
     return [
       {

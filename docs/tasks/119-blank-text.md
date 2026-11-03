@@ -21,7 +21,7 @@ and a pop-up that tells a member or admin why a Save was refused.
   create and update, as `RemoveFollowUpRequest.reason` does (D-117-33). Response
   schemas are unchanged. _Why:_ JavaScript's `\S` matches exactly what `trim()` keeps,
   so a value that passes is never stored empty. A pattern on a response would turn an
-  old row, or a copy cached on a phone, back into a `500`. _Research:_ R-95.
+  old row, or a copy cached on a phone, back into a `500`. _Research:_ R-101.
 - **D-119-2 · A blank sync item refuses the whole batch with `400`,** as any item that
   breaks the schema does. A per-item `rejected` / `validation_failed` comes only from a
   caller that skips the contract. This departs from the issue's wording "rejected for
@@ -39,12 +39,12 @@ and a pop-up that tells a member or admin why a Save was refused.
   `check()` in `schema.ts` and generated as `0005_not_blank_text`. _Why:_ the last guard
   behind the response's `minLength: 1`. Trade-off: `btrim` strips only spaces, so a
   value of only tabs would pass. The app stores only values trimmed in JavaScript, and
-  such a value does not fail a response either. _Research:_ R-96.
+  such a value does not fail a response either. _Research:_ R-102.
 - **D-119-5 · No repair migration.** On a database that holds a blank row, `db:migrate`
   fails whole, names the constraint and applies nothing. The README's Troubleshooting
   section sends that failure to `db:check-blank` (D-119-9). _Why:_ migrations are only
   ever generated (D-08-1), and stopping loudly beats rewriting data nobody has reviewed.
-  _Research:_ R-97.
+  _Research:_ R-103.
 - **D-119-6 · Block name and street get the same guard, though only admins write
   them.** They get no pop-up (owner). _Why:_ it is the same flaw, and a blank block
   breaks every block and session read.
@@ -59,7 +59,7 @@ and a pop-up that tells a member or admin why a Save was refused.
     trimmed to empty.
   - Out of scope: a unit or note of only zero-width characters. JavaScript does not
     count those as space, so the value shows blank but reads without error.
-    _Research:_ R-95.
+    _Research:_ R-101.
 
 ### The blank-text check
 
@@ -71,10 +71,10 @@ and a pop-up that tells a member or admin why a Save was refused.
 
   It runs inside a read-only transaction, and operators run it before migrating to
   `0005`. _Why:_ how each row is repaired is the owner's call, and read-only means a
-  mistake cannot change data. _Research:_ R-98.
+  mistake cannot change data. _Research:_ R-104.
 
 - **D-119-10 · Each query is its CHECK inverted (`btrim(col) = ''`).** _Why:_ a clean
-  report then means the migration will apply. _Research:_ R-96.
+  report then means the migration will apply. _Research:_ R-102.
 - **D-119-11 · Exit codes: `0` clean, `1` found rows, `2` could not check.** _Why:_ a
   deploy can stop before the migration (D-08-4), and a failed check is never read as a
   clean one.
@@ -137,14 +137,14 @@ and a pop-up that tells a member or admin why a Save was refused.
 - **D-119-19 · Fix round: the dialog is described by its lead and its reasons.** It uses
   `aria-describedby`, set through a new `describedBy` prop on `Sheet`. _Why:_ focus
   lands on OK, and the line beside Save is inert behind the dialog, so a screen reader
-  said only "Not saved, OK". _Research:_ R-99.
+  said only "Not saved, OK". _Research:_ R-105.
 - **D-119-21 · Fix round 2: every modal opens at its top.** `useModal` focuses the
   panel or its first control with `preventScroll`. `Sheet` then resets its body to the
   top, because its own focus scroll (D-111-31) still runs. Refines D-90-2, D-90-3,
   D-111-13, D-111-31 and D-119-14. _Why:_ at the largest text, Not saved with three
   reasons is taller than the screen, and focus on OK opened it at its foot with the
   heading cut away. Trade-off: in a modal taller than the screen, the control that has
-  focus can start below the view. _Research:_ R-100.
+  focus can start below the view. _Research:_ R-106.
 - **D-119-22 · Fix round 2: OK brings the field back under its label.** The field is
   scrolled to `nearest`, then its `<label>`. A label that `nearest` had to move was cut
   off, so it goes to `start`, and where both cannot fit the label wins. A radio is named
@@ -207,7 +207,7 @@ and a pop-up that tells a member or admin why a Save was refused.
   Refines D-119-22. _Why:_ #136 owns the largest-text layout under the docked action.
   Playwright fails a marked test that passes, so the mark cannot outlive a fix.
   Trade-off: #136's criteria do not list this case yet, so #136 could close with the
-  mark still in place. _Research:_ R-101.
+  mark still in place. _Research:_ R-107.
 
 ### How existing decisions are handled
 

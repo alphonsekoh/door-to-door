@@ -469,7 +469,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** `writeStandaloneDirectory` in `next/dist/build/index.js` copies `.env` and
   `.env.production` into `.next/standalone/` whenever the build loaded them. No config
   option disables it; `outputFileTracingExcludes` filters traces only, not this copy.
-- **Source:** `node_modules/next/dist/build/index.js` (Next 16.3.3);
+- **Source:** `node_modules/next/dist/build/index.js` (Next 16.3.3, unchanged in 16.4.3);
   `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/output.md`
 - **Used by:** D-106-2
 
@@ -624,7 +624,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   navigation commit at once, showing that file's UI. With neither, a tap on a dynamic route
   that is not prefetched shows nothing until the server answers.
 - **Source:** `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`
-  (Next 16.3.3)
+  (Next 16.3.3, unchanged in 16.4.3)
 - **Used by:** D-111-12
 
 ### R-67 · Layout at the 32px text cap (measured)
@@ -920,7 +920,128 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   generated `src/generated/zod.gen.ts` (#117)
 - **Used by:** D-117-68
 
-### R-95 · JavaScript's `\s` and `trim()` strip the same characters (measured)
+### R-91 · zod 4.6.6 checks an array's size before its elements, but only with a max
+
+- **Finding:** Up to 4.6.5, `$ZodArray` parses every element and keeps one issue per
+  failing element, with no early stop, so one large array can exhaust memory. 4.6.6
+  checks the array, set and map size bounds before it parses any element. An array with
+  no `max` is still parsed element by element. Measured: 101 empty items sent to
+  `/visits/sync` and 51 bad ids sent to `blockIds` each give one detail, on the array.
+- **Source:** [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5);
+  [zod v4.6.6 release](https://github.com/colinhacks/zod/releases/tag/v4.6.6) (#6652);
+  the #118 integration tests
+- **Used by:** D-118-3, D-118-5, D-118-6
+
+### R-92 · npm `overrides` against an exact pin, and where Serwist uses zod
+
+- **Finding:** An override of a package the root depends on directly must have the same
+  spec as that dependency, or npm fails with `EOVERRIDE`. Writing `"$zod"` makes the
+  override follow the root's spec. `@serwist/build` and `@serwist/turbopack` 9.5.13
+  depend on `zod` exactly `4.6.5`. `createSerwistRoute` is `force-static` with
+  `dynamicParams = false`, so its zod validation and its `glob` run at `next build`,
+  never per request.
+- **Source:** [npm, package.json `overrides`](https://docs.npmjs.com/cli/v11/configuring-npm/package-json#overrides);
+  `npm view @serwist/turbopack dependencies.zod`;
+  `node_modules/@serwist/turbopack/dist/index.mjs`
+- **Used by:** D-118-3, D-118-9
+
+### R-93 · With `images.unoptimized`, `/_next/image` is a 404
+
+- **Finding:** With `images: { unoptimized: true }` in `next.config.ts`, the standalone
+  server answers `404` to `/_next/image?url=%2Ficon-192.png&w=64&q=75`, while
+  `/icon-192.png` is `200`. The Next docs say only that images are then served as they
+  are.
+- **Source:** measured, `e2e/pwa.spec.ts` (#118);
+  `node_modules/next/dist/docs/01-app/03-api-reference/02-components/image.md` (Next 16.4.3)
+- **Used by:** D-118-4
+
+### R-94 · `npm audit --omit=dev` before and after #118
+
+- **Finding:** At `95f591f` (run with `--package-lock-only`): 8 vulnerable packages,
+  1 critical, 5 high and 2 moderate. `next` 16.0.0 to 16.4.0 is critical, with 11
+  advisories, among them the image-optimizer SSRF (fixed in 16.3.8) and the SVG
+  remote-code-execution one (fixed in 16.4.1). `zod` <4.6.6, `sharp` <0.35.5 and
+  `source-map-js` 1.0.0 to 1.2.1 are high, and so are both `@serwist` packages, through
+  zod. `glob` and `minimatch` are moderate. On the branch: 4 moderates, `glob` 3.0.0 to
+  14.0.1 (GHSA-3g3m-2fjr-6pw4), `minimatch` <11.0.1 (GHSA-g3hv-75wg-m249) and the two
+  `@serwist` packages that pull them in, with no fix available. A full `npm audit` still
+  finds 7 high and 27 moderate, all in dev dependencies.
+- **Source:** measured with `npm audit` on 2026-11-03; the first patched versions come
+  from the GitHub advisory database (`gh api /advisories/<id>`)
+- **Used by:** D-118-1, D-118-4, D-118-9
+
+### R-95 · Dependabot groups and cooldown
+
+- **Finding:** Groups whose `applies-to` is `security-updates` collect security PRs, and
+  the default `version-updates` groups collect the scheduled ones. `update-types` can
+  split majors from minor and patch updates. `cooldown.default-days` holds a new
+  release back for that many days, for version updates only. Security updates also
+  need Dependabot security updates turned on in the repository settings.
+- **Source:** [GitHub Docs, Dependabot options reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference)
+- **Used by:** D-118-7
+
+### R-96 · Who sets `Sec-Fetch-Site`, and when
+
+- **Finding:** The browser sets it: `same-origin`, `same-site`, `cross-site`, or `none`
+  for a request the user started (address bar, bookmark). A `Sec-` header is a forbidden
+  request-header name, so no page can set or forge it. It is sent only to potentially
+  trustworthy URLs (HTTPS, `localhost`), so a phone on plain `http` over a LAN gets none.
+  Safari sends it from 16.4 (not tested here).
+- **Source:** [Fetch Metadata Request Headers](https://w3c.github.io/webappsec-fetch-metadata/);
+  [Fetch, forbidden request-header](https://fetch.spec.whatwg.org/#forbidden-request-header);
+  [MDN, `Sec-Fetch-Site`](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Site)
+- **Used by:** D-121-2, D-121-3
+
+### R-97 · What another origin can send without a preflight
+
+- **Finding:** A cross-origin form or `fetch` sends a body with no preflight only as
+  `text/plain`, `application/x-www-form-urlencoded` or `multipart/form-data`, and only
+  with CORS-safelisted headers; `application/json`, or a header like `X-Forwarded-Host`,
+  needs a preflight the server must grant. A `SameSite=Lax` cookie goes with any request
+  within the same site (registrable domain), so a sibling subdomain's POST carries it.
+  The browser adds `Origin` to every request that is not `GET` or `HEAD`: `null` for an
+  opaque origin (sandboxed frame, `file:`) or a form under `Referrer-Policy: no-referrer`;
+  a `fetch` always sends the real one.
+- **Source:** [Fetch, CORS-safelisted request-header](https://fetch.spec.whatwg.org/#cors-safelisted-request-header);
+  [Fetch, append a request `Origin` header](https://fetch.spec.whatwg.org/#append-a-request-origin-header);
+  [RFC 6265bis, `SameSite`](https://datatracker.ietf.org/doc/draft-ietf-httpbis-rfc6265bis/)
+- **Used by:** D-121-3, D-121-4, D-121-5, D-121-6
+
+### R-98 · Next.js builds `request.url` from the bind address
+
+- **Finding:** Unless `experimental.trustHostHeader` is set, a route handler's
+  `request.url` is the server's own `hostname:port` (default `localhost`), with the
+  scheme from `X-Forwarded-Proto`, not the `Host` the browser sent. Behind a proxy it
+  does not name the public origin. Same cause as R-30.
+- **Source:** `next` 16.3.3, `dist/server/lib/router-utils/resolve-routes.js` (`initUrl`)
+- **Used by:** D-121-5
+
+### R-99 · Which reverse proxies pass the public `Host`
+
+- **Finding:** nginx sends the upstream's host (`proxy_set_header Host $proxy_host` is
+  its default) and no `X-Forwarded-Host`. Caddy passes `Host` through and sets
+  `X-Forwarded-Host`. Traefik passes `Host` (`passHostHeader`, default true). Read, not
+  tested here.
+- **Source:** [nginx, `proxy_set_header`](https://nginx.org/en/docs/http/ngx_http_proxy_module.html#proxy_set_header);
+  [Caddy, `reverse_proxy` headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers);
+  [Traefik, pass host header](https://doc.traefik.io/traefik/routing/services/#pass-host-header)
+- **Used by:** D-121-5
+
+### R-100 · An `Origin` never names its scheme's default port; a forwarded host may
+
+- **Finding:** The URL parser stores a port equal to the scheme's default as no port,
+  and an origin is serialized with its port only when it has one, so a browser sends
+  `Origin: https://app.example.org`, never `:443`. `new URL()` does the same (measured,
+  Node 24: `https://Example.org:443` has host `example.org`; `http://example.org:443`
+  keeps `:443`). nginx's `$server_port` is the port that accepted the request, so
+  `proxy_set_header Host $host:$server_port` forwards `app.example.org:443` (read, not
+  tested here).
+- **Source:** [URL Standard, port state](https://url.spec.whatwg.org/#port-state);
+  [HTML, serialization of an origin](https://html.spec.whatwg.org/multipage/browsers.html#ascii-serialisation-of-an-origin);
+  [nginx, `$server_port`](https://nginx.org/en/docs/http/ngx_http_core_module.html#var_server_port)
+- **Used by:** D-121-10
+
+### R-101 · JavaScript's `\s` and `trim()` strip the same characters (measured)
 
 - **Finding:** ECMAScript defines both over WhiteSpace and LineTerminator. A check of
   every code point in Node 24.19 found no difference between `/^\s$/u` and `trim()`
@@ -931,7 +1052,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   and CharacterClassEscape `\s`; measured on the #119 worktree
 - **Used by:** D-119-1, D-119-8
 
-### R-96 · PostgreSQL's `btrim(text)` strips only spaces (measured)
+### R-102 · PostgreSQL's `btrim(text)` strips only spaces (measured)
 
 - **Finding:** With one argument, `btrim` removes U+0020 and nothing else. On
   PostgreSQL 17.11, `btrim(E'\t x \n')` keeps the tab and the newline, while
@@ -941,7 +1062,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   measured with `psql`
 - **Used by:** D-119-4, D-119-10
 
-### R-97 · A new CHECK is tested against existing rows, and pending migrations share one transaction
+### R-103 · A new CHECK is tested against existing rows, and pending migrations share one transaction
 
 - **Finding:** Unless the constraint is added `NOT VALID`, `ALTER TABLE … ADD CONSTRAINT …
 CHECK` scans the table. On a row that fails, it stops with SQLSTATE 23514, `check
@@ -952,7 +1073,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/drizzle-orm/pg-core/dialect.js` (`migrate`)
 - **Used by:** D-119-5, D-119-9
 
-### R-98 · A read-only transaction refuses writes
+### R-104 · A read-only transaction refuses writes
 
 - **Finding:** In drizzle-orm 0.45.2, `transaction(fn, { accessMode: "read only" })`
   opens with `begin read only`. In such a transaction PostgreSQL refuses `INSERT`,
@@ -961,7 +1082,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/drizzle-orm/node-postgres/session.js` (`transaction`)
 - **Used by:** D-119-9
 
-### R-99 · An alert dialog is described by its message
+### R-105 · An alert dialog is described by its message
 
 - **Finding:** The ARIA alert dialog pattern gives `role="alertdialog"` an accessible
   name, and an `aria-describedby` that points at the alert's message, so that the
@@ -970,7 +1091,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [WAI-ARIA APG, Alert and Message Dialogs](https://www.w3.org/WAI/ARIA/apg/patterns/alertdialog/)
 - **Used by:** D-119-19
 
-### R-100 · Focusing a control scrolls it into view unless `preventScroll` is set
+### R-106 · Focusing a control scrolls it into view unless `preventScroll` is set
 
 - **Finding:** `focus()` scrolls each scroll container that holds the element until the
   element is in view, unless it is called with `{ preventScroll: true }`. With focus on
@@ -979,7 +1100,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
 - **Used by:** D-119-21
 
-### R-101 · Playwright fails a `test.fail` test that passes
+### R-107 · Playwright fails a `test.fail` test that passes
 
 - **Finding:** In Playwright 1.62.1, `test.fail(condition, description)` marks the test
   "should fail" when the condition is true. The runner then checks that it really

@@ -1,0 +1,41 @@
+# Weekly and grouped: every pull request runs the whole CI, E2E included, and
+# Actions minutes are scarce, so a pull request per package would cost too much.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # A new release waits a week before it is proposed: a hijacked publish is
+    # usually caught and pulled by then. Security updates are not held back.
+    cooldown:
+      default-days: 7
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+      # Apart, so one breaking major cannot hold back every routine bump.
+      npm-major:
+        patterns: ["*"]
+        update-types: [major]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: ["type:chore", "area:setup"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: ["type:chore", "area:ci"]

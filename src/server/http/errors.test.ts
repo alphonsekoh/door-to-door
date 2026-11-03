@@ -9,6 +9,7 @@ import {
   ClockSkewError,
   RateLimitedError,
   UnauthenticatedError,
+  UnsupportedMediaTypeError,
   ValidationError,
 } from "@/server/http/errors";
 
@@ -20,6 +21,7 @@ describe("status and code mapping", () => {
     [new AccountDeactivatedError(), 403, "account_deactivated"],
     [new NotFoundError(), 404, "not_found"],
     [new ConflictError(), 409, "conflict"],
+    [new UnsupportedMediaTypeError(), 415, "unsupported_media_type"],
     [new ClockSkewError(), 422, "clock_skew"],
     [new RateLimitedError(), 429, "rate_limited"],
     [new InternalError(), 500, "internal_error"],
@@ -32,6 +34,7 @@ describe("status and code mapping", () => {
   it("keeps a distinct name per error, so logs identify the cause", () => {
     expect(new NotFoundError().name).toBe("NotFoundError");
     expect(new AccountDeactivatedError().name).toBe("AccountDeactivatedError");
+    expect(new UnsupportedMediaTypeError().name).toBe("UnsupportedMediaTypeError");
   });
 });
 
@@ -43,6 +46,7 @@ describe("default messages", () => {
     [new AccountDeactivatedError(), /deactivated/i],
     [new NotFoundError(), /not found/i],
     [new ConflictError(), /conflicts/i],
+    [new UnsupportedMediaTypeError(), /JSON/],
     [new ClockSkewError(), /clock/i],
     [new RateLimitedError(), /too many/i],
     [new InternalError(), /went wrong/i],
@@ -58,6 +62,7 @@ describe("default messages", () => {
     expect(new RateLimitedError("Slow down.").message).toBe("Slow down.");
     expect(new InternalError("Boom.").message).toBe("Boom.");
     expect(new ValidationError("Bad input.").message).toBe("Bad input.");
+    expect(new UnsupportedMediaTypeError("JSON only.").message).toBe("JSON only.");
   });
 });
 
