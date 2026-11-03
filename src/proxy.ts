@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import { NextResponse, type NextFetchEvent, type NextProxy, type NextRequest } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
 import { getConfig } from "@/server/config";
@@ -23,18 +23,18 @@ const { auth } = NextAuth(() => buildBaseAuthConfig(getConfig()));
 const guard = auth((request) => {
   const { pathname, search } = request.nextUrl;
 
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
-  }
-
-  if (request.auth) {
+  if (isPublicPath(pathname) || request.auth) {
     const response = NextResponse.next();
     /*
-     * Signed-in pages are never stored or restored. Without this, Back after
-     * signing out brings the old page back from the browser's own cache (or
-     * bfcache) - the shell with every request failing 401 - rather than
-     * asking the server, which would redirect to sign-in. no-store also keeps
-     * a page out of bfcache in Chromium.
+     * Pages that get this far are never stored or restored. Signed in, Back
+     * after signing out would otherwise bring the old page back from the
+     * browser's own cache (or bfcache) - the shell with every request failing
+     * 401 - rather than asking the server, which would redirect to sign-in.
+     * no-store also keeps a page out of bfcache in Chromium.
+     *
+     * /sign-in is prerendered, which Next sends as s-maxage=31536000. A
+     * shared cache keeping it would answer later visitors without the CSRF
+     * cookie their first visit needs (D-32-19), or with the one it set (#150).
      */
     if (!isApiPath(pathname)) {
       response.headers.set("Cache-Control", "no-store");
@@ -60,8 +60,11 @@ const guard = auth((request) => {
  * With the function form of NextAuth, auth(handler) is a promise of the
  * wrapped handler at runtime although typed as the handler itself. Next
  * rejects a default export that is not a function, so the promise is awaited
- * per request instead of exported directly.
+ * per request instead of exported directly. The wrapped handler always
+ * answers with a fresh Response, onto which Auth.js has copied its cookies.
  */
+type AuthWrapped = (request: NextRequest, event: NextFetchEvent) => Promise<Response>;
+
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
   /*
    * The PWA files never reach auth(): its session check mints a CSRF cookie on
@@ -74,8 +77,17 @@ export default async function proxy(request: NextRequest, event: NextFetchEvent)
   if (isPwaPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
-  const middleware = (await Promise.resolve(guard)) as unknown as NextProxy;
-  return middleware(request, event);
+  const middleware = (await Promise.resolve(guard)) as unknown as AuthWrapped;
+  const response = await middleware(request, event);
+  /*
+   * Auth.js adds its cookies after the guard has answered: a CSRF token, a
+   * callback URL, a refreshed session. A shared cache keeping any of those
+   * responses would hand that cookie to everyone it served (#150).
+   */
+  if (response.headers.has("set-cookie")) {
+    response.headers.set("Cache-Control", "no-store");
+  }
+  return response;
 }
 
 export const config = {

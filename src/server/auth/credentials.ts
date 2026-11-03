@@ -256,8 +256,8 @@ export async function authorizeFromRawCredentials(
   if (typeof email !== "string" || typeof password !== "string") {
     return null;
   }
+  const log = deps?.log ?? defaultLog;
   try {
-    const log = deps?.log ?? defaultLog;
     return await authorizeCredentials(
       { email, password },
       {
@@ -267,7 +267,11 @@ export async function authorizeFromRawCredentials(
         clientKey: deps?.clientKey ?? clientOf(request, log),
       },
     );
-  } catch {
+  } catch (error) {
+    // A refusal was logged where it was decided.
+    if (!(error instanceof SignInError)) {
+      log.unexpected(error);
+    }
     return null;
   }
 }

@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { createThrottledLog } from "@/server/logging/error-log";
+import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 
 /*
  * Limiter keys and log tags for sign-in (#120).
@@ -25,6 +25,7 @@ export type SignInLog = {
   oversized: () => void;
   limited: (budget: SignInBudget, tag?: string) => void;
   unattributed: () => void;
+  unexpected: (error: unknown) => void;
 };
 
 export type SignInLogOptions = {
@@ -69,6 +70,14 @@ export function createSignInLog({
         "Sign-in from no usable X-Forwarded-For entry: counted in the shared unattributed " +
           "budget. Check rateLimit.trustedProxyHops against the proxies in front of the app.",
       );
+    },
+    /*
+     * Not a refusal: the check itself failed, the database most likely. Auth.js
+     * reports it as one more CredentialsSignin, which its logger leaves to
+     * these lines (#128).
+     */
+    unexpected: (error) => {
+      report("sign-in:unexpected", `Sign-in could not be checked: ${summarizeError(error)}`);
     },
   };
 }

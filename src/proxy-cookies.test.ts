@@ -1,3 +1,4 @@
+import { encode } from "next-auth/jwt";
 import { NextRequest } from "next/server";
 import type { NextFetchEvent } from "next/server";
 import { describe, expect, it, vi } from "vitest";
@@ -6,9 +7,10 @@ import { describe, expect, it, vi } from "vitest";
  * The real Auth.js wrapper, not a stub: what matters here is the Set-Cookie
  * header it adds, which a stubbed NextAuth cannot show.
  */
+const SECRET = "s".repeat(40);
 vi.mock("@/server/config", () => ({
   getConfig: () => ({
-    authSecret: "s".repeat(40),
+    authSecret: SECRET,
     auth: { trustHost: true, secureCookies: true },
   }),
 }));
@@ -53,5 +55,57 @@ describe("cookies the proxy sets", () => {
     const response = await cookielessGet("/history");
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/sign-in");
+  });
+});
+
+describe("caching of what the proxy sets a cookie on (#150)", () => {
+  const ORIGIN = "http://127.0.0.1:3210";
+  const SESSION = "__Secure-authjs.session-token";
+
+  /* name=value from each Set-Cookie, as a browser sends them back. */
+  const cookieHeader = (response: Response) =>
+    response.headers
+      .getSetCookie()
+      .map((cookie) => cookie.split(";")[0])
+      .join("; ");
+
+  /*
+   * A shared cache keeping any of these would hand one visitor's CSRF token,
+   * callback URL or session to everyone it served.
+   */
+  it.each(["/sign-in", "/history", "/api/blocks", "/api/auth/session"])(
+    "marks %s no-store when it sets a cookie",
+    async (path) => {
+      const response = await cookielessGet(path);
+      expect(response.headers.getSetCookie()).not.toEqual([]);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+    },
+  );
+
+  it("marks a signed-in API answer no-store, since it carries the refreshed session", async () => {
+    const token = await encode({
+      token: { sub: "u1", role: "member", deactivated: false },
+      secret: SECRET,
+      salt: SESSION,
+    });
+    const response = await proxy(
+      new NextRequest(`${ORIGIN}/api/blocks`, { headers: { cookie: `${SESSION}=${token}` } }),
+      event,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.getSetCookie()).toContainEqual(
+      expect.stringMatching(/^__Secure-authjs\.session-token=/),
+    );
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("keeps /sign-in no-store on a return visit, which sets no cookie", async () => {
+    const first = await cookielessGet("/sign-in");
+    const again = await proxy(
+      new NextRequest(`${ORIGIN}/sign-in`, { headers: { cookie: cookieHeader(first) } }),
+      event,
+    );
+    expect(again.headers.getSetCookie()).toEqual([]);
+    expect(again.headers.get("cache-control")).toBe("no-store");
   });
 });
