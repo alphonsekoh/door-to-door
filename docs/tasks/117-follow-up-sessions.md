@@ -1,6 +1,6 @@
 # #117 · Follow-up sessions and a reviewed follow-up list
 
-- **Status:** In review (PR #117)
+- **Status:** Done (PR #117)
 - **Phase:** none (no milestone)
 - **Depends on:** #17, #20, #21, #22, #30, #33, #35, #74, #77, #111
 

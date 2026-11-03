@@ -1110,3 +1110,53 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [Playwright, `test.fail`](https://playwright.dev/docs/api/class-test#test-fail);
   `node_modules/playwright/types/test.d.ts`
 - **Used by:** D-119-33
+
+### R-108 · Next's proxy body cap truncates a body; it never refuses one
+
+- **Finding:** For a request the proxy matches, Next 16.4.3 buffers the body up to
+  `experimental.proxyClientMaxBodySize` (default 10 MB). The route handler gets only
+  that much. Next logs one `console.warn` (`Request body exceeded …`) and drops the rest
+  as it arrives. Nothing answers `413`. Shown in a production build by
+  `e2e/auth.spec.ts`: credentials sent after a 2.5 MB pad are never read.
+- **Source:** `node_modules/next/dist/server/body-streams.js` (`cloneBodyStream`);
+  `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/proxyClientMaxBodySize.md`
+- **Used by:** D-120-7, D-120-13
+
+### R-109 · Next fills `X-Forwarded-For` only when it is absent
+
+- **Finding:** Next 16.4.3 sets `x-forwarded-for` to the socket's remote address with
+  `??=`, so it never appends. A header the client sent reaches the handler unchanged,
+  and with no proxy in front, every entry in it is the client's to choose. A route
+  handler is given no socket address.
+- **Source:** `node_modules/next/dist/server/base-server.js` (`x-forwarded-for`)
+- **Used by:** D-120-5, D-120-10, D-120-12
+
+### R-110 · Auth.js hands `authorize` a rebuilt `Request` with the original headers
+
+- **Finding:** For a Credentials `POST`, @auth/core 0.41.3 calls
+  `provider.authorize(credentials, new Request(url, { headers, method, body }))`. The
+  body is re-serialised, but the headers are the incoming ones, so `X-Forwarded-For`
+  reaches `authorize`.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/index.js`
+- **Used by:** D-120-5
+
+### R-111 · Sweeping a V8 `Map` from the front is not O(1) (measured)
+
+- **Finding:** A V8 `Map` keeps deleted entries as holes until it rehashes. A new
+  iterator starts at the front and walks over them. So a sweep that deletes from the
+  front and re-inserts renewed keys at the back can walk every hole in front of the
+  first live window on each call, until the next rehash. The #120 reviewer measured the
+  limiter's `consume` on Node 24: about 1 µs at 1k live keys, 16 µs at 10k and 100 µs at
+  100k. The hole mechanism is taken from V8's ordered hash table; it was not traced here.
+- **Source:** measured in the #120 review; V8 `src/objects/ordered-hash-table.h`
+- **Used by:** D-120-2, D-120-3
+
+### R-112 · An `X-Forwarded-For` entry with a port is not an IP to `node:net`
+
+- **Finding:** `isIP("1.2.3.4:80")` and `isIP("[::1]:80")` are `0`, while
+  `isIP("::ffff:1.2.3.4")` is `6` (measured, Node 24.19). So a proxy that writes
+  `ip:port` entries leaves no usable entry. That Azure App Service writes them comes from
+  the #120 builder and was not checked against Azure here.
+- **Source:** [Node.js, `net.isIP`](https://nodejs.org/api/net.html#netisipinput);
+  measured with `node -e`
+- **Used by:** D-120-12
