@@ -1,6 +1,6 @@
 # #137 · "Open the follow-up list" opens On the list
 
-- **Status:** In progress (branch `fix/137-follow-up-list-tab`)
+- **Status:** Done (PR #147)
 - **Phase:** 7 - Hardening
 - **Depends on:** #117
 

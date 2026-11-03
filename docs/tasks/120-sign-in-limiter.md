@@ -1,6 +1,6 @@
 # #120 · Bound the sign-in limiter and slow password spraying
 
-- **Status:** In review (PR #148)
+- **Status:** Done (PR #148)
 - **Phase:** 7 - Hardening
 - **Depends on:** #15, #75, #86, #118
 
@@ -70,9 +70,11 @@ a security audit.
 - **D-120-8 · Failed and refused sign-ins log through `createThrottledLog`
   (`console.warn`) under four fixed keys** (`sign-in:failed`, `:limited`, `:oversized`,
   `:unattributed`). A line carries at most a 12-character digest tag, never an email or
-  address. The Auth.js logger is untouched (#128). _Why:_ a request must not choose its
-  own line, and a throttle key built from the request would bring back the unbounded Map
-  this issue removes.
+  address. ~~The Auth.js logger is untouched (#128).~~ _Why:_ a request must not choose
+  its own line, and a throttle key built from the request would bring back the unbounded
+  Map this issue removes. _Refined by D-128-6:_ the Auth.js logger is now set (#128) and
+  leaves `CredentialsSignin` to these lines, and a fifth key, `sign-in:unexpected`, logs
+  a credentials check that throws.
 - **D-120-9 · No contract change.** Auth.js routes are not in `openapi.yaml`, and
   truncation adds no status code.
 - **D-120-10 · D-15-3 is kept: extended, not superseded (owner, 2026-11-03).** The
