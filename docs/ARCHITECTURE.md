@@ -40,8 +40,8 @@ flowchart LR
 | `openapi.yaml`        | The API contract                                                | —        | Source of truth. Edited first, always.                                                |
 | `src/generated/`      | Types and Zod schemas from the contract                         | excluded | Never hand-edited; CI regenerates and diffs.                                          |
 | `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
-| `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope.                        |
-| `src/server/auth/`    | Auth.js config, guards, rate limit                              | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
+| `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope; security headers.      |
+| `src/server/auth/`    | Auth.js config, route headers, guards, rate limit               | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
@@ -227,6 +227,22 @@ An unexpected error (not an `ApiError`) becomes a generic `500 internal_error`.
 line, never the cause chain or parameters. The log is throttled to one line per operation
 per 5 s burst. The sync catch uses the same helpers.
 
+## Response headers
+
+- `next.config.ts` `headers()` applies one build-time list
+  (`src/server/http/security-headers.ts`) to `/(.*)`. It holds a Report-Only CSP, HSTS
+  `max-age=63072000` without `includeSubDomains`, `nosniff`,
+  `Referrer-Policy: same-origin`, `Permissions-Policy` and `X-Frame-Options: DENY`.
+  `X-Powered-By` is off (D-122-1 to D-122-6). Enforcing the CSP means changing the
+  `CSP_HEADER` constant, which waits for the first deployment (D-122-14, #146). Client
+  zod runs jitless (`src/instrumentation-client.ts`), so its eval probe does not trip
+  the policy (D-122-7).
+- API answers are `Cache-Control: no-store`, set in three places: `jsonResponse` in
+  `withContract`, the `401` the proxy writes, and `withAuthRouteHeaders`
+  (`src/server/auth/route-headers.ts`) around Auth.js's route. A sign-out `POST` also
+  gets `Clear-Site-Data: "cache"` there (D-122-9, D-122-10). Next's own bodiless
+  `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
+
 ## Configuration
 
 - Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`).
@@ -252,6 +268,12 @@ The first admin of a fresh database comes from `npm run create-admin`, which ref
 any admin exists (D-105-3).
 Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
 (D-115-3).
+
+The cookies are `Secure`, with the `__Secure-` and `__Host-` prefixes, whatever scheme
+the server sees, because `auth.secureCookies` (default `true`) is passed to
+`buildBaseAuthConfig` as `useSecureCookies`. The route handlers and the proxy therefore
+look for the same names. Only the plain-http runs, E2E and Compose, turn it off
+(D-122-12).
 
 ## Client
 
@@ -370,8 +392,10 @@ Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
   destination, e.g. `/sign-in?reason=signed-out`). A refusal
   (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
   sign out".
-- The proxy sets `Cache-Control: no-store` on signed-in page responses (not API), so Back
-  after sign-out revalidates instead of restoring the page from bfcache.
+- The proxy sets `Cache-Control: no-store` on signed-in page responses, so Back after
+  sign-out revalidates instead of restoring the page from bfcache. API answers get
+  theirs from their handlers (see Response headers). The sign-out `POST`'s
+  `Clear-Site-Data: "cache"` never touches Cache Storage or IndexedDB.
 
 ## PWA and service worker
 
@@ -495,7 +519,8 @@ another member's visit (D-21-5) has a team exception (D-74-22), not a way around
 | e2e         | Playwright (`e2e/`)              | standalone production build, Pixel 5 (Chromium) and iPhone 13 (WebKit) |
 
 The E2E browser runs at UTC+14 and its server at UTC−12, and every page a fixture hands
-out fails its test on a hydration mismatch, attributes included (D-117-64).
+out fails its test on a hydration mismatch, attributes included (D-117-64), or on any
+CSP violation (D-122-8).
 
 ## Runtime
 

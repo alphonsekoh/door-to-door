@@ -36,7 +36,8 @@ under, which is not decided yet.
   phone on the LAN), send no `Sec-Fetch-Site`; `null` comes from sandboxed frames and
   `file:` pages, which still carry cookies. _Trade-off:_ the scheme is not compared, so
   an `http` page on the app's own host would pass. _Research:_ R-96, R-97. _Refined by
-  D-121-10:_ a default port in the server's host counts as none.
+  D-121-10:_ a default port in the server's host counts as none. _Narrowed by D-122-5:_
+  once a browser has seen the app's HSTS, it no longer loads that host over `http`.
 - **D-121-4 · A write with neither header passes.** _Why:_ a browser adds `Origin` to
   every write, so neither means a script, a test or a Playwright setup call, not a page
   acting with someone's cookie. _Trade-off:_ fails open for a client that sends neither.
