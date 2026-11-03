@@ -13,7 +13,10 @@ auth:
 
 rateLimit:
   signInAttempts: 10
+  signInAttemptsPerClient: 30
   signInWindowSeconds: 300
+  # Compose publishes the port straight to the app, with no proxy writing X-Forwarded-For.
+  trustedProxyHops: 0
 
 sync:
   clockSkewToleranceSeconds: 300

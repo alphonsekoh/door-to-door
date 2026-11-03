@@ -11,6 +11,9 @@ const nextConfig: NextConfig = {
   // Nothing uses next/image, and /_next/image would otherwise fetch and decode
   // images for anyone who asks: with this set it answers 404 (#118).
   images: { unoptimized: true },
+  // Next buffers each body the proxy sees, 10 MB by default; past this it
+  // truncates what the handler reads rather than refusing the request (#120).
+  experimental: { proxyClientMaxBodySize: "2mb" },
   async headers() {
     return [
       {

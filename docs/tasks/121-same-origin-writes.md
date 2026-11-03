@@ -1,6 +1,6 @@
 # #121 · Refuse cross-origin writes and non-JSON bodies
 
-- **Status:** In review (PR #139)
+- **Status:** Done (PR #139)
 - **Phase:** 7 - Hardening
 - **Depends on:** #12, #13, #33
 

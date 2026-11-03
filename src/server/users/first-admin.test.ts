@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import { zCreateUserRequest } from "@/generated/zod.gen";
+import { MAX_PASSWORD_LENGTH } from "@/server/password";
 import {
   CreateAdminError,
-  MAX_PASSWORD_LENGTH,
   checkAdminEmail,
   checkAdminName,
   checkAdminPassword,

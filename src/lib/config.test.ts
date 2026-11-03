@@ -32,9 +32,19 @@ describe("parseConfig defaults", () => {
     expect(parseConfig(MINIMAL, SOURCE)).toEqual({
       database: { url: "postgresql://localhost:5432/door_to_door" },
       auth: { trustHost: true, secureCookies: true },
-      rateLimit: { signInAttempts: 10, signInWindowSeconds: 300 },
+      rateLimit: {
+        signInAttempts: 10,
+        signInAttemptsPerClient: 30,
+        signInWindowSeconds: 300,
+        trustedProxyHops: 0,
+      },
       sync: { clockSkewToleranceSeconds: 300 },
     });
+  });
+
+  it("leaves the app-wide sign-in budget unset unless it is given", () => {
+    // An incident switch: set, anyone can spend it and lock every sign-in out.
+    expect(parseConfig(MINIMAL, SOURCE).rateLimit).not.toHaveProperty("signInAttemptsGlobal");
   });
 
   it("reads every key it is given", () => {
@@ -46,7 +56,10 @@ describe("parseConfig defaults", () => {
     clientId: abc.apps.googleusercontent.com
 rateLimit:
   signInAttempts: 3
+  signInAttemptsPerClient: 20
+  signInAttemptsGlobal: 100
   signInWindowSeconds: 60
+  trustedProxyHops: 2
 sync:
   clockSkewToleranceSeconds: 120
 `,
@@ -57,7 +70,13 @@ sync:
       secureCookies: false,
       google: { clientId: "abc.apps.googleusercontent.com" },
     });
-    expect(config.rateLimit).toEqual({ signInAttempts: 3, signInWindowSeconds: 60 });
+    expect(config.rateLimit).toEqual({
+      signInAttempts: 3,
+      signInAttemptsPerClient: 20,
+      signInAttemptsGlobal: 100,
+      signInWindowSeconds: 60,
+      trustedProxyHops: 2,
+    });
     expect(config.sync.clockSkewToleranceSeconds).toBe(120);
   });
 
@@ -104,12 +123,29 @@ describe("strictness", () => {
 
 describe.each([
   ["rateLimit.signInAttempts", "rateLimit:\n  signInAttempts: %\n"],
+  ["rateLimit.signInAttemptsPerClient", "rateLimit:\n  signInAttemptsPerClient: %\n"],
+  ["rateLimit.signInAttemptsGlobal", "rateLimit:\n  signInAttemptsGlobal: %\n"],
   ["rateLimit.signInWindowSeconds", "rateLimit:\n  signInWindowSeconds: %\n"],
   ["sync.clockSkewToleranceSeconds", "sync:\n  clockSkewToleranceSeconds: %\n"],
 ])("%s", (key, template) => {
   it.each(["0", "-1", "1.5", '"300"', "true", "null"])("rejects %s", (value) => {
     expect(problemsOf(MINIMAL + template.replace("%", value))).toEqual([
       expect.stringMatching(new RegExp(`^${key.replace(".", "\\.")}: `)),
+    ]);
+  });
+});
+
+describe("rateLimit.trustedProxyHops", () => {
+  it("accepts 0, which leaves the per-client budget off", () => {
+    expect(
+      parseConfig(`${MINIMAL}rateLimit:\n  trustedProxyHops: 0\n`, SOURCE).rateLimit
+        .trustedProxyHops,
+    ).toBe(0);
+  });
+
+  it.each(["-1", "1.5", '"1"', "true", "null"])("rejects %s", (value) => {
+    expect(problemsOf(`${MINIMAL}rateLimit:\n  trustedProxyHops: ${value}\n`)).toEqual([
+      expect.stringMatching(/^rateLimit\.trustedProxyHops: /),
     ]);
   });
 });

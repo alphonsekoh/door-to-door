@@ -29,10 +29,14 @@ server restarted.
   `reset()`.** **Narrows D-15-3** ("replace `consume()` to share it"). Still per email,
   fixed-window, in-memory, per instance, and set by `rateLimit.signInAttempts` /
   `signInWindowSeconds` (D-75-15). _Why:_ clearing on success needs a second operation.
+  _Extended by D-120-6:_ the limiter also gains `refund(key)` and `size()`, so a shared
+  store must replace `consume()`, `reset()` and `refund()`. The account key is now a
+  digest of the email (D-120-4).
 - **D-86-6 · Timing: a success adds one in-memory `Map.delete`; nothing else moves.** A
   success and a failure each still cost one argon2 verify; a refused attempt was already
   fast and is unchanged. New test: success and failure take comparable time. _Why:_ no
-  new timing oracle (D-15-2).
+  new timing oracle (D-15-2). _Extended by D-120-6:_ a success also refunds the
+  per-client and app-wide budgets, which adds at most two more in-memory operations.
 - **D-86-7 · Accepted trade-off: the owner's own sign-in resets an attacker's budget.** A
   guesser targeting an email gets a fresh budget each time the real user signs in before
   it is spent. _Why:_ consequence of D-86-1; the alternative is locking out real users.
