@@ -385,6 +385,27 @@ describe("forming a team", () => {
     expect((await call(createTeam, "POST", { id: MISSING }, { name: "Pair" })).status).toBe(404);
   });
 
+  it("takes any number of people in one request (D-74-15)", async () => {
+    const crowd = Array.from(
+      { length: 200 },
+      (_, i) => `74747474-0000-4000-8003-${String(i).padStart(12, "0")}`,
+    );
+    await pool.query(
+      `INSERT INTO users (id, email, name, role)
+       SELECT id, id::text || '@t.local', 'Crowd', 'member' FROM unnest($1::uuid[]) AS id`,
+      [crowd],
+    );
+    asAdmin();
+    const response = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Crowd", memberIds: crowd },
+    );
+    expect(response.status).toBe(201);
+    expect(memberIds((await response.json()) as TeamBody)).toEqual(crowd);
+  });
+
   it.each([["   "], ["Pair​1"], ["..."], ["x".repeat(61)]])(
     "refuses the name %j (400)",
     async (name) => {

@@ -129,6 +129,15 @@ test.describe("installability, signed out", () => {
     const response = await request.get("/api/sessions/active", { maxRedirects: 0 });
     expect(response.status()).toBe(401);
   });
+
+  test("the image optimizer is off, so it fetches and decodes nothing for anyone", async ({
+    request,
+  }) => {
+    // The icon is there to optimise, so a 404 means the endpoint, not the file (#118).
+    expect((await request.get("/icon-192.png")).status()).toBe(200);
+    const optimised = await request.get("/_next/image?url=%2Ficon-192.png&w=64&q=75");
+    expect(optimised.status()).toBe(404);
+  });
 });
 
 test.describe("the worker in charge", () => {
