@@ -60,13 +60,16 @@ rateLimit:
   # are not sure appends: 0 turns the per-client budget off. Whole number, at
   # least 0. Default: 0.
   #
-  # Get it right. A count higher than the proxies that really append, or a
-  # proxy that writes ip:port entries (Azure App Service does), leaves no usable
-  # entry, so every sign-in lands in one unattributed bucket of
-  # signInAttemptsPerClient shared by everyone, which anyone can spend to block
-  # every new sign-in. After deploying, sign in once and check the logs for the
-  # throttled warning "Sign-in from no usable X-Forwarded-For entry"; if it is
-  # there, fix this count or the proxy.
+  # Get it right, and count every proxy that appends, the platform's load
+  # balancer included. Too LOW keys every client on a proxy's own address: one
+  # bucket of signInAttemptsPerClient shared by everyone, which anyone can spend
+  # to block every new sign-in, and nothing warns. Too HIGH lets a client that
+  # sends its own X-Forwarded-For choose its key; clients that send none, and
+  # proxies that write ip:port entries, leave no usable entry, so they share one
+  # unattributed bucket, and the logs show the throttled warning "Sign-in from
+  # no usable X-Forwarded-For entry". After deploying, check it directly: the
+  # client's real address must be exactly this many places from the right of
+  # X-Forwarded-For as the app receives it.
   trustedProxyHops: 0
 
 sync:

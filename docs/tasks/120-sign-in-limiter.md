@@ -1,6 +1,6 @@
 # #120 · Bound the sign-in limiter and slow password spraying
 
-- **Status:** In progress (branch `fix/120-sign-in-limiter`, not yet pushed)
+- **Status:** In review (PR #148)
 - **Phase:** 7 - Hardening
 - **Depends on:** #15, #75, #86, #118
 
@@ -88,13 +88,22 @@ a security audit.
   sessions survive. With tens of accounts, a one-password spray finishes inside any
   budget big enough not to lock out a busy venue, so a standing budget would buy little.
 - **D-120-12 · A wrong hop count is documented, not detected.** README and
-  `config.example.yaml` warn about two cases: a count above the proxies that really
-  append, and a proxy that writes `ip:port` entries. Either leaves no usable entry, so
-  every sign-in goes into the one `unattributed` bucket, which anyone can spend. The
-  throttled `Sign-in from no usable X-Forwarded-For entry` warning is the check after
-  deploying. `config.docker.yaml` pins `0`, because Compose publishes the app's port with
-  no proxy in front. _Why:_ the app cannot count the proxies in front of it. _Trade-off:_
-  a wrong count fails closed, with one shared budget of 30. _Research:_ R-112.
+  `config.example.yaml` warn about each case:
+  - A count below the proxies that append keys every client on a proxy's own address:
+    one shared bucket anyone can spend, with no warning, since that address is valid.
+  - A count above them lets a client that sends its own `X-Forwarded-For` choose its key,
+    and leaves clients that send none with no usable entry.
+  - A proxy that writes `ip:port` entries leaves no usable entry.
+
+  Sign-ins with no usable entry share the one `unattributed` bucket, and the throttled
+  `Sign-in from no usable X-Forwarded-For entry` warning fires. The check after deploying
+  is direct: the client's real address must sit exactly `trustedProxyHops` places from the
+  right of `X-Forwarded-For` as the app receives it. `config.docker.yaml` pins `0`,
+  because Compose publishes the app's port with no proxy in front. _Why:_ the app cannot
+  count the proxies in front of it. _Trade-off:_ a count that is too high or too low
+  shares one budget of 30, and a count that is too high also lets a client pick its key.
+  _Research:_ R-112 (the Azure `ip:port` report is unchecked).
+
 - **D-120-13 · The body-cap E2E sends the CSRF token ahead of a 2.5 MB pad and asserts
   that the refusal is `CredentialsSignin`.** With a 1 KB pad, the same request signs in.
   _Why:_ with the token behind the pad, the refusal is `MissingCSRF`, which proves

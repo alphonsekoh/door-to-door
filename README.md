@@ -534,13 +534,23 @@ docker run -p 3000:3000 \
   counts the entry that many places from the right, since anything further left the client
   wrote itself; with `0` there is no per-client budget. Next only fills the header when it
   is absent, so with no proxy every address in it is the client's to choose. **Get the
-  count right.** A count higher than the proxies that really append, or a proxy that
-  writes `ip:port` entries (Azure App Service does), leaves no usable entry, so every
-  sign-in lands in one unattributed bucket of `signInAttemptsPerClient` (30) shared by
-  everyone, which anyone can spend to block every new sign-in. After deploying, sign in
-  once and check the logs for the throttled warning
-  `Sign-in from no usable X-Forwarded-For entry`; if it is there, fix the count or the
-  proxy.
+  count right, and count every proxy that appends, the platform's load balancer
+  included.** Each wrong count fails differently:
+  - **Too low:** every client is keyed on a proxy's own address, so everyone shares one
+    bucket of `signInAttemptsPerClient` (30) that anyone can spend to block every new
+    sign-in. Nothing warns about this, because a proxy's address is a valid one.
+  - **Too high:** a client that sends its own `X-Forwarded-For` chooses its key, so it can
+    rotate past the per-client budget. Clients that send none get no usable entry.
+  - **A proxy that writes `ip:port` entries** (some do; Azure App Service is one reported
+    case) also leaves no usable entry.
+
+  With no usable entry, every sign-in lands in one unattributed bucket of 30 shared by
+  everyone, and the logs show the throttled warning
+  `Sign-in from no usable X-Forwarded-For entry`. After deploying, check the count
+  directly: in `X-Forwarded-For` as the app receives it (the innermost proxy's access log
+  shows it), the client's real address must be exactly `trustedProxyHops` places from
+  the right.
+
 - **Request bodies** are cut short at 2 MB (`experimental.proxyClientMaxBodySize` in
   `next.config.ts`), on every path the proxy matches, which is all of `/api`. Next
   truncates a longer body rather than refusing it: the handler reads only the first 2 MB,
