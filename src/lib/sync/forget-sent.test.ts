@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CLEAR_WITHIN_MS } from "@/lib/pwa/sw-client";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { forgetSentRecords } from "@/lib/sync/forget-sent";
@@ -32,6 +32,15 @@ function record(ownerId: string, unitNumber: string, state: RecordState = "queue
 }
 
 const units = (records: readonly QueuedVisit[]) => records.map((r) => r.item.unitNumber).sort();
+
+/*
+ * The clock stands at NOW, so "sent a moment ago" is true: a cutoff that keeps
+ * anything recent (the 24 h purge's, or even Date.now()) leaves these behind.
+ */
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
 
 afterEach(() => {
   vi.useRealTimers();
