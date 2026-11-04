@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Religion, Role } from "@/db/schema";
+import type { InterestLevel, Religion, Role, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
@@ -155,6 +155,7 @@ async function requireActiveSessionWithBlock(
   return session;
 }
 
+/* Only ever reads back a visit the caller has just stored or found; none is ever deleted. */
 export async function getVisit(db: Database, id: string): Promise<VisitRow> {
   const rows = await db
     .select(visitColumns)
@@ -163,10 +164,7 @@ export async function getVisit(db: Database, id: string): Promise<VisitRow> {
     .where(eq(visits.id, id))
     .limit(1);
 
-  const visit = rows[0];
-  if (!visit) {
-    throw new NotFoundError("No such visit.");
-  }
+  const visit = firstOrThrow(rows, "the visit just written");
   return firstOrThrow(await attachTeams(db, [visit]), "the visit's team");
 }
 
@@ -268,6 +266,65 @@ export async function createVisit(
   return getVisit(db, input.id);
 }
 
+type LockedVisit = {
+  memberId: string;
+  teamId: string | null;
+  householdId: string;
+  sessionStatus: SessionStatus;
+};
+
+/*
+ * Locks what an amend is judged on, in the order recording and sync take
+ * them (D-117-45, D-117-9): the visit's session FOR KEY SHARE, so an end
+ * waits for the amend or the amend reads what it committed, then the
+ * household FOR UPDATE and the visit FOR NO KEY UPDATE. A stored visit never
+ * changes household or session, so where to lock is read before locking.
+ *
+ * NO KEY UPDATE, as sync's amend takes it: an amend changes no key, and
+ * FOR UPDATE would block the KEY SHARE that disbanding the team takes on its
+ * visits after deleting the membership canAmend then waits to read - a
+ * deadlock, where this way the disband is refused at once.
+ */
+async function lockForAmend(tx: Database, id: string): Promise<LockedVisit> {
+  const found = await tx
+    .select({ householdId: visits.householdId, sessionId: visits.sessionId })
+    .from(visits)
+    .where(eq(visits.id, id))
+    .limit(1);
+  const place = found[0];
+  if (!place) {
+    throw new NotFoundError("No such visit.");
+  }
+
+  const session = await tx
+    .select({ status: outingSessions.status })
+    .from(outingSessions)
+    .where(eq(outingSessions.id, place.sessionId))
+    .for("key share");
+  await tx
+    .select({ id: households.id })
+    .from(households)
+    .where(eq(households.id, place.householdId))
+    .for("update");
+  const visit = await tx
+    .select({ memberId: visits.memberId, teamId: visits.teamId })
+    .from(visits)
+    .where(eq(visits.id, id))
+    .for("no key update");
+
+  return {
+    ...firstOrThrow(visit, "the visit lock"),
+    householdId: place.householdId,
+    sessionStatus: firstOrThrow(session, "the session lock").status,
+  };
+}
+
+/*
+ * One transaction, so the visit and its household's identity change together
+ * or not at all, and the rights are judged on the locked rows: a teammate
+ * removed, or the session ended, while the amend waited is seen. An amend
+ * never marks a follow-up done (D-117-65); only a new visit does.
+ */
 export async function updateVisit(
   db: Database,
   id: string,
@@ -277,20 +334,14 @@ export async function updateVisit(
   } & HouseholdIdentity,
   actor: { id: string; role: "admin" | "member" },
 ): Promise<VisitRow> {
-  const visit = await getVisit(db, id);
+  await db.transaction(async (tx) => {
+    const visit = await lockForAmend(tx, id);
 
-  if (!(await canAmend(db, actor, visit))) {
-    throw new ForbiddenError("You can only amend your own records, or your team's.");
-  }
+    if (!(await canAmend(tx, actor, visit))) {
+      throw new ForbiddenError("You can only amend your own records, or your team's.");
+    }
 
-  if (actor.role !== "admin") {
-    const session = await db
-      .select({ status: outingSessions.status })
-      .from(outingSessions)
-      .where(eq(outingSessions.id, visit.sessionId))
-      .limit(1);
-
-    if (firstOrThrow(session, "the session lookup").status !== "active") {
+    if (actor.role !== "admin" && visit.sessionStatus !== "active") {
       /*
        * An admin can reopen the session to restore access, which is why this
        * is a conflict rather than a flat refusal.
@@ -300,21 +351,21 @@ export async function updateVisit(
         "That session has ended. Ask an admin to reopen it.",
       );
     }
-  }
 
-  const values: Record<string, unknown> = { updatedAt: new Date() };
-  if (changes.interestLevel !== undefined) values["interestLevel"] = changes.interestLevel;
-  if (changes.description !== undefined) values["description"] = changes.description;
+    const values: Record<string, unknown> = { updatedAt: new Date() };
+    if (changes.interestLevel !== undefined) values["interestLevel"] = changes.interestLevel;
+    if (changes.description !== undefined) values["description"] = changes.description;
 
-  await db.update(visits).set(values).where(eq(visits.id, id));
+    await tx.update(visits).set(values).where(eq(visits.id, id));
 
-  const known = knownFieldsOnly(changes);
-  if (Object.keys(known).length > 0) {
-    await db
-      .update(households)
-      .set({ ...known, updatedAt: new Date() })
-      .where(eq(households.id, visit.householdId));
-  }
+    const known = knownFieldsOnly(changes);
+    if (Object.keys(known).length > 0) {
+      await tx
+        .update(households)
+        .set({ ...known, updatedAt: new Date() })
+        .where(eq(households.id, visit.householdId));
+    }
+  });
 
   return getVisit(db, id);
 }

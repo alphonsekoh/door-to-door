@@ -1,7 +1,6 @@
 # #128 · Auth.js logs one sanitised line, never request text or claims
 
-- **Status:** In progress (branch `fix/128-auth-logs-and-cookie-cache`, with #150, not
-  pushed)
+- **Status:** Done (PR #152, with #150)
 - **Phase:** 7 - Hardening
 - **Depends on:** #13, #87, #120
 

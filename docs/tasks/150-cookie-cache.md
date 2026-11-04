@@ -1,7 +1,6 @@
 # #150 · Responses that set cookies are never shared-cacheable
 
-- **Status:** In progress (branch `fix/128-auth-logs-and-cookie-cache`, with #128, not
-  pushed)
+- **Status:** Done (PR #152, with #128)
 - **Phase:** 7 - Hardening
 - **Depends on:** #32, #74, #122
 
