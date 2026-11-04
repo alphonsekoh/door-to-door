@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetDatabase } from "@/db/client";
+import { getDatabase, resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
+import { updateUser } from "@/server/users/service";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -252,6 +253,68 @@ describe("PATCH /api/users/{id}", () => {
     asAdmin();
     expect((await patch("efefefef-0000-4000-8000-0000000000ff", { role: "admin" })).status).toBe(
       404,
+    );
+  });
+});
+
+/*
+ * Through the service: over HTTP the actor is an active admin, and may not
+ * change themselves, so in sequence another active admin always remains.
+ * Only two changes at once reach this rule, which races.integration.test.ts
+ * holds; here the actor is anyone else.
+ */
+describe("the last active admin", () => {
+  const lastAdmin = "The team needs at least one active admin.";
+  const stored = async (id: string) =>
+    (
+      await pool.query<{ role: string; deactivated_at: Date | null }>(
+        "select role, deactivated_at from users where id = $1",
+        [id],
+      )
+    ).rows[0];
+
+  beforeEach(async () => {
+    await pool.query("update users set role = 'member' where id = $1", [SECOND_ADMIN]);
+  });
+
+  it("cannot be demoted, whoever asks", async () => {
+    await expect(updateUser(getDatabase(), ADMIN, { role: "member" }, ALICE)).rejects.toMatchObject(
+      { status: 409, code: "conflict", message: lastAdmin },
+    );
+    expect(await stored(ADMIN)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
+  it("cannot be deactivated", async () => {
+    await expect(
+      updateUser(getDatabase(), ADMIN, { deactivated: true }, ALICE),
+    ).rejects.toMatchObject({ status: 409, code: "conflict", message: lastAdmin });
+    expect(await stored(ADMIN)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
+  it("is still the last one when the other admin is deactivated", async () => {
+    await pool.query("update users set role = 'admin', deactivated_at = now() where id = $1", [
+      SECOND_ADMIN,
+    ]);
+
+    await expect(updateUser(getDatabase(), ADMIN, { role: "member" }, ALICE)).rejects.toMatchObject(
+      { status: 409, message: lastAdmin },
+    );
+    expect(await stored(ADMIN)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
+  it("can be sent a change that keeps them an active admin", async () => {
+    const kept = await updateUser(
+      getDatabase(),
+      ADMIN,
+      { role: "admin", deactivated: false },
+      ALICE,
+    );
+    expect(kept).toMatchObject({ role: "admin", deactivatedAt: null });
+  });
+
+  it("is judged after the self rule, which keeps its own message", async () => {
+    await expect(updateUser(getDatabase(), ADMIN, { role: "member" }, ADMIN)).rejects.toMatchObject(
+      { status: 409, message: "You cannot change your own role." },
     );
   });
 });

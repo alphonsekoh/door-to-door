@@ -477,6 +477,48 @@ describe("recording on someone else's behalf", () => {
     });
   });
 
+  describe("naming a deactivated member", () => {
+    const forAlice = () =>
+      post({
+        id: nextId(),
+        blockId: BLOCK,
+        unitNumber: "#09-07",
+        interestLevel: "high",
+        name: "Mr Lim",
+        memberId: ALICE,
+      });
+    const written = async () => ({
+      visits: (await pool.query(`SELECT 1 FROM visits WHERE member_id = $1`, [ALICE])).rows.length,
+      households: (await pool.query(`SELECT 1 FROM households WHERE unit_number = '#09-07'`)).rows
+        .length,
+      participants: (
+        await pool.query(`SELECT 1 FROM session_participants WHERE user_id = $1`, [ALICE])
+      ).rows.length,
+    });
+
+    beforeEach(async () => {
+      await pool.query(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [ALICE]);
+      asAdmin();
+    });
+
+    it("is refused with 409, and nothing is written", async () => {
+      const response = await forAlice();
+
+      expect(response.status).toBe(409);
+      expect((await response.json()) as { error: { code: string; message: string } }).toEqual({
+        error: { code: "conflict", message: "That member's account is deactivated." },
+      });
+      expect(await written()).toEqual({ visits: 0, households: 0, participants: 0 });
+    });
+
+    it("is recorded once the member is restored", async () => {
+      await pool.query(`UPDATE users SET deactivated_at = NULL WHERE id = $1`, [ALICE]);
+
+      expect((await forAlice()).status).toBe(201);
+      expect(await written()).toEqual({ visits: 1, households: 1, participants: 1 });
+    });
+  });
+
   it("does not reassign authorship when an admin later amends the record", async () => {
     asAdmin();
     const id = nextId();
