@@ -338,11 +338,13 @@ round 8, and they are in the PR #112 body too.
   first paint put Save under the nav, and it jumped about 98px on hydration; a native
   submit would reload the page ~~and lose the typed unit~~; a measured offset went stale
   when the text size changed or the phone turned. _Research:_ R-67, R-68, R-73.
-  _Corrected:_ React 19 replays a tap made before hydration once the page is live. What
+  _Corrected:_ ~~React 19 replays a tap made before hydration once the page is live. What
   can be lost is text typed before hydration: the controlled unit input usually comes
   back empty. That predates this PR and is not caused by the stand-in; it is issue #113,
-  and the E2E waits it out (D-111-66). _Refined by D-111-55:_ the stand-in is glass while
-  pinned.
+  and the E2E waits it out (D-111-66).~~ _Corrected again by D-113-5:_ React does not
+  move a tap on the stand-in to the form's Save, so it saves nothing (R-73). What was
+  typed and picked before the page is live is kept (D-113-1, D-113-2). _Refined by
+  D-111-55:_ the stand-in is glass while pinned.
 - **D-111-41 · The scrim follows the sheet.** Its opacity comes from the sheet's offset
   (`scrimOpacity`): it lightens as the sheet is pulled and darkens as it rises or
   settles. Under reduced motion it cross-fades with the panel on open and close, and
@@ -513,7 +515,9 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
 - **D-111-66 · E2E tests wait for `untilLive` before typing into a block screen loaded by
   address.** It is the hydration marker in `e2e/fixtures.ts`: the docked Save is the
   form's own `type="submit"`, not the stand-in. _Why:_ text typed before hydration is
-  cleared (#113), which failed WebKit on CI. #113 is not fixed here.
+  cleared (#113), which failed WebKit on CI. #113 is not fixed here. _Refined by
+  D-113-9:_ typing before it is kept now, so a test waits for it only before it taps
+  Save.
 - **D-111-67 · A press's brightness comes back at once.** Only `opacity` and `transform`
   ease back over 160 ms; nothing in the app transitions a `filter`, and
   `src/app/filter-transitions.test.ts` fails on `globals.css` or a component's classes
@@ -670,8 +674,9 @@ D-74-62, D-77-11, D-77-12, D-77-14, D-77-15, D-85-4, D-85-11, D-85-12, D-90-2 to
 - A sheet that is sliding away cannot be caught (D-111-45).
 - The nav's labels stay 12px at every text size (D-111-60), and the web has no large
   content viewer to enlarge them on a long press, as iOS does (R-74).
-- Text typed into a block screen before it is live is cleared as React takes over the
-  unit field. It predates this PR and is issue #113 (D-111-40, D-111-66).
+- ~~Text typed into a block screen before it is live is cleared as React takes over the
+  unit field. It predates this PR and is issue #113 (D-111-40, D-111-66).~~ Fixed by
+  #113 (D-113-1 to D-113-4, D-113-7).
 - A phone turned sideways in the browser takes the short-screen layout at any text size
   (D-111-48). The E2E covers portrait only.
 - CI's Linux WebKit crashes when a `filter` is eased (R-77); D-111-67 avoids it and its

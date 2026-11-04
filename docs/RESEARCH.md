@@ -651,8 +651,18 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   or the one its `form` attribute names. With neither, activating it does nothing. Before
   hydration, a submit button inside a `<form>` makes the browser submit natively, which
   loads a new page.
-- **Source:** [HTML, the button element](https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element)
-- **Used by:** D-111-40
+
+  _Extended (#113):_ a form with no submit button is still submitted by Enter (implicit
+  submission) when it has exactly one field that blocks it, such as one text input;
+  radios do not block. If the form's default button, its first submit button, is
+  disabled, Enter submits nothing. Measured on both phone projects: before the page was
+  live, Enter in the unit field reloaded `/blocks/X?` and emptied it; with a hidden,
+  disabled submit first in the form, nothing happened.
+
+- **Source:** [HTML, the button element](https://html.spec.whatwg.org/multipage/form-elements.html#the-button-element);
+  [HTML, implicit submission](https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#implicit-submission);
+  measured in #113 (verifier round 0, reviewer probe on both engines)
+- **Used by:** D-111-40, D-113-4
 
 ### R-69 · How iOS guards a sheet with unsaved changes
 
@@ -715,7 +725,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   measured in PR #112 (`e2e/record-visit.spec.ts`, scripts off at 16px and 32px)
 - **Used by:** D-111-55
 
-### R-73 · React 19 replays a tap made before hydration
+### R-73 · React 19 hydrates at once for a tap made before hydration, or drops it
 
 - **Finding:** In react-dom 19.2.8, a discrete event (click, input, change, keydown and
   others in `discreteReplayableEvents`) that reaches a part of the tree not yet hydrated
@@ -724,10 +734,22 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   typing a unit before the block screen was live left the field empty afterwards in 7 of
   8 runs. On WebKit an interest pick and a Save tap made before it was live were both
   kept: the pick held, and Save answered "Not saved. Enter the unit number."
+
+  _Corrected (#113); the title read "React 19 replays a tap made before hydration":_ the
+  event goes to its own target, after a synchronous hydration. If that part's code has
+  not arrived it cannot hydrate, and React stops the event and drops it. Nothing replays
+  a discrete event later; only continuous events (focus, hover) and form actions are
+  queued. So a tap on the block screen's stand-in, a `type="button"` with no handler,
+  never reaches the form's Save, a different element. Measured in #113: it saved
+  nothing with every script held and with only the screen's held. The WebKit Save answer
+  above is best read as a tap that reached the form's own Save just after it replaced
+  the stand-in, with the unit cleared (R-120). Not re-measured.
+
 - **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
-  `discreteReplayableEvents` and the dispatch path that reads it; measured in PR #112
-  (the verifier's hydration probe, fix round 5)
-- **Used by:** D-111-40
+  `discreteReplayableEvents` and the dispatch path that reads it (`dispatchEvent`,
+  `queueIfContinuousEvent`, `scheduleReplayQueueIfNeeded`); measured in PR #112 (the
+  verifier's hydration probe, fix round 5) and #113 (verifier rounds 0 and 2)
+- **Used by:** D-111-40, D-113-5
 
 ### R-74 · iOS bars do not grow with Dynamic Type
 
@@ -1252,3 +1274,44 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/next/dist/server/route-modules/app-route/helpers/auto-implement-methods.js`;
   measured with curl (#122 verifier, rounds 0 and 1)
 - **Used by:** D-122-1, D-122-9, D-122-13
+
+### R-120 · React keeps what was typed into a field while hydrating, but not in state
+
+- **Finding:** In react-dom 19.2.8, hydrating an `<input>` leaves its DOM `value` and
+  `checked` as they are (`initInput` skips both while hydrating), so a unit typed or a
+  radio picked before then is still on screen. State does not learn it: no change event
+  is fired, and the next render of a controlled input writes the state's value back.
+  Measured in #113 on both engines: a unit typed before the block screen was live
+  reverted to `""` or to the `?unit=` one, and a Save then said "Enter the unit
+  number".
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
+  `initInput`; measured in #113 (builder's probe with the scripts held)
+- **Used by:** D-113-1, D-113-2
+
+### R-121 · An urgent update above a screen still being hydrated throws its HTML away
+
+- **Finding:** In react-dom 19.2.8, an update that reaches a Suspense boundary still
+  dehydrated, a context change included, first makes React try to hydrate it sooner. If
+  its code has not arrived, an update in a transition is held back
+  (`renderDidSuspendDelayIfPossible`) and the server's HTML stays. An urgent one is not:
+  the boundary is rendered on the client without hydrating
+  (`retrySuspenseComponentWithoutHydrating`), and its HTML, typed into, is replaced by
+  the fallback. Measured in #113 on both phones: with only the block screen's chunk
+  held, Auth.js's session answering (an urgent `setState` in its `SessionProvider`)
+  showed "Loading the block…" and lost the unit and level. Through a transition the
+  screen's HTML stayed. The new E2E failed 6 of 6 before and passed 30 of 30 after.
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8), the
+  dehydrated path of `updateSuspenseComponent`; measured in #113 (verifier rounds 1 and
+  2, builder fix round 2)
+- **Used by:** D-113-7
+
+### R-122 · A ticked radio comes back from history unless it is `autocomplete="off"`
+
+- **Finding:** A page loaded again from history, not from the back/forward cache, gets
+  its form controls' state back from the browser, a ticked radio included, while the
+  page's script starts afresh. `autocomplete="off"` on the control stops it. Measured
+  in #113 on both phone projects: after a pick, a full load and Back, High came back
+  ticked with the unit blank; with the attribute, no level was ticked.
+- **Source:** [HTML, the `autocomplete` attribute](https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#autofill);
+  measured in #113 (verifier round 0, builder fix round 1)
+- **Used by:** D-113-3

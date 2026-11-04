@@ -12,7 +12,8 @@ The screen used at a door.
 
 - **D-25-1 · Two-tap path: unit, interest, save.** "No response" spans its own row;
   optional fields are collapsed behind _Add details_.
-- **D-25-2 · Interest is four large buttons, not a select.**
+- **D-25-2 · Interest is four large buttons, not a select.** _Refined by D-113-2:_ four
+  native radios, each over its whole tile, so a pick before the page is live holds.
 - **D-25-3 · Known history and outstanding follow-ups show before knocking.** A failed
   lookup never blocks recording.
 - **D-25-4 · Save is pinned above the bottom nav.** _Why:_ history pushed it below the fold.

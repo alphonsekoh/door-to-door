@@ -147,14 +147,16 @@ and a pop-up that tells a member or admin why a Save was refused.
   focus can start below the view. _Research:_ R-106.
 - **D-119-22 · Fix round 2: OK brings the field back under its label.** The field is
   scrolled to `nearest`, then its `<label>`. A label that `nearest` had to move was cut
-  off, so it goes to `start`, and where both cannot fit the label wins. A radio is named
-  by its group, so only the radio moves. The recording form's unit label also gets
+  off, so it goes to `start`, and where both cannot fit the label wins. ~~A radio is named
+  by its group, so only the radio moves.~~ The recording form's unit label also gets
   `scroll-clear-chrome`. Refines D-119-15. _Why:_ at the largest text, `nearest` lined a
   tall note's foot up with the docked Send and left its label under the sheet's header.
   `start` runs only for a label that was cut off, so at default sizes nothing moves (cf.
   D-111-69). Known limit: on an iPhone 13 at the largest text, the note's label and
   count fill the room above Send, so the field's top starts under Send. _Research:_
-  R-89. _Refined by D-119-33 (owner):_ that limit is deferred to #136.
+  R-89. _Refined by D-119-33 (owner):_ that limit is deferred to #136. _Refined by
+  D-113-2:_ a level's radio now has its tile as its `<label>`, which `labelOf` finds. It
+  wraps the radio, so nothing more moves.
 - ~~**D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.**
   The recording form and Record for a member set `maxLength` from
   `MAX_UNIT_NUMBER_LENGTH` (`src/lib/units/unit-number.ts`). _Why:_ a unit the server
