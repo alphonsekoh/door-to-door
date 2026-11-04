@@ -93,3 +93,50 @@ test.describe("signing out", () => {
     await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
   });
 });
+
+/*
+ * Every answer to a signed-in request sets the session cookie again. One to
+ * a request sent just before the sign-out and arriving just after it, such
+ * as the queue's session check on weak signal, put the cookie back: the
+ * member saw sign-in, and the next person to open History was them.
+ */
+test.describe("signing out with a request still out", () => {
+  // Routing sees what a service worker fetches for the page on some engines only.
+  test.use({ serviceWorkers: "block" });
+
+  test("its answer landing after the sign-out does not sign the member back in", async ({
+    memberPage: page,
+  }) => {
+    await page.goto("/account");
+    await expect(page.getByLabel("Your name")).not.toHaveValue("");
+
+    let signedOut: () => void = () => undefined;
+    const signOutAnswered = new Promise<void>((resolve) => {
+      signedOut = resolve;
+    });
+    await page.route("**/api/auth/signout", async (route) => {
+      await route.fulfill({ response: await route.fetch() });
+      signedOut();
+    });
+    let asked = false;
+    await page.route("**/api/auth/session", async (route) => {
+      if (route.request().headers()["x-e2e-held"] === undefined) return route.fallback();
+      // Answered by the server while still signed in, delivered after.
+      const response = await route.fetch();
+      asked = true;
+      await signOutAnswered;
+      return route.fulfill({ response });
+    });
+    await page.evaluate(() => {
+      void fetch("/api/auth/session", { headers: { "x-e2e-held": "1" } }).catch(() => undefined);
+    });
+    await expect.poll(() => asked).toBe(true);
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+
+    await page.goto("/history");
+    await expect(page).toHaveURL(/\/sign-in\?callbackUrl=%2Fhistory$/);
+    await expect(page.getByRole("heading", { level: 1, name: "History" })).toBeHidden();
+  });
+});

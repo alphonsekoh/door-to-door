@@ -3,16 +3,28 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/account/sign-in-form";
 
-const { signIn, goTo, get, clearCaches, clearLocalCopy, forgetSentRecords } = vi.hoisted(() => ({
+const {
+  signIn,
+  signOut,
+  finishSignOut,
+  goTo,
+  get,
+  clearCaches,
+  clearLocalCopy,
+  forgetSentRecords,
+} = vi.hoisted(() => ({
   clearCaches: vi.fn(() => Promise.resolve()),
   clearLocalCopy: vi.fn(() => Promise.resolve()),
   forgetSentRecords: vi.fn(() => Promise.resolve()),
   signIn: vi.fn(),
+  signOut: vi.fn(),
+  finishSignOut: vi.fn<() => Promise<void>>(),
   goTo: vi.fn(),
   get: vi.fn<(key: string) => string | null>(),
 }));
 
-vi.mock("next-auth/react", () => ({ signIn }));
+vi.mock("next-auth/react", () => ({ signIn, signOut }));
+vi.mock("@/lib/session/sign-out", () => ({ finishSignOut }));
 vi.mock("@/lib/pwa/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
 vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
 vi.mock("@/lib/sync/forget-sent", () => ({ forgetSentRecords }));
@@ -30,6 +42,7 @@ const failed = { error: "CredentialsSignin", code: undefined, status: 401, ok: f
 beforeEach(() => {
   vi.clearAllMocks();
   get.mockReturnValue(null);
+  finishSignOut.mockResolvedValue(undefined);
 });
 
 describe("validate", () => {
@@ -284,6 +297,66 @@ describe("SignInForm", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("Email or password is incorrect.");
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+  });
+
+  /* An answer to a request the page before sent can land while this page
+     loads and put the session cookie back (#129). */
+  describe("on arriving from a sign-out", () => {
+    it("looks once more, with Auth.js's own sign-out to hand", () => {
+      render(<SignInForm />);
+      expect(finishSignOut).toHaveBeenCalledExactlyOnceWith(signOut);
+    });
+
+    it("warns, rather than saying they were signed out, when the session will not go", async () => {
+      get.mockImplementation((key) => (key === "reason" ? "signed-out" : null));
+      finishSignOut.mockRejectedValue(new Error("The session came back after signing out"));
+      render(<SignInForm />);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "You may still be signed in on this phone. Check your connection, then sign in and sign out again.",
+      );
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    });
+
+    it("signs in only once that look is done, so its sign-out cannot land after", async () => {
+      let done: () => void = () => undefined;
+      finishSignOut.mockReturnValue(
+        new Promise<void>((resolve) => {
+          done = resolve;
+        }),
+      );
+      signIn.mockResolvedValue(ok);
+      const user = userEvent.setup();
+      render(<SignInForm />);
+
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
+      expect(signIn).not.toHaveBeenCalled();
+      done();
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
+      expect(signIn).toHaveBeenCalledOnce();
+    });
+
+    it("still signs in after a look that failed", async () => {
+      finishSignOut.mockRejectedValue(new Error("offline"));
+      signIn.mockResolvedValue(ok);
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await screen.findByRole("alert");
+
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "password123");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
     });
   });
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
+import { finishSignOut } from "@/lib/session/sign-out";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { forgetSentRecords } from "@/lib/sync/forget-sent";
@@ -35,6 +36,16 @@ export function SignInForm() {
   const [errors, setErrors] = useState<FieldErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [stillSignedIn, setStillSignedIn] = useState(false);
+  const finishing = useRef<Promise<void>>(Promise.resolve());
+
+  /* A sign-out that just brought the member here is checked once more, as the
+     answer to a request the page before sent can have signed them back in. */
+  useEffect(() => {
+    finishing.current = finishSignOut(signOut).catch(() => {
+      setStillSignedIn(true);
+    });
+  }, []);
 
   async function onSubmit(event: SubmitEvent) {
     event.preventDefault();
@@ -46,6 +57,8 @@ export function SignInForm() {
 
     setFailure(null);
     setSubmitting(true);
+    /* So that check's own sign-out cannot land after this sign-in. */
+    await finishing.current;
     const result = await signIn("credentials", { email, password, redirect: false });
 
     if (result.error !== undefined) {
@@ -82,7 +95,13 @@ export function SignInForm() {
       noValidate
       className="space-y-4"
     >
-      {params.get("reason") === "signed-out" && failure === null ? (
+      {stillSignedIn ? (
+        <p role="alert" className="notice-danger">
+          You may still be signed in on this phone. Check your connection, then sign in and sign out
+          again.
+        </p>
+      ) : null}
+      {params.get("reason") === "signed-out" && failure === null && !stillSignedIn ? (
         <p role="status" className="rounded-lg border border-border bg-surface px-3 py-2 text-body">
           You were signed out. Sign in again to continue.
         </p>
