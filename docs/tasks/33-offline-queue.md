@@ -26,12 +26,13 @@ Owner decisions are marked **(owner)**.
   unchanged.
   _Why:_ the sync request carries no owner, so the cookie decides whose name a record is
   stored under; a stale tab must never send A's records as B. _Research:_ R-44.
-  _Refined by D-129-6 (scope open for the owner, see #129):_ sign-in and sign-out delete
-  every sent record, whoever saved it; no unsent record is ever cleared.
+  _Refined by D-129-6 (owner, 2026-11-04):_ sign-out deletes the signing-out member's
+  sent records and sign-in deletes none. Nothing unsent is ever cleared, and another
+  member's records, sent ones included, stay on the phone, hidden.
 - **D-33-2 · No discard (owner).** Held and quarantined records cannot be discarded;
   Retry is the only action. The only delete is the purge of sent records (D-33-9).
-  _Why:_ nothing unsent is ever dropped. _Refined by D-129-6:_ sent records are also
-  deleted at sign-in and sign-out.
+  _Why:_ nothing unsent is ever dropped. _Refined by D-129-6:_ a second delete, of sent
+  records only, and only the signing-out member's.
 - **D-33-3 · Item `clock_skew` restamps (owner).** `clientCreatedAt` and `updatedAt`
   are set to now and the record goes again at once; from the second skew, at most every
   5 minutes. Skew does not count toward the cap. _Why:_ a record that can never pass is
@@ -65,7 +66,7 @@ Owner decisions are marked **(owner)**.
   `corrupt`.
 - **D-33-9 · Sent records are kept 24 h, purged on app start.** _Why:_ the unit list
   and Add follow-up need the server's row after the send. _Refined by D-129-6:_ or until
-  the next sign-in or sign-out, whichever comes first.
+  their own member signs out on this phone, whichever comes first.
 - **D-33-10 · The form saves to the queue first.** It falls back to a direct
   `POST /visits` only when the queue cannot be written (no IndexedDB, full disk), where
   D-25-8 keeps what was typed. _Why:_ a save never waits on the network.

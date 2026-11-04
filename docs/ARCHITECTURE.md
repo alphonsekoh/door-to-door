@@ -428,13 +428,14 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   display name. The token name is display-only; handlers read the database.
 - Sign-out (`src/lib/session/sign-out.ts`): warns on the member's unsent records
   (`hasUnsyncedItems(ownerId)`, D-33-15); clears the block cache, the local copy and
-  every sent queue record, never an unsent one (D-129-6); `signOut({ redirect: false })`;
-  asks `/api/auth/session` and signs out again while it names someone, at most 3 times
-  (D-129-4); then replaces the page with `/sign-in` (or a given destination, e.g.
-  `/sign-in?reason=signed-out`) through `location.replace`, so Back cannot return to it
-  (D-129-3). A refusal (Auth.js returns an `error` URL with 200), or a session that keeps
-  coming back, throws instead, and Account shows "Could not sign out". A sessionStorage
-  note makes `/sign-in` check once more, and a sign-in there waits for it (D-129-5).
+  the member's own sent queue records, never an unsent one nor another member's
+  (D-129-6); `signOut({ redirect: false })`; asks `/api/auth/session` and signs out
+  again while it names someone, at most 3 times (D-129-4); then replaces the page with
+  `/sign-in` (or a given destination, e.g. `/sign-in?reason=signed-out`) through
+  `location.replace`, so Back cannot return to it (D-129-3). A refusal (Auth.js returns
+  an `error` URL with 200), or a session that keeps coming back, throws instead, and
+  Account shows "Could not sign out". A sessionStorage note makes `/sign-in` check once
+  more, and a sign-in there waits for it (D-129-5).
 - The proxy sets `Cache-Control: no-store` on signed-in page responses and `/sign-in`,
   so Back after sign-out revalidates instead of restoring the page from bfcache. API
   answers get theirs from their handlers, and also from the proxy when they carry a
@@ -464,9 +465,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `InstallPrompt` floats the same way above the nav, reserving `--banner-bottom`, only
   while it is at most a quarter of the screen and no docked Save is on screen; otherwise
   it is a card at the end of the page (D-111-46).
-- Sign-in and sign-out clear the cached block list (sign-out: D-74-9), the local copy
-  (D-77-6) and every sent queue record (D-129-6). The block-list clear and the sent-record
-  delete each give up after 1.5 s, and none blocks either (D-111-68).
+- Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local copy
+  (D-77-6); sign-out also deletes the signing-out member's sent queue records, and sign-in
+  deletes none (D-129-6). The block-list clear and the sent-record delete each give up
+  after 1.5 s, and none blocks either (D-111-68).
 
 ## Offline
 
@@ -481,8 +483,8 @@ clock_skew`; items stamped in the future or before their session are rejected
 store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
 cannot be written. A visit is queued only with its session's id (D-33-25). Each record carries its owner and a state: `queued`, `failed`,
 `held`, `quarantined` or `synced`. Sending is in memory only. Nothing unsent is ever
-deleted; sent records are purged at app start after 24 h, and on every sign-in and
-sign-out whoever saved them (D-129-6).
+deleted; sent records are purged at app start after 24 h, and a member's go when that
+member signs out on the phone (D-129-6).
 
 ```
 save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /api/auth/session
@@ -500,8 +502,9 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   timer. `idb-queue` and `memory-queue` implement `SyncQueue`; `record` validates every
   read, salvaging a record whose knock and owner are intact (D-34-8). `signed-in`
   checks the cookie's member before each batch, and confirms a sign-out. `forget-sent`
-  drops sent records at sign-in and sign-out (D-129-6). After a run storage fails, the
-  controller waits 5 s doubling to 5 min before its timer fires again (D-34-6).
+  drops the signing-out member's sent records (`deleteSentBy`, D-129-6). After a run
+  storage fails, the controller waits 5 s doubling to 5 min before its timer fires again
+  (D-34-6).
 - Triggers: app start, each save, `online`, focus and visibility, the backoff timer,
   Retry. No Background Sync.
 - `SyncProvider` (in `AppShell`) runs one controller for the signed-in member.

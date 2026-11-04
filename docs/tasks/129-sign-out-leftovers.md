@@ -1,6 +1,6 @@
 # #129 · Nothing of the last member after sign-out (with #130)
 
-- **Status:** In progress (branch `fix/129-sign-out-leftovers`, one PR for #129 and #130)
+- **Status:** In review (PR #161)
 - **Phase:** 7 - Hardening
 - **Depends on:** #29, #30, #33, #74, #77, #122, #150
 
@@ -34,7 +34,7 @@ deleted, and the CSV guard missed a leading CR.
   is reloaded, never used again. _Why:_ the reset would raise "Leave site?" over the old
   screen during the guard's reload.
 - **D-129-3 · Sign-out replaces its page in history.**
-  `signOutAndForget(signOut, destination = "/sign-in", navigate = replaceWith)`;
+  `signOutAndForget(signOut, memberId, destination = "/sign-in", navigate = replaceWith)`;
   `replaceWith` marks the departure and calls `location.replace`, and callers no longer
   pass a navigation. Refines D-74-10, as #129 asks: `assign` becomes `replace`, and
   `redirect: false` and the relative path stand. Sign-in still leaves with `goTo`
@@ -60,17 +60,21 @@ deleted, and the CSV guard missed a leading CR.
 
 ### What stays on the phone (#130)
 
-- **D-129-6 · Sign-in and sign-out delete every sent queue record, whoever saved it.**
-  Unsent, held, quarantined and corrupt records stay. `forgetSentRecords`
-  (`src/lib/sync/forget-sent.ts`) is bounded by `CLEAR_WITHIN_MS` (1.5 s) like the cache
-  clear, and a failure never blocks (mirrors D-77-6, D-111-68). Refines D-33-1 ("Sign-out
-  never clears the queue" now means no unsent record), D-33-2 (a second delete, of sent
-  records only) and D-33-9 (kept 24 h, or until the next sign-in or sign-out). Wider than
-  #130's "the signed-out member's": see Open questions. _Why:_ a sent record is on the
-  server and still holds a name, a contact and notes, and at sign-in the member before is
-  not known (an expired session, or someone else). D-77-13 is unaffected: the copy it lays
-  sent records over is cleared at the same moments. _Known limit:_ a send that finishes
-  during sign-out keeps its row until the next sign-in or the 24 h purge.
+- **D-129-6 · Sign-out deletes the signing-out member's sent queue records; sign-in
+  deletes none (owner, 2026-11-04).** `forgetSentRecords(memberId)`
+  (`src/lib/sync/forget-sent.ts`) goes through `SyncQueue.deleteSentBy` over the
+  `by-owner` index. The member is the page's `useRole().userId`; undefined deletes
+  nothing. Another member's sent records keep D-33-9's 24 h, and unsent, held,
+  quarantined and corrupt records stay, whoever saved them. Bounded by `CLEAR_WITHIN_MS`
+  (1.5 s) like the cache clear, and a failure never blocks (mirrors D-77-6, D-111-68).
+  Refines D-33-1, D-33-2 and D-33-9. _Rejected (owner):_ every sent record, whoever
+  saved it, at every sign-in and sign-out, as first built; it took another member's
+  records at someone else's sign-out, against D-33-1. _Why:_ a sent record is on the
+  server and still holds a name, a contact and notes, so it leaves with its member, as
+  #130 asks; at sign-in the member before is not known. D-77-13 is unaffected: a kept
+  sent record is another member's, never listed (D-33-1), or the member's own, judged by
+  `syncedAt` as before. _Known limit:_ a send that finishes during sign-out keeps its row
+  until the 24 h purge or that member's next sign-out.
 - **D-129-7 · The history and records search term lives only in component state.**
   `history-filters` and `record-filters` never read or write `q`, the two screens hold it,
   and `setFilter` cannot take it. Clear filters empties it, export applies it, and an old
@@ -91,7 +95,7 @@ deleted, and the CSV guard missed a leading CR.
   Quoting is unchanged. Refines D-30-4. _Why:_ some spreadsheets take a leading CR as a
   formula start, others skip leading whitespace and invisible characters first, and member
   text reaches the export as typed. _Known limit:_ a formula after a `;` mid-cell, in a
-  locale whose separator is `;`. _Research:_ R-29, R-139.
+  locale whose separator is `;` (#163). _Research:_ R-29, R-139.
 
 ### Tests
 
@@ -100,10 +104,11 @@ deleted, and the CSV guard missed a leading CR.
   Account, Sign out, Back) and an admin test (`/admin/team`, Account, Sign out, Back). Each
   lands on `/sign-in?callbackUrl=` the screen before Account, which a pushed sign-out would
   make `%2Faccount`. A third holds a session answer until the sign-out is answered, with
-  the worker blocked. `pwa.spec`'s shared-phone test expects a sent record gone and an
-  unsent one kept, and stops sends with `context().route`. _Why:_ neither Playwright engine
-  reaches a real restore here (R-136), so the restore itself rests on Vitest and the
-  owner's iPhone check; `page.route` misses what the worker fetches (R-138).
+  the worker blocked. `pwa.spec`'s shared-phone test expects the member's sent record gone
+  at her sign-out and her unsent one kept, and stops sends with `context().route`. _Why:_
+  neither Playwright engine reaches a real restore here (R-136), so the restore itself
+  rests on Vitest and the owner's iPhone check; `page.route` misses what the worker
+  fetches (R-138).
 
 ### How existing decisions are handled
 
@@ -114,7 +119,7 @@ deleted, and the CSV guard missed a leading CR.
 | D-74-64                | Extended: a session that keeps coming back fails the same way             | D-129-4 |
 | D-33-28                | Refined: `pageshow` no longer clears the flag                             | D-129-2 |
 | D-77-11, D-33-22       | Refined: a restored shell reloads, even while recording                   | D-129-1 |
-| D-33-1, D-33-2, D-33-9 | Refined: sent records go at every sign-in and sign-out (scope open)       | D-129-6 |
+| D-33-1, D-33-2, D-33-9 | Refined: a member's sent records go at their sign-out; none at sign-in    | D-129-6 |
 | D-29-4                 | Refined: the search term is never in the URL                              | D-129-7 |
 | D-77-3, D-77-5         | Refined: a copy past 12 h is deleted when read                            | D-129-8 |
 | D-30-4                 | Refined: tab, CR, and a sign behind leading whitespace or invisible chars | D-129-9 |
@@ -124,14 +129,26 @@ deleted, and the CSV guard missed a leading CR.
 ## Known limits
 
 - An answer the service worker is still fetching after `/sign-in` has looked can put the
-  session cookie back (verifier, Chromium 2 of 2; not reachable in Playwright WebKit). See
-  Open questions.
+  session cookie back (verifier, Chromium 2 of 2; not reachable in Playwright WebKit;
+  R-137). Accepted by the owner for this PR on 2026-11-04 and tracked in #162; D-83-15(b)
+  stands as worded.
+- D-129-6: a tab still showing member A while the cookie is already B's deletes A's sent
+  records at its sign-out, not B's. Rare, since next-auth refetches the session on focus,
+  and nothing unsent is at risk.
+- D-129-6: a member who never signs out leaves their sent records on the phone for up to
+  24 h, hidden from the next member (D-33-1).
 - The iOS swipe-back preview is a snapshot the system takes, which no script can blank.
 - An old `?q=` link stays in the address bar until a filter changes, so a session that
-  lapses on that page still carries it into `callbackUrl`.
+  lapses on that page still carries it into `callbackUrl` (#163).
 - No E2E test guards `/sign-in`'s second look on its own; Vitest does.
+- Older than this PR, seen by its verifier: after a failed sign-out, Sign out sits under
+  the bottom nav on iPhone 13 (#164); `ApiRequestError` throws on a JSON error body
+  without the `{ error }` envelope (#165).
 
 ## Owner checks (real iPhone over HTTPS; not claimed by the PR)
+
+The owner kept `Closes #129` (2026-11-04), so merging closes #129 whether or not this
+check has been done.
 
 In a Safari tab and in the home-screen app: sign out from Account after History, and after
 an admin screen; press Back, and swipe back slowly. Expect the sign-in screen. Also switch
@@ -145,20 +162,5 @@ D-74-12, D-77-6, D-77-9, D-77-13, D-83-15, D-111-68, D-122-10, D-150-1 to D-150-
 
 ## Open questions
 
-1. **A late answer fetched by the service worker can still sign the member back in.**
-   After D-129-4 and D-129-5, what is left is an answer slower than the sign-out, its
-   check, loading `/sign-in` and its look, fetched by the worker, whose fetch is not
-   cancelled with the page (R-137). The phone then stays signed in as the member who
-   signed out. Only server-side revocation closes it, which D-83-15(b) accepted as a limit
-   (R-32). Owner: accept it as a known limit and file an issue; narrow it on the client
-   (the worker aborts its in-flight `/api` fetches at the pre-sign-out clear, or `/sign-in`
-   keeps checking for a few seconds); or close it with a server-side session epoch, which
-   signs the member out on every device.
-2. **D-129-6 against D-33-1 (owner): every member's sent records, or only the signed-out
-   member's.** D-33-1: "another member's stay on the phone, hidden, and send when that
-   member signs in again". D-129-6: "Sign-in and sign-out delete every sent queue record,
-   whoever saved it", where #130 asked for the signed-out member's. If both stand, another
-   member's sent records leave the phone at someone else's sign-out. Nothing unsent is
-   touched, the server holds them, and that member's next sign-in would drop them anyway.
-   Confirm D-129-6 as built, or narrow sign-out to the signed-out member's records
-   (sign-in cannot know the member before).
+None. The owner ruled on 2026-11-04: the worker's late answer is a known limit (#162),
+and D-129-6 was narrowed to the signing-out member's sent records, none at sign-in.
