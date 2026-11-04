@@ -6,9 +6,9 @@ import { toUser } from "@/server/users/serialise";
 import { updateUser } from "@/server/users/service";
 
 /*
- * Role and activation. The self-demotion and self-deactivation rules live in
- * the service, not here: they are about the state of the team, and a second
- * caller would otherwise have to remember them.
+ * Role and activation. The self-demotion, self-deactivation and last-admin
+ * rules live in the service, not here: they are about the state of the team,
+ * and a second caller would otherwise have to remember them.
  */
 export const PATCH = withContract(
   {

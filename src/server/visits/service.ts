@@ -118,10 +118,37 @@ export const visitColumns = {
 };
 
 /*
- * Locks the active session's row (FOR KEY SHARE) before anything else, as
- * changing a follow-up session's households does (FOR UPDATE), so a record
- * and a household change wait for each other in one order. The checks that
- * follow then read what a remove committed, and a remove sees this visit.
+ * A visit's first lock: its author's row, FOR SHARE, so a deactivation waits
+ * for a visit that passed this check, or the visit reads what it committed.
+ * SHARE because a deactivation's UPDATE does not wait for KEY SHARE, the mode
+ * the foreign key already takes. First, so a visit waiting here holds nothing
+ * that updateUser, which locks only user rows, could be waiting for.
+ */
+async function lockActiveAuthor(tx: Database, memberId: string): Promise<void> {
+  const found = await tx
+    .select({ deactivatedAt: users.deactivatedAt })
+    .from(users)
+    .where(eq(users.id, memberId))
+    .for("share");
+
+  const author = found[0];
+  if (!author) {
+    /* Only reachable when an admin names someone: a caller's own id comes
+       from a verified session. A bare insert would fail on the foreign key
+       with a constraint name instead of a usable message. */
+    throw new NotFoundError("No such member.");
+  }
+  if (author.deactivatedAt !== null) {
+    throw new ConflictError("conflict", "That member's account is deactivated.");
+  }
+}
+
+/*
+ * Locks the active session's row (FOR KEY SHARE) right after the author's,
+ * before any household. Changing a follow-up session's households also locks
+ * the session row before its households (FOR UPDATE), so a record and a
+ * household change wait for each other in one order. The checks that follow
+ * then read what a remove committed, and a remove sees this visit.
  */
 async function requireActiveSessionWithBlock(
   db: Database,
@@ -199,25 +226,14 @@ export async function createVisit(
     throw new NotFoundError("No such block.");
   }
 
-  const memberExists = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.id, input.memberId))
-    .limit(1);
-
-  if (memberExists.length === 0) {
-    /* Only reachable when an admin names someone: a caller's own id comes
-       from a verified session. A bare insert would fail on the foreign key
-       with a constraint name instead of a usable message. */
-    throw new NotFoundError("No such member.");
-  }
-
   /*
    * One transaction, so a duplicate id rolls the household upsert back and a
-   * visit never exists without the stamp and snapshot that describe it. Where
-   * it may be recorded is judged inside it, under the session lock.
+   * visit never exists without the stamp and snapshot that describe it. Who
+   * may author it and where it may be recorded are judged inside it, under
+   * the author's lock and then the session's.
    */
   await db.transaction(async (tx) => {
+    await lockActiveAuthor(tx, input.memberId);
     const session = await requireActiveSessionWithBlock(tx, input.blockId);
     await assertMayRecordHere(tx, actor, session, input.blockId, unitNumber);
     const sessionId = session.id;
