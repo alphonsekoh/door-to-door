@@ -743,7 +743,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   never reaches the form's Save, a different element. Measured in #113: it saved
   nothing with every script held and with only the screen's held. The WebKit Save answer
   above is best read as a tap that reached the form's own Save just after it replaced
-  the stand-in, with the unit cleared (R-120). Not re-measured.
+  the stand-in, with the unit cleared (R-125). Not re-measured.
 
 - **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
   `discreteReplayableEvents` and the dispatch path that reads it (`dispatchEvent`,
@@ -1275,7 +1275,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   measured with curl (#122 verifier, rounds 0 and 1)
 - **Used by:** D-122-1, D-122-9, D-122-13
 
-### R-120 · React keeps what was typed into a field while hydrating, but not in state
+### R-125 · React keeps what was typed into a field while hydrating, but not in state
 
 - **Finding:** In react-dom 19.2.8, hydrating an `<input>` leaves its DOM `value` and
   `checked` as they are (`initInput` skips both while hydrating), so a unit typed or a
@@ -1288,7 +1288,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `initInput`; measured in #113 (builder's probe with the scripts held)
 - **Used by:** D-113-1, D-113-2
 
-### R-121 · An urgent update above a screen still being hydrated throws its HTML away
+### R-126 · An urgent update above a screen still being hydrated throws its HTML away
 
 - **Finding:** In react-dom 19.2.8, an update that reaches a Suspense boundary still
   dehydrated, a context change included, first makes React try to hydrate it sooner. If
@@ -1305,7 +1305,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   2, builder fix round 2)
 - **Used by:** D-113-7
 
-### R-122 · A ticked radio comes back from history unless it is `autocomplete="off"`
+### R-127 · A ticked radio comes back from history unless it is `autocomplete="off"`
 
 - **Finding:** A page loaded again from history, not from the back/forward cache, gets
   its form controls' state back from the browser, a ticked radio included, while the

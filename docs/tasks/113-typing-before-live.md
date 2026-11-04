@@ -1,6 +1,6 @@
 # #113 · Typing before the page is live
 
-- **Status:** In progress (branch `fix/113-typing-before-hydration`, not pushed)
+- **Status:** In review (PR #154)
 - **Phase:** none (no milestone; found on PR #112)
 - **Depends on:** #25, #111, #119
 
@@ -20,7 +20,7 @@ script is late.
   mounts and hands the value to state if it differs. The recording form adopts its unit
   this way, the interest picker its checked level. _Why:_ React keeps a typed value
   through hydration but not in state, and the next render wrote the state back
-  (R-120). The issue offered this or inputs uncontrolled until hydrated; this keeps the
+  (R-125). The issue offered this or inputs uncontrolled until hydrated; this keeps the
   field controlled, so nothing else that reads the unit changes. A layout effect lands
   before anything renders again.
 - **D-113-2 · The interest level is four native radios, each over its whole tile.** The
@@ -33,7 +33,7 @@ script is late.
 - **D-113-3 · Each radio is `autocomplete="off"`, as the unit field is (68fef05).**
   _Why:_ a page loaded again from history came back with the level ticked and the unit
   blank, and D-113-1 took that level as picked for the next unit typed. The new E2E
-  failed on both phones without it. _Research:_ R-122.
+  failed on both phones without it. _Research:_ R-127.
 - **D-113-4 · Until the page is live, the recording form's first submit button is
   hidden and disabled.** `useLive` (`src/lib/hooks/use-live.ts`) is false in the
   server's HTML and while hydrating, true from the render after. _Why:_ before then the
@@ -50,7 +50,7 @@ script is late.
   Save as the page goes live sees the adopted unit, so the Not saved pop-up does not open
   for a unit that was typed. Keeps D-33-29 and D-119-15 for a unit really left out.
   _Why:_ the issue's second ask; the stand-in has no code to save with until the screen's
-  script arrives. Whether it should say so is an open question.
+  script arrives. Owner, 2026-11-04: silent here; showing it is #156.
 - **D-113-6 · Only the block screen's recording form needs this.** Sign-in, the account
   screen, Record for a member and the follow-up sheet are drawn on the client only, so
   nothing can be typed into them before the page is live; the offline shell's form
@@ -63,7 +63,7 @@ script is late.
   sends nothing. _Why:_ when the shell's scripts arrived before the block screen's, the
   session answering was an urgent context change above a screen still the server's HTML,
   and React replaced that HTML with "Loading the block…", losing the unit and level
-  (R-121). _Trade-off:_ while a late screen is still the server's HTML, the whole shell
+  (R-126). _Trade-off:_ while a late screen is still the server's HTML, the whole shell
   sees `loading`: the nav (no Admin tab), `useRole`, `AccountGate`'s check and
   `SyncProvider`, which starts no sends until then (D-33-19's app-start send waits too).
   The verifier's iPhone runs waited 2.6 to 13 s. _Rejected:_ handing the provider the
@@ -90,7 +90,8 @@ script is late.
   client navigation, not hydration, and the flake was seen on `main` before this branch.
   The fill lands in the commit of the screen's first answers, and a probe with capture
   listeners hid it (0 of 140). No wait was added. _Why:_ the task asked for the cause to
-  be fixed, not waited out, and it has not been found. The owner decides where it goes.
+  be fixed, not waited out, and it has not been found. Owner, 2026-11-04: its own issue,
+  #155.
 
 ### How existing decisions are handled
 
@@ -125,11 +126,4 @@ D-111-66, D-111-67, D-119-13, D-119-15, D-119-22, D-122-2, D-122-8.
 
 ## Open questions
 
-- **Where does the `follow-up-session.spec.ts:56` flake go (D-113-10)?** Keep it in
-  #113, or give it its own issue, which the verifier and reviewer recommend before the
-  PR says `Closes #113`.
-- **A Save tapped before the page is live does nothing and shows nothing (D-113-5).**
-  Outside #113's ask. The unit and level are now kept, so a member who walks on
-  believing it saved loses that visit, and the level still ticked can be saved with the
-  next door's unit. Should a tap before the page is live say so? An answer has to work
-  with no script and no inline script (D-122-2, D-122-8).
+None. The owner ruled on both (D-113-5, D-113-10).
