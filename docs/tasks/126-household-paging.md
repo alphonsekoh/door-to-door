@@ -1,6 +1,6 @@
 # #126 · Household list bounded by its page, request bodies by size, recording by rate (with #127: every page of a block)
 
-- **Status:** In progress
+- **Status:** In review (PR #159)
 - **Phase:** 7 - Hardening
 - **Depends on:** #20, #21, #74, #113, #118, #120, #121
 
@@ -86,8 +86,11 @@ from every member and from the offline copy. Both were found by a security audit
   member's behalf spends the admin's budget. Once spent, the answer is `429 rate_limited`,
   "Too many visits recorded. Try again shortly." It is a code constant, like D-21-6, and
   not a `config.yaml` key, although the task expected a key for any new setting.
-  **On its face this conflicts with D-75-15** (see Open questions). _Why:_ it mirrors
-  D-21-6. A direct save is the queue's fallback, so neither budget may starve the other.
+  **Refines D-75-15 (owner, 2026-11-04, option a):** D-75-15 now covers the sign-in
+  budgets and clock-skew tolerance, and the per-member write limits, sync's and this one,
+  stay code constants. _Why:_ it mirrors D-21-6. A direct save is the queue's fallback,
+  so neither budget may starve the other. _Rejected:_ `rateLimit` keys for both write
+  limits (option b).
 - **D-126-9 · `offset` is at most 10,000 on every list** (the shared `Offset`
   parameter), with `400` above that. The spec's new "Paging" section says so, and
   `MAX_OFFSET` (`src/lib/households/pages.ts`) mirrors it. _Why:_ a conventional bound,
@@ -132,7 +135,7 @@ from every member and from the offline copy. Both were found by a security audit
 - **D-126-13 · Scope cut.** These are not built: #127's server-side lookup of a typed
   unit, admin removal or merging of junk households, a per-member cap on new households,
   and paging `GET /households/{id}`, which is a contract change. _Why:_ reading every page
-  meets #127's criteria. The rest are owner questions or a follow-up issue.
+  meets #127's criteria. Paging `GET /households/{id}` is #160 (owner, 2026-11-04).
 
 ### How existing decisions are handled
 
@@ -141,7 +144,7 @@ from every member and from the offline copy. Both were found by a security audit
 | D-120-7           | Refined: contract routes answer `413`; the cut bounds only Auth.js's routes | D-126-6           |
 | D-118-6           | Exposure narrowed: about 6,700 ids a request, `413` above                   | D-126-7           |
 | D-74-15           | Kept (owner): `memberIds` uncapped                                          | D-126-7           |
-| D-75-15           | Conflicts on its face with a constant limiter; for the owner                | D-126-8           |
+| D-75-15           | Refined (owner): write limits are constants; keys cover sign-in, skew       | D-126-8           |
 | D-20-3            | Kept: eight queries, six with no latest visit on a team                     | D-126-1           |
 | D-21-6            | Kept; its limiter moved to `rate-limits.ts`                                 | D-126-8           |
 | D-10-2, D-121-8   | Extended: `content_too_large` and a shared `413` response                   | D-126-5           |
@@ -153,11 +156,12 @@ from every member and from the offline copy. Both were found by a security audit
 ## Known limits
 
 - `GET /households/{id}` still returns every visit, so typing a flooded unit fetches all
-  of them. It no longer fails at the bind limit (D-126-3).
+  of them. It no longer fails at the bind limit (D-126-3). Paging it is #160.
 - `stampVisit` inserts a team's snapshot in one statement, which would pass the bind limit
   at about 32,700 teammates.
 - In a block of more than 10,100 units, the later ones are never read. That read still
-  counts as whole, so no note shows and the offline copy ends there.
+  counts as whole, so no note shows and the offline copy ends there. The owner left it
+  silent (2026-11-04): no real block comes near.
 - `listHouseholdsNeedingAttention` still picks the latest visit by `max(created_at)`,
   without D-126-1's tie-break on the id.
 - Sync still lets one member create about 3,000 visits a minute (D-21-6 × D-21-7).
@@ -178,16 +182,5 @@ D-120-3, D-120-7, D-120-13, D-121-7, D-121-8.
 
 ## Open questions
 
-- **D-126-8 against D-75-15 (conflict, for the owner).** D-75-15: "Rate limits and
-  clock-skew tolerance are config keys." D-126-8: the `POST /visits` limiter "is a code
-  constant, like D-21-6, and not a `config.yaml` key". If both stand, D-75-15 is untrue
-  for two limiters, not one: sync's has been a constant since #21. An operator then
-  cannot change either limit without a release. Nothing breaks at runtime. The choices
-  are: (a) refine D-75-15 to the sign-in budgets, with the per-member write limits kept
-  as constants, as built; or (b) add `rateLimit` keys for both write limiters, each
-  defaulting to 30.
-- **Should the block screen say when it stops at the offset cap?** It treats that read
-  as whole (see Known limits), whereas D-30-3's export says when it is capped. This is not
-  blocking, because no real block comes near 10,100 units (reviewer).
-- **A follow-up issue to page `GET /households/{id}`** (D-126-13), recommended by the
-  reviewers.
+None. The owner chose option (a) for D-126-8, refining D-75-15; left the block screen
+silent at the offset cap; and moved paging `GET /households/{id}` to #160 (2026-11-04).
