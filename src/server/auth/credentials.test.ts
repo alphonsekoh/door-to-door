@@ -39,7 +39,13 @@ function spyLimiter(): RateLimiter {
 }
 
 function spyLog(): SignInLog {
-  return { failed: vi.fn(), oversized: vi.fn(), limited: vi.fn(), unattributed: vi.fn() };
+  return {
+    failed: vi.fn(),
+    oversized: vi.fn(),
+    limited: vi.fn(),
+    unattributed: vi.fn(),
+    unexpected: vi.fn(),
+  };
 }
 
 function harness() {
@@ -100,5 +106,40 @@ describe("over-long credentials", () => {
   it("uses the caps POST /users enforces, so no account can hold a longer value", () => {
     expect(MAX_EMAIL_LENGTH).toBe(zCreateUserRequest.shape.email.maxLength);
     expect(MAX_PASSWORD_LENGTH).toBe(zCreateUserRequest.shape.password.maxLength);
+  });
+});
+
+describe("a check that could not be made", () => {
+  /*
+   * Auth.js reports this null as one more CredentialsSignin, and its logger
+   * leaves those to the sign-in log (#128), so this line is the only trace.
+   */
+  it("is logged once, and still refuses", async () => {
+    const { deps, log } = harness();
+    expect(
+      await authorizeFromRawCredentials(
+        { email: emailOf(20), password: PASSWORD },
+        undefined,
+        deps,
+      ),
+    ).toBeNull();
+    expect(log.unexpected).toHaveBeenCalledTimes(1);
+    expect(log.unexpected).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringMatching(/^the database was used/) as string,
+      }),
+    );
+    expect(log.failed).not.toHaveBeenCalled();
+  });
+
+  it("is not how a refusal is logged: that is logged where it was decided", async () => {
+    const { deps, log } = harness();
+    await authorizeFromRawCredentials(
+      { email: emailOf(MAX_EMAIL_LENGTH + 1), password: PASSWORD },
+      undefined,
+      deps,
+    );
+    expect(log.oversized).toHaveBeenCalledTimes(1);
+    expect(log.unexpected).not.toHaveBeenCalled();
   });
 });

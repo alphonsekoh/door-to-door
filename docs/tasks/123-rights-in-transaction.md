@@ -1,6 +1,6 @@
 # #123 · Rights judged under the write's lock: amends and block detaches
 
-- **Status:** In review (PR #153)
+- **Status:** Done (PR #153)
 - **Phase:** 7 - Hardening
 - **Depends on:** #18, #20, #74, #117
 

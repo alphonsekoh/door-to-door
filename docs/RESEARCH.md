@@ -1253,6 +1253,56 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   measured with curl (#122 verifier, rounds 0 and 1)
 - **Used by:** D-122-1, D-122-9, D-122-13
 
+### R-120 · What Auth.js's default logger prints, and how a custom one replaces it
+
+- **Finding:** In `@auth/core` 0.41.3 the default `error` prints
+  `[auth][error] <type>: <message>` in ANSI red. For an `AuthError` that wraps an error,
+  it then prints that error's stack and, as `[auth][details]`, a JSON dump of the cause's
+  other properties. Otherwise it prints the error's own stack. An `AuthError` built from
+  an error keeps it as `cause.err` and copies that error's own `cause` properties beside
+  it. jose's `JWTExpired` keeps the decoded `payload` in its cause, so an expired token's
+  claims reached `[auth][details]`. `warn` prints the code and a URL. `debug` prints its
+  metadata as JSON and is off unless `debug` is set. `setLogger` uses each level the
+  config supplies and keeps the default for the others.
+- **Source:** `node_modules/@auth/core/lib/utils/logger.js`;
+  `node_modules/@auth/core/errors.js`; `node_modules/jose/dist/webapi/util/errors.js`
+  (jose 6.2.10); reproduced by the audit (#128) and the #128 verifier
+- **Used by:** D-128-1, D-128-2, D-128-3
+
+### R-121 · Error names do not survive minification; Auth.js types and jose codes do
+
+- **Finding:** jose and Auth.js both set `name = this.constructor.name`, which the
+  production build mangles. In the proxy's bundle and the route's, the same jose error
+  had different names. jose's `code` (for example `ERR_JWT_EXPIRED`) is a class field
+  holding a string literal, and Auth.js's `type` (for example `JWTSessionError`) comes
+  from a static string. Both survive minification.
+- **Source:** `node_modules/jose/dist/webapi/util/errors.js`;
+  `node_modules/@auth/core/errors.js`; measured on the standalone build (#128 builder)
+- **Used by:** D-128-2
+
+### R-122 · next-auth's `auth()` wrapper adds its cookies after the handler answers
+
+- **Finding:** In next-auth 5.0.0-beta.32, `handleAuth` runs the session check, then the
+  wrapped handler. It copies the handler's answer into `new Response(body, response)`
+  and then appends the session check's `Set-Cookie` headers: a CSRF cookie for a request
+  that has none, the callback URL, and a refreshed session. The handler never sees those
+  cookies on its own response.
+- **Source:** `node_modules/next-auth/lib/index.js` (`handleAuth`)
+- **Used by:** D-150-1
+
+### R-123 · `no-store` already covers `private`; Next sends a static page as `s-maxage=31536000`
+
+- **Finding:** `no-store` tells every cache not to store any part of the response. That
+  includes shared caches, so adding `private` changes nothing. In Next 16.4.3 a static
+  (prerendered) page is sent with `s-maxage=31536000`, and a dynamic one with
+  `private, no-cache, no-store, max-age=0, must-revalidate`. On the standalone build, a
+  `Cache-Control` the proxy sets on `NextResponse.next()` replaces the page's own
+  (measured).
+- **Source:** [RFC 9111](https://www.rfc-editor.org/rfc/rfc9111) §5.2.2.5, §5.2.2.7;
+  `node_modules/next/dist/docs/01-app/02-guides/cdn-caching.md`; measured with curl
+  (#122 verifier round 1, #128 verifier round 0)
+- **Used by:** D-150-2, D-150-3
+
 ### R-124 · An UPDATE of no key column takes `FOR NO KEY UPDATE`; deleting a parent checks its children `FOR KEY SHARE` (measured)
 
 - **Finding:** `FOR UPDATE` is taken by a `DELETE` and by an `UPDATE` that changes a

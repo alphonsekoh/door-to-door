@@ -23,6 +23,33 @@ describe("sanitizeMessage", () => {
     );
   });
 
+  it.each([
+    ["a carriage return", "bad value\rforged line"],
+    ["a line separator", "bad value\u2028forged line"],
+    ["a paragraph separator", "bad value\u2029forged line"],
+    ["CRLF", "bad value\r\nforged line"],
+  ])("cuts at %s too, so a message cannot start a forged line", (_case, raw) => {
+    expect(sanitizeMessage(raw)).toBe("bad value");
+  });
+
+  it("removes ESC and CR, so a message cannot recolour, retitle or overwrite a terminal line", () => {
+    const line = sanitizeMessage("bad \x1b[31mred\x1b[0m \x1b]0;owned\x07 tail\rforged");
+    expect(line).toBe("bad \uFFFD[31mred\uFFFD[0m \uFFFD]0;owned\uFFFD tail");
+    expect(line).not.toContain("\x1b");
+    expect(line).not.toContain("\r");
+  });
+
+  it.each([
+    ["NUL", "\u0000"],
+    ["a tab", "\t"],
+    ["backspace", "\b"],
+    ["DEL", "\u007f"],
+    ["the C1 CSI", "\u009b"],
+    ["C1 NEL", "\u0085"],
+  ])("replaces %s with a visible mark", (_case, control) => {
+    expect(sanitizeMessage(`a${control}b`)).toBe("a\uFFFDb");
+  });
+
   it("caps a long message", () => {
     expect(sanitizeMessage("x".repeat(500))).toBe(`${"x".repeat(200)}...`);
   });

@@ -1,6 +1,6 @@
 # #122 · Security headers, no-store API answers, always-Secure cookies
 
-- **Status:** In progress (branch `fix/122-security-headers`, not pushed)
+- **Status:** Done (PR #149)
 - **Phase:** 7 - Hardening
 - **Depends on:** #12, #13, #32, #74, #75, #121
 
@@ -81,6 +81,8 @@ HSTS `includeSubDomains` wait for the first deployment (#146).
   too. Refines D-74-11:** the proxy still leaves API answers it passes through to their
   handlers. _Why:_ under D-12-1, every handler's answer goes through `jsonResponse`.
   See Known limits for the bodiless answers Next writes itself. _Research:_ R-119.
+  _Refined by D-150-1:_ the proxy also sets `no-store` on an API answer it passes through
+  when that answer carries `Set-Cookie`, which is a refreshed session cookie.
 - **D-122-10 · Auth.js's route is wrapped in `withAuthRouteHeaders`.** Every
   `/api/auth/*` answer is `no-store`. A `POST` to exactly `/api/auth/signout` (not a
   sub-path) also gets `Clear-Site-Data: "cache"`, never `storage`, `cookies` or `*`.
@@ -155,7 +157,6 @@ D-121-8.
 
 ## Open questions
 
-- **Prerendered `/sign-in` is sent with `Cache-Control: s-maxage=31536000` and the
-  proxy's CSRF and callback-url `Set-Cookie`.** A shared cache that ignores `Set-Cookie`
-  could give one CSRF cookie to everyone. This PR did not cause it; the verifier found
-  it. Owner: should it get its own issue, or go into #146 once the CDN is chosen?
+None. The verifier's question about the prerendered `/sign-in`, which was sent with
+`s-maxage=31536000` and a CSRF cookie, became #150 and is settled by D-150-1 and
+D-150-2. `/offline` still sends that `s-maxage`, with no cookie, and is left to #146.

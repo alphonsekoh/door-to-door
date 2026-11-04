@@ -18,13 +18,23 @@ const REDACTIONS: [RegExp, string][] = [
   [/\b[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)*:\d{2,5}\b/gi, "[host]"],
 ];
 
+/*
+ * Every character a terminal or log viewer may break a line at. A message can
+ * carry text a request chose, so cutting at "\n" alone would let a "\r" or a
+ * U+2028 start a forged line.
+ */
+const LINE_BREAK = /[\r\n\u2028\u2029]/;
+
+/* C0, DEL and C1: ESC and CSI open the colour, cursor and OSC title escapes. */
+const CONTROL = /\p{Cc}/gu;
+
 export function sanitizeMessage(raw: string): string {
   // Drizzle appends "params: ..." on the next line; only the first line is kept.
-  const newline = raw.indexOf("\n");
-  const firstLine = newline === -1 ? raw : raw.slice(0, newline);
+  const lineBreak = raw.search(LINE_BREAK);
+  const firstLine = lineBreak === -1 ? raw : raw.slice(0, lineBreak);
   const clean = REDACTIONS.reduce(
     (text, [pattern, mask]) => text.replace(pattern, mask),
-    firstLine,
+    firstLine.replace(CONTROL, "\uFFFD"),
   );
   return clean.length > MAX_MESSAGE ? `${clean.slice(0, MAX_MESSAGE)}...` : clean;
 }
