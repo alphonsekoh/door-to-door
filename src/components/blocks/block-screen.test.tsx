@@ -185,7 +185,130 @@ describe("BlockScreen", () => {
     render(<BlockScreen blockId="b1" />);
 
     expect(await screen.findByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100");
+    expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100&offset=0");
+  });
+
+  describe("on a block of more than one page (#127)", () => {
+    /* A hundred units that sort first, then the real one they pushed off page one. */
+    const junk = Array.from({ length: 100 }, (_, i) => `#00-${String(i).padStart(3, "0")}`);
+    const pageOf = (units: string[], offset: number, hasMore: boolean) => {
+      const page = list(units);
+      return {
+        data: page.data.map((entry, i) => ({
+          ...entry,
+          household: { ...entry.household, id: `h${String(offset + i)}` },
+          latestVisit: { ...entry.latestVisit, id: `v${String(offset + i)}` },
+        })),
+        pagination: { limit: 100, offset, total: 101, hasMore },
+      };
+    };
+    const first = pageOf(junk, 0, true);
+    const second = pageOf(["#09-999"], 100, false);
+    const history = {
+      household: second.data[0]?.household,
+      block: B1.block,
+      visits: [
+        {
+          ...second.data[0]?.latestVisit,
+          description: "Asked us to come back in June.",
+          clientCreatedAt: "2026-03-14T10:00:00.000Z",
+          createdAt: "2026-03-14T10:00:00.000Z",
+          updatedAt: "2026-03-14T10:00:00.000Z",
+        },
+      ],
+      followUps: [],
+    };
+
+    function servePages(secondPage: () => Promise<unknown> = () => Promise.resolve(second)) {
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+        if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+        if (path === "/households/h100") return Promise.resolve(history);
+        if (path.endsWith("offset=100")) return secondPage();
+        return Promise.resolve(first);
+      });
+    }
+
+    it("reads the next page, and shows the history of a unit only it has", async () => {
+      servePages();
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100&offset=100");
+
+      await user.type(screen.getByLabelText("Unit number"), "#09-999");
+      expect(await screen.findByText("Asked us to come back in June.")).toBeInTheDocument();
+    });
+
+    it("writes the offline copy once, from every page, never from the first alone", async () => {
+      servePages();
+      render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+      expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...first.data, ...second.data]);
+    });
+
+    it("keeps the units it has, and says so, when a later page fails", async () => {
+      servePages();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+
+      servePages(() => Promise.reject(new Error("Could not reach the server.")));
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: 1 });
+      view.rerender(<BlockScreen blockId="b1" />);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+      expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    /* A promise settles once, so the late answer and the late failure each
+       need their own first read. */
+    it.each([
+      [
+        "answer",
+        (late: Late) => {
+          late.resolve(pageOf(["#00-000"], 100, false));
+        },
+      ],
+      [
+        "failure",
+        (late: Late) => {
+          late.reject(new Error("late"));
+        },
+      ],
+    ])("lets only the newest read land, not a late %s for an older one", async (_, settle) => {
+      const late: Late = { resolve: () => undefined, reject: () => undefined };
+      let reads = 0;
+      servePages(() => {
+        reads += 1;
+        return reads === 1
+          ? new Promise((resolve, reject) => {
+              late.resolve = resolve;
+              late.reject = reject;
+            })
+          : Promise.resolve(second);
+      });
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(reads).toBe(1);
+      });
+
+      // A record reaching the server starts a second read while the first still pages.
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: 1 });
+      view.rerender(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+
+      await act(async () => {
+        settle(late);
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("has Save where it docks in the server's HTML, then hands it to the form", async () => {

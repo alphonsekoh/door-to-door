@@ -10,7 +10,6 @@ import { SaveAndNext } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
   ActiveSession,
-  HouseholdList,
   HouseholdSummary,
   RevisitEntry,
   RevisitList,
@@ -18,6 +17,7 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { heldOffListKey } from "@/lib/follow-ups/revisits";
+import { loadAllHouseholds } from "@/lib/households/pages";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
@@ -50,13 +50,20 @@ export function BlockScreen({
    * The units already recorded on this block. Held here so the form can show a
    * unit's history the moment its number is typed, without a lookup per
    * keystroke, and so the list and the form never disagree about what exists.
+   * Every page of them (#127), set once they are all in, so the offline copy
+   * is never written from part of the block; and only the newest read lands,
+   * since a save or a sync can start one while another is still paging.
    */
+  const loadGeneration = useRef(0);
   const load = useCallback(async () => {
+    const mine = ++loadGeneration.current;
     try {
-      const households = await apiFetch<HouseholdList>(`/households?blockId=${blockId}&limit=100`);
-      setKnown(households.data);
+      const households = await loadAllHouseholds(blockId);
+      if (mine !== loadGeneration.current) return;
+      setKnown(households);
       setError(null);
     } catch (caught) {
+      if (mine !== loadGeneration.current) return;
       setError(caught instanceof Error ? caught.message : "Could not load this block.");
     }
   }, [blockId]);
