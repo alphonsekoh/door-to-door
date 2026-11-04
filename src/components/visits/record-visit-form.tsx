@@ -53,6 +53,8 @@ import {
   notSavedFromServer,
   notSavedLine,
 } from "@/lib/not-saved";
+import { useEarlyInput } from "@/lib/hooks/use-early-input";
+import { useLive } from "@/lib/hooks/use-live";
 import { useRole } from "@/lib/hooks/use-role";
 import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
@@ -250,7 +252,7 @@ export function RecordVisitForm({
   const savedLine = useRef<HTMLDivElement>(null);
   /* Where OK on the Not saved dialog sends focus. */
   const unitField = useRef<HTMLInputElement>(null);
-  const firstInterest = useRef<HTMLButtonElement>(null);
+  const firstInterest = useRef<HTMLInputElement>(null);
   /* Synchronous, so two taps in one frame save one visit, even while the
      first waits on the follow-up list (D-74-44). */
   const sending = useRef(false);
@@ -258,6 +260,12 @@ export function RecordVisitForm({
      but the next save's Undo is not held up by it. */
   const undoing = useRef<string | null>(null);
   const savedId = saved?.visitId ?? null;
+  const live = useLive();
+
+  /* A unit typed into the server's HTML, on a slow connection, before the
+     page was live (#113); the interest level is the picker's own. */
+  const typedEarly = useCallback(() => unitField.current?.value, []);
+  useEarlyInput(typedEarly, unitNumber, setUnitNumber);
 
   /*
    * At large text the member scrolls down to the interest level before
@@ -591,6 +599,10 @@ export function RecordVisitForm({
       noValidate
       className="space-y-4"
     >
+      {/* Until the page is live, Enter in the unit field would submit the
+          form natively, reloading the page without the unit (R-68). A form
+          whose first submit button is disabled is not submitted by Enter. */}
+      {live ? null : <button type="submit" disabled hidden />}
       {status === null ? null : (
         <div
           ref={savedLine}
@@ -988,9 +1000,8 @@ export function RecordVisitForm({
 /*
  * The form's Save. With no form named it is the stand-in the block screen
  * draws before the page is live: a plain button, so a tap cannot submit
- * natively and reload the page. React 19 replays that tap once the page is
- * live; what can still be lost is text typed before then, which the
- * controlled unit field clears as React takes over (#113).
+ * natively and reload the page. Such a tap saves nothing, but what was typed
+ * and picked before it is kept (#113), so the next tap saves it.
  */
 export function SaveAndNext({
   form,

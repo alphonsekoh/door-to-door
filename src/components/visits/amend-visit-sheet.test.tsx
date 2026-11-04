@@ -112,7 +112,7 @@ describe("AmendVisitSheet", () => {
       />,
     );
 
-    expect(screen.getByRole("radio", { name: "Low" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Low" })).toBeChecked();
     expect(screen.getByLabelText("Notes")).toHaveValue("Asked us to come back");
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Add details" }));
@@ -355,7 +355,7 @@ describe("AmendVisitSheet", () => {
     expect(ask).toHaveTextContent("The visit stays as it was recorded.");
     await user.click(within(ask).getByRole("button", { name: "Keep editing" }));
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
 
     // Put back as it was, there is nothing left to lose.
     await user.click(screen.getByRole("radio", { name: "Low" }));

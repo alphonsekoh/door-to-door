@@ -1,7 +1,8 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { BlockScreen } from "@/components/blocks/block-screen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -202,6 +203,47 @@ describe("BlockScreen", () => {
     const save = await screen.findByRole("button", { name: "Save and next" });
     expect(save).toHaveAttribute("type", "submit");
     expect(save).toHaveAttribute("form", document.querySelector("form")?.id);
+  });
+
+  /* On a slow connection the server's HTML is up well before its script
+     (#113): what the member typed and picked then must survive the screen
+     going live, which re-renders the form as Save moves in. */
+  it("keeps what was typed and picked into the server's HTML once it is live", async () => {
+    const user = userEvent.setup();
+    serve(list(["#05-123"]));
+    const page = <BlockScreen blockId="b1" initialUnit="#05-123" />;
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(page);
+    document.body.append(container);
+    onTestFinished(() => {
+      container.remove();
+    });
+    const field = within(container).getByLabelText("Unit number");
+    if (!(field instanceof HTMLInputElement)) throw new Error("the unit field is not an input");
+    field.value = "#05-124";
+    within(container).getByRole("radio", { name: "Low" }).click();
+    // The stand-in: with no script yet, a tap on it does nothing.
+    within(container).getByRole("button", { name: "Save" }).click();
+
+    const mismatch = vi.fn();
+    const root = await act(() => hydrateRoot(container, page, { onRecoverableError: mismatch }));
+    onTestFinished(() => {
+      act(() => {
+        root.unmount();
+      });
+    });
+    await screen.findByRole("tab", { name: "All units (1)" });
+
+    expect(mismatch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+    expect(screen.getByRole("radio", { name: "Low" })).toBeChecked();
+    expect(screen.queryByText(/Not saved/)).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/visits", expect.objectContaining({ method: "POST" }));
+    });
+    const sent = apiFetch.mock.calls.find(([path]) => path === "/visits")?.[1] as { body: string };
+    expect(JSON.parse(sent.body)).toMatchObject({ unitNumber: "#05-124", interestLevel: "low" });
   });
 
   it("opens on the recording form, not the list", async () => {

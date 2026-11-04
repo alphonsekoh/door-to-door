@@ -305,6 +305,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 ## Client
 
 - Screens fetch through `src/lib/api-client.ts`, typed by `types.gen.ts`.
+- The session reaches the app through `DeferredSessionProvider`
+  (`src/components/shell/`, in the root layout). Auth.js's `SessionProvider` sits beside
+  the app, and a relay hands its value on in a transition, so a screen whose own script
+  is late keeps its server HTML. Until that screen is live, the shell reads `loading`
+  (D-113-7).
 - `useRole()` is UI affordance only. Its role comes from the latest `GET /users/me`
   (`loadCurrentUser()`) when that matches the token's user, else from the token.
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
@@ -364,8 +369,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
   draws a `standIn` there until it mounts, so Save is in the server's HTML (D-111-20,
-  D-111-40). Unit numbers are shown through `UnitNumber`, which never splits them
-  (D-111-36).
+  D-111-40). A tap on the stand-in saves nothing. The unit and the level typed into the
+  server's HTML are adopted as the form mounts (`useEarlyInput`), and until then
+  `useLive` keeps Enter from submitting the form natively (D-113-1 to D-113-5). Unit
+  numbers are shown through `UnitNumber`, which never splits them (D-111-36).
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).

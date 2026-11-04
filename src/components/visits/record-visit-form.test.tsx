@@ -1,6 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { type Root, hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { ApiRequestError } from "@/lib/api-client";
 import {
@@ -236,7 +238,7 @@ describe("the two-tap path", () => {
     expect(screen.getByRole("button", { name: "Add details" })).toBeInTheDocument();
   });
 
-  it("offers interest levels as buttons, not a dropdown", () => {
+  it("offers interest levels as four targets, not a dropdown", () => {
     render(
       <RecordVisitForm
         sessionId={null}
@@ -271,6 +273,98 @@ describe("the two-tap path", () => {
     });
     // Null, not empty strings: the API treats null as "learned nothing".
     expect(body()).toMatchObject({ name: null, contact: null, religion: null });
+  });
+});
+
+/*
+ * On a slow connection the server's HTML is on screen well before its
+ * script, and a member types the unit and picks a level into it (#113).
+ */
+describe("before the page is live", () => {
+  const form = (
+    <RecordVisitForm
+      sessionId={null}
+      loadSession={noSession}
+      blockId={BLOCK}
+      known={[]}
+      initialUnit="#05-123"
+      onRecorded={vi.fn()}
+    />
+  );
+
+  /* The server's HTML, typed into and tapped with no script running. */
+  function typedBeforeLive(unit: string): HTMLElement {
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(form);
+    document.body.append(container);
+    onTestFinished(() => {
+      container.remove();
+    });
+    const field = within(container).getByLabelText("Unit number");
+    if (!(field instanceof HTMLInputElement)) throw new Error("the unit field is not an input");
+    field.value = unit;
+    within(container).getByRole("radio", { name: "High" }).click();
+    return container;
+  }
+
+  /* Unmounted however the test ends, as cleanup() only knows render()'s roots. */
+  function unmountAfter(root: Root): void {
+    onTestFinished(() => {
+      act(() => {
+        root.unmount();
+      });
+    });
+  }
+
+  it("keeps the unit typed and the level picked, and Save then saves them", async () => {
+    const user = userEvent.setup();
+    const container = typedBeforeLive("#09-999");
+    const mismatch = vi.fn();
+    unmountAfter(await act(() => hydrateRoot(container, form, { onRecoverableError: mismatch })));
+
+    expect(mismatch).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#09-999");
+    expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+    });
+    expect(body()).toMatchObject({ unitNumber: "#09-999", interestLevel: "high" });
+    expect(screen.queryByRole("alertdialog", { name: "Not saved" })).toBeNull();
+  });
+
+  /* React hydrates at once for a tap that reaches it first, then hands the
+     tap on: the Save must see the unit, not report it missing. */
+  it("saves the unit typed before a Save tapped as the page goes live", async () => {
+    const container = typedBeforeLive("#09-999");
+    const inAct = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT") as unknown;
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+    onTestFinished(() => {
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", inAct);
+    });
+    unmountAfter(hydrateRoot(container, form));
+    within(container).getByRole("button", { name: "Save and next" }).click();
+
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+    });
+    expect(body()).toMatchObject({ unitNumber: "#09-999", interestLevel: "high" });
+    expect(within(container).queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("alertdialog", { name: "Not saved" })).toBeNull();
+  });
+
+  /* Enter submits a form by its first submit button, and does nothing when
+     that is disabled; with no script, that submit would reload the page. */
+  it("gives Enter nothing to submit until the page is live, then Save", async () => {
+    const container = typedBeforeLive("#09-999");
+    const first = () => container.querySelector("form")?.querySelector('button[type="submit"]');
+    expect(first()).toBeDisabled();
+    expect(first()).not.toBeVisible();
+
+    unmountAfter(await act(() => hydrateRoot(container, form)));
+    expect(first()).toHaveAccessibleName("Save and next");
+    expect(first()).toBeEnabled();
   });
 });
 
@@ -332,7 +426,7 @@ describe("moving along a corridor", () => {
     await user.click(screen.getByRole("button", { name: "Save and next" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "High" })).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByRole("radio", { name: "High" })).not.toBeChecked();
     });
   });
 

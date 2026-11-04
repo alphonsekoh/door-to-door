@@ -346,8 +346,8 @@ export { expect };
 /*
  * A block screen loaded by address is live once its docked Save is the
  * form's own: until then it is the stand-in in the server's HTML, a plain
- * button. Text typed before that is cleared as React takes over the unit
- * field (#113), so a test types only after it.
+ * button, and a tap on it saves nothing. What is typed and picked before
+ * then is kept (#113), so a test waits for this only before it taps Save.
  */
 export async function untilLive(page: Page): Promise<void> {
   /* Only Save in a follow-up session, where no next unit is guessed. */

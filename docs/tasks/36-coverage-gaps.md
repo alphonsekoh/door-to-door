@@ -26,7 +26,8 @@ rather than covered.
   `next-auth/react`'s already-client `SessionProvider` directly); `FollowUpItem`'s
   `controls` prop (every caller set it, so controls always render); the consolidated
   history's `if (!first)` guard and empty-query redirect branch; a `cancelled` check
-  inside a timeout its own cleanup clears. _Why:_ CLAUDE.md Tests rule.
+  inside a timeout its own cleanup clears. _Why:_ CLAUDE.md Tests rule. _Since D-113-7,_
+  the root layout uses `DeferredSessionProvider`, which does work of its own.
 - **D-36-4 · `groupByHousehold` returns each group's `household` and `block`.** _Why:_
   every entry for a door carries the same pair, so readers stop indexing `entries[0]`
   and the null guard goes away (under `noUncheckedIndexedAccess`).
