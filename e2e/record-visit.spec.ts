@@ -209,6 +209,65 @@ test.describe("typed before the page is live (#113)", () => {
     await expect(unit).toHaveValue("#21-14");
   });
 
+  /* The shell's scripts cached and the block screen's not, as on a first
+     visit or after a deploy: the shell goes live and the session answers
+     while the screen is still the server's HTML. */
+  test("keeps them when the block screen's own script is the last to arrive", async ({
+    memberPage,
+  }) => {
+    const EARLY_UNIT = "#24-07";
+    let typed: () => void = () => undefined;
+    const shell = new Promise<void>((resolve) => {
+      typed = resolve;
+    });
+    let arrive: () => void = () => undefined;
+    const screen = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    await memberPage.route(/\/_next\/static\/chunks\/[^?]*\.js(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      const body = await response.text();
+      await shell;
+      /* The recording form's chunk, the only one holding its words. */
+      if (body.includes("Enter the unit number")) await screen;
+      await route.fulfill({ response, body });
+    });
+    await memberPage.goto(`/blocks/${SEED_BLOCK}`, { waitUntil: "commit" });
+
+    const unit = memberPage.getByLabel("Unit number");
+    await unit.fill(EARLY_UNIT);
+    const high = memberPage.getByRole("radio", { name: "High" });
+    await high.click();
+
+    /* Asked once the shell is live. */
+    const answered = memberPage.waitForResponse("**/api/auth/session");
+    typed();
+    await answered;
+    /* Two frames to take the answer in, which once threw the screen's HTML
+       away for the loading screen, and what was typed with it. */
+    await memberPage.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }),
+    );
+    await expect(memberPage.getByText("Loading the block…")).toHaveCount(0);
+    await expect(unit).toHaveValue(EARLY_UNIT);
+    await expect(high).toBeChecked();
+
+    arrive();
+    await untilLive(memberPage);
+    await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    await expect(unit).toHaveValue(EARLY_UNIT);
+    await expect(high).toBeChecked();
+
+    await memberPage.getByRole("button", { name: "Save and next" }).click();
+    await expect(
+      memberPage.getByRole("status").filter({ hasText: `Saved ${EARLY_UNIT}` }),
+    ).toBeVisible();
+    await expect(unit).toHaveValue("#24-08");
+  });
+
   /* The browser gives a page loaded again from history what its form held.
      The unit does not come back, so a level that did would be taken as
      picked for whatever unit is typed next. */

@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { SessionProvider } from "next-auth/react";
 import { AppShell } from "@/components/shell/app-shell";
+import { DeferredSessionProvider } from "@/components/shell/deferred-session-provider";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import "./globals.css";
 
@@ -32,9 +32,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html lang="en">
       <body className="font-sans antialiased">
         <PwaProvider>
-          <SessionProvider>
+          <DeferredSessionProvider>
             <AppShell>{children}</AppShell>
-          </SessionProvider>
+          </DeferredSessionProvider>
         </PwaProvider>
       </body>
     </html>
