@@ -6,7 +6,7 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import type { Clock } from "@/lib/clock";
 import { ApiError } from "@/server/http/errors";
 import { listHistory, listOwnSessionHistory } from "@/server/history/service";
-import { canAmend } from "@/server/teams/access";
+import { attachTeams, canAmend } from "@/server/teams/access";
 import { createVisit, getVisit, updateVisit } from "@/server/visits/service";
 import { syncVisits, type SyncItem } from "@/server/visits/sync";
 
@@ -613,5 +613,32 @@ describe("history with a team", () => {
     queryCount = 0;
     await listHistory(db, { memberId: ADMIN, limit: 50, offset: 0 });
     expect(queryCount).toBe(2);
+  });
+});
+
+describe("attaching teams to more rows than one statement can bind (#126)", () => {
+  it("gives every row its team, and each visit its teammates in name order", async () => {
+    const team = await makeTeam("Everyone", [ALICE, CARA, BEN]);
+    await record(ALICE);
+    // A household's whole history: far past Postgres's 65,535 bind parameters.
+    const rows = [
+      ...Array.from({ length: 69_999 }, (_, n) => ({
+        id: `01960000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`,
+        teamId: team,
+      })),
+      { id: V1, teamId: await teamOf(V1) },
+    ];
+
+    queryCount = 0;
+    const attached = await attachTeams(db, rows);
+
+    expect(attached).toHaveLength(70_000);
+    expect(attached.every((row) => row.team?.id === team && row.team.name === "Everyone")).toBe(
+      true,
+    );
+    expect(attached.at(-1)?.team?.members.map((mate) => mate.name)).toEqual(["Ben", "Cara"]);
+    expect(attached[0]?.team?.members).toEqual([]);
+    // One for the team's name, then one per 10,000 visits.
+    expect(queryCount).toBe(1 + 7);
   });
 });

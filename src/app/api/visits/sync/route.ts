@@ -2,29 +2,25 @@ import { currentSession } from "@/server/auth/session";
 import { getDatabase } from "@/db/client";
 import { zSyncVisitsBody, zSyncVisitsResponse } from "@/generated/zod.gen";
 import { requireUser } from "@/server/auth/guards";
-import { createRateLimiter } from "@/server/auth/rate-limit";
+import { SYNC_BODY_LIMIT_BYTES } from "@/server/http/body-limit";
 import { withContract } from "@/server/http/contract";
 import { RateLimitedError } from "@/server/http/errors";
 import { assertBatchClockSane, currentClock } from "@/server/visits/clock-rules";
+import { syncLimiter } from "@/server/visits/rate-limits";
 import { toRecordedVisit } from "@/server/visits/serialise";
 import { syncVisits } from "@/server/visits/sync";
-
-/*
- * A queue flush is a burst, not a stream: generous per member, but bounded so
- * one client cannot hammer the database on a retry loop.
- */
-const limiter = createRateLimiter({ limit: 30, windowMs: 60_000 });
 
 export const POST = withContract(
   {
     operationId: "syncVisits",
     body: zSyncVisitsBody,
+    maxBodyBytes: SYNC_BODY_LIMIT_BYTES,
     responses: { 200: zSyncVisitsResponse },
   },
   async ({ body }) => {
     const user = requireUser(await currentSession());
 
-    if (!limiter.consume(user.id).allowed) {
+    if (!syncLimiter.consume(user.id).allowed) {
       throw new RateLimitedError("Too many sync requests. Try again shortly.");
     }
 

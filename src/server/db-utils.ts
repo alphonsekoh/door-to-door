@@ -51,3 +51,39 @@ export function getOrThrow<K, V>(map: ReadonlyMap<K, V>, key: K, what: string): 
   }
   return value;
 }
+
+/*
+ * Ids per statement, well under Postgres's 65,535 bind parameters even for an
+ * insert of three columns a row (#126).
+ */
+export const MAX_IDS_PER_STATEMENT = 10_000;
+
+export function chunked<T>(items: readonly T[], size = MAX_IDS_PER_STATEMENT): T[][] {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += size) {
+    chunks.push(items.slice(start, start + size));
+  }
+  return chunks;
+}
+
+/* One select per chunk of ids, one after another; every row, in chunk order. */
+export async function selectInChunks<T, R>(
+  ids: readonly T[],
+  select: (chunk: T[]) => PromiseLike<R[]>,
+): Promise<R[]> {
+  const rows: R[] = [];
+  for (const chunk of chunked(ids)) {
+    for (const row of await select(chunk)) rows.push(row);
+  }
+  return rows;
+}
+
+/* Groups by key in place. Pushing, never spreading, keeps it linear (#126). */
+export function appendTo<K, V>(groups: Map<K, V[]>, key: K, value: V): void {
+  const group = groups.get(key);
+  if (group === undefined) {
+    groups.set(key, [value]);
+  } else {
+    group.push(value);
+  }
+}

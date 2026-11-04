@@ -106,6 +106,7 @@ export const ErrorCode = {
     FOLLOW_UP_EXISTS: 'follow_up_exists',
     RATE_LIMITED: 'rate_limited',
     UNSUPPORTED_MEDIA_TYPE: 'unsupported_media_type',
+    CONTENT_TOO_LARGE: 'content_too_large',
     INTERNAL_ERROR: 'internal_error'
 } as const;
 
@@ -914,7 +915,17 @@ export type BlockList = {
 
 export type HouseholdSummary = {
     household: Household;
+    /**
+     * Visits at this unit; only the session's when the list is scoped
+     * to a `sessionId`.
+     *
+     */
     visitCount: number;
+    /**
+     * The newest of those visits by `createdAt` (ties broken by `id`),
+     * or null if there are none.
+     *
+     */
     latestVisit: Visit | null;
     /**
      * Unresolved `listed` notes, surfaced before a member knocks so a
@@ -1026,6 +1037,9 @@ export type HouseholdAttentionList = {
  */
 export type Limit = number;
 
+/**
+ * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+ */
 export type Offset = number;
 
 export type PathId = string;
@@ -1038,6 +1052,9 @@ export type ListSessionsData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
         status?: SessionStatus;
         /**
@@ -1118,6 +1135,12 @@ export type CreateSessionErrors = {
      *
      */
     409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */
@@ -1426,6 +1449,12 @@ export type AttachSessionBlocksErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -1623,6 +1652,12 @@ export type AddSessionHouseholdsErrors = {
      *
      */
     409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */
@@ -1867,6 +1902,12 @@ export type CreateTeamErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -1969,6 +2010,12 @@ export type UpdateTeamErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2025,6 +2072,12 @@ export type AddTeamMemberErrors = {
      *
      */
     409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */
@@ -2097,6 +2150,9 @@ export type ListBlocksData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
         /**
          * Case-insensitive partial match on block name or street, so a partial
@@ -2165,6 +2221,12 @@ export type CreateBlockErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2219,6 +2281,12 @@ export type UpdateBlockErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2248,6 +2316,9 @@ export type ListHouseholdsData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/households';
@@ -2297,6 +2368,9 @@ export type ListHouseholdsNeedingAttentionData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/households/attention';
@@ -2386,6 +2460,9 @@ export type ListVisitsData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/visits';
@@ -2461,6 +2538,12 @@ export type CreateVisitErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2470,6 +2553,12 @@ export type CreateVisitErrors = {
      *
      */
     422: Error;
+    /**
+     * `rate_limited`: too many visits recorded this minute. Nothing was
+     * recorded; try again shortly.
+     *
+     */
+    429: Error;
 };
 
 export type CreateVisitError = CreateVisitErrors[keyof CreateVisitErrors];
@@ -2521,6 +2610,12 @@ export type UpdateVisitErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2564,6 +2659,14 @@ export type SyncVisitsErrors = {
      *
      */
     403: Error;
+    /**
+     * `content_too_large`: the batch is over 1.5 MiB. A full batch at
+     * every `maxLength` fits, unless its text is mostly characters JSON
+     * must escape. Nothing in it was applied. Send its records in smaller
+     * batches.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */
@@ -2641,6 +2744,9 @@ export type ListFollowUpsData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/follow-ups';
@@ -2718,6 +2824,12 @@ export type CreateFollowUpErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2775,6 +2887,12 @@ export type UpdateFollowUpErrors = {
      */
     409: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2825,6 +2943,12 @@ export type RemoveFollowUpErrors = {
      */
     404: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -2860,6 +2984,9 @@ export type ListHistoryData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/history';
@@ -2912,6 +3039,9 @@ export type ListOwnHistoryData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/history/mine';
@@ -2950,6 +3080,9 @@ export type ListOwnSessionHistoryData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/history/mine/sessions';
@@ -2990,6 +3123,9 @@ export type ListUsersData = {
          * Rows per page.
          */
         limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
         offset?: number;
     };
     url: '/users';
@@ -3059,6 +3195,12 @@ export type CreateUserErrors = {
      * That email address already belongs to someone.
      */
     409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */
@@ -3143,6 +3285,12 @@ export type UpdateOwnProfileErrors = {
      */
     404: Error;
     /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
      * The request has a body that is not `application/json`.
      */
     415: Error;
@@ -3198,6 +3346,12 @@ export type UpdateUserErrors = {
      *
      */
     409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
     /**
      * The request has a body that is not `application/json`.
      */

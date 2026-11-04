@@ -107,11 +107,12 @@ test.describe("response headers", () => {
   });
 });
 
-test.describe("the request body cap (#120)", () => {
+test.describe("the request body cap (#120, #126)", () => {
   /*
    * Next truncates a body the proxy sees past experimental.proxyClientMaxBodySize
-   * rather than refusing it, so the cap shows as fields beyond it never being
-   * read. Only the production build can show it: jsdom has no Next server.
+   * rather than refusing it, so on Auth.js's routes the cap shows as fields
+   * beyond it never being read. Only the production build can show it: jsdom
+   * has no Next server.
    *
    * The CSRF token goes ahead of the padding, so a cut body still passes Auth.js's
    * CSRF check and reaches authorize without the credentials; behind it, the
@@ -153,5 +154,24 @@ test.describe("the request body cap (#120)", () => {
       signedIn: false,
       error: "CredentialsSignin",
     });
+  });
+
+  test("refuses a sync batch the proxy cuts with 413, not as cut-off JSON", async ({
+    adminApi,
+  }) => {
+    // The contract's cap sits below the proxy's, so what the proxy cut is still
+    // over it. Signed in: without a session the proxy answers 401 first.
+    const response = await adminApi.post("/api/visits/sync", {
+      headers: { "content-type": "application/json" },
+      data: JSON.stringify({
+        sentAt: new Date().toISOString(),
+        items: [],
+        pad: "x".repeat(2.5 * 1024 * 1024),
+      }),
+    });
+    expect(response.status()).toBe(413);
+    expect(((await response.json()) as { error: { code: string } }).error.code).toBe(
+      "content_too_large",
+    );
   });
 });

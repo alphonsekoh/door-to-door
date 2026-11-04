@@ -33,6 +33,10 @@
   unexpected failures are `internal_error` (retryable), not `conflict`. See
   [74-teams.md](74-teams.md) (D-74-22, D-74-30 to D-74-34).
 
+- #126 moved D-21-6's limiter, unchanged, to `src/server/visits/rate-limits.ts`, beside
+  `POST /visits`' own (D-126-8). A sync body may be at most 1.5 MiB, `413` above that
+  (D-126-4). See [126-household-paging.md](126-household-paging.md).
+
 ## Relies on
 
 D-07-1, D-07-3, D-10-5.

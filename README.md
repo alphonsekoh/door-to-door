@@ -568,12 +568,13 @@ docker run -p 3000:3000 \
   shows it), the client's real address must be exactly `trustedProxyHops` places from
   the right.
 
-- **Request bodies** are cut short at 2 MB (`experimental.proxyClientMaxBodySize` in
-  `next.config.ts`), on every path the proxy matches, which is all of `/api`. Next
-  truncates a longer body rather than refusing it: the handler reads only the first 2 MB,
-  which usually stops being valid JSON and gets a `400` (JSON padded at the end can still
-  parse), and Next logs a warning naming the route. Nothing answers `413`; an explicit
-  refusal is #126.
+- **Request bodies:** the API refuses a body over 256 KiB, or over 1.5 MiB for
+  `/api/visits/sync`, with `413 content_too_large`. A full sync batch fits under that, so
+  a reverse proxy's own limit should be at least 1.5 MiB; nginx's `client_max_body_size`
+  defaults to 1 MB. Next also cuts any body the proxy sees at 2 MiB
+  (`experimental.proxyClientMaxBodySize`, set from `src/server/http/body-limit.ts`)
+  rather than refusing it, and logs a warning naming the route. On the API a cut body is
+  still refused `413`; on Auth.js's sign-in routes the cut is the only bound.
 - **Database connections:** one `pg` pool per process; changing `database.url` needs a
   restart. A dropped connection fails that request with a `500` and is replaced.
 - **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh

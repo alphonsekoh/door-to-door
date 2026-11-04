@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetDatabase } from "@/db/client";
+import { getDatabase, resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
@@ -11,6 +11,7 @@ const { GET: listTeams, POST: createTeam } = await import("../sessions/[id]/team
 const { PATCH: updateTeam, DELETE: deleteTeam } = await import("./[id]/route");
 const { POST: addMember } = await import("./[id]/members/route");
 const { DELETE: removeMember } = await import("./[id]/members/[userId]/route");
+const { createTeam: createTeamService } = await import("@/server/teams/service");
 
 const pool = createTestPool();
 const ADMIN = "74747474-0000-4000-8000-000000000001";
@@ -404,6 +405,46 @@ describe("forming a team", () => {
     );
     expect(response.status).toBe(201);
     expect(memberIds((await response.json()) as TeamBody)).toEqual(crowd);
+  });
+
+  it("bounds one request by its size: about 7,000 ids are refused 413, unread (D-126-7)", async () => {
+    const crowd = Array.from(
+      { length: 7_000 },
+      (_, i) => `74747474-0000-4000-8003-${String(i).padStart(12, "0")}`,
+    );
+    asAdmin();
+    const response = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Crowd", memberIds: crowd },
+    );
+    expect(response.status).toBe(413);
+    expect(await errorCode(response)).toBe("content_too_large");
+    expect(auth).not.toHaveBeenCalled();
+    expect(await count("session_teams")).toBe(0);
+  });
+
+  it("places more people than one insert could bind, in chunks (D-126-3)", async () => {
+    // Past the body cap, so only a direct call carries it: 22,000 people at
+    // three columns each is over Postgres's 65,535 bind parameters.
+    await pool.query(
+      `INSERT INTO users (email, name, role)
+       SELECT 'crowd' || i || '@t.local', 'Crowd', 'member' FROM generate_series(1, 22000) AS i`,
+    );
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE name = 'Crowd' ORDER BY id`,
+    );
+    const crowd = rows.map((row) => row.id);
+
+    const team = await createTeamService(getDatabase(), { id: ADMIN, role: "admin" }, ACTIVE, {
+      name: "Everyone",
+      memberIds: crowd,
+    });
+
+    expect(team.members).toHaveLength(22_000);
+    expect(await count("session_team_members")).toBe(22_000);
+    expect(await count("session_participants")).toBeGreaterThanOrEqual(22_000);
   });
 
   it.each([["   "], ["Pair​1"], ["..."], ["x".repeat(61)]])(

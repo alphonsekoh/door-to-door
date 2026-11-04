@@ -64,7 +64,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
     correlated subquery silently compares against the wrong table.
   - `references()` callbacks are lazy.
 - **Source:** Integration tests in #17, #27, #31; schema tests in #7
-- **Used by:** D-17-3, D-27-2, D-31-3, D-117-7
+- **Used by:** D-17-3, D-27-2, D-31-3, D-117-7, D-126-1
 
 ### R-8 · Postgres NULL ordering
 
@@ -952,7 +952,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Source:** [GHSA-mrhx-c7xc-m3w5](https://github.com/advisories/GHSA-mrhx-c7xc-m3w5);
   [zod v4.6.6 release](https://github.com/colinhacks/zod/releases/tag/v4.6.6) (#6652);
   the #118 integration tests
-- **Used by:** D-118-3, D-118-5, D-118-6
+- **Used by:** D-118-3, D-118-5, D-118-6, D-126-7
 
 ### R-92 · npm `overrides` against an exact pin, and where Serwist uses zod
 
@@ -1142,7 +1142,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `e2e/auth.spec.ts`: credentials sent after a 2.5 MB pad are never read.
 - **Source:** `node_modules/next/dist/server/body-streams.js` (`cloneBodyStream`);
   `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/proxyClientMaxBodySize.md`
-- **Used by:** D-120-7, D-120-13
+- **Used by:** D-120-7, D-120-13, D-126-6, D-126-12 (refined by R-130)
 
 ### R-109 · Next fills `X-Forwarded-For` only when it is absent
 
@@ -1411,3 +1411,75 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   [PostgreSQL, SELECT, the locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE);
   `EXPLAIN` measured (#132 reviewer)
 - **Used by:** D-132-2, D-132-5
+
+### R-130 · Next's proxy cut drops the chunk that crosses it (measured)
+
+- **Finding:** In Next 16.4.3, `cloneBodyStream` counts each chunk before passing it on.
+  The chunk that takes the count past `proxyClientMaxBodySize` is not passed on: both
+  copies of the body end there. So the handler gets the bytes before that chunk, which
+  can be up to one chunk short of the cut. This refines R-108's "drops the rest". In a
+  production build, a 2.5 MB body sent with a `Content-Length`, and the same body sent
+  chunked, both reached the handler over the 1.5 MiB sync cap and were answered `413`.
+- **Source:** `node_modules/next/dist/server/body-streams.js` (16.4.3, `cloneBodyStream`);
+  measured in #126 (`e2e/auth.spec.ts`; the verifier's curl checks, round 2)
+- **Used by:** D-126-6, D-126-12
+
+### R-131 · Postgres takes at most 65,535 bind parameters in one statement (measured)
+
+- **Finding:** The extended protocol's Bind message carries the parameter count as a
+  16-bit integer, so one statement binds at most 65,535 values. An `inArray` binds one
+  per id, and an insert binds one per column per row: about 21,846 rows of three columns,
+  or 32,767 of two. Measured in #126: before chunking, a household with 70,000 visits
+  failed `attachTeams` and listed as `500`, and `createTeam` failed with 22,000 members.
+- **Source:** [PostgreSQL, message formats (Bind)](https://www.postgresql.org/docs/current/protocol-message-formats.html);
+  measured in #126 (builder, each test run against the old code)
+- **Used by:** D-126-3, D-126-7
+
+### R-132 · Rows skipped by `OFFSET` are still computed; a count is index-only only if the index covers its filter
+
+- **Finding:** Postgres still computes the rows an `OFFSET` skips, so an expression in a
+  paged query's select list runs for every skipped row too. A `count(*)` filtered only on
+  `household_id` can be answered from `visits_household_created_idx` alone, when the
+  visibility map allows. With `session_id` in the filter as well, it must fetch each heap
+  row, because the index does not hold that column. Either way the work grows with the
+  household's visits. From the docs; not measured here.
+- **Source:** [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html);
+  [PostgreSQL, index-only scans](https://www.postgresql.org/docs/current/indexes-index-only-scans.html)
+- **Used by:** D-126-1, D-126-9
+
+### R-133 · Drizzle's lateral joins qualify the outer column (rendered)
+
+- **Finding:** In drizzle-orm 0.45, a subquery built with the query builder and joined with
+  `crossJoinLateral` or `leftJoinLateral` renders an outer column it references with its
+  table (`"households"."id"`). Raw `sql` interpolation renders the same column
+  unqualified (R-7). The lateral form therefore correlates correctly without raw SQL.
+- **Source:** the #126 summaries query rendered with `.toSQL()` (builder; reviewer,
+  rounds 1 and 2)
+- **Used by:** D-126-1
+
+### R-134 · A streaming `TextDecoder` decodes as `Request.text()` does
+
+- **Finding:** `text()` runs the Encoding standard's "UTF-8 decode". That strips one
+  leading byte-order mark and replaces invalid bytes with U+FFFD. `new TextDecoder()`
+  (UTF-8, not fatal, BOM not ignored) does the same, and `decode(chunk, { stream: true })`
+  holds back a character split across chunks until the next one arrives. Pinned by
+  `contract.test.ts` ("decodes a body that arrives in pieces as request.text() would").
+- **Source:** [Fetch, `text()`](https://fetch.spec.whatwg.org/#dom-body-text);
+  [Encoding, UTF-8 decode](https://encoding.spec.whatwg.org/#utf-8-decode);
+  [Encoding, `TextDecoder`](https://encoding.spec.whatwg.org/#interface-textdecoder)
+- **Used by:** D-126-4
+
+### R-135 · How many bytes a body the contract admits can take (measured)
+
+- **Finding:** zod's string `max` counts UTF-16 code units. In UTF-8, a unit costs at
+  most 3 bytes as written (a BMP character); a character outside the BMP is 4 bytes for
+  two units. `JSON.stringify` writes a control character other than `\b`, `\t`, `\n`, `\f`
+  and `\r`, and a lone surrogate, as a 6-byte `\uXXXX` escape. Measured in #126:
+  - a sync batch of 100 records with every field at its `maxLength` in 3-byte characters
+    is 1,309,547 bytes, and was answered `200`;
+  - one record of escapes only is about 26 KB, so only a batch reaches the 1.5 MiB cap;
+  - a `createVisit` or `createSession` at its maximums is under a tenth of 256 KiB;
+  - a UUID in a JSON array costs 39 bytes, so 256 KiB holds about 6,700 ids.
+- **Source:** [ECMAScript, `QuoteJSONString`](https://tc39.es/ecma262/#sec-quotejsonstring);
+  `src/server/http/body-limit.test.ts`; measured in #126 (verifier, round 1)
+- **Used by:** D-126-4, D-126-7, D-126-11
