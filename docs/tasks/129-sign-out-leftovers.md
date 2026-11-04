@@ -63,18 +63,22 @@ deleted, and the CSV guard missed a leading CR.
 - **D-129-6 · Sign-out deletes the signing-out member's sent queue records; sign-in
   deletes none (owner, 2026-11-04).** `forgetSentRecords(memberId)`
   (`src/lib/sync/forget-sent.ts`) goes through `SyncQueue.deleteSentBy` over the
-  `by-owner` index. The member is the page's `useRole().userId`; undefined deletes
-  nothing. Another member's sent records keep D-33-9's 24 h, and unsent, held,
-  quarantined and corrupt records stay, whoever saved them. Bounded by `CLEAR_WITHIN_MS`
-  (1.5 s) like the cache clear, and a failure never blocks (mirrors D-77-6, D-111-68).
-  Refines D-33-1, D-33-2 and D-33-9. _Rejected (owner):_ every sent record, whoever
-  saved it, at every sign-in and sign-out, as first built; it took another member's
-  records at someone else's sign-out, against D-33-1. _Why:_ a sent record is on the
-  server and still holds a name, a contact and notes, so it leaves with its member, as
-  #130 asks; at sign-in the member before is not known. D-77-13 is unaffected: a kept
-  sent record is another member's, never listed (D-33-1), or the member's own, judged by
-  `syncedAt` as before. _Known limit:_ a send that finishes during sign-out keeps its row
-  until the 24 h purge or that member's next sign-out.
+  `by-owner` index (`IDBKeyRange.only`, so a missing owner throws rather than reading
+  every owner's). The member is whoever the page is signed in as: `useRole().userId`, or,
+  once a failed session refresh has made Auth.js read as signed out for the rest of the
+  page load, the queue's own member (`useSyncQueue().ownerId`) on the Account screen and
+  the account `/users/me` last confirmed on this page on the account message. When none
+  names a member, nothing is deleted. Another member's sent records keep D-33-9's 24 h,
+  and unsent, held, quarantined and corrupt records stay, whoever saved them. Bounded by
+  `CLEAR_WITHIN_MS` (1.5 s) like the cache clear, and a failure never blocks (mirrors
+  D-77-6, D-111-68). Refines D-33-1, D-33-2 and D-33-9. _Rejected (owner):_ every sent
+  record, whoever saved it, at every sign-in and sign-out, as first built; it took
+  another member's records at someone else's sign-out, against D-33-1. _Why:_ a sent
+  record is on the server and still holds a name, a contact and notes, so it leaves with
+  its member, as #130 asks; at sign-in the member before is not known. D-77-13 is
+  unaffected: a kept sent record is another member's, never listed (D-33-1), or the
+  member's own, judged by `syncedAt` as before. _Known limit:_ a send that finishes
+  during sign-out keeps its row until the 24 h purge or that member's next sign-out.
 - **D-129-7 · The history and records search term lives only in component state.**
   `history-filters` and `record-filters` never read or write `q`, the two screens hold it,
   and `setFilter` cannot take it. Clear filters empties it, export applies it, and an old
@@ -137,6 +141,10 @@ deleted, and the CSV guard missed a leading CR.
   and nothing unsent is at risk.
 - D-129-6: a member who never signs out leaves their sent records on the phone for up to
   24 h, hidden from the next member (D-33-1).
+- D-129-6: when nothing names the member, their sent records stay up to 24 h. That is the
+  account message after a failed session refresh on a page where `/users/me` never
+  answered, or the Account screen after one when the queue never opened (no IndexedDB,
+  so nothing is stored anyway).
 - The iOS swipe-back preview is a snapshot the system takes, which no script can blank.
 - An old `?q=` link stays in the address bar until a filter changes, so a session that
   lapses on that page still carries it into `callbackUrl` (#163).
