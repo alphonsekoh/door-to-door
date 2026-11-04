@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockViews } from "@/components/blocks/block-views";
 import { DockHost } from "@/components/ui/docked-actions";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
@@ -17,7 +17,7 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { heldOffListKey } from "@/lib/follow-ups/revisits";
-import { loadAllHouseholds } from "@/lib/households/pages";
+import { keepEachOnce, loadAllHouseholds } from "@/lib/households/pages";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
@@ -37,35 +37,41 @@ export function BlockScreen({
   /* A follow-up session's list: undefined until first read, null if that
      read failed. A later failed read keeps the list already shown. */
   const [revisits, setRevisits] = useState<RevisitEntry[] | null | undefined>(undefined);
-  /* Null until the first answer, so the copy is never written with a list
-     that was merely not loaded yet. */
+  /* The last read that got every page; null until one has, so the copy is
+     never written with a list that was merely not loaded yet, or only in part. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
+  /* The pages of the reads that failed since: shown over it, never saved. */
+  const [arrived, setArrived] = useState<HouseholdSummary[]>([]);
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const sessionId = active?.session.id ?? null;
-  const units = known ?? [];
+  const units = useMemo(() => keepEachOnce([known ?? [], arrived]), [known, arrived]);
 
   /*
    * The units already recorded on this block. Held here so the form can show a
    * unit's history the moment its number is typed, without a lookup per
    * keystroke, and so the list and the form never disagree about what exists.
-   * Every page of them (#127), set once they are all in, so the offline copy
-   * is never written from part of the block; and only the newest read lands,
-   * since a save or a sync can start one while another is still paging.
+   * Every page of them (#127). The offline copy is written only from a read
+   * that got them all; a read that failed part way still shows the pages it
+   * got, so a dropped page on first open does not hide the units, and their
+   * history, that did arrive. Units shown never go until a whole read lands.
+   * Only the newest read lands, since a save or a sync can start one while
+   * another is still paging.
    */
   const loadGeneration = useRef(0);
   const load = useCallback(async () => {
     const mine = ++loadGeneration.current;
-    try {
-      const households = await loadAllHouseholds(blockId);
-      if (mine !== loadGeneration.current) return;
-      setKnown(households);
+    const read = await loadAllHouseholds(blockId);
+    if (mine !== loadGeneration.current) return;
+    if (read.complete) {
+      setKnown(read.units);
+      setArrived([]);
       setError(null);
-    } catch (caught) {
-      if (mine !== loadGeneration.current) return;
-      setError(caught instanceof Error ? caught.message : "Could not load this block.");
+      return;
     }
+    setArrived((shown) => keepEachOnce([shown, read.units]));
+    setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
   }, [blockId]);
 
   /* Separate from the units: the session marks tonight's rows and is what a
@@ -245,6 +251,11 @@ export function BlockScreen({
           active={active}
           initialUnit={initialUnit}
           guessNext={guessNext}
+          unitsNote={
+            known === null && error !== null
+              ? "Not every unit of this block could be loaded, so one not listed here may still have been visited."
+              : null
+          }
         />
       ) : (
         <div role="status" className="rounded-xl border border-border bg-surface-muted p-4">

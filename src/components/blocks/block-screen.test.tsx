@@ -204,30 +204,42 @@ describe("BlockScreen", () => {
     };
     const first = pageOf(junk, 0, true);
     const second = pageOf(["#09-999"], 100, false);
-    const history = {
-      household: second.data[0]?.household,
+    const historyOf = (entry: (typeof first.data)[number] | undefined, description: string) => ({
+      household: entry?.household,
       block: B1.block,
       visits: [
         {
-          ...second.data[0]?.latestVisit,
-          description: "Asked us to come back in June.",
+          ...entry?.latestVisit,
+          description,
           clientCreatedAt: "2026-03-14T10:00:00.000Z",
           createdAt: "2026-03-14T10:00:00.000Z",
           updatedAt: "2026-03-14T10:00:00.000Z",
         },
       ],
       followUps: [],
+    });
+    const histories: Record<string, unknown> = {
+      "/households/h5": historyOf(first.data[5], "Came to the door in May."),
+      "/households/h100": historyOf(second.data[0], "Asked us to come back in June."),
     };
 
-    function servePages(secondPage: () => Promise<unknown> = () => Promise.resolve(second)) {
+    function servePages(
+      secondPage: () => Promise<unknown> = () => Promise.resolve(second),
+      firstPage: () => Promise<unknown> = () => Promise.resolve(first),
+    ) {
       apiFetch.mockImplementation((path: string) => {
         if (path.startsWith("/sessions/active")) return Promise.resolve(active);
         if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
-        if (path === "/households/h100") return Promise.resolve(history);
+        if (path in histories) return Promise.resolve(histories[path]);
         if (path.endsWith("offset=100")) return secondPage();
-        return Promise.resolve(first);
+        return firstPage();
       });
     }
+    const syncs = (view: ReturnType<typeof render>, version: number) => {
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: version });
+      view.rerender(<BlockScreen blockId="b1" />);
+    };
+    const partNote = /Not every unit of this block could be loaded/;
 
     it("reads the next page, and shows the history of a unit only it has", async () => {
       servePages();
@@ -261,6 +273,81 @@ describe("BlockScreen", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
       expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the units that arrived when a later page drops on first open, and saves none", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      await screen.findByRole("heading", { level: 1, name: "Blk 123" });
+
+      // A unit on the page that did arrive still shows its history.
+      await user.type(screen.getByLabelText("Unit number"), "#00-005");
+      expect(await screen.findByText("Came to the door in May.")).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "All units (100)" }));
+      expect(screen.getByText(partNote)).toBeInTheDocument();
+      // Part of the block must never stand in for all of it on the phone.
+      expect(noteBlock).not.toHaveBeenCalled();
+
+      // The next whole read replaces them, newer copies and all, and is saved.
+      const fresher = {
+        ...first,
+        data: first.data.map((entry, i) =>
+          i === 5
+            ? { ...entry, latestVisit: { ...entry.latestVisit, interestLevel: "high" as const } }
+            : entry,
+        ),
+      };
+      servePages(undefined, () => Promise.resolve(fresher));
+      syncs(view, 1);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText(partNote)).toBeNull();
+      expect(
+        within(screen.getByRole("button", { name: /#00-005/ })).getByText("High"),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+      expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...fresher.data, ...second.data]);
+    });
+
+    it("never takes away a unit shown because a later read got less", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (100)" });
+
+      // The next read loses its first page, so it has nothing at all.
+      servePages(undefined, () => Promise.reject(new TypeError("Failed to fetch")));
+      syncs(view, 1);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
+      expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+    });
+
+    it("lays a later read's pages over a whole one without saving them", async () => {
+      servePages();
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+
+      // A unit added since sorts first, and the page after it drops.
+      const added = pageOf(["#00-000a"], 200, true).data;
+      servePages(
+        () => Promise.reject(new TypeError("Load failed")),
+        () => Promise.resolve({ ...first, data: [...added, ...first.data.slice(0, 99)] }),
+      );
+      syncs(view, 1);
+      await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      // Every unit was read whole before, so nothing is said to be missing.
+      expect(screen.getByLabelText("Search this block")).toBeInTheDocument();
+      expect(screen.queryByText(partNote)).toBeNull();
       expect(noteBlock).toHaveBeenCalledTimes(1);
     });
 
