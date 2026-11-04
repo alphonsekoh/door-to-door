@@ -1,6 +1,6 @@
 # #126 · Household list bounded by its page, request bodies by size, recording by rate (with #127: every page of a block)
 
-- **Status:** In review (PR #159)
+- **Status:** Done (PR #159)
 - **Phase:** 7 - Hardening
 - **Depends on:** #20, #21, #74, #113, #118, #120, #121
 
