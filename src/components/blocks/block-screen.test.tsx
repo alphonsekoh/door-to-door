@@ -366,7 +366,7 @@ describe("BlockScreen", () => {
           late.reject(new Error("late"));
         },
       ],
-    ])("lets only the newest read land, not a late %s for an older one", async (_, settle) => {
+    ])("never lets a late %s for an older read replace a newer whole one", async (_, settle) => {
       const late: Late = { resolve: () => undefined, reject: () => undefined };
       let reads = 0;
       servePages(() => {
@@ -395,6 +395,88 @@ describe("BlockScreen", () => {
       expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
       expect(screen.queryByRole("alert")).toBeNull();
       expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    /* Slow 3G: a whole read takes longer than the gap between two saves, so
+       each sync starts a read while the last one still pages. */
+    it("lands each read as it ends, though a newer one has started", async () => {
+      let reads = 0;
+      const lastPages: Late[] = [];
+      servePages(() => {
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve(second)
+          : new Promise((resolve, reject) => {
+              lastPages.push({ resolve, reject });
+            });
+      });
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+
+      syncs(view, 1);
+      await waitFor(() => {
+        expect(lastPages).toHaveLength(1);
+      });
+      syncs(view, 2);
+      await waitFor(() => {
+        expect(lastPages).toHaveLength(2);
+      });
+
+      const sentOne = pageOf(["#09-999", "#10-001"], 100, false);
+      lastPages[0]?.resolve(sentOne);
+      expect(await screen.findByRole("tab", { name: "All units (102)" })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenLastCalledWith(active, "b1", [...first.data, ...sentOne.data]);
+      });
+
+      lastPages[1]?.resolve(pageOf(["#09-999", "#10-001", "#10-002"], 100, false));
+      expect(await screen.findByRole("tab", { name: "All units (103)" })).toBeInTheDocument();
+    });
+
+    it("lands an older whole read after a newer one failed, keeping what that one showed", async () => {
+      const added = pageOf(["#00-000a"], 200, true).data;
+      let firstPages = 0;
+      let lastPage: Late = { resolve: () => undefined, reject: () => undefined };
+      let lastPageAsked = false;
+      servePages(
+        () =>
+          lastPageAsked
+            ? Promise.reject(new TypeError("Load failed"))
+            : new Promise((resolve, reject) => {
+                lastPageAsked = true;
+                lastPage = { resolve, reject };
+              }),
+        () => {
+          firstPages += 1;
+          return Promise.resolve(
+            firstPages === 1 ? first : { ...first, data: [...added, ...first.data.slice(0, 99)] },
+          );
+        },
+      );
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(lastPageAsked).toBe(true);
+      });
+
+      // The newer read loses its last page first: what it got is shown, not saved.
+      syncs(view, 1);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+
+      // The older read then ends whole: it lands and is saved, under the unit
+      // the newer one found, and the failure is still said.
+      await act(async () => {
+        lastPage.resolve(second);
+        await Promise.resolve();
+      });
+      await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
+      expect(screen.getByText("#00-000a")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.queryByText(partNote)).toBeNull();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...first.data, ...second.data]);
+      });
     });
   });
 

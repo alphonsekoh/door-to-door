@@ -56,20 +56,33 @@ export function BlockScreen({
    * that got them all; a read that failed part way still shows the pages it
    * got, so a dropped page on first open does not hide the units, and their
    * history, that did arrive. Units shown never go until a whole read lands.
-   * Only the newest read lands, since a save or a sync can start one while
-   * another is still paging.
+   *
+   * A save or a sync starts a read while another may still be paging. Each
+   * lands unless a newer one already has: on weak signal a whole read outlasts
+   * the gap between saves, and letting only the newest land let none land until
+   * the member stopped, leaving units just sent shown by nothing. A newer read
+   * that failed does not stop an older whole one, still newer than the units it
+   * replaces; the failed one's pages stay over it.
    */
   const loadGeneration = useRef(0);
+  const landed = useRef({ any: 0, whole: 0 });
   const load = useCallback(async () => {
     const mine = ++loadGeneration.current;
     const read = await loadAllHouseholds(blockId);
-    if (mine !== loadGeneration.current) return;
+    const newest = mine > landed.current.any;
     if (read.complete) {
+      if (mine < landed.current.whole) return;
+      landed.current.whole = mine;
       setKnown(read.units);
-      setArrived([]);
-      setError(null);
+      if (newest) {
+        landed.current.any = mine;
+        setArrived([]);
+        setError(null);
+      }
       return;
     }
+    if (!newest) return;
+    landed.current.any = mine;
     setArrived((shown) => keepEachOnce([shown, read.units]));
     setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
   }, [blockId]);
