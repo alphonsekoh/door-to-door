@@ -63,7 +63,9 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
   pages are not bfcache-restored and always refetch. D-32-4 and D-16-2 intact.
   _Research:_ R-31. _Refined by D-122-9:_ the `401` the proxy writes itself is `no-store`
   too. API answers it passes through are still left to their handlers, which are now
-  `no-store` through `jsonResponse`.
+  `no-store` through `jsonResponse`. _Refined by D-150-1 and D-150-2:_ the proxy also
+  sets it on every response that carries `Set-Cookie`, which includes API answers with
+  a refreshed session cookie and the signed-out `307`. It always sets it on `/sign-in`.
 - **D-74-12 · E2E: the sign-out test uses the real button, and the install-banner test
   scrolls and measures together inside `expect.poll`.** _Why:_ the old test measured
   before the page finished growing (reproduced on `main` too); a real overlap still

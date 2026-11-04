@@ -97,6 +97,20 @@ describe("createSignInLog", () => {
     ]);
   });
 
+  it("says a check could not be made, sanitised, once per burst", () => {
+    const log = vi.fn();
+    const signInLog = createSignInLog({ log, now: () => 0 });
+    const cause = Object.assign(new Error("connect ECONNREFUSED 10.1.2.3:5432"), {
+      code: "ECONNREFUSED",
+    });
+    const failure = new Error(`Failed query: select * from users\nparams: ${EMAIL}`, { cause });
+    signInLog.unexpected(failure);
+    signInLog.unexpected(new Error("another"));
+    expect(log.mock.calls).toEqual([
+      ["Sign-in could not be checked: Error ECONNREFUSED: Failed query: select * from users"],
+    ]);
+  });
+
   it("defaults to console.warn", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     createSignInLog().oversized();

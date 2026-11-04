@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { authLogger } from "@/server/auth/auth-log";
 import { applyTokenToSession, applyUpdateToToken, applyUserToToken } from "@/server/auth/callbacks";
 
 export type BaseAuthSettings = {
@@ -49,6 +50,8 @@ export function buildBaseAuthConfig({ authSecret, auth }: BaseAuthSettings) {
     secret: authSecret,
     trustHost: auth.trustHost,
     useSecureCookies: auth.secureCookies,
+    // Here so the proxy's instance and the route's both log through it (#128).
+    logger: authLogger(),
     // Providers are supplied by each consumer: the full config adds
     // credentials, the proxy needs none to verify a JWT.
     providers: [],

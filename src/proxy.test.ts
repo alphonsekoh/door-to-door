@@ -137,8 +137,21 @@ describe("caching of signed-in pages", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  it("leaves API responses to their own handlers", async () => {
+  it("leaves API responses that set no cookie to their own handlers", async () => {
     const response = await proxy(request("/api/blocks", signedIn));
+    expect(response.headers.get("cache-control")).toBeNull();
+  });
+});
+
+describe("caching of the sign-in page (#150)", () => {
+  it("marks /sign-in no-store, so a shared cache never keeps its prerender", async () => {
+    // A copy kept would reach later visitors without the CSRF cookie a first visit needs.
+    const response = await proxy(request("/sign-in"));
+    expect(response.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("adds no Cache-Control of its own to an /api/auth answer that sets no cookie", async () => {
+    const response = await proxy(request("/api/auth/session"));
     expect(response.headers.get("cache-control")).toBeNull();
   });
 });

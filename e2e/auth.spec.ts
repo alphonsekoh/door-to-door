@@ -90,6 +90,21 @@ test.describe("response headers", () => {
       carriesThemAll(response);
     }
   });
+
+  test("/sign-in is no-store, whether or not it sets a cookie (#150)", async ({ request }) => {
+    // Prerendered, so Next would send s-maxage=31536000 with Auth.js's CSRF cookie.
+    const setCookies = (response: APIResponse) =>
+      response.headersArray().filter(({ name }) => name.toLowerCase() === "set-cookie");
+
+    const first = await request.get("/sign-in");
+    expect(setCookies(first)).not.toEqual([]);
+    expect(first.headers()["cache-control"]).toBe("no-store");
+
+    // Its cookies go back now, so nothing is set, and still no shared cache may keep it.
+    const again = await request.get("/sign-in");
+    expect(setCookies(again)).toEqual([]);
+    expect(again.headers()["cache-control"]).toBe("no-store");
+  });
 });
 
 test.describe("the request body cap (#120)", () => {
