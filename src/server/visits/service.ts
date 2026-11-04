@@ -144,10 +144,11 @@ async function lockActiveAuthor(tx: Database, memberId: string): Promise<void> {
 }
 
 /*
- * Locks the active session's row (FOR KEY SHARE) after only the author's, as
- * changing a follow-up session's households does (FOR UPDATE), so a record
- * and a household change wait for each other in one order. The checks that
- * follow then read what a remove committed, and a remove sees this visit.
+ * Locks the active session's row (FOR KEY SHARE) right after the author's,
+ * before any household. Changing a follow-up session's households also locks
+ * the session row before its households (FOR UPDATE), so a record and a
+ * household change wait for each other in one order. The checks that follow
+ * then read what a remove committed, and a remove sees this visit.
  */
 async function requireActiveSessionWithBlock(
   db: Database,

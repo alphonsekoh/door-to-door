@@ -1,6 +1,6 @@
 # #132 · Admin edge cases: the last active admin, and recording for a deactivated member
 
-- **Status:** In progress
+- **Status:** In review (PR #157)
 - **Phase:** 7 - Hardening
 - **Depends on:** #31, #83, #117, #123
 
@@ -65,7 +65,7 @@ made them a participant. Found by a security audit.
   deactivations each let exactly one through. _Why:_ as D-123-7, only a held lock proves
   an order.
 - **D-132-9 · `getUser`'s not-found branch stays a `404`, not an `InternalError` as
-  D-123-6 made `getVisit`'s.** _Proposed; the owner to confirm (Open questions)._
+  D-123-6 made `getVisit`'s (owner, 2026-11-04).**
   `updateUser` no longer reaches it before writing, but `updateOwnName` does, and it keeps
   "Your account no longer exists." for an account deleted by hand after the per-request
   check. A service test in `rename.integration.test.ts` holds it. _Why:_ D-123-6 rests on
@@ -81,6 +81,4 @@ task, since two admins could deactivate each other at once; D-132-1 makes it tru
 
 ## Open questions
 
-- **Confirm D-132-9?** The reviewer asked for the owner's agreement. If the owner prefers
-  D-123-6's pattern, a rename by an account deleted after the per-request check becomes a
-  `500` instead of `404` "Your account no longer exists.", and the new test goes.
+None. The owner confirmed D-132-9.
