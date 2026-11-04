@@ -18,6 +18,14 @@ vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
    other users' (D-33-1). */
 vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => role }));
 
+/* The account store is the page's singleton; these load a fresh one. */
+async function freshScreen() {
+  vi.resetModules();
+  const { AuthFailureScreen: Screen } = await import("@/components/shell/auth-failure-screen");
+  const { accountStore: store } = await import("@/lib/session/account-state");
+  return { Screen, store };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   role.userId = "u1";
@@ -65,11 +73,23 @@ describe("AuthFailureScreen", () => {
     expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in?reason=signed-out");
   });
 
-  it("names nobody to the sign-out once the page has lost the member too", async () => {
-    // So no sent record goes: none can be told to be theirs (D-129-6).
+  it("names the account the server last confirmed when the session has forgotten the member", async () => {
+    // A session refresh that failed reads as signed out until the next page load.
+    const { Screen, store } = await freshScreen();
+    store.noteCurrentUser({ id: "u1", role: "member" });
     role.userId = undefined;
     const user = userEvent.setup();
-    render(<AuthFailureScreen kind="signed-out" />);
+    render(<Screen kind="signed-out" />);
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in?reason=signed-out");
+  });
+
+  it("names nobody to the sign-out when nothing on the page knows the member", async () => {
+    // So no sent record goes: none can be told to be theirs (D-129-6).
+    const { Screen } = await freshScreen();
+    role.userId = undefined;
+    const user = userEvent.setup();
+    render(<Screen kind="signed-out" />);
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
     expect(signOutAndForget).toHaveBeenCalledWith(signOut, undefined, "/sign-in?reason=signed-out");
   });

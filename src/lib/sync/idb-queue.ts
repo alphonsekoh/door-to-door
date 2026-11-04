@@ -50,10 +50,13 @@ function wrap(db: IDBPDatabase<Schema>): SyncQueue {
       return removed;
     },
     async deleteSentBy(ownerId) {
+      /* Through the owner index, so another member's rows are never touched.
+         A range of exactly one key: a missing owner throws rather than
+         reading as no range, which would walk every owner's. */
+      const own = IDBKeyRange.only(ownerId);
       const tx = db.transaction(STORE, "readwrite");
       let removed = 0;
-      /* Through the owner index, so another member's rows are never touched. */
-      for await (const cursor of tx.store.index("by-owner").iterate(ownerId)) {
+      for await (const cursor of tx.store.index("by-owner").iterate(own)) {
         if (isSent(readRecord(cursor.value))) {
           await cursor.delete();
           removed += 1;

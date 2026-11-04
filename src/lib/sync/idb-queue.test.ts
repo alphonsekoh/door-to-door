@@ -138,6 +138,15 @@ describe("openQueue", () => {
     expect(await queue.deleteSentBy("cat")).toBe(0);
   });
 
+  it("refuses to delete for no owner at all, rather than reading it as everyone", async () => {
+    const queue = await open();
+    const sent = { ...record("ann", "#05-01"), state: "synced" as const, syncedAt: NOW };
+    await queue.put(sent);
+
+    await expect(queue.deleteSentBy(undefined as unknown as string)).rejects.toThrow();
+    expect(await rawRows()).toEqual([sent]);
+  });
+
   it("is null where there is no IndexedDB at all", async () => {
     vi.stubGlobal("indexedDB", undefined);
     expect(await openQueue()).toBeNull();

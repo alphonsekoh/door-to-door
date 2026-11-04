@@ -6,19 +6,23 @@ import type { User } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 
-const { apiFetch, update, signOut, hasUnsynced, signOutAndForget } = vi.hoisted(() => ({
+const { apiFetch, update, signOut, hasUnsynced, signOutAndForget, role, sync } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
   update: vi.fn(),
   signOut: vi.fn(),
   hasUnsynced: vi.fn(),
   signOutAndForget: vi.fn(),
+  role: { userId: undefined as string | undefined },
+  sync: { ownerId: undefined as string | undefined },
 }));
 
 vi.mock("next-auth/react", () => ({ useSession: () => ({ update }), signOut }));
 vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
-vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => role }));
+/* Whose records the queue holds, which outlasts a session refresh that failed. */
+vi.mock("@/components/sync/sync-provider", () => ({ useSyncQueue: () => sync }));
 vi.mock("@/lib/session/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/api-client", async () => ({
   ...(await vi.importActual<typeof ApiClientModule>("@/lib/api-client")),
@@ -40,6 +44,8 @@ const alice: User = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  role.userId = "u1";
+  sync.ownerId = "u1";
   apiFetch.mockResolvedValue(alice);
   update.mockResolvedValue(null);
   hasUnsynced.mockResolvedValue(false);
@@ -263,6 +269,26 @@ describe("AccountScreen: signing out", () => {
     // As this member: their sent records go with them, nobody else's (D-129-6).
     expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("still names the member when a failed session refresh has made the page forget them", async () => {
+    // Auth.js reads as signed out until the next page load; the queue does not.
+    role.userId = undefined;
+    const user = userEvent.setup();
+    await loaded();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1");
+  });
+
+  it("names nobody when neither the session nor the queue knows the member", async () => {
+    role.userId = undefined;
+    sync.ownerId = undefined;
+    const user = userEvent.setup();
+    await loaded();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, undefined);
   });
 
   it("warns first when records are waiting, and signs out only on confirmation", async () => {

@@ -12,6 +12,7 @@ import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
 import { useRole } from "@/lib/hooks/use-role";
 import { loadCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
+import { useSyncQueue } from "@/components/sync/sync-provider";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
 
@@ -22,6 +23,9 @@ function messageOf(error: unknown, fallback: string): string {
 export function AccountScreen() {
   const { update } = useSession();
   const { userId } = useRole();
+  /* A session refresh that fails for want of signal reads as signed out for
+     the rest of the page load; the queue still knows whose records it holds. */
+  const { ownerId } = useSyncQueue();
   const [user, setUser] = useState<User | null>(null);
   const [loadFailure, setLoadFailure] = useState<string | null>(null);
   // The session is no longer valid: signing out is the only thing left to offer.
@@ -89,7 +93,7 @@ export function AccountScreen() {
     setSignOutFailure(null);
     setSigningOut(true);
     try {
-      await signOutAndForget(signOut, userId);
+      await signOutAndForget(signOut, userId ?? ownerId);
     } catch {
       setSignOutFailure("Could not sign out. Check your connection and try again.");
       setConfirmingSignOut(false);
