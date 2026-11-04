@@ -19,7 +19,8 @@ never revisited.
 - **D-30-3 · CSV export walks every page of the filtered set, capped at 20 pages**, and
   says so when capped.
 - **D-30-4 · CSV cells starting `= + - @` or tab are prefixed with a quote.** _Why:_
-  free text would run as a spreadsheet formula.
+  free text would run as a spreadsheet formula. _Refined by D-129-9:_ also CR, and
+  `= + - @` behind leading whitespace, control or format characters.
 - **D-30-5 · `to` dates extend to end of day.**
 - **D-30-6 · Search stays client-side** (D-29-5); export applies the same search.
 

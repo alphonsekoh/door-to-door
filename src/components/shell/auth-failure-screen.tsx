@@ -1,9 +1,8 @@
 "use client";
 
 import { signOut } from "next-auth/react";
-import { useEffect, useId, useRef, useState } from "react";
-import type { AuthFailure } from "@/lib/session/account-state";
-import { goTo } from "@/lib/session/navigate";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { type AuthFailure, accountStore } from "@/lib/session/account-state";
 import { signOutAndForget } from "@/lib/session/sign-out";
 import { useModal } from "@/lib/hooks/use-modal";
 import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
@@ -43,6 +42,14 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
   const [failed, setFailed] = useState(false);
   const [unsynced, setUnsynced] = useState(false);
   const { userId } = useRole();
+  /* Outside the queue's provider. A session refresh that fails for want of
+     signal reads as signed out for the rest of the page load, so the
+     account the server last confirmed on this page stands in. */
+  const { serverUser } = useSyncExternalStore(
+    accountStore.subscribe,
+    accountStore.getSnapshot,
+    accountStore.getServerSnapshot,
+  );
 
   /* The button was disabled while signing out, and a browser drops focus
      from a disabled control; put it back for the retry. */
@@ -60,7 +67,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
     setFailed(false);
     setBusy(true);
     try {
-      await signOutAndForget(signOut, goTo, copy.destination);
+      await signOutAndForget(signOut, userId ?? serverUser?.id, copy.destination);
     } catch {
       setFailed(true);
       setBusy(false);

@@ -229,7 +229,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   U+200D, which is `Cf`, so it is refused with them. (Unverified against the Unicode
   tables; behaviour is covered by `own-name.test.ts`.)
 - **Source:** Unicode general categories, as implemented by JS `\p{...}` with the `u` flag
-- **Used by:** D-74-4
+- **Used by:** D-74-4, D-129-9
 
 ### R-30 · Auth.js absolutises the sign-out redirect from the request host
 
@@ -244,8 +244,13 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** Chromium does not put a `Cache-Control: no-store` page in bfcache, and the
   HTTP cache will not reuse it, so Back refetches. Other engines may differ. (Unverified
   beyond the Chromium behaviour observed in #74.)
+
+  _Updated (#129):_ still unverified on WebKit. Playwright's Chromium runs with bfcache
+  off and its WebKit never restored a page, so neither shows a restore under WebKit over
+  HTTPS; that is the owner's iPhone check. Details in R-136.
+
 - **Source:** Browser behaviour (web.dev bfcache guidance); observed in #74
-- **Used by:** D-74-11
+- **Used by:** D-74-11, D-129-1
 
 ### R-32 · Auth.js JWT sessions are stateless
 
@@ -1483,3 +1488,56 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [ECMAScript, `QuoteJSONString`](https://tc39.es/ecma262/#sec-quotejsonstring);
   `src/server/http/body-limit.test.ts`; measured in #126 (verifier, round 1)
 - **Used by:** D-126-4, D-126-7, D-126-11
+
+### R-136 · What Playwright can show of a back/forward-cache restore (measured)
+
+- **Finding:** Playwright launches Chromium with `--disable-back-forward-cache`, so no
+  page is ever restored in the suite. With the full Chromium channel and that flag
+  removed, a page comes back with `pageshow` `persisted=true`. Even then two things keep
+  this app's pages out in Chromium: next-auth's `BroadcastChannel` message evicts them
+  (`notRestoredReasons: broadcastchannel-message`), and the page a `location.replace`
+  leaves is never cached. With that message muted and `no-store` and `Clear-Site-Data`
+  stripped, History and the admin's Team list came back after sign-out when the guard
+  was off, and reloaded into sign-in when it was on. With only `no-store` stripped,
+  Chromium still restored the page, but that `Clear-Site-Data` arrived on a
+  `route.fulfill` response, which R-116 found no engine honours, so it says nothing about
+  the header. Playwright's WebKit never restored any page, not even the cacheable
+  `/offline`. Not measured: WebKit or an iPhone over HTTPS.
+- **Source:** `playwright-core` 1.62.1 `chromiumSwitches` ("Avoids surprises like main
+  request not being intercepted during page.goBack()"); `next-auth` 5.0.0-beta.32
+  `react.js` (`getSession` posts on the `next-auth` channel); measured (#129 verifier,
+  rounds 0 and 1)
+- **Used by:** D-129-1, D-129-10
+
+### R-137 · A late answer sets the session cookie again after sign-out (measured)
+
+- **Finding:** An answer to a request sent with the session, delivered after Auth.js's
+  sign-out answer, carries a refreshed session cookie (R-122) and puts the cookie back, on
+  both Playwright engines. Once a navigation has replaced the page, its own fetches are
+  cancelled and set nothing; while `/sign-in` is still loading, Chromium may still store
+  such an answer and WebKit drops it. A fetch the service worker makes is not cancelled
+  with the page: in Chromium its answer, released 3 s after `/sign-in` had looked, signed
+  the member back in (2 of 2). Playwright's WebKit cannot hold a worker's request, so
+  whether iOS cancels it is unknown.
+- **Source:** measured (#129 verifier, rounds 1 and 2)
+- **Used by:** D-129-4, D-129-5
+
+### R-138 · `page.route` does not see what a service worker fetches
+
+- **Finding:** Playwright's docs say `page.route` and `browserContext.route` do not
+  intercept requests a service worker handles, and recommend `serviceWorkers: "block"`
+  when intercepting. In Chromium `context().route` did stop the worker's own sync sends
+  (`pwa.spec`); in WebKit it could not, and Playwright supports service workers only on
+  Chromium.
+- **Source:** `playwright-core` 1.62.1 `types.d.ts` (`page.route`, `browserContext.route`,
+  `serviceWorkers`); measured (#129 builder and verifier)
+- **Used by:** D-129-10
+
+### R-139 · OWASP's CSV injection guidance names tab and CR, and the field separator
+
+- **Finding:** OWASP lists `=`, `+`, `-`, `@`, tab (0x09) and carriage return (0x0D) as
+  the leading characters to defuse with a quote, and warns that a field separator such
+  as `;` inside the value can start a new cell with one of them mid-value. (Read by the
+  #129 planner; not fetched again by the docs step.)
+- **Source:** [OWASP, CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)
+- **Used by:** D-129-9

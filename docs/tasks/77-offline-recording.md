@@ -38,7 +38,7 @@ Owner decisions are marked **(owner)**.
   follow-up session's list saved, the shell offers the list's blocks only.
 - **D-77-5 · Usable for 12 h from the last write (owner).** Exactly 12 h is usable.
   _Why:_ an evening's outing, inside D-33-9's 24 h, so sent records are still there to
-  list.
+  list. _Refined by D-129-8:_ a copy past its 12 h is deleted when it is read.
 - **D-77-6 · Cleared on every sign-in and sign-out, and whenever a signed-in page sees
   a member other than the copy's (owner).** `LocalCopyKeeper` in `AppShell` checks and
   clears in one transaction. A failed clear never blocks. _Why:_ covers credentials, SSO
@@ -67,7 +67,9 @@ Owner decisions are marked **(owner)**.
   states (_refined by D-106-8:_ and while the copy loads); flushing relies on the queue's own triggers (D-33-19). _Why:_ never navigate
   under someone mid-form, never offer a full load into a dead zone, and
   `navigator.onLine` lies with one bar. _Refined by D-111-53 and D-111-63:_ the row wraps
-  whole, Continue drops under it, and it is compact on a short screen.
+  whole, Continue drops under it, and it is compact on a short screen. _Refined by
+  D-129-1:_ a shell the browser restores from the back/forward cache reloads, even while
+  recording: the member had left the page.
 - **D-77-12 · Blocks are in-page state; the bottom nav is hidden and `--nav-height` is
   0 on the shell.** _Why:_ every offline navigation reloads cold and drops the form.
   _Refined by D-111-63:_ an open block is the shell's inline title, with an in-page way

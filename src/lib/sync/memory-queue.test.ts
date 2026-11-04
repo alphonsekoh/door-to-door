@@ -47,4 +47,21 @@ describe("createMemoryQueue", () => {
     expect(await queue.deleteSyncedBefore(NOW - 1)).toBe(1);
     expect((await queue.listAll()).map((r) => r.id).sort()).toEqual([fresh.id, unsent.id].sort());
   });
+
+  it("deletes one member's sent records, however recent, and nothing else", async () => {
+    const sent = (ownerId: string, unit: string) => ({
+      ...record(ownerId, unit),
+      state: "synced" as const,
+      syncedAt: NOW,
+    });
+    const own = sent("ann", "#01-01");
+    const theirs = sent("ben", "#01-02");
+    const unsent = record("ann", "#01-03");
+    const held = { ...record("ann", "#01-04"), state: "held" as const };
+    const queue = createMemoryQueue([own, theirs, unsent, held]);
+    expect(await queue.deleteSentBy("ann")).toBe(1);
+    expect((await queue.listAll()).map((r) => r.id).sort()).toEqual(
+      [theirs.id, unsent.id, held.id].sort(),
+    );
+  });
 });

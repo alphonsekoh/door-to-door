@@ -7,6 +7,9 @@ import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
  * That is also why the values are validated on the way in: a URL is editable,
  * and an interest level the contract does not know would come back as a 400
  * rather than an empty list.
+ *
+ * The search term is the exception: the screen holds it, and it is never read
+ * from the URL nor written to it, as in history-filters.
  */
 
 export type RecordFilters = {
@@ -45,7 +48,7 @@ export function parseFilters(params: URLSearchParams): RecordFilters {
     memberId: params.get("memberId") ?? "",
     teamId: asUuid(params.get("teamId")),
     interestLevel: asInterestLevel(params.get("interestLevel")),
-    q: params.get("q") ?? "",
+    q: "",
   };
 }
 
@@ -56,7 +59,6 @@ export function toSearchParams(filters: RecordFilters): string {
   if (filters.memberId !== "") params.set("memberId", filters.memberId);
   if (filters.teamId !== "") params.set("teamId", filters.teamId);
   if (filters.interestLevel !== "") params.set("interestLevel", filters.interestLevel);
-  if (filters.q.trim() !== "") params.set("q", filters.q.trim());
   return params.toString();
 }
 
@@ -94,5 +96,5 @@ export function hasServerFilter(filters: RecordFilters): boolean {
 }
 
 export function hasAnyFilter(filters: RecordFilters): boolean {
-  return toSearchParams(filters) !== "";
+  return toSearchParams(filters) !== "" || filters.q.trim() !== "";
 }

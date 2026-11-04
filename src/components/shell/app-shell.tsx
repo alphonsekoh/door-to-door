@@ -4,6 +4,7 @@ import { BottomNav } from "@/components/shell/bottom-nav";
 import { LocalCopyKeeper } from "@/components/sync/local-copy-keeper";
 import { PressFeedback } from "@/components/ui/press-feedback";
 import { PwaPrompts } from "@/components/pwa/pwa-prompts";
+import { RestoreGuard } from "@/components/shell/restore-guard";
 import { ScreenTrailKeeper } from "@/components/shell/screen-trail-keeper";
 import { SyncProvider } from "@/components/sync/sync-provider";
 import { SyncStatusBar } from "@/components/sync/sync-status-bar";
@@ -17,6 +18,7 @@ export function AppShell({ children }: AppShellProps) {
     <div className="min-h-dvh">
       <PressFeedback />
       <ScreenTrailKeeper />
+      <RestoreGuard />
       <AccountGate>
         <LocalCopyKeeper />
         <SyncProvider>

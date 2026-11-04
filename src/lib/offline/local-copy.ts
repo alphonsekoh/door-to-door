@@ -203,12 +203,17 @@ function listedSummary(entry: RevisitEntry): HouseholdSummary {
   };
 }
 
+/* Past its 12 hours from the last write; exactly 12 h is still usable (D-77-5). */
+export function copyExpired(copy: Pick<LocalCopy, "savedAt">, now: number): boolean {
+  return now - copy.savedAt > LOCAL_COPY_TTL_MS;
+}
+
 /* Null when there is nothing the shell can record with. */
 export function usableCopy(copy: LocalCopy | null, now: number): UsableCopy | null {
   if (copy === null) return null;
   const { outing } = copy;
   if (outing === null || shellBlocks(copy).length === 0) return null;
-  return now - copy.savedAt > LOCAL_COPY_TTL_MS ? null : { ...copy, outing };
+  return copyExpired(copy, now) ? null : { ...copy, outing };
 }
 
 /*

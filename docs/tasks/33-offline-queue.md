@@ -26,9 +26,13 @@ Owner decisions are marked **(owner)**.
   unchanged.
   _Why:_ the sync request carries no owner, so the cookie decides whose name a record is
   stored under; a stale tab must never send A's records as B. _Research:_ R-44.
+  _Refined by D-129-6 (owner, 2026-11-04):_ sign-out deletes the signing-out member's
+  sent records and sign-in deletes none. Nothing unsent is ever cleared, and another
+  member's records, sent ones included, stay on the phone, hidden.
 - **D-33-2 · No discard (owner).** Held and quarantined records cannot be discarded;
   Retry is the only action. The only delete is the purge of sent records (D-33-9).
-  _Why:_ nothing unsent is ever dropped.
+  _Why:_ nothing unsent is ever dropped. _Refined by D-129-6:_ a second delete, of sent
+  records only, and only the signing-out member's.
 - **D-33-3 · Item `clock_skew` restamps (owner).** `clientCreatedAt` and `updatedAt`
   are set to now and the record goes again at once; from the second skew, at most every
   5 minutes. Skew does not count toward the cap. _Why:_ a record that can never pass is
@@ -62,7 +66,8 @@ Owner decisions are marked **(owner)**.
   still pass is salvaged as a fresh `queued` record and sent; only the rest are
   `corrupt`.
 - **D-33-9 · Sent records are kept 24 h, purged on app start.** _Why:_ the unit list
-  and Add follow-up need the server's row after the send.
+  and Add follow-up need the server's row after the send. _Refined by D-129-6:_ or until
+  their own member signs out on this phone, whichever comes first.
 - **D-33-10 · The form saves to the queue first.** It falls back to a direct
   `POST /visits` only when the queue cannot be written (no IndexedDB, full disk), where
   D-25-8 keeps what was typed. _Why:_ a save never waits on the network.
@@ -119,7 +124,9 @@ Owner decisions are marked **(owner)**.
   `/offline`), so the member's queue starts with no tap. Not Serwist's
   `reloadOnOnline`, which stays off (D-32-14): this page holds no input. _Why:_ no
   queue runs on the offline page. _Refined by D-77-11:_ only in the shell's no-copy and
-  gate states; never while recording. D-106-8 adds the loading state.
+  gate states; never while recording. D-106-8 adds the loading state. _Refined by
+  D-129-1:_ a shell the browser restores from the back/forward cache reloads, even while
+  recording.
 - **D-33-23 · `beforeunload` warns while the member's records are being sent.** _Why:_
   issue criterion; closing loses nothing, but the member should know it has not gone.
   Refined by D-33-28.
@@ -153,7 +160,9 @@ Owner decisions are marked **(owner)**.
   (used by sign-out) and the update prompt's `reloadPage` set a "leaving on purpose"
   flag; `pageshow` clears it. Refines D-33-23. _Why:_ tapping Stay on a chosen
   sign-out left the member signed out on a page that still looked signed in; a page
-  restored from the back/forward cache must warn again.
+  restored from the back/forward cache must warn again. _Refined by D-129-2:_ nothing
+  clears the flag any more, and sign-out sets it through `replaceWith` (D-129-3). A
+  restored page is reloaded (D-129-1), so it never needs to warn again.
 - **D-33-29 · A failed save is shown beside Save~~, and focus is not moved~~.** The
   form's `role="alert"` sits in the sticky bar above Save, for every save failure
   (outing unknown, no outing running, direct `POST /visits` failed). ~~Chosen over

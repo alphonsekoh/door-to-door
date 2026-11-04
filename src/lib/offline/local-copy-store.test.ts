@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { openDB } from "idb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LocalCopy } from "@/lib/offline/local-copy";
+import { LOCAL_COPY_TTL_MS, type LocalCopy } from "@/lib/offline/local-copy";
 import {
   LOCAL_DATABASE_NAME,
   clearLocalCopy,
@@ -53,7 +53,7 @@ describe("the local copy on disk", () => {
 
   it("keeps what was written across connections", async () => {
     await updateLocalCopy(() => copy());
-    expect(await loadLocalCopy()).toEqual(copy());
+    expect(await loadLocalCopy(NOW)).toEqual(copy());
   });
 
   it("hands the change what is there, and writes what it returns", async () => {
@@ -63,7 +63,7 @@ describe("the local copy on disk", () => {
     );
     await updateLocalCopy(change);
     expect(change).toHaveBeenCalledWith(copy());
-    expect(await loadLocalCopy()).toEqual({ ...copy(), savedAt: NOW + 1 });
+    expect(await loadLocalCopy(NOW)).toEqual({ ...copy(), savedAt: NOW + 1 });
   });
 
   it("writes nothing when the change returns what it was given", async () => {
@@ -76,6 +76,26 @@ describe("the local copy on disk", () => {
     await updateLocalCopy(() => copy());
     await updateLocalCopy(() => null);
     expect(await raw()).toBeUndefined();
+  });
+
+  it("keeps a copy for twelve hours from its last write", async () => {
+    await updateLocalCopy(() => copy());
+    expect(await loadLocalCopy(NOW + LOCAL_COPY_TTL_MS)).toEqual(copy());
+    expect(await raw()).toEqual(copy());
+  });
+
+  it("reads a copy past its twelve hours as nothing, and deletes it", async () => {
+    // Nothing can record with it again, and it still names households (#130).
+    await updateLocalCopy(() => copy());
+    expect(await loadLocalCopy(NOW + LOCAL_COPY_TTL_MS + 1)).toBeNull();
+    expect(await raw()).toBeUndefined();
+  });
+
+  it("measures the copy's age against the clock unless told otherwise", async () => {
+    await updateLocalCopy(() => ({ ...copy(), savedAt: Date.now() }));
+    expect(await loadLocalCopy()).not.toBeNull();
+    await updateLocalCopy(() => copy());
+    expect(await loadLocalCopy()).toBeNull();
   });
 
   it("reads an unreadable copy as nothing, and deletes it", async () => {
@@ -96,7 +116,9 @@ describe("clearLocalCopy", () => {
   it("forgets the copy", async () => {
     await updateLocalCopy(() => copy());
     await clearLocalCopy();
-    expect(await loadLocalCopy()).toBeNull();
+    // Read in date, so only the clear can have removed it.
+    expect(await loadLocalCopy(NOW)).toBeNull();
+    expect(await raw()).toBeUndefined();
   });
 
   /* Owner decision D-33-1: a previous member's queued records stay on the

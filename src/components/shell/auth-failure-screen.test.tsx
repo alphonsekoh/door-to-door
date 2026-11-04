@@ -4,11 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
 import { ConfirmDialog } from "@/components/ui/sheet";
 
-const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
+const { signOut, signOutAndForget, hasUnsynced, role } = vi.hoisted(() => ({
   signOut: vi.fn(),
   signOutAndForget: vi.fn(),
   hasUnsynced: vi.fn(),
-  goTo: vi.fn(),
+  role: { userId: undefined as string | undefined },
 }));
 
 vi.mock("next-auth/react", () => ({ signOut }));
@@ -16,11 +16,19 @@ vi.mock("@/lib/session/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
-vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
-vi.mock("@/lib/session/navigate", () => ({ goTo }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => role }));
+
+/* The account store is the page's singleton; these load a fresh one. */
+async function freshScreen() {
+  vi.resetModules();
+  const { AuthFailureScreen: Screen } = await import("@/components/shell/auth-failure-screen");
+  const { accountStore: store } = await import("@/lib/session/account-state");
+  return { Screen, store };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
+  role.userId = "u1";
   hasUnsynced.mockResolvedValue(false);
   signOutAndForget.mockResolvedValue(undefined);
 });
@@ -53,7 +61,8 @@ describe("AuthFailureScreen", () => {
     const user = userEvent.setup();
     render(<AuthFailureScreen kind="deactivated" />);
     await user.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, goTo, "/sign-in");
+    // Its own navigation, which leaves no way Back to this screen (#129).
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in");
   });
 
   it("signs out first, then asks for a fresh sign-in with the reason", async () => {
@@ -61,7 +70,28 @@ describe("AuthFailureScreen", () => {
     const user = userEvent.setup();
     render(<AuthFailureScreen kind="signed-out" />);
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, goTo, "/sign-in?reason=signed-out");
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in?reason=signed-out");
+  });
+
+  it("names the account the server last confirmed when the session has forgotten the member", async () => {
+    // A session refresh that failed reads as signed out until the next page load.
+    const { Screen, store } = await freshScreen();
+    store.noteCurrentUser({ id: "u1", role: "member" });
+    role.userId = undefined;
+    const user = userEvent.setup();
+    render(<Screen kind="signed-out" />);
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in?reason=signed-out");
+  });
+
+  it("names nobody to the sign-out when nothing on the page knows the member", async () => {
+    // So no sent record goes: none can be told to be theirs (D-129-6).
+    const { Screen } = await freshScreen();
+    role.userId = undefined;
+    const user = userEvent.setup();
+    render(<Screen kind="signed-out" />);
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, undefined, "/sign-in?reason=signed-out");
   });
 
   it("holds the button while signing out", async () => {

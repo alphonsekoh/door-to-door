@@ -56,7 +56,8 @@ function entry(unitNumber: string, name: string | null = null, contact: string |
 }
 
 describe("parseFilters", () => {
-  it("reads every filter from the URL", () => {
+  it("reads every filter from the URL, and never the search term", () => {
+    // A name or a phone number in an old link is not taken up (#130).
     const parsed = parseFilters(
       new URLSearchParams("blockId=b1&memberId=u1&interestLevel=high&q=tan"),
     );
@@ -65,7 +66,7 @@ describe("parseFilters", () => {
       memberId: "u1",
       teamId: "",
       interestLevel: "high",
-      q: "tan",
+      q: "",
     });
   });
 
@@ -107,17 +108,14 @@ describe("toSearchParams", () => {
       memberId: "u1",
       teamId: TEAM,
       interestLevel: "high",
-      q: "tan",
     });
     expect(parseFilters(new URLSearchParams(toSearchParams(original)))).toEqual(original);
   });
 
-  it("trims the search term rather than storing the spaces", () => {
-    expect(toSearchParams(filters({ q: "  tan  " }))).toBe("q=tan");
-  });
-
-  it("treats a whitespace-only search as no search", () => {
-    expect(toSearchParams(filters({ q: "   " }))).toBe("");
+  it("never writes the search term", () => {
+    // A query string reaches the server, its logs and a sign-in's callbackUrl (#130).
+    expect(toSearchParams(filters({ q: "Mr Tan 91234567" }))).toBe("");
+    expect(toSearchParams(filters({ blockId: "b1", q: "tan" }))).toBe("blockId=b1");
   });
 });
 
@@ -173,6 +171,11 @@ describe("hasAnyFilter", () => {
 
   it("is true once anything is", () => {
     expect(hasAnyFilter(filters({ memberId: "u1" }))).toBe(true);
+  });
+
+  it("counts a search term, which is not in the URL, and not one of spaces", () => {
+    expect(hasAnyFilter(filters({ q: "tan" }))).toBe(true);
+    expect(hasAnyFilter(filters({ q: "   " }))).toBe(false);
   });
 });
 

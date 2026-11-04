@@ -60,7 +60,8 @@ function entry(
 }
 
 describe("parseHistoryFilters", () => {
-  it("reads every filter from the URL", () => {
+  it("reads every filter from the URL, and never the search term", () => {
+    // A name or a phone number in an old link is not taken up (#130).
     const parsed = parseHistoryFilters(
       new URLSearchParams(
         "blockId=b1&sessionId=s1&memberId=u1&teamId=0190a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b&interestLevel=high&religion=buddhist&from=2026-03-01&to=2026-03-31&q=tan",
@@ -75,7 +76,7 @@ describe("parseHistoryFilters", () => {
       religion: "buddhist",
       from: "2026-03-01",
       to: "2026-03-31",
-      q: "tan",
+      q: "",
     });
   });
 
@@ -128,9 +129,14 @@ describe("toHistorySearch", () => {
       religion: "christian",
       from: "2026-03-01",
       to: "2026-03-31",
-      q: "tan",
     });
     expect(parseHistoryFilters(new URLSearchParams(toHistorySearch(original)))).toEqual(original);
+  });
+
+  it("never writes the search term", () => {
+    // A query string reaches the server, its logs and a sign-in's callbackUrl (#130).
+    expect(toHistorySearch(filters({ q: "Mr Tan 91234567" }))).toBe("");
+    expect(toHistorySearch(filters({ religion: "hindu", q: "tan" }))).toBe("religion=hindu");
   });
 });
 
@@ -203,6 +209,11 @@ describe("hasHistoryFilter", () => {
 
   it("is true once anything is", () => {
     expect(hasHistoryFilter(filters({ from: "2026-03-01" }))).toBe(true);
+  });
+
+  it("counts a search term, which is not in the URL, and not one of spaces", () => {
+    expect(hasHistoryFilter(filters({ q: "tan" }))).toBe(true);
+    expect(hasHistoryFilter(filters({ q: "   " }))).toBe(false);
   });
 });
 

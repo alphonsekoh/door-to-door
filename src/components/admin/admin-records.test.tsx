@@ -236,16 +236,55 @@ describe("AdminRecords", () => {
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
   });
 
-  it("searches within the page it already has", async () => {
+  it("searches within the page it already has, with nothing in the URL and nothing asked of the server", async () => {
+    // The term is a name or a phone number: a query string would carry it to
+    // the server's logs, the phone's history and a sign-in's callbackUrl (#130).
+    const user = userEvent.setup();
+    serve([entry("#05-123"), entry("#05-124")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    apiFetch.mockClear();
+
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "124");
+
+    expect(screen.getByText("#05-124")).toBeInTheDocument();
+    expect(screen.queryByText("#05-123")).not.toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    // Let any deferred load run: typing must not start one.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("takes no search term from the URL", async () => {
+    // An old link, or one typed by hand, does not fill the search.
     searchParams.value = new URLSearchParams("q=124");
     serve([entry("#05-123"), entry("#05-124")]);
     render(<AdminRecords />);
 
-    expect(await screen.findByText("#05-124")).toBeInTheDocument();
+    expect(await screen.findByText("#05-123")).toBeInTheDocument();
+    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+  });
+
+  it("clears the search along with the filters", async () => {
+    const user = userEvent.setup();
+    searchParams.value = new URLSearchParams("interestLevel=low");
+    serve([entry("#05-123"), entry("#05-124")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    const search = screen.getByLabelText("Search by unit, name or contact");
+    await user.type(search, "124");
     expect(screen.queryByText("#05-123")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(replace).toHaveBeenCalledWith("/admin/records");
+    expect(search).toHaveValue("");
+    expect(screen.getByText("#05-123")).toBeInTheDocument();
   });
 
   it("distinguishes an empty outing from an over-narrow filter", async () => {
+    const user = userEvent.setup();
     serve([]);
     const { unmount } = render(<AdminRecords />);
     expect(
@@ -253,10 +292,14 @@ describe("AdminRecords", () => {
     ).toBeInTheDocument();
     unmount();
 
-    searchParams.value = new URLSearchParams("q=zzz");
     serve([entry("#05-123")]);
     render(<AdminRecords />);
-    expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
+    await screen.findByText("#05-123");
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "zzz");
+    expect(screen.getByText("Nothing here matches those filters.")).toBeInTheDocument();
+    // A search alone can be cleared.
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("#05-123")).toBeInTheDocument();
   });
 
   it("opens the amend sheet on any record, including another member's", async () => {
@@ -542,14 +585,18 @@ describe("AdminRecords", () => {
     expect(replace).toHaveBeenCalledWith("/admin/records?memberId=u1");
   });
 
-  it("puts the search term in the URL", async () => {
+  it("keeps the search term out of the URL when another filter is chosen", async () => {
     const user = userEvent.setup();
     serve([entry("#05-123")]);
     render(<AdminRecords />);
     await screen.findByText("#05-123");
+    const search = screen.getByLabelText("Search by unit, name or contact");
+    await user.type(search, "123");
 
-    await user.type(screen.getByLabelText("Search by unit, name or contact"), "t");
-    expect(replace).toHaveBeenCalledWith("/admin/records?q=t");
+    await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
+
+    expect(replace).toHaveBeenLastCalledWith("/admin/records?blockId=b1");
+    expect(search).toHaveValue("123");
   });
 
   it("closes the amend sheet without reloading when abandoned", async () => {

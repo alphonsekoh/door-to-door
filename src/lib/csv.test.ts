@@ -79,7 +79,28 @@ describe("escapeCell", () => {
     expect(escapeCell("-5")).toBe('"\'-5"');
     expect(escapeCell("@handle")).toBe('"\'@handle"');
     expect(escapeCell("\tcmd")).toBe('"\'\tcmd"');
+    expect(escapeCell("\rcmd")).toBe('"\'\rcmd"');
   });
+
+  /* Stored as typed (#130): a spreadsheet that skips what leads the value, or
+     takes a carriage return as a formula start, would still run it. */
+  it.each([
+    ["a carriage return", '\r=HYPERLINK("http://evil.example","Tan")'],
+    ["a space", " =1+1"],
+    ["a no-break space", "\u00a0=1"],
+    ["a zero-width space", "\u200b=1"],
+    ["a line feed", "\n-1"],
+    ["a control character", "\u0000@x"],
+  ])("defuses a formula behind %s", (_, value) => {
+    expect(escapeCell(value)).toBe(`"'${value.replace(/"/g, '""')}"`);
+  });
+
+  it.each(["a=b", "Mr Tan", "Blk 5 - #05-12", "tan@example.com"])(
+    "leaves %j alone, with nothing but text before its sign",
+    (value) => {
+      expect(escapeCell(value)).toBe(value);
+    },
+  );
 });
 
 describe("toCsv", () => {

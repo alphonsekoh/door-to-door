@@ -109,3 +109,8 @@ export function isCorrupt(record: QueuedVisit): boolean {
 export function isExpired(record: QueuedVisit, before: number): boolean {
   return record.state === "synced" && record.syncedAt !== null && record.syncedAt < before;
 }
+
+/* Sent at any time, judged as above. */
+export function isSent(record: QueuedVisit): boolean {
+  return isExpired(record, Number.POSITIVE_INFINITY);
+}

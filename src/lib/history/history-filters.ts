@@ -2,7 +2,8 @@ import type { HistoryEntry, InterestLevel, Religion } from "@/generated/types.ge
 import { asUuid } from "@/lib/history/record-filters";
 
 /*
- * Filters for the admin's long-term history view, held in the URL.
+ * Filters for the admin's long-term history view, held in the URL, apart from
+ * the search term, which the screen holds itself.
  *
  * Kept apart from record-filters, which covers the running outing: that one is
  * always scoped to one session and offers a narrower set. Merging them would
@@ -47,6 +48,12 @@ function asDate(value: string | null): string {
  * A team only means something inside its outing - two outings can each have
  * an "Ann & Ben" - so the team filter is offered, and kept, only once an
  * outing is chosen.
+ *
+ * The search term is never read from the URL nor written to it: it is a name
+ * or a phone number, and a query string goes to the server, its logs, the
+ * phone's history and a sign-in's callbackUrl. The search runs on what is
+ * already loaded (D-30-6), so nothing needs it there. An old link's `q` is
+ * ignored.
  */
 export function parseHistoryFilters(params: URLSearchParams): HistoryFilters {
   const sessionId = params.get("sessionId") ?? "";
@@ -59,7 +66,7 @@ export function parseHistoryFilters(params: URLSearchParams): HistoryFilters {
     religion: RELIGIONS.find((religion) => religion === params.get("religion")) ?? "",
     from: asDate(params.get("from")),
     to: asDate(params.get("to")),
-    q: params.get("q") ?? "",
+    q: "",
   };
 }
 
@@ -77,7 +84,6 @@ export function toHistorySearch(filters: HistoryFilters): string {
   ] as const) {
     if (filters[key] !== "") params.set(key, filters[key]);
   }
-  if (filters.q.trim() !== "") params.set("q", filters.q.trim());
   return params.toString();
 }
 
@@ -120,7 +126,7 @@ export function matchesHistorySearch(entry: HistoryEntry, q: string): boolean {
 }
 
 export function hasHistoryFilter(filters: HistoryFilters): boolean {
-  return toHistorySearch(filters) !== "";
+  return toHistorySearch(filters) !== "" || filters.q.trim() !== "";
 }
 
 export type HouseholdGroup = {

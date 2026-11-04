@@ -1,5 +1,5 @@
-import { isExpired, readRecord } from "@/lib/sync/record";
-import type { SyncQueue } from "@/lib/sync/types";
+import { isExpired, isSent, readRecord } from "@/lib/sync/record";
+import type { QueuedVisit, SyncQueue } from "@/lib/sync/types";
 
 /*
  * The queue without IndexedDB, for the engine's tests. Records are cloned in
@@ -13,6 +13,17 @@ export function createMemoryQueue(initial: readonly unknown[] = []): SyncQueue &
   for (const record of initial) raw.set(String(Reflect.get(record as object, "id")), record);
 
   const all = () => [...raw.values()].map((value) => readRecord(structuredClone(value)));
+
+  const remove = (doomed: (record: QueuedVisit) => boolean) => {
+    let removed = 0;
+    for (const [id, value] of raw) {
+      if (doomed(readRecord(value))) {
+        raw.delete(id);
+        removed += 1;
+      }
+    }
+    return Promise.resolve(removed);
+  };
 
   return {
     raw,
@@ -35,15 +46,10 @@ export function createMemoryQueue(initial: readonly unknown[] = []): SyncQueue &
       return Promise.resolve(all());
     },
     deleteSyncedBefore(before) {
-      let removed = 0;
-      for (const [id, value] of raw) {
-        const record = readRecord(value);
-        if (isExpired(record, before)) {
-          raw.delete(id);
-          removed += 1;
-        }
-      }
-      return Promise.resolve(removed);
+      return remove((record) => isExpired(record, before));
+    },
+    deleteSentBy(ownerId) {
+      return remove((record) => record.ownerId === ownerId && isSent(record));
     },
   };
 }
