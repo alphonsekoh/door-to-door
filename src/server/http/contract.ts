@@ -1,6 +1,8 @@
 import type { ZodError, ZodType } from "zod";
+import { DEFAULT_BODY_LIMIT_BYTES } from "@/server/http/body-limit";
 import {
   ApiError,
+  ContentTooLargeError,
   ForbiddenError,
   InternalError,
   UnsupportedMediaTypeError,
@@ -26,6 +28,8 @@ export type ContractSpec<TPath, TQuery, TBody> = {
   path?: ZodType<TPath>;
   query?: ZodType<TQuery>;
   body?: ZodType<TBody>;
+  /* Bytes of body read before refusing with 413; DEFAULT_BODY_LIMIT_BYTES if unset. */
+  maxBodyBytes?: number;
   /* Keyed by status code. A handler may only return a documented status. */
   responses: Record<number, ZodType>;
 };
@@ -115,8 +119,36 @@ export function searchParamsToObject(params: URLSearchParams): Record<string, un
   return result;
 }
 
-async function readJsonBody(request: Request): Promise<unknown> {
-  const text = await request.text();
+/*
+ * The body as text, refused with 413 once it is over `limit` bytes: at once
+ * when Content-Length says so, otherwise as it is read, since the header can
+ * be absent or wrong. Decoded as request.text() decodes it.
+ */
+async function readBodyText(request: Request, limit: number): Promise<string> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && /^\d+$/.test(declared) && Number(declared) > limit) {
+    throw new ContentTooLargeError();
+  }
+  if (request.body === null) return "";
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let read = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    read += value.byteLength;
+    if (read > limit) {
+      await reader.cancel();
+      throw new ContentTooLargeError();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
+async function readJsonBody(request: Request, limit: number): Promise<unknown> {
+  const text = await readBodyText(request, limit);
   if (text.trim() === "") return undefined;
   if (!isJsonMediaType(request.headers.get("content-type"))) {
     throw new UnsupportedMediaTypeError();
@@ -201,7 +233,11 @@ export function withContract<TPath = undefined, TQuery = undefined, TBody = unde
             )
           : (undefined as TQuery),
         body: spec.body
-          ? parseOrThrow(spec.body, await readJsonBody(request), "request body")
+          ? parseOrThrow(
+              spec.body,
+              await readJsonBody(request, spec.maxBodyBytes ?? DEFAULT_BODY_LIMIT_BYTES),
+              "request body",
+            )
           : (undefined as TBody),
         request,
       };

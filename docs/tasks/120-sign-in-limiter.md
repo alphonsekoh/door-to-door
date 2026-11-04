@@ -66,7 +66,11 @@ a security audit.
   batch of maximum-length CJK descriptions is about 1.3 MB. A larger one is cut to
   invalid JSON, gets `400` and recovers through isolation (D-33-6). _Trade-off:_ JSON
   padded at its end can still parse after the cut, and the bound holds only where the
-  proxy runs. _Research:_ R-108.
+  proxy runs. _Research:_ R-108. _Refined by D-126-6 (#126):_ contract routes now refuse
+  a body over their cap with `413` (256 KiB, or 1.5 MiB for sync). The cut, now
+  `PROXY_BODY_LIMIT_BYTES`, stays at least 512 KiB above those caps, so a cut body is
+  still refused. "Nothing answers `413`" and the cut to `400` now hold only on Auth.js's
+  routes.
 - **D-120-8 · Failed and refused sign-ins log through `createThrottledLog`
   (`console.warn`) under four fixed keys** (`sign-in:failed`, `:limited`, `:oversized`,
   `:unattributed`). A line carries at most a 12-character digest tag, never an email or

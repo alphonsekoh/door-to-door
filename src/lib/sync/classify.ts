@@ -157,7 +157,7 @@ export function failedTogether(
  * applied, and nothing is charged to a record: not for lost signal, and not
  * for a server failure even with one record sent alone, because a database
  * outage fails every record that way and must not park the good ones
- * (D-87-2). Only a 400 for a record sent alone is pinned on it.
+ * (D-87-2). Only a 400 or 413 for a record sent alone is pinned on it.
  */
 export function applyBatchFailure(
   state: EngineState,
@@ -193,8 +193,9 @@ export function applyBatchFailure(
     if (outcome.status === 422 && outcome.code === "clock_skew") {
       return blocked("clock", until(PROBE_MS));
     }
-    if (outcome.status === 400) {
-      /* The contract refused the batch. Alone, the record is the reason. */
+    if (outcome.status === 400 || outcome.status === 413) {
+      /* The contract refused the batch, for its content or its size (D-126-11).
+         Alone, the record is the reason. */
       const records = batch.length === 1 ? batch.map((record) => stop(record, "invalid")) : [];
       return { state: { ...state, isolation: true }, records };
     }

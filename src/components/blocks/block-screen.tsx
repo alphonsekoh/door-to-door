@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockViews } from "@/components/blocks/block-views";
 import { DockHost } from "@/components/ui/docked-actions";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
@@ -10,7 +10,6 @@ import { SaveAndNext } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
   ActiveSession,
-  HouseholdList,
   HouseholdSummary,
   RevisitEntry,
   RevisitList,
@@ -18,6 +17,7 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { heldOffListKey } from "@/lib/follow-ups/revisits";
+import { keepEachOnce, loadAllHouseholds } from "@/lib/households/pages";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import { overlayQueued } from "@/lib/sync/unit-overlay";
 import { findMyTeam } from "@/lib/teams/team-ui";
@@ -37,28 +37,54 @@ export function BlockScreen({
   /* A follow-up session's list: undefined until first read, null if that
      read failed. A later failed read keeps the list already shown. */
   const [revisits, setRevisits] = useState<RevisitEntry[] | null | undefined>(undefined);
-  /* Null until the first answer, so the copy is never written with a list
-     that was merely not loaded yet. */
+  /* The last read that got every page; null until one has, so the copy is
+     never written with a list that was merely not loaded yet, or only in part. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
+  /* The pages of the reads that failed since: shown over it, never saved. */
+  const [arrived, setArrived] = useState<HouseholdSummary[]>([]);
   const [active, setActive] = useState<ActiveSession | null>(null);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const sessionId = active?.session.id ?? null;
-  const units = known ?? [];
+  const units = useMemo(() => keepEachOnce([known ?? [], arrived]), [known, arrived]);
 
   /*
    * The units already recorded on this block. Held here so the form can show a
    * unit's history the moment its number is typed, without a lookup per
    * keystroke, and so the list and the form never disagree about what exists.
+   * Every page of them (#127). The offline copy is written only from a read
+   * that got them all; a read that failed part way still shows the pages it
+   * got, so a dropped page on first open does not hide the units, and their
+   * history, that did arrive. Units shown never go until a whole read lands.
+   *
+   * A save or a sync starts a read while another may still be paging. Each
+   * lands unless a newer one already has: on weak signal a whole read outlasts
+   * the gap between saves, and letting only the newest land let none land until
+   * the member stopped, leaving units just sent shown by nothing. A newer read
+   * that failed does not stop an older whole one, still newer than the units it
+   * replaces; the failed one's pages stay over it.
    */
+  const loadGeneration = useRef(0);
+  const landed = useRef({ any: 0, whole: 0 });
   const load = useCallback(async () => {
-    try {
-      const households = await apiFetch<HouseholdList>(`/households?blockId=${blockId}&limit=100`);
-      setKnown(households.data);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not load this block.");
+    const mine = ++loadGeneration.current;
+    const read = await loadAllHouseholds(blockId);
+    const newest = mine > landed.current.any;
+    if (read.complete) {
+      if (mine < landed.current.whole) return;
+      landed.current.whole = mine;
+      setKnown(read.units);
+      if (newest) {
+        landed.current.any = mine;
+        setArrived([]);
+        setError(null);
+      }
+      return;
     }
+    if (!newest) return;
+    landed.current.any = mine;
+    setArrived((shown) => keepEachOnce([shown, read.units]));
+    setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
   }, [blockId]);
 
   /* Separate from the units: the session marks tonight's rows and is what a
@@ -238,6 +264,11 @@ export function BlockScreen({
           active={active}
           initialUnit={initialUnit}
           guessNext={guessNext}
+          unitsNote={
+            known === null && error !== null
+              ? "Not every unit of this block could be loaded, so one not listed here may still have been visited."
+              : null
+          }
         />
       ) : (
         <div role="status" className="rounded-xl border border-border bg-surface-muted p-4">

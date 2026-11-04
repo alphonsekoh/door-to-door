@@ -52,7 +52,9 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
   `src/server` into the standalone output. _Research:_ R-27.
 - **D-75-15 · Rate limits and clock-skew tolerance are config keys.** Sign-in limit 10 per
   300 s; `sync.clockSkewToleranceSeconds` 300, used by #76 (D-76-1). _Why:_ settings in one
-  place.
+  place. _Refined by D-126-8 (owner, 2026-11-04):_ this covers the sign-in budgets and
+  clock-skew tolerance. The per-member write limits, sync's (D-21-6) and `POST /visits`'s,
+  are code constants.
 - **D-75-16 · One-time `.env found and ignored` warning.** _Why:_ stale `.env` files would
   otherwise silently stop working. _Research:_ R-28.
 - **D-75-17 · ESLint restricts importing `config`/`yaml` from `components` and `lib`.**

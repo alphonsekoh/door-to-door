@@ -2,7 +2,7 @@ import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role } from "@/db/schema";
 import { sessionTeamMembers, sessionTeams, users, visitTeammates } from "@/db/schema";
-import { getOrThrow } from "@/server/db-utils";
+import { appendTo, getOrThrow, selectInChunks } from "@/server/db-utils";
 
 /*
  * Team membership, and who may touch a team's records.
@@ -117,9 +117,11 @@ export async function stampVisit(
 }
 
 /*
- * Adds `team` to visit rows. Two queries however many rows: the stamped
- * teams' names, then their snapshots joined to current user names. A page of
- * a hundred visits must not cost a hundred lookups (D-20-3).
+ * Adds `team` to visit rows: the stamped teams' names, then their snapshots
+ * joined to current user names. Two queries for up to 10,000 visits, so a
+ * page of a hundred costs no more than one (D-20-3); past that, one more per
+ * 10,000, since a household's history passes every visit (#126). Each visit's
+ * teammates come from one query, in name order.
  */
 export async function attachTeams<T extends { id: string; teamId: string | null }>(
   db: Database,
@@ -131,32 +133,32 @@ export async function attachTeams<T extends { id: string; teamId: string | null 
   }
 
   const teamIds = [...new Set(stamped.map((row) => row.teamId).filter((id) => id !== null))];
-  const teamRows = await db
-    .select({ id: sessionTeams.id, name: sessionTeams.name })
-    .from(sessionTeams)
-    .where(inArray(sessionTeams.id, teamIds));
+  const teamRows = await selectInChunks(teamIds, (ids) =>
+    db
+      .select({ id: sessionTeams.id, name: sessionTeams.name })
+      .from(sessionTeams)
+      .where(inArray(sessionTeams.id, ids)),
+  );
 
-  const mates = await db
-    .select({
-      visitId: visitTeammates.visitId,
-      id: users.id,
-      name: users.name,
-      image: users.image,
-    })
-    .from(visitTeammates)
-    .innerJoin(users, eq(users.id, visitTeammates.userId))
-    .where(
-      inArray(
-        visitTeammates.visitId,
-        stamped.map((row) => row.id),
-      ),
-    )
-    .orderBy(asc(users.name), asc(users.id));
+  const visitIds = [...new Set(stamped.map((row) => row.id))];
+  const mates = await selectInChunks(visitIds, (ids) =>
+    db
+      .select({
+        visitId: visitTeammates.visitId,
+        id: users.id,
+        name: users.name,
+        image: users.image,
+      })
+      .from(visitTeammates)
+      .innerJoin(users, eq(users.id, visitTeammates.userId))
+      .where(inArray(visitTeammates.visitId, ids))
+      .orderBy(asc(users.name), asc(users.id)),
+  );
 
   const namesById = new Map(teamRows.map((team) => [team.id, team.name]));
   const matesByVisit = new Map<string, PersonRow[]>();
   for (const { visitId, ...person } of mates) {
-    matesByVisit.set(visitId, [...(matesByVisit.get(visitId) ?? []), person]);
+    appendTo(matesByVisit, visitId, person);
   }
 
   return rows.map((row) => ({

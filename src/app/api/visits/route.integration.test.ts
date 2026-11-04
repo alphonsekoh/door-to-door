@@ -23,6 +23,8 @@ const { GET, POST } = await import("./route");
 const { PATCH } = await import("./[id]/route");
 const { GET: listHouseholdsRoute } = await import("../households/route");
 const { GET: householdHistory } = await import("../households/[id]/route");
+const { POST: sync } = await import("./sync/route");
+const { recordLimiter, syncLimiter } = await import("@/server/visits/rate-limits");
 
 const pool = createTestPool();
 const ADMIN = "dededede-0000-4000-8000-000000000001";
@@ -82,6 +84,8 @@ beforeEach(async () => {
     BLOCK,
   ]);
   vi.clearAllMocks();
+  recordLimiter.reset();
+  syncLimiter.reset();
 });
 
 afterAll(async () => {
@@ -533,5 +537,76 @@ describe("recording on someone else's behalf", () => {
     const amended = await patch(id, { interestLevel: "high" });
     const visit = (await amended.json()) as { member: { id: string } };
     expect(visit.member.id).toBe(ALICE);
+  });
+});
+
+describe("the rate limit on recording (#126)", () => {
+  const visitsStored = async () =>
+    Number((await pool.query<{ n: string }>(`SELECT count(*) AS n FROM visits`)).rows[0]?.n);
+  const thirty = async (memberId?: string) => {
+    for (let i = 0; i < 30; i += 1) {
+      const unit = `#01-${String(i).padStart(3, "0")}`;
+      const response = await record(unit, memberId === undefined ? {} : { memberId });
+      expect(response.status).toBe(201);
+    }
+  };
+
+  it("refuses the 31st visit in a minute from one caller, and records nothing", async () => {
+    asAlice();
+    await thirty();
+
+    const refused = await record("#09-999");
+    expect(refused.status).toBe(429);
+    const body = (await refused.json()) as { error: { code: string; message: string } };
+    expect(body.error).toEqual({
+      code: "rate_limited",
+      message: "Too many visits recorded. Try again shortly.",
+    });
+    expect(await visitsStored()).toBe(30);
+  });
+
+  it("leaves another member, and the caller's own sync, their own budgets", async () => {
+    asAlice();
+    await thirty();
+    expect((await record("#09-999")).status).toBe(429);
+
+    asBen();
+    expect((await record("#09-998")).status).toBe(201);
+
+    // The queue is the same member's other way in: it is not starved (D-126-8).
+    await pool.query(`UPDATE outing_sessions SET started_at = now() - interval '1 hour'`);
+    asAlice();
+    const flushed = await sync(
+      new Request("https://test.local/api/visits/sync", {
+        method: "POST",
+        body: JSON.stringify({
+          sentAt: new Date().toISOString(),
+          items: [
+            {
+              id: nextId(),
+              blockId: BLOCK,
+              unitNumber: "#09-999",
+              interestLevel: "low",
+              clientCreatedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            },
+          ],
+        }),
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    expect(flushed.status).toBe(200);
+    expect(((await flushed.json()) as { results: { status: string }[] }).results).toEqual([
+      expect.objectContaining({ status: "applied" }),
+    ]);
+  });
+
+  it("charges an admin recording on a member's behalf, not the member", async () => {
+    asAdmin();
+    await thirty(ALICE);
+    expect((await record("#09-999", { memberId: ALICE })).status).toBe(429);
+
+    asAlice();
+    expect((await record("#09-999")).status).toBe(201);
   });
 });

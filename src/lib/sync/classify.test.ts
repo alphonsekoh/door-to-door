@@ -239,22 +239,21 @@ describe("applyBatchFailure", () => {
     expect(result.state.block).toEqual({ reason: "clock", until: NOW + PROBE_MS });
   });
 
-  it("goes one at a time after a refused batch", () => {
-    const result = applyBatchFailure(
-      INITIAL_STATE,
-      { kind: "http", status: 400, code: "validation_failed" },
-      batch,
-      NOW,
-      half,
-    );
+  const refusals = [
+    ["its content", { kind: "http", status: 400, code: "validation_failed" }],
+    ["its size", { kind: "http", status: 413, code: "content_too_large" }],
+  ] as const;
+
+  it.each(refusals)("goes one at a time after a batch refused for %s", (_, outcome) => {
+    const result = applyBatchFailure(INITIAL_STATE, outcome, batch, NOW, half);
     expect(result.state).toMatchObject({ isolation: true, block: null });
     expect(result.records).toEqual([]);
   });
 
-  it("stops a record the contract refuses on its own", () => {
+  it.each(refusals)("stops a record the contract refuses on its own for %s", (_, outcome) => {
     const result = applyBatchFailure(
       { ...INITIAL_STATE, isolation: true },
-      { kind: "http", status: 400, code: "validation_failed" },
+      outcome,
       [record()],
       NOW,
       half,

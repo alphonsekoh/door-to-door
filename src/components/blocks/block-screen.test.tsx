@@ -185,7 +185,299 @@ describe("BlockScreen", () => {
     render(<BlockScreen blockId="b1" />);
 
     expect(await screen.findByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100");
+    expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100&offset=0");
+  });
+
+  describe("on a block of more than one page (#127)", () => {
+    /* A hundred units that sort first, then the real one they pushed off page one. */
+    const junk = Array.from({ length: 100 }, (_, i) => `#00-${String(i).padStart(3, "0")}`);
+    const pageOf = (units: string[], offset: number, hasMore: boolean) => {
+      const page = list(units);
+      return {
+        data: page.data.map((entry, i) => ({
+          ...entry,
+          household: { ...entry.household, id: `h${String(offset + i)}` },
+          latestVisit: { ...entry.latestVisit, id: `v${String(offset + i)}` },
+        })),
+        pagination: { limit: 100, offset, total: 101, hasMore },
+      };
+    };
+    const first = pageOf(junk, 0, true);
+    const second = pageOf(["#09-999"], 100, false);
+    const historyOf = (entry: (typeof first.data)[number] | undefined, description: string) => ({
+      household: entry?.household,
+      block: B1.block,
+      visits: [
+        {
+          ...entry?.latestVisit,
+          description,
+          clientCreatedAt: "2026-03-14T10:00:00.000Z",
+          createdAt: "2026-03-14T10:00:00.000Z",
+          updatedAt: "2026-03-14T10:00:00.000Z",
+        },
+      ],
+      followUps: [],
+    });
+    const histories: Record<string, unknown> = {
+      "/households/h5": historyOf(first.data[5], "Came to the door in May."),
+      "/households/h100": historyOf(second.data[0], "Asked us to come back in June."),
+    };
+
+    function servePages(
+      secondPage: () => Promise<unknown> = () => Promise.resolve(second),
+      firstPage: () => Promise<unknown> = () => Promise.resolve(first),
+    ) {
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+        if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+        if (path in histories) return Promise.resolve(histories[path]);
+        if (path.endsWith("offset=100")) return secondPage();
+        return firstPage();
+      });
+    }
+    const syncs = (view: ReturnType<typeof render>, version: number) => {
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: version });
+      view.rerender(<BlockScreen blockId="b1" />);
+    };
+    const partNote = /Not every unit of this block could be loaded/;
+
+    it("reads the next page, and shows the history of a unit only it has", async () => {
+      servePages();
+      const user = userEvent.setup();
+      render(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100&offset=100");
+
+      await user.type(screen.getByLabelText("Unit number"), "#09-999");
+      expect(await screen.findByText("Asked us to come back in June.")).toBeInTheDocument();
+    });
+
+    it("writes the offline copy once, from every page, never from the first alone", async () => {
+      servePages();
+      render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+      expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...first.data, ...second.data]);
+    });
+
+    it("keeps the units it has, and says so, when a later page fails", async () => {
+      servePages();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+
+      servePages(() => Promise.reject(new Error("Could not reach the server.")));
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: 1 });
+      view.rerender(<BlockScreen blockId="b1" />);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+      expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    it("shows the units that arrived when a later page drops on first open, and saves none", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      await screen.findByRole("heading", { level: 1, name: "Blk 123" });
+
+      // A unit on the page that did arrive still shows its history.
+      await user.type(screen.getByLabelText("Unit number"), "#00-005");
+      expect(await screen.findByText("Came to the door in May.")).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "All units (100)" }));
+      expect(screen.getByText(partNote)).toBeInTheDocument();
+      // Part of the block must never stand in for all of it on the phone.
+      expect(noteBlock).not.toHaveBeenCalled();
+
+      // The next whole read replaces them, newer copies and all, and is saved.
+      const fresher = {
+        ...first,
+        data: first.data.map((entry, i) =>
+          i === 5
+            ? { ...entry, latestVisit: { ...entry.latestVisit, interestLevel: "high" as const } }
+            : entry,
+        ),
+      };
+      servePages(undefined, () => Promise.resolve(fresher));
+      syncs(view, 1);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(screen.queryByText(partNote)).toBeNull();
+      expect(
+        within(screen.getByRole("button", { name: /#00-005/ })).getByText("High"),
+      ).toBeInTheDocument();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+      expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...fresher.data, ...second.data]);
+    });
+
+    it("never takes away a unit shown because a later read got less", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (100)" });
+
+      // The next read loses its first page, so it has nothing at all.
+      servePages(undefined, () => Promise.reject(new TypeError("Failed to fetch")));
+      syncs(view, 1);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
+      expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+    });
+
+    it("lays a later read's pages over a whole one without saving them", async () => {
+      servePages();
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledTimes(1);
+      });
+
+      // A unit added since sorts first, and the page after it drops.
+      const added = pageOf(["#00-000a"], 200, true).data;
+      servePages(
+        () => Promise.reject(new TypeError("Load failed")),
+        () => Promise.resolve({ ...first, data: [...added, ...first.data.slice(0, 99)] }),
+      );
+      syncs(view, 1);
+      await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      // Every unit was read whole before, so nothing is said to be missing.
+      expect(screen.getByLabelText("Search this block")).toBeInTheDocument();
+      expect(screen.queryByText(partNote)).toBeNull();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    /* A promise settles once, so the late answer and the late failure each
+       need their own first read. */
+    it.each([
+      [
+        "answer",
+        (late: Late) => {
+          late.resolve(pageOf(["#00-000"], 100, false));
+        },
+      ],
+      [
+        "failure",
+        (late: Late) => {
+          late.reject(new Error("late"));
+        },
+      ],
+    ])("never lets a late %s for an older read replace a newer whole one", async (_, settle) => {
+      const late: Late = { resolve: () => undefined, reject: () => undefined };
+      let reads = 0;
+      servePages(() => {
+        reads += 1;
+        return reads === 1
+          ? new Promise((resolve, reject) => {
+              late.resolve = resolve;
+              late.reject = reject;
+            })
+          : Promise.resolve(second);
+      });
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(reads).toBe(1);
+      });
+
+      // A record reaching the server starts a second read while the first still pages.
+      useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: 1 });
+      view.rerender(<BlockScreen blockId="b1" />);
+      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+
+      await act(async () => {
+        settle(late);
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(noteBlock).toHaveBeenCalledTimes(1);
+    });
+
+    /* Slow 3G: a whole read takes longer than the gap between two saves, so
+       each sync starts a read while the last one still pages. */
+    it("lands each read as it ends, though a newer one has started", async () => {
+      let reads = 0;
+      const lastPages: Late[] = [];
+      servePages(() => {
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve(second)
+          : new Promise((resolve, reject) => {
+              lastPages.push({ resolve, reject });
+            });
+      });
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (101)" });
+
+      syncs(view, 1);
+      await waitFor(() => {
+        expect(lastPages).toHaveLength(1);
+      });
+      syncs(view, 2);
+      await waitFor(() => {
+        expect(lastPages).toHaveLength(2);
+      });
+
+      const sentOne = pageOf(["#09-999", "#10-001"], 100, false);
+      lastPages[0]?.resolve(sentOne);
+      expect(await screen.findByRole("tab", { name: "All units (102)" })).toBeInTheDocument();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenLastCalledWith(active, "b1", [...first.data, ...sentOne.data]);
+      });
+
+      lastPages[1]?.resolve(pageOf(["#09-999", "#10-001", "#10-002"], 100, false));
+      expect(await screen.findByRole("tab", { name: "All units (103)" })).toBeInTheDocument();
+    });
+
+    it("lands an older whole read after a newer one failed, keeping what that one showed", async () => {
+      const added = pageOf(["#00-000a"], 200, true).data;
+      let firstPages = 0;
+      let lastPage: Late = { resolve: () => undefined, reject: () => undefined };
+      let lastPageAsked = false;
+      servePages(
+        () =>
+          lastPageAsked
+            ? Promise.reject(new TypeError("Load failed"))
+            : new Promise((resolve, reject) => {
+                lastPageAsked = true;
+                lastPage = { resolve, reject };
+              }),
+        () => {
+          firstPages += 1;
+          return Promise.resolve(
+            firstPages === 1 ? first : { ...first, data: [...added, ...first.data.slice(0, 99)] },
+          );
+        },
+      );
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await waitFor(() => {
+        expect(lastPageAsked).toBe(true);
+      });
+
+      // The newer read loses its last page first: what it got is shown, not saved.
+      syncs(view, 1);
+      expect(await screen.findByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
+
+      // The older read then ends whole: it lands and is saved, under the unit
+      // the newer one found, and the failure is still said.
+      await act(async () => {
+        lastPage.resolve(second);
+        await Promise.resolve();
+      });
+      await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
+      expect(screen.getByText("#00-000a")).toBeInTheDocument();
+      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.queryByText(partNote)).toBeNull();
+      await waitFor(() => {
+        expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...first.data, ...second.data]);
+      });
+    });
   });
 
   it("has Save where it docks in the server's HTML, then hands it to the form", async () => {
