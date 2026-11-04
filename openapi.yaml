@@ -867,7 +867,9 @@ components:
               description: |
                 **Requires: admin.** Attributes the visit to this member rather
                 than to the caller, for a record phoned in or captured on paper.
-                A member supplying anyone else's id is refused with `403`.
+                A member supplying anyone else's id is refused with `403`. A
+                deactivated member is refused with `409 conflict`, and nothing
+                is written.
 
                 The record belongs to whoever knocked, so authorship is set here
                 and never reassigned by a later amendment.
@@ -2324,7 +2326,8 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: |
-            A visit with this id already exists, or no session is active
+            A visit with this id already exists, or the named `memberId` is
+            deactivated (`conflict`), or no session is active
             (`session_not_active`), or the block is not attached to the active
             session, or a member is recording an unlisted unit in a follow-up
             session (`not_on_follow_up_list`).
@@ -2953,6 +2956,11 @@ paths:
         **Requires: admin.** An admin cannot demote or deactivate their own
         account, which would risk locking every admin out; that returns `409`.
 
+        Nor can anyone demote or deactivate the last active admin: that is
+        `409` too. It is judged under a lock on the admins' rows, so two
+        admins demoting or deactivating each other at the same moment cannot
+        both succeed; the second is refused.
+
         Deactivating preserves the user's records and their attribution.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
@@ -2971,7 +2979,9 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: An admin attempting to demote or deactivate themselves.
+          description: |
+            An admin attempting to demote or deactivate themselves, or a
+            change that would leave no active admin.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

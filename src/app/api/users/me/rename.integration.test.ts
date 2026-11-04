@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetDatabase } from "@/db/client";
+import { getDatabase, resetDatabase } from "@/db/client";
 import { createTestPool, truncateAll } from "@/db/testing";
+import { updateOwnName } from "@/server/users/service";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -142,6 +143,13 @@ describe("PATCH /api/users/me", () => {
   it("returns 401 when the account no longer exists", async () => {
     signedInAs("abababab-0000-4000-8000-0000000000ff");
     expect((await rename({ name: "Al" })).status).toBe(401);
+  });
+
+  it("refuses a rename for an account deleted once its request was let in", async () => {
+    // Past the per-request check, which the route test above stops at.
+    await expect(
+      updateOwnName(getDatabase(), "abababab-0000-4000-8000-0000000000ff", "Al"),
+    ).rejects.toMatchObject({ status: 404, message: "Your account no longer exists." });
   });
 
   it("only ever touches the signed-in user", async () => {

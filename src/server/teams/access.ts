@@ -84,7 +84,9 @@ export async function canAmend(
 
 /*
  * Joins the author to the outing as a side effect of recording. Admins are
- * never auto-joined (D-74-13): they supervise rather than knock.
+ * never auto-joined (D-74-13): they supervise rather than knock. Whether the
+ * author is active is the caller's to judge: createVisit under the author's
+ * lock, sync per request, since its author is always the caller (D-83-11).
  */
 export async function autoJoin(db: Database, sessionId: string, userId: string): Promise<void> {
   await db.execute(sql`

@@ -214,16 +214,21 @@ authoritative, and a change to any of them needs the owner.
    name or street) is refused blank before anything is read (D-119-3). Sync and
    `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
-   transaction they lock the session row (`FOR KEY SHARE`) and judge the session, the
-   block and, in a follow-up session, the list rule for a member's new visit
+   transaction `POST /visits` first locks its author's user row (`FOR SHARE`) and
+   refuses a deactivated author (`409 conflict`, D-132-4, D-132-5); sync's author is
+   the caller, checked in step 3. Then both lock the session row (`FOR KEY SHARE`) and
+   judge the session, the block and, in a follow-up session, the list rule for a
+   member's new visit
    (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
    then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
    the answer is a `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
    sync item for a stored visit) is one transaction that locks the session
    `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
    `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
-   follow-up session's households, detaching a block and transitions lock that row
-   `FOR UPDATE` (D-117-45, D-123-4).
+   follow-up session's households, detaching a block and transitions lock the session
+   row `FOR UPDATE` (D-117-45, D-123-4). `PATCH /users/{id}` locks the target and every
+   active admin `FOR NO KEY UPDATE` in id order, and refuses a change that would leave
+   no active admin (`409 conflict`, D-132-1, D-132-2).
    Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
@@ -292,7 +297,8 @@ and debug output is dropped. Lines are throttled for 60 s, and the throttles sit
 `Symbol.for` global that both module graphs share. A failed sign-in is left to
 `sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
-any admin exists (D-105-3).
+any admin exists (D-105-3); after that the app never leaves the team without an active
+admin (D-31-5, D-132-1).
 Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
 (D-115-3).
 
