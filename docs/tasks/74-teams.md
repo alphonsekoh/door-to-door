@@ -56,7 +56,9 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
 - **D-74-10 · Sign-out calls `signOut({ redirect: false })` then
   `window.location.assign("/sign-in")`.** _Why:_ Auth.js builds the returned URL from the
   request host and changed origin under `HOSTNAME=127.0.0.1`; a full navigation also
-  drops the signed-in page from memory. _Research:_ R-30.
+  drops the signed-in page from memory. _Research:_ R-30. _Refined by D-129-3:_ the
+  navigation is `location.replace` (`replaceWith`), which `signOutAndForget` chooses
+  itself, so Back cannot return to the page that signed out.
 - **D-74-11 · The proxy sets `Cache-Control: no-store` on signed-in page responses, not
   API responses.** _Why:_ Back after sign-out must revalidate (and be redirected to
   sign-in) rather than restore the signed-in shell from bfcache. _Trade-off:_ signed-in
@@ -66,6 +68,8 @@ D-74-1 to D-74-12 were built in PR 1 (#81).
   `no-store` through `jsonResponse`. _Refined by D-150-1 and D-150-2:_ the proxy also
   sets it on every response that carries `Set-Cookie`, which includes API answers with
   a refreshed session cookie and the signed-out `307`. It always sets it on `/sign-in`.
+  _Refined by D-129-1:_ `no-store` is no longer the only guard; a page restored from
+  bfcache anyway, `/offline` included, is hidden and reloaded.
 - **D-74-12 · E2E: the sign-out test uses the real button, and the install-banner test
   scrolls and measures together inside `expect.poll`.** _Why:_ the old test measured
   before the page finished growing (reproduced on `main` too); a real overlap still
@@ -361,7 +365,8 @@ likely the old double teams fetch fixed by D-74-52.
   _Why:_ Auth.js answers a refused sign-out (MissingCSRF) with `200` and the session
   survives, so navigating to `/sign-in` told the member they were out when they were not.
   _Known limit:_ the alert says "Check your connection", which is wrong for a refusal;
-  wording left as is. _Research:_ R-41.
+  wording left as is. _Research:_ R-41. _Extended by D-129-4:_ so does a session still
+  there after three sign-outs.
 
 ## Follow-ups
 

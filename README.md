@@ -234,7 +234,8 @@ The least obvious part of the system. In short (details in
    rejected while the rest apply (D-76-4).
 5. **Nothing unsent is ever deleted** (D-33-2). Failures back off from 5 s to 5 min; a
    record that fails on its own 10 times is quarantined but kept, and Retry is the only
-   action (D-33-26, D-33-27). Sent records are purged after 24 hours (D-33-9).
+   action (D-33-26, D-33-27). Sent records are purged after 24 hours (D-33-9), and from
+   the phone on every sign-in and sign-out (D-129-6).
 
 ## How the API is built (OpenAPI-first)
 

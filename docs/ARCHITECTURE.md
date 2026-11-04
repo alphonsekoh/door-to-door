@@ -420,17 +420,25 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
-- Sign-out (`src/lib/session/sign-out.ts`): clears the block cache and the local copy (never the queue), warns
-  on the member's unsent records (`hasUnsyncedItems(ownerId)`, D-33-15),
-  `signOut({ redirect: false })`, then a full navigation to `/sign-in` (or a given
-  destination, e.g. `/sign-in?reason=signed-out`). A refusal
-  (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
-  sign out".
+- Sign-out (`src/lib/session/sign-out.ts`): warns on the member's unsent records
+  (`hasUnsyncedItems(ownerId)`, D-33-15); clears the block cache, the local copy and
+  every sent queue record, never an unsent one (D-129-6); `signOut({ redirect: false })`;
+  asks `/api/auth/session` and signs out again while it names someone, at most 3 times
+  (D-129-4); then replaces the page with `/sign-in` (or a given destination, e.g.
+  `/sign-in?reason=signed-out`) through `location.replace`, so Back cannot return to it
+  (D-129-3). A refusal (Auth.js returns an `error` URL with 200), or a session that keeps
+  coming back, throws instead, and Account shows "Could not sign out". A sessionStorage
+  note makes `/sign-in` check once more, and a sign-in there waits for it (D-129-5).
 - The proxy sets `Cache-Control: no-store` on signed-in page responses and `/sign-in`,
   so Back after sign-out revalidates instead of restoring the page from bfcache. API
   answers get theirs from their handlers, and also from the proxy when they carry a
   cookie (see Response headers). The sign-out `POST`'s `Clear-Site-Data: "cache"` never
-  touches Cache Storage or IndexedDB.
+  touches Cache Storage or IndexedDB. Where an engine restores a page anyway, and for
+  `/offline`, which is not `no-store`, `RestoreGuard` (in `AppShell`, outside
+  `AccountGate`, so on every document) hides and reloads it (`reloadWhenRestored` in
+  `src/lib/session/navigate.ts`, D-129-1).
+- The admin history and records screens keep their filters in the URL, except the search
+  term, which the screen holds in state and never writes to the URL (D-29-4, D-129-7).
 
 ## PWA and service worker
 
@@ -450,9 +458,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `InstallPrompt` floats the same way above the nav, reserving `--banner-bottom`, only
   while it is at most a quarter of the screen and no docked Save is on screen; otherwise
   it is a card at the end of the page (D-111-46).
-- Sign-in and sign-out clear the cached block list (sign-out: D-74-9) and the local
-  copy (D-77-6). The block-list clear gives up after 1.5 s and never blocks either
-  (D-111-68).
+- Sign-in and sign-out clear the cached block list (sign-out: D-74-9), the local copy
+  (D-77-6) and every sent queue record (D-129-6). The block-list clear and the sent-record
+  delete each give up after 1.5 s, and none blocks either (D-111-68).
 
 ## Offline
 
@@ -467,7 +475,8 @@ clock_skew`; items stamped in the future or before their session are rejected
 store `visits`, index `by-owner`) and moves on; it posts directly only when the queue
 cannot be written. A visit is queued only with its session's id (D-33-25). Each record carries its owner and a state: `queued`, `failed`,
 `held`, `quarantined` or `synced`. Sending is in memory only. Nothing unsent is ever
-deleted; sent records are purged after 24 h.
+deleted; sent records are purged at app start after 24 h, and on every sign-in and
+sign-out whoever saved them (D-129-6).
 
 ```
 save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /api/auth/session
@@ -484,7 +493,8 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   each outcome, `backoff` times retries, `controller` owns triggers, the lock and the
   timer. `idb-queue` and `memory-queue` implement `SyncQueue`; `record` validates every
   read, salvaging a record whose knock and owner are intact (D-34-8). `signed-in`
-  checks the cookie's member before each batch. After a run storage fails, the
+  checks the cookie's member before each batch, and confirms a sign-out. `forget-sent`
+  drops sent records at sign-in and sign-out (D-129-6). After a run storage fails, the
   controller waits 5 s doubling to 5 min before its timer fires again (D-34-6).
 - Triggers: app start, each save, `online`, focus and visibility, the backoff timer,
   Retry. No Background Sync.
@@ -512,8 +522,9 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   home is then the list, and a block never opened is built from it with only its listed
   households (`shellList`, `shellBlocks`). After "Continue as" the shell opens the block
   and unit the failed address named (`shell-target.ts`, D-117-48). The copy is cleared
-  on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; never the queue
-  (D-77-2, D-77-6).
+  on sign-in, sign-out and by `LocalCopyKeeper` on a member mismatch; that clear never
+  touches the queue (D-77-2, D-77-6). `loadLocalCopy` deletes a copy past its 12 h
+  (D-129-8).
 - While the shell is shown, `shellState` (not the path or session) decides the queue
   owner, the sync bar and the hidden nav (D-77-10, D-77-12). The chrome reads the route
   through `useRoutePathname`, which is `/offline` there on server and client alike,
