@@ -1,6 +1,6 @@
 # #132 · Admin edge cases: the last active admin, and recording for a deactivated member
 
-- **Status:** In review (PR #157)
+- **Status:** Done (PR #157)
 - **Phase:** 7 - Hardening
 - **Depends on:** #31, #83, #117, #123
 
@@ -28,9 +28,9 @@ made them a participant. Found by a security audit.
   locked. _Trade-off:_ conservative. A row the statement waited for is re-checked against
   its filter, but an admin promoted after it began is not counted, so a change may be
   refused that would have passed; a retry passes. _Research:_ R-35, R-82, R-129.
-- **D-132-3 · The actor's own rights are not re-judged under the lock.** They stay the
-  per-request check (D-83-1), with D-83-11's window. _Why:_ the rule protects the team's
-  admin count, whoever makes the change.
+- **D-132-3 · The actor's own rights are not re-judged under the lock (owner,
+  2026-11-04).** They stay the per-request check (D-83-1), with D-83-11's window. _Why:_
+  the rule protects the team's admin count, whoever makes the change.
 - **D-132-4 · `POST /visits` needs an active author, judged under a `FOR SHARE` lock on
   the author's row.** A missing author is still `404` "No such member."; a deactivated
   one is `409 conflict` "That member's account is deactivated.", and nothing is written.
@@ -53,7 +53,9 @@ made them a participant. Found by a security audit.
   always the caller, judged per request, so D-83-11 stands for a batch; `autoJoin`'s
   callers vouch for the author; placement already refuses a deactivated user (D-74-26).
   _Why:_ none of them names another member, and a per-item refusal in sync would fall to
-  the queue's default branch and be held until tapped.
+  the queue's default branch and be held until tapped. _Gap (owner, 2026-11-04):_
+  placement judges `deactivatedAt` on an unlocked read, so a member deactivated in the
+  same moment can still be placed on a team; locking it is #158.
 - **D-132-7 · Refines D-83-11 for `POST /visits`.** A member deactivated while their own
   single record is in flight gets the same `409 conflict` instead of a completed write.
   _Why:_ one predicate, with no branch on whether the author is the caller; it is a
@@ -81,4 +83,4 @@ task, since two admins could deactivate each other at once; D-132-1 makes it tru
 
 ## Open questions
 
-None. The owner confirmed D-132-9.
+None. The owner confirmed D-132-9 and D-132-3, and moved D-132-6's gap to #158.
