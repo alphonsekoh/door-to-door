@@ -9,7 +9,13 @@ import {
   users,
 } from "@/db/schema";
 import { checkTeamName } from "@/lib/teams/team-name";
-import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
+import {
+  appendTo,
+  chunked,
+  firstOrThrow,
+  isConstraintViolation,
+  selectInChunks,
+} from "@/server/db-utils";
 import {
   ConflictError,
   ForbiddenError,
@@ -166,7 +172,7 @@ async function loadTeams(db: Database, where: SQL): Promise<TeamRow[]> {
 
   const byTeam = new Map<string, PersonRow[]>();
   for (const { teamId, ...person } of members) {
-    byTeam.set(teamId, [...(byTeam.get(teamId) ?? []), person]);
+    appendTo(byTeam, teamId, person);
   }
   return teams.map((team) => ({
     id: team.id,
@@ -235,6 +241,9 @@ export async function createTeam(
  * Checks everyone about to join a team: they exist, are active, are on no team
  * in this outing, and - when a member is doing the adding - have joined it.
  * An admin may reach anyone, which also makes them a participant.
+ *
+ * `memberIds` is uncapped (D-74-15), so each lookup, and each insert in
+ * placeMembers, goes in chunks under Postgres's bind limit (#126).
  */
 async function assertPlaceable(
   db: Database,
@@ -244,10 +253,12 @@ async function assertPlaceable(
 ): Promise<void> {
   if (userIds.length === 0) return;
 
-  const found = await db
-    .select({ id: users.id, deactivatedAt: users.deactivatedAt })
-    .from(users)
-    .where(inArray(users.id, userIds));
+  const found = await selectInChunks(userIds, (ids) =>
+    db
+      .select({ id: users.id, deactivatedAt: users.deactivatedAt })
+      .from(users)
+      .where(inArray(users.id, ids)),
+  );
   if (found.length !== userIds.length) {
     throw new NotFoundError("One or more of those people do not exist.");
   }
@@ -255,12 +266,14 @@ async function assertPlaceable(
     throw new ConflictError("conflict", "One or more of those people are deactivated.");
   }
 
-  const taken = await db
-    .select({ userId: sessionTeamMembers.userId })
-    .from(sessionTeamMembers)
-    .where(
-      and(eq(sessionTeamMembers.sessionId, sessionId), inArray(sessionTeamMembers.userId, userIds)),
-    );
+  const taken = await selectInChunks(userIds, (ids) =>
+    db
+      .select({ userId: sessionTeamMembers.userId })
+      .from(sessionTeamMembers)
+      .where(
+        and(eq(sessionTeamMembers.sessionId, sessionId), inArray(sessionTeamMembers.userId, ids)),
+      ),
+  );
   if (taken.length > 0) {
     throw new ConflictError(
       "conflict",
@@ -274,15 +287,17 @@ async function assertPlaceable(
     // The caller joins by creating or adding, so only the others need to have joined.
     const others = userIds.filter((id) => id !== actor.id);
     if (others.length === 0) return;
-    const joined = await db
-      .select({ userId: sessionParticipants.userId })
-      .from(sessionParticipants)
-      .where(
-        and(
-          eq(sessionParticipants.sessionId, sessionId),
-          inArray(sessionParticipants.userId, others),
+    const joined = await selectInChunks(others, (ids) =>
+      db
+        .select({ userId: sessionParticipants.userId })
+        .from(sessionParticipants)
+        .where(
+          and(
+            eq(sessionParticipants.sessionId, sessionId),
+            inArray(sessionParticipants.userId, ids),
+          ),
         ),
-      );
+    );
     if (joined.length !== others.length) {
       throw new ConflictError(
         "conflict",
@@ -298,14 +313,15 @@ async function placeMembers(
   sessionId: string,
   userIds: string[],
 ): Promise<void> {
-  if (userIds.length === 0) return;
-  await db
-    .insert(sessionTeamMembers)
-    .values(userIds.map((userId) => ({ teamId, sessionId, userId })));
-  await db
-    .insert(sessionParticipants)
-    .values(userIds.map((userId) => ({ sessionId, userId })))
-    .onConflictDoNothing();
+  for (const ids of chunked(userIds)) {
+    await db
+      .insert(sessionTeamMembers)
+      .values(ids.map((userId) => ({ teamId, sessionId, userId })));
+    await db
+      .insert(sessionParticipants)
+      .values(ids.map((userId) => ({ sessionId, userId })))
+      .onConflictDoNothing();
+  }
 }
 
 /* A lost race on the unique indexes is a conflict the client can explain. */

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSerwist } from "@serwist/turbopack";
+import { PROXY_BODY_LIMIT_BYTES } from "./src/server/http/body-limit";
 import { securityHeaders } from "./src/server/http/security-headers";
 
 const nextConfig: NextConfig = {
@@ -13,7 +14,8 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   // Next buffers each body the proxy sees, 10 MB by default; past this it
   // truncates what the handler reads rather than refusing the request (#120).
-  experimental: { proxyClientMaxBodySize: "2mb" },
+  // Above every contract cap, so a cut body is still refused 413 (#126).
+  experimental: { proxyClientMaxBodySize: PROXY_BODY_LIMIT_BYTES },
   async headers() {
     return [
       {

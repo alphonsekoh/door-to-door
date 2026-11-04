@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { zError } from "@/generated/zod.gen";
+import { DEFAULT_BODY_LIMIT_BYTES } from "@/server/http/body-limit";
 import {
   ResponseContractError,
   coerceQuery,
@@ -198,6 +199,164 @@ describe("requests from another origin, and bodies that are not JSON (#121)", ()
     );
     expect(response.status).toBe(201);
     expect(handler).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("request bodies over the size cap (#126)", () => {
+  const handler = vi.fn(({ body }: { body: { name: string } }) =>
+    Promise.resolve({ status: 201, body: { id: body.name, size: body.name.length } }),
+  );
+  const spec = {
+    operationId: "createWidget",
+    path: z.object({ id: z.uuid() }),
+    body: z.object({ name: z.string() }),
+    responses: { 201: zWidget },
+  };
+  const route = withContract(spec, handler);
+  const ID = "00000000-0000-4000-8000-000000000001";
+  const params = (id = ID) => ({ params: Promise.resolve({ id }) });
+  const json = { "content-type": "application/json" };
+  const encoder = new TextEncoder();
+
+  /* A JSON body of exactly `bytes` bytes. */
+  const sized = (bytes: number) => JSON.stringify({ name: "x".repeat(bytes - 11) });
+  const send = (body: BodyInit, headers: Record<string, string> = json) =>
+    new Request("https://test.local/api/widgets", { method: "POST", body, headers });
+
+  /* Arrives in chunks, as a body with no Content-Length does; notes a cancel. */
+  function streamed(chunks: Uint8Array[], headers: Record<string, string> = json) {
+    const state = { pulled: 0, cancelled: false };
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        const next = chunks[state.pulled];
+        state.pulled += 1;
+        if (next === undefined) controller.close();
+        else controller.enqueue(next);
+      },
+      cancel() {
+        state.cancelled = true;
+      },
+    });
+    const request = new Request("https://test.local/api/widgets", {
+      method: "POST",
+      body: stream,
+      headers,
+      duplex: "half",
+    } as RequestInit);
+    return { request, state };
+  }
+
+  const tooLarge = async (response: Response) => {
+    expect(response.status).toBe(413);
+    expect(zError.parse(await response.json()).error).toEqual({
+      code: "content_too_large",
+      message: "This request is too large.",
+    });
+    expect(handler).not.toHaveBeenCalled();
+  };
+
+  beforeEach(() => {
+    handler.mockClear();
+  });
+
+  it("accepts a body of exactly the cap", async () => {
+    expect(encoder.encode(sized(DEFAULT_BODY_LIMIT_BYTES)).byteLength).toBe(
+      DEFAULT_BODY_LIMIT_BYTES,
+    );
+    const response = await route(send(sized(DEFAULT_BODY_LIMIT_BYTES)), params());
+    expect(response.status).toBe(201);
+  });
+
+  it("refuses a body one byte over, read in full", async () => {
+    await tooLarge(await route(send(sized(DEFAULT_BODY_LIMIT_BYTES + 1)), params()));
+  });
+
+  it("refuses on Content-Length alone, without reading the body", async () => {
+    const request = send("{}", {
+      ...json,
+      "content-length": String(DEFAULT_BODY_LIMIT_BYTES + 1),
+    });
+    await tooLarge(await route(request, params()));
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("refuses on a Content-Length too long to be a safe number", async () => {
+    await tooLarge(
+      await route(send("{}", { ...json, "content-length": "9".repeat(40) }), params()),
+    );
+  });
+
+  it.each([
+    ["no Content-Length", json],
+    ["a Content-Length that undersells it", { ...json, "content-length": "2" }],
+    ["a Content-Length that is not a number", { ...json, "content-length": "2, 2" }],
+  ])("stops reading a body with %s once it passes the cap", async (_, headers) => {
+    const chunk = encoder.encode("x".repeat(64 * 1024));
+    const { request, state } = streamed(
+      [encoder.encode('{"name":"'), ...Array.from({ length: 8 }, () => chunk)],
+      headers,
+    );
+    await tooLarge(await route(request, params()));
+    expect(state.cancelled).toBe(true);
+    // Stops pulling once a chunk crosses the cap, rather than draining the rest.
+    expect(state.pulled).toBeLessThan(8);
+  });
+
+  it("decodes a body that arrives in pieces as request.text() would", async () => {
+    // A three-byte character split across chunks, a leading BOM, and a stray byte.
+    const whole = encoder.encode('\uFEFF{"name":"中文"}');
+    const split = whole.indexOf(0xe4) + 1;
+    const { request } = streamed([whole.slice(0, split), whole.slice(split)]);
+    const response = await route(request, params());
+    expect(response.status).toBe(201);
+    expect(handler.mock.calls[0]?.[0].body).toEqual({ name: "中文" });
+
+    const stray = await route(
+      send(new Uint8Array([...encoder.encode('{"name":"a'), 0xff, ...encoder.encode('"}')])),
+      params(),
+    );
+    expect(stray.status).toBe(201);
+    expect(handler.mock.calls[1]?.[0].body).toEqual({ name: "a\uFFFD" });
+  });
+
+  it("still reads a blank body as no body", async () => {
+    const { request } = streamed([encoder.encode("  "), encoder.encode("\n")]);
+    const response = await route(request, params());
+    expect(response.status).toBe(400);
+    expect((await response.json()) as unknown).toMatchObject({
+      error: { message: "Invalid request body." },
+    });
+  });
+
+  it("takes an operation's own cap", async () => {
+    const roomy = withContract({ ...spec, maxBodyBytes: DEFAULT_BODY_LIMIT_BYTES * 2 }, handler);
+    const tight = withContract({ ...spec, maxBodyBytes: 64 }, handler);
+    expect((await roomy(send(sized(DEFAULT_BODY_LIMIT_BYTES * 2)), params())).status).toBe(201);
+    handler.mockClear();
+    await tooLarge(await roomy(send(sized(DEFAULT_BODY_LIMIT_BYTES * 2 + 1)), params()));
+    await tooLarge(await tight(send(sized(65)), params()));
+  });
+
+  it("refuses a cross-site write with 403, and a bad path with 400, before its size", async () => {
+    const huge = { ...json, "content-length": String(DEFAULT_BODY_LIMIT_BYTES * 10) };
+    const crossSite = await route(
+      send("{}", { ...huge, "sec-fetch-site": "cross-site" }),
+      params(),
+    );
+    expect(crossSite.status).toBe(403);
+    const badPath = await route(send("{}", huge), params("x"));
+    expect(badPath.status).toBe(400);
+    expect(zError.parse(await badPath.json()).error.message).toBe("Invalid path parameters.");
+  });
+
+  it("refuses an oversized body for its size before its type or its content", async () => {
+    await tooLarge(
+      await route(
+        send(sized(DEFAULT_BODY_LIMIT_BYTES + 1), { "content-type": "text/plain" }),
+        params(),
+      ),
+    );
+    await tooLarge(await route(send("{oops".padEnd(DEFAULT_BODY_LIMIT_BYTES + 1)), params()));
   });
 });
 

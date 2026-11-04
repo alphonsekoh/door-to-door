@@ -68,6 +68,21 @@ info:
     `application/json`; any other `Content-Type` is
     `415 unsupported_media_type`.
 
+    ## Request size
+
+    A request body may be at most 256 KiB, or 1.5 MiB for `POST /visits/sync`
+    (a full batch of 100 records at their longest fits). A larger one is
+    refused with `413 content_too_large` before it is parsed or the caller's
+    account is checked: at once when its `Content-Length` says so, otherwise as
+    soon as more than that has been read. A request with no session at all is
+    still refused `401` first.
+
+    ## Paging
+
+    List operations take `limit` (at most 100) and `offset` (at most 10,000).
+    To read a whole list, ask again from `offset` plus the rows received until
+    `hasMore` is false.
+
     ## Caching
 
     Every response, an error or an empty one included, carries
@@ -177,6 +192,7 @@ components:
         - follow_up_exists
         - rate_limited
         - unsupported_media_type
+        - content_too_large
         - internal_error
 
     FieldError:
@@ -1099,6 +1115,7 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 60 }
         # Deliberately uncapped (D-74-15), unlike every other request array.
+        # The 256 KiB body cap bounds one request at about 6,700 ids (#126).
         memberIds:
           type: array
           uniqueItems: true
@@ -1201,8 +1218,15 @@ components:
       required: [household, visitCount, latestVisit]
       properties:
         household: { $ref: "#/components/schemas/Household" }
-        visitCount: { type: integer }
+        visitCount:
+          type: integer
+          description: |
+            Visits at this unit; only the session's when the list is scoped
+            to a `sessionId`.
         latestVisit:
+          description: |
+            The newest of those visits by `createdAt` (ties broken by `id`),
+            or null if there are none.
           oneOf:
             - $ref: "#/components/schemas/Visit"
             - type: "null"
@@ -1357,7 +1381,8 @@ components:
     Offset:
       name: offset
       in: query
-      schema: { type: integer, minimum: 0, default: 0 }
+      description: Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+      schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
     PathId:
       name: id
       in: path
@@ -1389,6 +1414,13 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
     UnsupportedMediaType:
       description: The request has a body that is not `application/json`.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ContentTooLarge:
+      description: |
+        `content_too_large`: the request body is over 256 KiB (see "Request
+        size"). Nothing was parsed or applied.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1465,6 +1497,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/active:
@@ -1653,6 +1686,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/{id}/blocks/{blockId}:
@@ -1782,6 +1816,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /sessions/{id}/households/{householdId}:
@@ -1935,6 +1970,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /teams/{id}:
@@ -1969,6 +2005,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
     delete:
       tags: [Teams]
@@ -2031,6 +2068,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /teams/{id}/members/{userId}:
@@ -2114,6 +2152,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /blocks/{id}:
@@ -2143,6 +2182,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   # ============================================================ Households
@@ -2153,7 +2193,9 @@ paths:
       summary: List households in a block
       description: |
         Returns each unit with its latest visit and outstanding follow-up count,
-        which is what the block unit list renders.
+        which is what the block unit list renders. Ordered by unit number. A
+        block may hold more units than one page: a client that needs them all
+        reads every page until `hasMore` is false.
       parameters:
         - name: blockId
           in: query
@@ -2297,6 +2339,9 @@ paths:
         names them, so a client can offer to undo it. This holds for members
         and admins alike; an admin recording at a household not on the list
         marks nothing.
+
+        Rate limited per caller, apart from `POST /visits/sync`'s budget: an
+        admin recording on a member's behalf spends the admin's.
       requestBody:
         required: true
         content:
@@ -2331,11 +2376,19 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
         "422":
           description: |
             `clock_skew`: `clientCreatedAt` is more than the tolerance ahead of
             the server's clock.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: |
+            `rate_limited`: too many visits recorded this minute. Nothing was
+            recorded; try again shortly.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2377,6 +2430,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /visits/sync:
@@ -2455,6 +2509,15 @@ paths:
             was issued. Nothing in the batch was applied. A queue should hold its
             records rather than discard them: if an admin reactivates the
             account, the same batch goes through.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413":
+          description: |
+            `content_too_large`: the batch is over 1.5 MiB. A full batch at
+            every `maxLength` fits, unless its text is mostly characters JSON
+            must escape. Nothing in it was applied. Send its records in smaller
+            batches.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2596,6 +2659,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /follow-ups/{id}:
@@ -2670,6 +2734,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /follow-ups/{id}/remove:
@@ -2708,6 +2773,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   # =============================================================== History
@@ -2878,6 +2944,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /users/me:
@@ -2942,6 +3009,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /users/{id}:
@@ -2975,4 +3043,5 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }

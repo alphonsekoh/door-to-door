@@ -12,6 +12,8 @@ import { currentSession } from "@/server/auth/session";
 import { requireUser, resolveMemberScope } from "@/server/auth/guards";
 import { firstOrThrow } from "@/server/db-utils";
 import { withContract } from "@/server/http/contract";
+import { RateLimitedError } from "@/server/http/errors";
+import { recordLimiter } from "@/server/visits/rate-limits";
 import { toRecordedVisit, toVisit } from "@/server/visits/serialise";
 import { currentClock } from "@/server/visits/clock-rules";
 import { createVisit, visitColumns } from "@/server/visits/service";
@@ -88,6 +90,9 @@ export const POST = withContract(
      */
     const memberId = resolveMemberScope(session, body.memberId);
     const user = requireUser(session);
+    if (!recordLimiter.consume(user.id).allowed) {
+      throw new RateLimitedError("Too many visits recorded. Try again shortly.");
+    }
     const db = getDatabase();
     const visit = await createVisit(
       db,

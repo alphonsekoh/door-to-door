@@ -68,6 +68,7 @@ export const zErrorCode = z.enum([
     'follow_up_exists',
     'rate_limited',
     'unsupported_media_type',
+    'content_too_large',
     'internal_error'
 ]);
 
@@ -584,13 +585,16 @@ export const zHouseholdAttentionList = z.object({
  */
 export const zLimit = z.int().gte(1).lte(100).default(50);
 
-export const zOffset = z.int().gte(0).default(0);
+/**
+ * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+ */
+export const zOffset = z.int().gte(0).lte(10000).default(0);
 
 export const zPathId = z.uuid();
 
 export const zListSessionsQuery = z.object({
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0),
+    offset: z.int().gte(0).lte(10000).optional().default(0),
     status: zSessionStatus.optional(),
     kind: zSessionKind.optional()
 });
@@ -798,7 +802,7 @@ export const zRemoveTeamMemberResponse = zTeam;
 
 export const zListBlocksQuery = z.object({
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0),
+    offset: z.int().gte(0).lte(10000).optional().default(0),
     search: z.string().max(120).optional()
 });
 
@@ -829,7 +833,7 @@ export const zListHouseholdsQuery = z.object({
     blockId: z.uuid(),
     sessionId: z.uuid().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -841,7 +845,7 @@ export const zListHouseholdsNeedingAttentionQuery = z.object({
     minimumInterest: zInterestLevel.optional().default('high'),
     blockId: z.uuid().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -864,7 +868,7 @@ export const zListVisitsQuery = z.object({
     householdId: z.uuid().optional(),
     memberId: z.uuid().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -909,7 +913,7 @@ export const zListFollowUpsQuery = z.object({
     removedByOthers: z.boolean().optional(),
     deletedSince: z.iso.datetime().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -956,7 +960,7 @@ export const zListHistoryQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -972,7 +976,7 @@ export const zListOwnHistoryQuery = z.object({
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -982,7 +986,7 @@ export const zListOwnHistoryResponse = zHistoryList;
 
 export const zListOwnSessionHistoryQuery = z.object({
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**
@@ -994,7 +998,7 @@ export const zListUsersQuery = z.object({
     role: zRole.optional(),
     includeDeactivated: z.boolean().optional().default(false),
     limit: z.int().gte(1).lte(100).optional().default(50),
-    offset: z.int().gte(0).optional().default(0)
+    offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 
 /**

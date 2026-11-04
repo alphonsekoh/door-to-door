@@ -7,6 +7,7 @@ import {
   InternalError,
   NotFoundError,
   ClockSkewError,
+  ContentTooLargeError,
   RateLimitedError,
   UnauthenticatedError,
   UnsupportedMediaTypeError,
@@ -22,6 +23,7 @@ describe("status and code mapping", () => {
     [new NotFoundError(), 404, "not_found"],
     [new ConflictError(), 409, "conflict"],
     [new UnsupportedMediaTypeError(), 415, "unsupported_media_type"],
+    [new ContentTooLargeError(), 413, "content_too_large"],
     [new ClockSkewError(), 422, "clock_skew"],
     [new RateLimitedError(), 429, "rate_limited"],
     [new InternalError(), 500, "internal_error"],
@@ -35,6 +37,7 @@ describe("status and code mapping", () => {
     expect(new NotFoundError().name).toBe("NotFoundError");
     expect(new AccountDeactivatedError().name).toBe("AccountDeactivatedError");
     expect(new UnsupportedMediaTypeError().name).toBe("UnsupportedMediaTypeError");
+    expect(new ContentTooLargeError().name).toBe("ContentTooLargeError");
   });
 });
 
@@ -47,6 +50,7 @@ describe("default messages", () => {
     [new NotFoundError(), /not found/i],
     [new ConflictError(), /conflicts/i],
     [new UnsupportedMediaTypeError(), /JSON/],
+    [new ContentTooLargeError(), /too large/i],
     [new ClockSkewError(), /clock/i],
     [new RateLimitedError(), /too many/i],
     [new InternalError(), /went wrong/i],
@@ -63,6 +67,7 @@ describe("default messages", () => {
     expect(new InternalError("Boom.").message).toBe("Boom.");
     expect(new ValidationError("Bad input.").message).toBe("Bad input.");
     expect(new UnsupportedMediaTypeError("JSON only.").message).toBe("JSON only.");
+    expect(new ContentTooLargeError("Send less.").message).toBe("Send less.");
   });
 });
 

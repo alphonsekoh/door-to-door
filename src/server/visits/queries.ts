@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
 import { blocks, followUps, households, users, visits, type FollowUpStatus } from "@/db/schema";
-import { firstOrThrow } from "@/server/db-utils";
+import { firstOrThrow, getOrThrow } from "@/server/db-utils";
 import { liveFollowUp } from "@/server/follow-ups/list-rule";
 import { NotFoundError } from "@/server/http/errors";
 import { attachTeams } from "@/server/teams/access";
@@ -52,11 +52,14 @@ export type HouseholdSummaryRow = {
 };
 
 /*
- * A fixed number of queries regardless of page size: the page of households,
- * their visits, their outstanding follow-up counts, the total, and two to
- * attach teams (none when no visit is stamped). Summarising each
- * household with its own round trip would be N+1 on a block with a hundred
- * units, which is the normal case.
+ * A fixed number of queries regardless of page size (D-20-3): the page of
+ * households, the total, each one's visit count and latest visit, those
+ * visits, their outstanding follow-up counts, and two to attach teams (none
+ * when no visit is stamped). Summarising each household with its own round
+ * trip would be N+1 on a block with a hundred units, which is the normal case.
+ *
+ * Only the page's summaries and at most one visit per household reach Node,
+ * however many visits a household has (D-126-1).
  */
 export async function listHouseholds(
   db: Database,
@@ -85,7 +88,7 @@ export async function listHouseholds(
         );
 
   const page = await db
-    .select()
+    .select({ id: households.id })
     .from(households)
     .where(filter)
     .orderBy(asc(households.unitNumber))
@@ -103,18 +106,46 @@ export async function listHouseholds(
   }
 
   const ids = page.map((household) => household.id);
-  const rawHistory = await db
-    .select(visitColumns)
-    .from(visits)
-    .innerJoin(users, eq(users.id, visits.memberId))
-    .where(
-      options.sessionId === undefined
-        ? inArray(visits.householdId, ids)
-        : and(inArray(visits.householdId, ids), eq(visits.sessionId, options.sessionId)),
-    )
-    .orderBy(desc(visits.createdAt));
+  const inSession =
+    options.sessionId === undefined ? undefined : eq(visits.sessionId, options.sessionId);
 
-  const history = await attachTeams(db, rawHistory);
+  /*
+   * Summarised in their own query, by id, rather than in the page's: there
+   * OFFSET would have Postgres work them out for every row it skips. Lateral
+   * subqueries built by Drizzle, not scalar ones in raw SQL, where it would
+   * leave the outer column unqualified (R-7). A count always has a row.
+   */
+  const tally = db
+    .select({ visitCount: sql<number>`count(*)::int`.as("visit_count") })
+    .from(visits)
+    .where(and(eq(visits.householdId, households.id), inSession))
+    .as("tally");
+  /* Newest first, the id breaking a tie, as the history's last visit (getHouseholdHistory). */
+  const latest = db
+    .select({ id: visits.id })
+    .from(visits)
+    .where(and(eq(visits.householdId, households.id), inSession))
+    .orderBy(desc(visits.createdAt), desc(visits.id))
+    .limit(1)
+    .as("latest");
+
+  const summaries = await db
+    .select({ household: households, visitCount: tally.visitCount, latestId: latest.id })
+    .from(households)
+    .crossJoinLateral(tally)
+    .leftJoinLateral(latest, sql`true`)
+    .where(inArray(households.id, ids))
+    .orderBy(asc(households.unitNumber));
+
+  const latestIds = summaries.flatMap((row) => (row.latestId === null ? [] : [row.latestId]));
+  const latestVisits = await attachTeams(
+    db,
+    await db
+      .select(visitColumns)
+      .from(visits)
+      .innerJoin(users, eq(users.id, visits.memberId))
+      .where(inArray(visits.id, latestIds)),
+  );
 
   /* Only what is owed: a suggestion is not a promise until an admin lists it. */
   const outstanding = await db
@@ -131,24 +162,16 @@ export async function listHouseholds(
     .groupBy(followUps.householdId);
 
   const outstandingByHousehold = new Map(outstanding.map((row) => [row.householdId, row.total]));
-  const visitsByHousehold = new Map<string, VisitRow[]>();
-  for (const visit of history) {
-    visitsByHousehold.set(visit.householdId, [
-      ...(visitsByHousehold.get(visit.householdId) ?? []),
-      visit,
-    ]);
-  }
+  const visitsById = new Map(latestVisits.map((visit) => [visit.id, visit]));
 
   return {
-    rows: page.map((household) => {
-      const theirs = visitsByHousehold.get(household.id) ?? [];
-      return {
-        household,
-        visitCount: theirs.length,
-        latestVisit: theirs[0] ?? null,
-        outstandingFollowUps: outstandingByHousehold.get(household.id) ?? 0,
-      };
-    }),
+    rows: summaries.map((row) => ({
+      household: row.household,
+      visitCount: row.visitCount,
+      latestVisit:
+        row.latestId === null ? null : getOrThrow(visitsById, row.latestId, "the latest visit"),
+      outstandingFollowUps: outstandingByHousehold.get(row.household.id) ?? 0,
+    })),
     total,
   };
 }
@@ -184,7 +207,7 @@ export async function getHouseholdHistory(
       .from(visits)
       .innerJoin(users, eq(users.id, visits.memberId))
       .where(eq(visits.householdId, householdId))
-      .orderBy(asc(visits.createdAt)),
+      .orderBy(asc(visits.createdAt), asc(visits.id)),
   );
 
   return {

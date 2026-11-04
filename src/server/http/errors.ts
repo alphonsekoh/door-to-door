@@ -94,6 +94,13 @@ export class UnsupportedMediaTypeError extends ApiError {
   }
 }
 
+export class ContentTooLargeError extends ApiError {
+  constructor(message = "This request is too large.") {
+    super(413, "content_too_large", message);
+    this.name = "ContentTooLargeError";
+  }
+}
+
 export class ClockSkewError extends ApiError {
   constructor(message = "Your clock is out of step with the server.") {
     super(422, "clock_skew", message);
