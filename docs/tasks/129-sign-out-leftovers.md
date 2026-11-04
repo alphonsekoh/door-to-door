@@ -1,6 +1,6 @@
 # #129 · Nothing of the last member after sign-out (with #130)
 
-- **Status:** In review (PR #161)
+- **Status:** Done (PR #161)
 - **Phase:** 7 - Hardening
 - **Depends on:** #29, #30, #33, #74, #77, #122, #150
 
