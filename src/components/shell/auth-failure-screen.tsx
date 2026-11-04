@@ -59,7 +59,9 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
     setFailed(false);
     setBusy(true);
     try {
-      await signOutAndForget(signOut, copy.destination);
+      /* No userId once this page has seen the session lapse too, and then
+         no sent record goes: none can be told to be this member's. */
+      await signOutAndForget(signOut, userId, copy.destination);
     } catch {
       setFailed(true);
       setBusy(false);

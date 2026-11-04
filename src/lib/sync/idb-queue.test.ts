@@ -112,6 +112,32 @@ describe("openQueue", () => {
     expect((await queue.listAll()).map((r) => r.id).sort()).toEqual([recent.id, unsent.id].sort());
   });
 
+  it("deletes one member's sent records, sent this instant too, and leaves the rest on disk", async () => {
+    const queue = await open();
+    const sent = (ownerId: string, unit: string) => ({
+      ...record(ownerId, unit),
+      state: "synced" as const,
+      syncedAt: Date.now(),
+    });
+    const own = [sent("ann", "#05-01"), sent("ann", "#05-02")];
+    const theirs = sent("ben", "#05-03");
+    const unsent = (["queued", "failed", "held", "quarantined"] as const).map((state, i) => ({
+      ...record("ann", `#06-0${String(i)}`),
+      state,
+    }));
+    // Both claim to be Ann's and sent, and are read back as not sent (D-33-8).
+    const unreadable = { ...sent("ann", "#07-01"), item: { unitNumber: 7 } };
+    const salvaged = { ...sent("ann", "#07-02"), attempts: -1 };
+    await queue.putMany([...own, theirs, ...unsent, unreadable, salvaged] as QueuedVisit[]);
+
+    expect(await queue.deleteSentBy("ann")).toBe(2);
+    const left = (await rawRows()) as QueuedVisit[];
+    expect(left.map((r) => r.id).sort()).toEqual(
+      [theirs, ...unsent, unreadable, salvaged].map((r) => r.id).sort(),
+    );
+    expect(await queue.deleteSentBy("cat")).toBe(0);
+  });
+
   it("is null where there is no IndexedDB at all", async () => {
     vi.stubGlobal("indexedDB", undefined);
     expect(await openQueue()).toBeNull();
@@ -163,6 +189,7 @@ describe("openQueue", () => {
     await expect(queue.listByOwner("ann")).rejects.toThrow();
     await expect(queue.listAll()).rejects.toThrow();
     await expect(queue.deleteSyncedBefore(NOW)).rejects.toThrow();
+    await expect(queue.deleteSentBy("ann")).rejects.toThrow();
 
     const after = await openDB(DATABASE_NAME);
     expect(after.version).toBe(1);

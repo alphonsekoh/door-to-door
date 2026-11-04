@@ -128,6 +128,7 @@ function world(seed: number) {
     put: (record) => write(() => store.put(record)),
     putMany: (records) => write(() => store.putMany(records)),
     deleteSyncedBefore: (before) => write(() => store.deleteSyncedBefore(before)),
+    deleteSentBy: (owner) => write(() => store.deleteSentBy(owner)),
     get: (id) => read(() => store.get(id)),
     listByOwner: (owner) => read(() => store.listByOwner(owner)),
     listAll: () => read(() => store.listAll()),

@@ -84,7 +84,7 @@ describe("AccountScreen: loading", () => {
 
     await userEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() => {
-      expect(signOutAndForget).toHaveBeenCalled();
+      expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1");
     });
   });
 
@@ -260,7 +260,8 @@ describe("AccountScreen: signing out", () => {
     await loaded();
     await user.click(screen.getByRole("button", { name: "Sign out" }));
 
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut);
+    // As this member: their sent records go with them, nobody else's (D-129-6).
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 
@@ -277,7 +278,7 @@ describe("AccountScreen: signing out", () => {
     expect(signOutAndForget).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Sign out anyway" }));
-    expect(signOutAndForget).toHaveBeenCalledOnce();
+    expect(signOutAndForget).toHaveBeenCalledExactlyOnceWith(signOut, "u1");
   });
 
   it("stays signed in when the member keeps things as they are", async () => {

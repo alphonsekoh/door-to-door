@@ -7,7 +7,6 @@ import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
 import { finishSignOut } from "@/lib/session/sign-out";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
-import { forgetSentRecords } from "@/lib/sync/forget-sent";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
 type SubmitEvent = Parameters<NonNullable<ComponentProps<"form">["onSubmit"]>>[0];
@@ -73,11 +72,9 @@ export function SignInForm() {
        would leave the button disabled with nothing to say why. */
     await clearServiceWorkerCaches().catch(() => undefined);
     /* Nor record offline with the first one's blocks. Their queued records
-       are another store and stay, to send when they are back (D-33-1). */
+       are another store and stay: unsent ones to send when they are back
+       (D-33-1), sent ones until that member signs out or 24 h pass. */
     await clearLocalCopy().catch(() => undefined);
-    /* Nor find their sent records still on the phone: the member before
-       may have left without signing out. */
-    await forgetSentRecords().catch(() => undefined);
     /* A full load, not refresh() then push(): the router holds responses fetched
        while signed out, each a redirect back here, and the refresh of /sign-in
        could outlive the push. When that refetch failed (a dropped request, or

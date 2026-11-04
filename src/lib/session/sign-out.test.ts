@@ -1,18 +1,59 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { finishSignOut, signOutAndForget } from "@/lib/session/sign-out";
 import { isLeavingOnPurpose } from "@/lib/session/navigate";
+import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import { createMemoryQueue } from "@/lib/sync/memory-queue";
+import type * as ForgetSentModule from "@/lib/sync/forget-sent";
 import type { SignedIn } from "@/lib/sync/signed-in";
+import type { QueuedVisit, RecordState, SyncQueue } from "@/lib/sync/types";
 
-const { clear, clearLocalCopy, forgetSentRecords, fetchSignedIn } = vi.hoisted(() => ({
+const { clear, clearLocalCopy, forgetSentRecords, fetchSignedIn, disk } = vi.hoisted(() => ({
   clear: vi.fn(),
   clearLocalCopy: vi.fn(),
-  forgetSentRecords: vi.fn(),
+  forgetSentRecords: vi.fn<(ownerId: string | undefined) => Promise<void>>(),
   fetchSignedIn: vi.fn<(timeoutMs?: number) => Promise<SignedIn>>(),
+  disk: { queue: null as SyncQueue | null },
 }));
-vi.mock("@/lib/pwa/sw-client", () => ({ clearServiceWorkerCaches: clear }));
+/* The deadline the forget runs under stays real. */
+vi.mock(import("@/lib/pwa/sw-client"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  clearServiceWorkerCaches: clear,
+}));
 vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
 vi.mock("@/lib/sync/forget-sent", () => ({ forgetSentRecords }));
+vi.mock("@/lib/sync/idb-queue", () => ({ sharedQueue: () => Promise.resolve(disk.queue) }));
 vi.mock("@/lib/sync/signed-in", () => ({ fetchSignedIn }));
+
+/* The real forget, over the queue in memory, unless a test stands in for it. */
+const { forgetSentRecords: realForget } =
+  await vi.importActual<typeof ForgetSentModule>("@/lib/sync/forget-sent");
+
+const ANN = "0190a000-0000-7000-8000-00000000000a";
+const BEN = "0190a000-0000-7000-8000-00000000000b";
+
+function record(ownerId: string, unitNumber: string, state: RecordState): QueuedVisit {
+  const built = buildQueuedVisit(
+    {
+      blockId: "0190a000-0000-7000-8000-0000000000bb",
+      unitNumber,
+      interestLevel: "high",
+      description: "Asked us back on Sunday",
+      name: "Mr Tan",
+      contact: "91234567",
+      religion: "",
+      sessionId: "0190a000-0000-7000-8000-0000000000cc",
+    },
+    ownerId,
+    Date.now(),
+  );
+  return state === "synced" ? { ...built, state, syncedAt: Date.now() } : { ...built, state };
+}
+
+let queue = createMemoryQueue();
+
+async function unitsLeft(): Promise<string[]> {
+  return (await queue.listAll()).map((r) => r.item.unitNumber).sort();
+}
 
 // What Auth.js hands back when the session really ended.
 const signedOut = { url: "http://localhost:3210/account" };
@@ -42,7 +83,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   clear.mockResolvedValue(undefined);
   clearLocalCopy.mockResolvedValue(undefined);
-  forgetSentRecords.mockResolvedValue(undefined);
+  forgetSentRecords.mockImplementation(realForget);
+  queue = createMemoryQueue();
+  disk.queue = queue;
   fetchSignedIn.mockResolvedValue(nobody);
 });
 
@@ -51,7 +94,7 @@ afterEach(() => {
 });
 
 describe("signOutAndForget", () => {
-  it("clears the cached lists, the copy and sent records, signs out, checks, then goes to sign-in by relative path", async () => {
+  it("clears the cached lists, the copy and the member's sent records, signs out, checks, then goes to sign-in by relative path", async () => {
     const order: string[] = [];
     clear.mockImplementation(() => Promise.resolve(void order.push("clear")));
     clearLocalCopy.mockImplementation(() => Promise.resolve(void order.push("forget copy")));
@@ -66,7 +109,7 @@ describe("signOutAndForget", () => {
     });
     const navigate = vi.fn((path: string) => void order.push(`go ${path}`));
 
-    await signOutAndForget(signOut, undefined, navigate);
+    await signOutAndForget(signOut, ANN, undefined, navigate);
 
     expect(order).toEqual([
       "clear",
@@ -77,6 +120,45 @@ describe("signOutAndForget", () => {
       "go /sign-in",
     ]);
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
+    expect(forgetSentRecords).toHaveBeenCalledExactlyOnceWith(ANN);
+  });
+
+  it("takes the signing-out member's sent records with it, and nothing else on the phone", async () => {
+    await queue.putMany([
+      record(ANN, "#01-01", "synced"),
+      record(ANN, "#01-02", "synced"),
+      record(BEN, "#01-03", "synced"),
+      record(ANN, "#02-01", "queued"),
+      record(ANN, "#02-02", "failed"),
+      record(ANN, "#02-03", "held"),
+      record(ANN, "#02-04", "quarantined"),
+      record(BEN, "#02-05", "queued"),
+    ]);
+    // Claims to be Ann's and sent, and is unreadable: never deleted (D-33-8).
+    queue.raw.set("torn", { id: "torn", ownerId: ANN, state: "synced" });
+
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN, undefined, vi.fn());
+
+    // Ben's sent record waits for his own sign-out or the 24 h purge (D-33-9).
+    expect(await unitsLeft()).toEqual([
+      "",
+      "#01-03",
+      "#02-01",
+      "#02-02",
+      "#02-03",
+      "#02-04",
+      "#02-05",
+    ]);
+  });
+
+  it("forgets nobody's sent records when the screen no longer knows who is signing out", async () => {
+    await queue.putMany([record(ANN, "#01-01", "synced"), record(BEN, "#01-02", "synced")]);
+    const navigate = vi.fn();
+
+    await signOutAndForget(() => Promise.resolve(signedOut), undefined, undefined, navigate);
+
+    expect(await unitsLeft()).toEqual(["#01-01", "#01-02"]);
+    expect(navigate).toHaveBeenCalledWith("/sign-in");
   });
 
   it.each([
@@ -88,7 +170,7 @@ describe("signOutAndForget", () => {
     const signOut = vi.fn(() => Promise.resolve(signedOut));
     const navigate = vi.fn();
 
-    await signOutAndForget(signOut, undefined, navigate);
+    await signOutAndForget(signOut, ANN, undefined, navigate);
 
     expect(signOut).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith("/sign-in");
@@ -97,7 +179,7 @@ describe("signOutAndForget", () => {
   it("does not navigate when the sign-out itself fails", async () => {
     const navigate = vi.fn();
     await expect(
-      signOutAndForget(() => Promise.reject(new Error("offline")), undefined, navigate),
+      signOutAndForget(() => Promise.reject(new Error("offline")), ANN, undefined, navigate),
     ).rejects.toThrow("offline");
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -107,7 +189,7 @@ describe("signOutAndForget", () => {
     // session cookie is still valid.
     const navigate = vi.fn();
     await expect(
-      signOutAndForget(() => Promise.resolve(refused), undefined, navigate),
+      signOutAndForget(() => Promise.resolve(refused), ANN, undefined, navigate),
     ).rejects.toThrow("MissingCSRF");
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -119,7 +201,7 @@ describe("signOutAndForget", () => {
     const signOut = vi.fn(() => Promise.resolve(signedOut));
     const navigate = vi.fn();
 
-    await signOutAndForget(signOut, undefined, navigate);
+    await signOutAndForget(signOut, ANN, undefined, navigate);
 
     expect(signOut).toHaveBeenCalledTimes(2);
     expect(fetchSignedIn).toHaveBeenCalledTimes(2);
@@ -133,7 +215,7 @@ describe("signOutAndForget", () => {
     const storage = memoryStorage();
     vi.stubGlobal("window", { sessionStorage: storage });
 
-    await expect(signOutAndForget(signOut, undefined, navigate)).rejects.toThrow(
+    await expect(signOutAndForget(signOut, ANN, undefined, navigate)).rejects.toThrow(
       "The session came back after signing out",
     );
 
@@ -150,7 +232,9 @@ describe("signOutAndForget", () => {
       .mockResolvedValueOnce(refused);
     const navigate = vi.fn();
 
-    await expect(signOutAndForget(signOut, undefined, navigate)).rejects.toThrow("MissingCSRF");
+    await expect(signOutAndForget(signOut, ANN, undefined, navigate)).rejects.toThrow(
+      "MissingCSRF",
+    );
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -160,14 +244,14 @@ describe("signOutAndForget", () => {
     const signOut = vi.fn(() => Promise.resolve(signedOut));
     const navigate = vi.fn();
 
-    await signOutAndForget(signOut, undefined, navigate);
+    await signOutAndForget(signOut, ANN, undefined, navigate);
 
     expect(signOut).toHaveBeenCalledOnce();
     expect(navigate).toHaveBeenCalledWith("/sign-in");
   });
 
   it("asks with a shorter wait than a send's", async () => {
-    await signOutAndForget(() => Promise.resolve(signedOut), undefined, vi.fn());
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN, undefined, vi.fn());
     expect(fetchSignedIn).toHaveBeenCalledWith(5_000);
   });
 
@@ -176,7 +260,7 @@ describe("signOutAndForget", () => {
     const replace = vi.fn();
     vi.stubGlobal("window", { sessionStorage: storage, location: { replace } });
 
-    await signOutAndForget(() => Promise.resolve(signedOut));
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN);
 
     expect(storage.data.get(NOTE)).toBe("1");
     expect(replace).toHaveBeenCalledWith("/sign-in");
@@ -193,7 +277,7 @@ describe("signOutAndForget", () => {
       location: { replace },
     });
 
-    await signOutAndForget(() => Promise.resolve(signedOut));
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN);
 
     expect(replace).toHaveBeenCalledWith("/sign-in");
   });
@@ -203,7 +287,7 @@ describe("signOutAndForget", () => {
     const replace = vi.fn();
     vi.stubGlobal("window", { location: { assign, replace } });
 
-    await signOutAndForget(() => Promise.resolve(signedOut));
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN);
 
     // So Back from sign-in cannot return to the signed-in screen (#129).
     expect(replace).toHaveBeenCalledWith("/sign-in");
@@ -216,7 +300,7 @@ describe("signOutAndForget", () => {
     const replace = vi.fn();
     vi.stubGlobal("window", { location: { replace } });
 
-    await signOutAndForget(() => Promise.resolve(signedOut), "/sign-in?reason=signed-out");
+    await signOutAndForget(() => Promise.resolve(signedOut), ANN, "/sign-in?reason=signed-out");
 
     expect(replace).toHaveBeenCalledWith("/sign-in?reason=signed-out");
   });
@@ -224,7 +308,7 @@ describe("signOutAndForget", () => {
   it("still refuses to navigate to a custom destination after a refusal", async () => {
     const navigate = vi.fn();
     await expect(
-      signOutAndForget(() => Promise.resolve(refused), "/sign-in?reason=signed-out", navigate),
+      signOutAndForget(() => Promise.resolve(refused), ANN, "/sign-in?reason=signed-out", navigate),
     ).rejects.toThrow("MissingCSRF");
     expect(navigate).not.toHaveBeenCalled();
   });

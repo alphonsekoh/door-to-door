@@ -69,12 +69,14 @@ function signedOutJustNow(): boolean {
 /*
  * Leaving the app on a phone somebody else may pick up next.
  *
- * Cached lists, the offline shell's copy and records already sent are cleared
- * first (never an unsent record, D-33-1), but a failure there must not trap
- * the member in the app: the cookie is what actually protects the account, so
- * the sign-out goes ahead regardless. Clearing first still beats the other
- * order, because a request that fails halfway then costs a cache, not a
- * leftover list.
+ * Cached lists, the offline shell's copy and the records `memberId` has sent
+ * are cleared first (never an unsent record, nor another member's, D-33-1),
+ * but a failure there must not trap the member in the app: the cookie is what
+ * actually protects the account, so the sign-out goes ahead regardless.
+ * Clearing first still beats the other order, because a request that fails
+ * halfway then costs a cache, not a leftover list. `memberId` is whoever the
+ * page is signed in as, and undefined where it no longer knows: then no sent
+ * record goes.
  *
  * Auth.js is told not to redirect and the page navigates itself, to a relative
  * path: the URL Auth.js hands back is built server-side from the request host,
@@ -91,12 +93,13 @@ function signedOutJustNow(): boolean {
  */
 export async function signOutAndForget(
   signOut: SignOut,
+  memberId: string | undefined,
   destination = "/sign-in",
   navigate: (path: string) => void = replaceWith,
 ): Promise<void> {
   await clearServiceWorkerCaches().catch(() => undefined);
   await clearLocalCopy().catch(() => undefined);
-  await forgetSentRecords().catch(() => undefined);
+  await forgetSentRecords(memberId).catch(() => undefined);
   await signOutForGood(signOut);
   noteSignOut(true);
   navigate(destination);

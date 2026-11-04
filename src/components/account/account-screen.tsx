@@ -89,7 +89,7 @@ export function AccountScreen() {
     setSignOutFailure(null);
     setSigningOut(true);
     try {
-      await signOutAndForget(signOut);
+      await signOutAndForget(signOut, userId);
     } catch {
       setSignOutFailure("Could not sign out. Check your connection and try again.");
       setConfirmingSignOut(false);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
-import { CORRUPT, isCorrupt, isExpired, readRecord } from "@/lib/sync/record";
+import { CORRUPT, isCorrupt, isExpired, isSent, readRecord } from "@/lib/sync/record";
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 
@@ -117,5 +117,16 @@ describe("isExpired", () => {
     expect(isExpired(sent, NOW)).toBe(false);
     expect(isExpired({ ...sent, syncedAt: null }, NOW + 1)).toBe(false);
     expect(isExpired({ ...good, syncedAt: NOW }, NOW + 1)).toBe(false);
+  });
+});
+
+describe("isSent", () => {
+  it("is any record sent, however recently, and nothing else", () => {
+    const sent = { ...good, state: "synced" as const, syncedAt: Date.now() };
+    expect(isSent(sent)).toBe(true);
+    expect(isSent({ ...sent, syncedAt: null })).toBe(false);
+    for (const state of ["queued", "failed", "held", "quarantined"] as const) {
+      expect(isSent({ ...sent, state })).toBe(false);
+    }
   });
 });

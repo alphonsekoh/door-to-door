@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { isExpired, readRecord } from "@/lib/sync/record";
+import { isExpired, isSent, readRecord } from "@/lib/sync/record";
 import type { QueuedVisit, SyncQueue } from "@/lib/sync/types";
 
 /*
@@ -42,6 +42,19 @@ function wrap(db: IDBPDatabase<Schema>): SyncQueue {
       let removed = 0;
       for await (const cursor of tx.store) {
         if (isExpired(readRecord(cursor.value), before)) {
+          await cursor.delete();
+          removed += 1;
+        }
+      }
+      await tx.done;
+      return removed;
+    },
+    async deleteSentBy(ownerId) {
+      const tx = db.transaction(STORE, "readwrite");
+      let removed = 0;
+      /* Through the owner index, so another member's rows are never touched. */
+      for await (const cursor of tx.store.index("by-owner").iterate(ownerId)) {
+        if (isSent(readRecord(cursor.value))) {
           await cursor.delete();
           removed += 1;
         }

@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
 import { ConfirmDialog } from "@/components/ui/sheet";
 
-const { signOut, signOutAndForget, hasUnsynced } = vi.hoisted(() => ({
+const { signOut, signOutAndForget, hasUnsynced, role } = vi.hoisted(() => ({
   signOut: vi.fn(),
   signOutAndForget: vi.fn(),
   hasUnsynced: vi.fn(),
+  role: { userId: undefined as string | undefined },
 }));
 
 vi.mock("next-auth/react", () => ({ signOut }));
@@ -15,10 +16,11 @@ vi.mock("@/lib/session/sign-out", () => ({ signOutAndForget }));
 vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
-vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => role }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  role.userId = "u1";
   hasUnsynced.mockResolvedValue(false);
   signOutAndForget.mockResolvedValue(undefined);
 });
@@ -52,7 +54,7 @@ describe("AuthFailureScreen", () => {
     render(<AuthFailureScreen kind="deactivated" />);
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     // Its own navigation, which leaves no way Back to this screen (#129).
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "/sign-in");
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in");
   });
 
   it("signs out first, then asks for a fresh sign-in with the reason", async () => {
@@ -60,7 +62,16 @@ describe("AuthFailureScreen", () => {
     const user = userEvent.setup();
     render(<AuthFailureScreen kind="signed-out" />);
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "/sign-in?reason=signed-out");
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "u1", "/sign-in?reason=signed-out");
+  });
+
+  it("names nobody to the sign-out once the page has lost the member too", async () => {
+    // So no sent record goes: none can be told to be theirs (D-129-6).
+    role.userId = undefined;
+    const user = userEvent.setup();
+    render(<AuthFailureScreen kind="signed-out" />);
+    await user.click(screen.getByRole("button", { name: "Sign in again" }));
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, undefined, "/sign-in?reason=signed-out");
   });
 
   it("holds the button while signing out", async () => {

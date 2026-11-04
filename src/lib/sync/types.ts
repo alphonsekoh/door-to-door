@@ -44,8 +44,12 @@ export type SyncQueue = {
   get: (id: string) => Promise<QueuedVisit | undefined>;
   listByOwner: (ownerId: string) => Promise<QueuedVisit[]>;
   listAll: () => Promise<QueuedVisit[]>;
-  /* The only delete there is: nothing unsent is ever removed (D-33-2). */
+  /* The only deletes there are, and both take sent records alone: nothing
+     unsent is ever removed (D-33-2). */
   deleteSyncedBefore: (before: number) => Promise<number>;
+  /* Every record this member has sent, however recently: what their sign-out
+     takes with it. Nobody else's. */
+  deleteSentBy: (ownerId: string) => Promise<number>;
 };
 
 /* What one POST /visits/sync came to, before anything is decided about it. */
