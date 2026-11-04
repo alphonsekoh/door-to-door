@@ -28,6 +28,8 @@ Fixing it exposed a second leak, below: unexpected errors were logged raw.
   and D-83-8. _Why:_ Next bundles instrumentation, the proxy and routes as separate module
   graphs. Without it each graph opened its own pool and listener, and HMR leaked pools.
   _Consequence:_ a change to `database.url` in `config.yaml` needs a process restart.
+  _Extended by D-128-5:_ the Auth.js log throttles use the same pattern, on
+  `Symbol.for("door-to-door.auth-log")`.
 - **D-87-4 · One shared sanitiser, `summarizeError` (`src/server/logging/error-log.ts`),
   used by the pool handler, `withContract`'s catch and the sync catch.** It keeps the
   error name, its code (or the cause's code), and the first line of the message, capped
@@ -35,6 +37,8 @@ Fixing it exposed a second leak, below: unexpected errors were logged raw.
   `host:port` are redacted. The request body, params, the cause's message and the cause
   chain are never logged. Extends D-75-5 ("never a value") from config errors to runtime
   errors. _Why:_ a raw pg error carries the host, port and query parameters (user ids).
+  _Refined by D-128-7:_ the first line now ends at any CR, LF, U+2028 or U+2029, and every
+  remaining control character (C0, DEL, C1) becomes U+FFFD before redaction.
 - **D-87-5 · Logging is throttled per key: one line per 5 s burst.** The next line after a
   burst adds `(N similar suppressed since HH:MM:SSZ)`. The keys are the pool, each
   `operationId` and sync. _Why:_ an outage fails every request at once, and one line is
@@ -47,6 +51,8 @@ Fixing it exposed a second leak, below: unexpected errors were logged raw.
   burst only the first failing item's id is logged. Refines D-74-30: the id is still the
   only identifier logged, but a suppressed item's id is not logged at all. _Why:_ the
   client retries the item anyway, so per-item logs during an outage add nothing.
+  _Exception, D-128-5:_ the Auth.js log throttles are process-wide, because the proxy
+  and the route both decode the same cookie.
 - **D-87-8 · `withContract` logs `<operationId> failed: <summary>`; the `500` body is
   unchanged.** _Why:_ the operation is the useful context, and the client contract does
   not move.

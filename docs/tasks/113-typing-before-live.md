@@ -1,6 +1,6 @@
 # #113 · Typing before the page is live
 
-- **Status:** In review (PR #154)
+- **Status:** Done (PR #154)
 - **Phase:** none (no milestone; found on PR #112)
 - **Depends on:** #25, #111, #119
 

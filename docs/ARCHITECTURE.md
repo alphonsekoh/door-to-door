@@ -218,8 +218,12 @@ authoritative, and a change to any of them needs the owner.
    block and, in a follow-up session, the list rule for a member's new visit
    (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
    then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
-   the answer is a `RecordedVisit` naming them. Changing a follow-up session's households
-   and transitions lock that row `FOR UPDATE` (D-117-45).
+   the answer is a `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
+   sync item for a stored visit) is one transaction that locks the session
+   `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
+   `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
+   follow-up session's households, detaching a block and transitions lock that row
+   `FOR UPDATE` (D-117-45, D-123-4).
    Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
@@ -228,7 +232,8 @@ authoritative, and a change to any of them needs the owner.
 An unexpected error (not an `ApiError`) becomes a generic `500 internal_error`.
 `withContract` logs it as one line, `<operationId> failed: <summary>`, built by
 `summarizeError` (`src/server/logging/error-log.ts`): name, code and a redacted first
-line, never the cause chain or parameters. The log is throttled to one line per operation
+line, never the cause chain or parameters. The first line ends at any line break, and
+control characters are replaced (D-128-7). The log is throttled to one line per operation
 per 5 s burst. The sync catch uses the same helpers.
 
 ## Response headers
@@ -246,6 +251,10 @@ per 5 s burst. The sync catch uses the same helpers.
   (`src/server/auth/route-headers.ts`) around Auth.js's route. A sign-out `POST` also
   gets `Clear-Site-Data: "cache"` there (D-122-9, D-122-10). Next's own bodiless
   `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
+- The proxy marks `no-store` on every response that carries `Set-Cookie`, once Auth.js
+  has added its cookies. It always marks `/sign-in`, which Next would otherwise send as a
+  prerender with `s-maxage=31536000` (D-150-1, D-150-2). `/offline` still sends that
+  `s-maxage`, and sets no cookie (#146).
 
 ## Configuration
 
@@ -276,6 +285,12 @@ attempt on the shared budgets (D-120-5, D-120-6, D-120-11). Limiter keys are HMA
 digests, and a limiter holds only live windows, at most 100,000 of them (D-120-2 to
 D-120-4). The pieces are `rate-limit.ts`, `client-address.ts` and `sign-in-log.ts` in
 `src/server/auth/`.
+Auth.js logs through `auth-log.ts`, which `buildBaseAuthConfig` sets, so the proxy's
+instance and the route's use the same logger. An error is one line: its type and the
+wrapped cause's code, never a message, stack or cause property. A warning is its code,
+and debug output is dropped. Lines are throttled for 60 s, and the throttles sit on a
+`Symbol.for` global that both module graphs share. A failed sign-in is left to
+`sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
 any admin exists (D-105-3).
 Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
@@ -411,10 +426,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   destination, e.g. `/sign-in?reason=signed-out`). A refusal
   (Auth.js returns an `error` URL with 200) throws instead, and Account shows "Could not
   sign out".
-- The proxy sets `Cache-Control: no-store` on signed-in page responses, so Back after
-  sign-out revalidates instead of restoring the page from bfcache. API answers get
-  theirs from their handlers (see Response headers). The sign-out `POST`'s
-  `Clear-Site-Data: "cache"` never touches Cache Storage or IndexedDB.
+- The proxy sets `Cache-Control: no-store` on signed-in page responses and `/sign-in`,
+  so Back after sign-out revalidates instead of restoring the page from bfcache. API
+  answers get theirs from their handlers, and also from the proxy when they carry a
+  cookie (see Response headers). The sign-out `POST`'s `Clear-Site-Data: "cache"` never
+  touches Cache Storage or IndexedDB.
 
 ## PWA and service worker
 
@@ -514,7 +530,7 @@ block is in it and, for a member's new visit in a follow-up session, the unit is
 list (D-117-45). Then `INSERT ... ON CONFLICT DO
 NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
 snapshot, auto-join and, in a follow-up session, marking the household's notes done),
-otherwise `SELECT ... FOR UPDATE`, re-judge under the lock
+otherwise `SELECT ... FOR NO KEY UPDATE` (D-123-2), re-judge under the lock
 (`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
 interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
 `internal_error` (retryable). The request path above is unchanged; the new endpoints

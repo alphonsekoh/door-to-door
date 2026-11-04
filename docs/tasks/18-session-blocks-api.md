@@ -17,5 +17,6 @@ List a session's blocks with progress, attach blocks, detach unworked ones.
   one by hand is `409 conflict`.
 - **D-18-3 · Detaching a block with visits in this session is `409 block_in_use`.**
   Visits from other sessions do not count. _Extended by D-117-42:_ removing a follow-up
-  session's last pick in such a block is refused the same way.
+  session's last pick in such a block is refused the same way. _Extended by D-123-4:_
+  judged under the session row lock, so it holds against a visit in flight.
 - **D-18-4 · Listing an unknown session is `404`, not an empty list.**

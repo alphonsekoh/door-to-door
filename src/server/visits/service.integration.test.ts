@@ -3,6 +3,7 @@ import type { Clock } from "@/lib/clock";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
+import type { Religion } from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 import { ClockSkewError, ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 import { getHouseholdHistory, listHouseholds } from "@/server/visits/queries";
@@ -280,6 +281,24 @@ describe("amending a visit", () => {
     await updateVisit(db, visit.id, { name: null, description: "x" }, asMember(ALICE));
     const history = await getHouseholdHistory(db, visit.householdId);
     expect(history.household.name).toBe("Mr Tan");
+  });
+
+  it("changes neither the visit nor the household when the household write fails", async () => {
+    const visit = await record("#05-123", { name: "Mr Tan" });
+    // Past the contract, the database's enum is what refuses it, at the second write.
+    const religion = "Pastafarian" as string as Religion;
+    await expect(
+      updateVisit(
+        db,
+        visit.id,
+        { interestLevel: "high", name: "Mr Lim", religion },
+        asMember(ALICE),
+      ),
+    ).rejects.toThrow();
+
+    const history = await getHouseholdHistory(db, visit.householdId);
+    expect(history.household).toMatchObject({ name: "Mr Tan", religion: null });
+    expect(history.visits).toMatchObject([{ id: visit.id, interestLevel: "low" }]);
   });
 
   it("refuses an unknown visit", async () => {

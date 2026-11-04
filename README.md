@@ -536,9 +536,10 @@ docker run -p 3000:3000 \
 - **The app sends its own security headers.** Every response carries a Content Security
   Policy (Report-Only for now, #146), HSTS (`max-age=63072000`, no `includeSubDomains`),
   `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
-  `X-Frame-Options: DENY`; API responses are `Cache-Control: no-store`. A proxy should not
-  add a second CSP, since browsers enforce both and allow only what both allow, and an
-  HSTS it adds should match this one.
+  `X-Frame-Options: DENY`. API responses, `/sign-in` and every response that sets a
+  cookie are `Cache-Control: no-store`. A proxy should not add a second CSP, since
+  browsers enforce both and allow only what both allow, and an HSTS it adds should match
+  this one.
 - **The proxy must pass the public host:** forward the original `Host`, or set
   `X-Forwarded-Host` to it. A write from a browser that sends no `Sec-Fetch-Site` (Safari
   before 16.4, so iPhones on iOS 15 and 16.0 to 16.3) is checked by comparing its `Origin`

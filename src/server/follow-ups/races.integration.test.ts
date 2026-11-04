@@ -7,6 +7,7 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import { requireTestDatabaseUrl } from "@/db/test-env";
 import { createFollowUp, removeFollowUp, updateFollowUp } from "@/server/follow-ups/service";
 import { removeSessionHousehold } from "@/server/sessions/households";
+import { detachBlock } from "@/server/sessions/service";
 import { createVisit } from "@/server/visits/service";
 import { syncVisits } from "@/server/visits/sync";
 
@@ -95,6 +96,39 @@ async function parked(
   } finally {
     client.release();
   }
+}
+
+/*
+ * Two requests in a fixed order: `hold` takes a row on a second connection,
+ * the first request parks on it, the second parks behind the first, then the
+ * row is let go. Both are settled before returning, whatever fails.
+ */
+async function race(
+  hold: (query: Query) => Promise<unknown>,
+  first: () => Promise<unknown>,
+  firstWaitsOn: string,
+  second: () => Promise<unknown>,
+  secondWaitsOn: string,
+) {
+  const client = await controller.connect();
+  let one: Promise<unknown> | undefined;
+  let two: Promise<unknown> | undefined;
+  try {
+    await client.query("BEGIN");
+    await hold((sql, params) => client.query(sql, params));
+    one = settle(first());
+    await waitingOn(firstWaitsOn);
+    two = settle(second());
+    await waitingOn(secondWaitsOn);
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await Promise.all([one, two]);
+  }
+  return [await one, await two];
 }
 
 const promote = (q: Query) =>
@@ -439,6 +473,8 @@ describe("a visit recorded while an admin changes the session's households", () 
   const quietNote = async () =>
     (await pool.query<{ id: string }>(`SELECT id FROM follow_ups WHERE household_id = $1`, [QUIET]))
       .rows[0]?.id ?? "";
+  const holdQuietNote = async (q: Query) =>
+    q(`SELECT 1 FROM follow_ups WHERE id = $1 FOR UPDATE`, [await quietNote()]);
   const doneAtQuiet = async () =>
     (
       await pool.query<{ done_by: string | null; done_visit_id: string | null }>(
@@ -447,36 +483,10 @@ describe("a visit recorded while an admin changes the session's households", () 
       )
     ).rows;
 
-  async function race(
-    first: () => Promise<unknown>,
-    firstWaitsOn: string,
-    second: () => Promise<unknown>,
-    secondWaitsOn: string,
-  ) {
-    const client = await controller.connect();
-    let one: Promise<unknown> | undefined;
-    let two: Promise<unknown> | undefined;
-    try {
-      await client.query("BEGIN");
-      await client.query(`SELECT 1 FROM follow_ups WHERE id = $1 FOR UPDATE`, [await quietNote()]);
-      one = settle(first());
-      await waitingOn(firstWaitsOn);
-      two = settle(second());
-      await waitingOn(secondWaitsOn);
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK").catch(() => undefined);
-      throw error;
-    } finally {
-      client.release();
-      await Promise.all([one, two]);
-    }
-    return [await one, await two];
-  }
-
   it("leaves the credit with a mark done that held the door first", async () => {
     const id = await quietNote();
     const [marking, recording] = await race(
+      holdQuietNote,
       () => updateFollowUp(db, id, { done: true }, admin),
       `%from "follow_ups"%for update%`,
       record,
@@ -491,6 +501,7 @@ describe("a visit recorded while an admin changes the session's households", () 
   it("leaves the credit with a visit that held the door first", async () => {
     const id = await quietNote();
     const [recording, marking] = await race(
+      holdQuietNote,
       record,
       `%update "follow_ups"%`,
       () => updateFollowUp(db, id, { done: true }, admin),
@@ -530,5 +541,95 @@ describe("a visit recorded while an admin changes the session's households", () 
       ok: [{ status: "rejected", error: { code: "session_not_active" } }],
     });
     expect(await visitsAtQuiet()).toBe(0);
+  });
+});
+
+describe("a visit recorded while an admin detaches its block", () => {
+  const clock = { now: new Date(), toleranceMs: 300_000 };
+  const VISIT = "01960000-0000-7000-8000-00000000db01";
+  const record = () =>
+    createVisit(
+      db,
+      { id: VISIT, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low", memberId: ALICE },
+      clock,
+      alice,
+    );
+  const detach = () => detachBlock(db, SESSION, BLOCK);
+  /* The detach parks on the attachment held here, after it took the session. */
+  const holdAttachment = (q: Query) =>
+    q(`SELECT 1 FROM session_blocks WHERE session_id = $1 AND block_id = $2 FOR KEY SHARE`, [
+      SESSION,
+      BLOCK,
+    ]);
+  const left = async () => ({
+    attached: (await pool.query(`SELECT 1 FROM session_blocks WHERE session_id = $1`, [SESSION]))
+      .rows.length,
+    visits: (await pool.query(`SELECT 1 FROM visits WHERE session_id = $1`, [SESSION])).rows.length,
+  });
+
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, status, started_at, created_by)
+       VALUES ($1,'Outing','active', now() - interval '1 hour', $2)`,
+      [SESSION, ADMIN],
+    );
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      SESSION,
+      BLOCK,
+    ]);
+  });
+
+  it("holds a detach until a visit in flight lands, which then keeps the block", async () => {
+    // The visit takes the session, then waits on the household held here.
+    const [recording, detaching] = await race(
+      (q) => q(`SELECT 1 FROM households WHERE id = $1 FOR UPDATE`, [HOUSEHOLD]),
+      record,
+      `%insert into "households"%`,
+      detach,
+      `%from "outing_sessions"%for update%`,
+    );
+
+    expect(recording).toMatchObject({ ok: { id: VISIT } });
+    expect(detaching).toMatchObject({ error: { code: "block_in_use", status: 409 } });
+    expect(await left()).toEqual({ attached: 1, visits: 1 });
+  });
+
+  it("refuses a visit that waited for a detach, so nothing is orphaned", async () => {
+    const [detaching, recording] = await race(
+      holdAttachment,
+      detach,
+      `%delete from "session_blocks"%`,
+      record,
+      `%from "outing_sessions"%for key share%`,
+    );
+
+    expect(detaching).toEqual({ ok: undefined });
+    expect(recording).toMatchObject({ error: { code: "conflict", status: 409 } });
+    expect(await left()).toEqual({ attached: 0, visits: 0 });
+  });
+
+  it("holds a synced visit that waited for a detach", async () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const queued = {
+      id: VISIT,
+      blockId: BLOCK,
+      unitNumber: "#05-123",
+      interestLevel: "low" as const,
+      clientCreatedAt: at,
+      updatedAt: at,
+    };
+    const [detaching, syncing] = await race(
+      holdAttachment,
+      detach,
+      `%delete from "session_blocks"%`,
+      () => syncVisits(db, [queued], alice, clock),
+      `%from "outing_sessions"%for key share%`,
+    );
+
+    expect(detaching).toEqual({ ok: undefined });
+    expect(syncing).toMatchObject({
+      ok: [{ status: "rejected", error: { code: "conflict" } }],
+    });
+    expect(await left()).toEqual({ attached: 0, visits: 0 });
   });
 });
