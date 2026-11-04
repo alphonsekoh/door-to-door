@@ -19,4 +19,6 @@ Add members, change roles, deactivate and restore.
   _Why:_ there is no invite email; the admin reads it out.
 - **D-31-5 · Admins cannot demote or deactivate themselves — enforced in the service
   (`409`)**, controls hidden on own row. _Why:_ a lone admin would lock everyone out.
+  _Extended by D-132-1:_ nobody may demote or deactivate the last active admin, judged
+  under a lock on the admins' rows (D-132-2).
 - **D-31-6 · The team screen always includes deactivated users.**

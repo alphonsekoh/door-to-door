@@ -58,8 +58,10 @@ note (D-38-21).
 
 ## Relies on
 
-D-31-1, D-31-5 (no admin can deactivate themselves, so only a hand edit leaves every
-admin deactivated), D-38-12, D-38-21, D-74-4, D-75-2, D-08-2.
+D-31-1, D-31-5 and D-132-1 (no admin can deactivate themselves, and no change leaves the
+team without an active admin, so only a hand edit leaves every admin deactivated; before
+#132, two admins could deactivate each other at once), D-38-12, D-38-21, D-74-4, D-75-2,
+D-08-2.
 
 ## Open questions
 
