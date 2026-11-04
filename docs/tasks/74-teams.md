@@ -99,6 +99,8 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   always on it; an admin is on it only if they list themselves. _Reaffirmed by the owner
   in #118 (D-118-6):_ `memberIds` stays uncapped, an accepted exposure to
   GHSA-mrhx-c7xc-m3w5 until a request body size limit is built (proposed in #126, open).
+  _Kept by D-126-7 (#126):_ that limit is built, and bounds one request at about 6,700
+  ids; `memberIds` stays uncapped.
 - **D-74-16 · `visits.team_id` is stamped once on insert and never updated.** It is the
   author's team at the moment the SERVER first stores the visit, so an offline record is
   stamped when it syncs, not when it was knocked. Nullable, `ON DELETE restrict`.

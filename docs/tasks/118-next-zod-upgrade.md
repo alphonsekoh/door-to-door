@@ -62,6 +62,9 @@ and add Dependabot.
   _Exposure narrowed by D-120-7 (owner, 2026-11-03):_ Next now cuts every body at 2 MB
   (`experimental.proxyClientMaxBodySize`). It truncates rather than refuses, so one
   request still carries about 53k ids, past the `500` above. #126 is still open.
+  _Exposure narrowed again by D-126-7 (#126):_ a 256 KiB body cap bounds one request at
+  about 6,700 ids, with `413` above that, and inserts are chunked (D-126-3), so the `500`
+  is out of reach. `memberIds` stays uncapped.
 - **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** npm has
   three groups: security, minor-and-patch, major. GitHub Actions has one. Version
   updates wait out a 7-day cooldown. PRs get a `chore` prefix and the existing

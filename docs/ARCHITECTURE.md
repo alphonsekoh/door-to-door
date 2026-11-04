@@ -40,7 +40,7 @@ flowchart LR
 | `openapi.yaml`        | The API contract                                                | —        | Source of truth. Edited first, always.                                                |
 | `src/generated/`      | Types and Zod schemas from the contract                         | excluded | Never hand-edited; CI regenerates and diffs.                                          |
 | `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
-| `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; maps errors to the envelope; security headers.      |
+| `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; body caps; the error envelope; security headers.    |
 | `src/server/auth/`    | Auth.js config, route headers, guards, rate limit               | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
@@ -191,25 +191,31 @@ authoritative, and a change to any of them needs the owner.
    `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
    It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
    return before `auth()` runs (D-32-19). On every path it matches (all but static
-   files), Next buffers at most 2 MB of the body and hands the handler that much: a
-   longer body is cut short, not refused (`experimental.proxyClientMaxBodySize`,
-   D-120-7).
+   files), Next buffers at most 2 MiB of the body and hands the handler that much: a
+   longer body is cut short, not refused (`experimental.proxyClientMaxBodySize`, set
+   from `PROXY_BODY_LIMIT_BYTES`, D-120-7). On Auth.js's routes that cut is the only
+   bound; the contract's caps in step 2 sit at least 512 KiB below it, so a cut body
+   still gets `413` there (D-126-6).
 2. The route handler is wrapped in `withContract(operation, handler)`. First, a write
    (not `GET`, `HEAD` or `OPTIONS`) another origin sent is `403 forbidden`: decided by
    `Sec-Fetch-Site`, else by `Origin` against `X-Forwarded-Host` or `Host`
-   (`src/server/http/same-origin.ts`, D-121-1 to D-121-5). Then path, query
-   (schema-driven coercion) and body are parsed with generated Zod; a body that is not
-   `application/json` is `415` (D-121-6); PATCH bodies go through `requireChanges`.
-   This runs before any role check. Every request array but
-   `CreateTeamRequest.memberIds` has a `maxItems`, so an oversized one is refused on its
-   length before any item is parsed (D-118-5, R-91). `memberIds` is uncapped (D-74-15,
-   D-118-6); only step 1's 2 MB cut bounds it, and an explicit refusal of a large body is
-   #126.
+   (`src/server/http/same-origin.ts`, D-121-1 to D-121-5). Then path and query are
+   parsed (schema-driven coercion), and `offset` above 10,000 is `400` (D-126-9). A body
+   over its cap is `413 content_too_large`: 256 KiB, or 1.5 MiB for sync
+   (`src/server/http/body-limit.ts`). It is refused on `Content-Length` before reading,
+   or once the stream passes the cap (D-126-4, D-126-5). Then a body that is not
+   `application/json` is `415` (D-121-6), and the body is parsed with generated Zod;
+   PATCH bodies go through `requireChanges`. This runs before any role check. Every
+   request array but `CreateTeamRequest.memberIds` has a `maxItems`, so an oversized one
+   is refused on its length before any item is parsed (D-118-5, R-91). `memberIds` is
+   uncapped (D-74-15, D-118-6); the 256 KiB cap bounds it at about 6,700 ids (D-126-7).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation from the database on every request (one
    primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
    Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
-   `500`, never allowed.
+   `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
+   budget, 30 a minute, and are `429 rate_limited` once it is spent
+   (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
 4. The service does the work. Text that must say something (a unit number, note, block
    name or street) is refused blank before anything is read (D-119-3). Sync and
    `POST /visits` also run the clock rules
@@ -416,6 +422,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Whole follow-up lists (the removal notice, the household picker, Add households, On the
   list) load every page through `loadAllFollowUps()` (`src/lib/follow-ups/pages.ts`),
   keeping each note once by id (D-117-52).
+- The block screen loads every page of `GET /households` through `loadAllHouseholds()`
+  (`src/lib/households/pages.ts`), keeping each household once by id. A failed page ends
+  the read with the pages before it: those are shown, but only a whole read is written
+  to the local copy, and each read lands unless a newer one already has (D-126-10).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
@@ -493,7 +503,8 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
   of its own, fetched when the page is idle) show it and retry it. The unit list overlays
   unsent records (`unit-overlay.ts`).
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
-  D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record).
+  D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record). A
+  `413` is handled as a `400` (D-126-11).
 
 **Offline shell (#77).** A navigation that fails gets the precached, static `/offline`
 at the address that failed; `OfflineShell` then reads the local copy at runtime.

@@ -49,6 +49,7 @@ Owner decisions are marked **(owner)**.
   A batch where every item is `internal_error` counts as a whole-batch failure~~, so
   only a record that fails alone is charged~~ (superseded by D-33-27). _Why:_ finds a poison record without holding the
   good ones, and a database outage (D-87-2) must not quarantine the whole queue.
+  _Extended by D-126-11:_ a `413` turns isolation on, as a `400` does.
 - **D-33-7 · One sender per origin.** Runs hold a `navigator.locks` lock; without Web
   Locks the run goes ahead in-tab. Tabs tell each other to re-read over
   `BroadcastChannel`. _Why:_ the server's idempotency keeps a double send harmless, so
@@ -146,7 +147,8 @@ Owner decisions are marked **(owner)**.
   isolation clauses of D-33-4 and D-33-6. _Why:_ during an outage every single-record
   request fails the same way, so charging it quarantined good records in about 20 min
   (D-87-2). Trade-off: a record that breaks every request it is in retries every
-  5 min instead of quarantining (see known limits).
+  5 min instead of quarantining (see known limits). _Extended by D-126-11:_ a
+  single-item `413` counts, as a single-item `400` does.
 - **D-33-28 · The app's own navigations skip the `beforeunload` warning.** `goTo`
   (used by sign-out) and the update prompt's `reloadPage` set a "leaving on purpose"
   flag; `pageshow` clears it. Refines D-33-23. _Why:_ tapping Stay on a chosen
