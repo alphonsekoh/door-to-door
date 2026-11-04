@@ -9,6 +9,13 @@ export function goTo(path: string): void {
   window.location.assign(path);
 }
 
+/* As goTo, but the page being left goes from history too, so Back cannot
+   return to it: what a sign-out leaves behind on a shared phone. */
+export function replaceWith(path: string): void {
+  leaveOnPurpose();
+  window.location.replace(path);
+}
+
 export function reloadPage(): void {
   leaveOnPurpose();
   window.location.reload();
@@ -18,21 +25,34 @@ let leaving = false;
 
 /* A navigation the member asked for, such as signing out, must not be met
    with the browser's "Leave site?" prompt: answering Stay would leave them
-   signed out on a page that still looks signed in. */
+   signed out on a page that still looks signed in. Never cleared: a page
+   restored from the back/forward cache is reloaded, not used again. */
 function leaveOnPurpose(): void {
   leaving = true;
-  /* Back from the back/forward cache, the page is in use again. */
-  window.addEventListener(
-    "pageshow",
-    () => {
-      leaving = false;
-    },
-    { once: true },
-  );
 }
 
 export function isLeavingOnPurpose(): boolean {
   return leaving;
+}
+
+/*
+ * A page restored from the back/forward cache comes back as it was left, with
+ * whoever was signed in then still on screen. no-store keeps signed-in pages
+ * out of that cache only where the engine honours it, and the offline page is
+ * never no-store, so every document is loaded again instead, which puts it
+ * back behind the sign-in check. Hidden first, so a slow reload never shows
+ * the old screen in the meantime.
+ */
+export function reloadWhenRestored(): () => void {
+  const restored = (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
+    document.documentElement.style.visibility = "hidden";
+    reloadPage();
+  };
+  window.addEventListener("pageshow", restored);
+  return () => {
+    window.removeEventListener("pageshow", restored);
+  };
 }
 
 const PLACEHOLDER_ORIGIN = "http://this-origin.invalid";

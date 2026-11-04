@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ActiveSession, HouseholdSummary, RevisitEntry } from "@/generated/types.gen";
 import {
   LOCAL_COPY_TTL_MS,
+  copyExpired,
   type LocalCopy,
   noteBlock,
   noteOuting,
@@ -383,6 +384,14 @@ describe("shellBlocks", () => {
 
   it("offers nothing for an empty list", () => {
     expect(shellBlocks({ ...copyWithBlock(), revisits: [] })).toEqual([]);
+  });
+});
+
+describe("copyExpired", () => {
+  it("counts twelve hours from the last write, exactly twelve still in date", () => {
+    expect(copyExpired({ savedAt: NOW }, NOW)).toBe(false);
+    expect(copyExpired({ savedAt: NOW }, NOW + LOCAL_COPY_TTL_MS)).toBe(false);
+    expect(copyExpired({ savedAt: NOW }, NOW + LOCAL_COPY_TTL_MS + 1)).toBe(true);
   });
 });
 

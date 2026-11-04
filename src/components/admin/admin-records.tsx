@@ -88,7 +88,9 @@ async function teamsOf(sessionId: string): Promise<Team[] | null> {
 export function AdminRecords() {
   const router = useRouter();
   const params = useSearchParams();
-  const filters = parseFilters(new URLSearchParams(params.toString()));
+  /* Held here, never in the URL (record-filters). */
+  const [q, setQ] = useState("");
+  const filters: RecordFilters = { ...parseFilters(new URLSearchParams(params.toString())), q };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [members, setMembers] = useState<User[]>([]);
@@ -169,8 +171,12 @@ export function AdminRecords() {
   }, [unknownTeam, search, router]);
 
   /* Written to the URL rather than to state, so the view can be sent to
-     someone else and survives a reload. */
-  function setFilter<K extends keyof RecordFilters>(key: K, value: RecordFilters[K]): void {
+     someone else and survives a reload. The search term is not: it names
+     people. */
+  function setFilter<K extends Exclude<keyof RecordFilters, "q">>(
+    key: K,
+    value: RecordFilters[K],
+  ): void {
     const next = toSearchParams({ ...filters, [key]: value });
     router.replace(next === "" ? "/admin/records" : `/admin/records?${next}`);
   }
@@ -276,9 +282,9 @@ export function AdminRecords() {
           <input
             id="records-search"
             type="search"
-            value={filters.q}
+            value={q}
             onChange={(event) => {
-              setFilter("q", event.target.value);
+              setQ(event.target.value);
             }}
             placeholder="Unit, name or contact"
             className="min-h-12 field"
@@ -375,6 +381,7 @@ export function AdminRecords() {
           <button
             type="button"
             onClick={() => {
+              setQ("");
               router.replace("/admin/records");
             }}
             className="min-h-11 text-body font-medium btn-text"

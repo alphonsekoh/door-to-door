@@ -72,6 +72,25 @@ function savedCopyShape(page: Page): Promise<{ revisits: number | null; blocks: 
   );
 }
 
+/* Every record in the queue on this phone, whoever saved it. */
+function queuedRecords(page: Page): Promise<{ unit: string; state: string }[]> {
+  return page.evaluate(
+    () =>
+      new Promise<{ unit: string; state: string }[]>((resolve) => {
+        const open = indexedDB.open("door-to-door");
+        open.onsuccess = () => {
+          const db = open.result;
+          const all = db.transaction("visits").objectStore("visits").getAll();
+          all.onsuccess = () => {
+            const rows = all.result as { state: string; item: { unitNumber: string } }[];
+            db.close();
+            resolve(rows.map((row) => ({ unit: row.item.unitNumber, state: row.state })));
+          };
+        };
+      }),
+  );
+}
+
 /* Waits for the worker to be in charge of this page. clientsClaim is off by
    design, so a page is controlled from its second load, not its first. */
 async function controlled(page: Page): Promise<void> {
@@ -374,16 +393,27 @@ test.describe("the worker in charge", () => {
     await page.goto("/");
     await page.getByRole("link", { name: /Blk 123/ }).click();
     await expect(page.getByRole("button", { name: "Save and next" })).toBeVisible();
-    // Something of Alice's in the queue, which must outlive the clear.
+    // One of Alice's records sent, which leaves the phone with her (#130)...
     await page.getByLabel("Unit number").fill("#38-01");
     await page.getByRole("radio", { name: "Low" }).click();
     await page.getByRole("button", { name: "Save and next" }).click();
     await expect(page.getByText(/^Saved #38-01/)).toBeVisible();
+    await expect
+      .poll(async () => (await queuedRecords(page)).find((r) => r.unit === "#38-01")?.state)
+      .toBe("synced");
+    // ...and one not sent, which must outlive every clear to send when she is back (D-33-1).
+    // On the context, which also sees what passes through the worker.
+    await page.context().route("**/api/visits/sync", (route) => route.abort());
+    await page.getByLabel("Unit number").fill("#38-02");
+    await page.getByRole("radio", { name: "Low" }).click();
+    await page.getByRole("button", { name: "Save and next" }).click();
+    await expect(page.getByText(/^Saved #38-02 on this phone/)).toBeVisible();
 
     await expect.poll(() => savedCopyMember(page)).not.toBeNull();
 
     await page.goto("/account");
     await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("button", { name: "Sign out anyway" }).click();
     await expect(page).toHaveURL(/sign-in/);
     /* Not to the outing screen: that writes Ben's own copy over Alice's,
        which would pass this test even if nothing ever cleared hers. */
@@ -395,22 +425,9 @@ test.describe("the worker in charge", () => {
     await controlled(page);
     await expect.poll(() => savedCopyMember(page)).toBeNull();
 
-    const queued = await page.evaluate(
-      () =>
-        new Promise<string[]>((resolve) => {
-          const open = indexedDB.open("door-to-door");
-          open.onsuccess = () => {
-            const db = open.result;
-            const all = db.transaction("visits").objectStore("visits").getAll();
-            all.onsuccess = () => {
-              const rows = all.result as { item: { unitNumber: string } }[];
-              db.close();
-              resolve(rows.map((r) => r.item.unitNumber));
-            };
-          };
-        }),
-    );
-    expect(queued).toContain("#38-01");
+    const queued = (await queuedRecords(page)).map((r) => r.unit);
+    expect(queued).toContain("#38-02");
+    expect(queued).not.toContain("#38-01");
 
     await page.context().setOffline(true);
     await page.reload().catch(() => undefined);

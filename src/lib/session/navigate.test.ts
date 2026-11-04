@@ -1,49 +1,101 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  destinationAfterSignIn,
-  goTo,
-  isLeavingOnPurpose,
-  reloadPage,
-} from "@/lib/session/navigate";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { destinationAfterSignIn } from "@/lib/session/navigate";
+import type * as NavigateModule from "@/lib/session/navigate";
+
+/* The "leaving on purpose" flag is module state, so each test reads a fresh copy. */
+let navigate: typeof NavigateModule;
+
+beforeEach(async () => {
+  vi.resetModules();
+  navigate = await import("@/lib/session/navigate");
+});
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/* A window whose pageshow listeners the test can fire, and a root to hide. */
+function stubWindow() {
+  const target = new EventTarget();
+  const location = { assign: vi.fn(), replace: vi.fn(), reload: vi.fn() };
+  const root = { style: { visibility: "" } };
+  vi.stubGlobal("window", {
+    location,
+    addEventListener: target.addEventListener.bind(target),
+    removeEventListener: target.removeEventListener.bind(target),
+  });
+  vi.stubGlobal("document", { documentElement: root });
+  /* Node has no PageTransitionEvent; persisted is all the guard reads. */
+  const show = (persisted: boolean) =>
+    target.dispatchEvent(Object.assign(new Event("pageshow"), { persisted }));
+  return { location, root, show };
+}
+
 describe("goTo", () => {
   it("loads the page in full rather than routing on the client", () => {
-    const assign = vi.fn();
-    vi.stubGlobal("window", { location: { assign }, addEventListener: vi.fn() });
-    goTo("/history");
-    expect(assign).toHaveBeenCalledWith("/history");
+    const { location } = stubWindow();
+    navigate.goTo("/history");
+    expect(location.assign).toHaveBeenCalledWith("/history");
+    expect(navigate.isLeavingOnPurpose()).toBe(true);
   });
 });
 
-describe("leaving on purpose", () => {
-  /* A window whose pageshow listeners the test can fire. */
-  function stubWindow() {
-    const target = new EventTarget();
-    const location = { assign: vi.fn(), reload: vi.fn() };
-    vi.stubGlobal("window", {
-      location,
-      addEventListener: target.addEventListener.bind(target),
-    });
-    return { location, show: () => target.dispatchEvent(new Event("pageshow")) };
-  }
+describe("replaceWith", () => {
+  it("loads the page in full in place of the current one, so Back cannot return to it", () => {
+    const { location } = stubWindow();
+    expect(navigate.isLeavingOnPurpose()).toBe(false);
+    navigate.replaceWith("/sign-in");
+    expect(location.replace).toHaveBeenCalledWith("/sign-in");
+    expect(location.assign).not.toHaveBeenCalled();
+    expect(navigate.isLeavingOnPurpose()).toBe(true);
+  });
+});
 
-  it("marks the app's own navigations, and forgets once the page is shown again", () => {
+describe("reloadPage", () => {
+  it("reloads as a departure the app chose", () => {
+    const { location } = stubWindow();
+    navigate.reloadPage();
+    expect(location.reload).toHaveBeenCalledOnce();
+    expect(navigate.isLeavingOnPurpose()).toBe(true);
+  });
+});
+
+describe("reloadWhenRestored", () => {
+  it("leaves a page loaded the ordinary way alone", () => {
+    const { location, root, show } = stubWindow();
+    navigate.reloadWhenRestored();
+    show(false);
+    expect(location.reload).not.toHaveBeenCalled();
+    expect(root.style.visibility).toBe("");
+    expect(navigate.isLeavingOnPurpose()).toBe(false);
+  });
+
+  it("hides a page restored from the back/forward cache and loads it again", () => {
+    const { location, root, show } = stubWindow();
+    navigate.reloadWhenRestored();
+    show(true);
+    // Hidden, so a slow reload never shows the screen as it was left.
+    expect(root.style.visibility).toBe("hidden");
+    expect(location.reload).toHaveBeenCalledOnce();
+    // As the app's own reload, so the unsent-records warning does not hold it up.
+    expect(navigate.isLeavingOnPurpose()).toBe(true);
+  });
+
+  it("does not take the leaving mark back when a page left on purpose is restored", () => {
+    // The guard's reload follows; a prompt there would show over the old screen.
+    const { show } = stubWindow();
+    navigate.reloadWhenRestored();
+    navigate.goTo("/sign-in");
+    show(true);
+    expect(navigate.isLeavingOnPurpose()).toBe(true);
+  });
+
+  it("stops once removed", () => {
     const { location, show } = stubWindow();
-    goTo("/sign-in");
-    expect(isLeavingOnPurpose()).toBe(true);
-    // Restored from the back/forward cache: in use again.
-    show();
-    expect(isLeavingOnPurpose()).toBe(false);
-
-    reloadPage();
-    expect(location.reload).toHaveBeenCalled();
-    expect(isLeavingOnPurpose()).toBe(true);
-    show();
-    expect(isLeavingOnPurpose()).toBe(false);
+    const remove = navigate.reloadWhenRestored();
+    remove();
+    show(true);
+    expect(location.reload).not.toHaveBeenCalled();
   });
 });
 

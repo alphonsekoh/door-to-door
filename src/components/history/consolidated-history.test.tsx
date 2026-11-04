@@ -249,9 +249,6 @@ describe("ConsolidatedHistory", () => {
 
     await user.type(screen.getByLabelText("Recorded to"), "2026-03-31");
     expect(replace).toHaveBeenLastCalledWith("/admin/history?to=2026-03-31");
-
-    await user.type(screen.getByLabelText("Search by unit, name or contact"), "t");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?q=t");
   });
 
   it("reloads after amending, so the row is not stale", async () => {
@@ -303,13 +300,64 @@ describe("ConsolidatedHistory", () => {
     expect(replace).toHaveBeenCalledWith("/admin/history");
   });
 
-  it("searches within what is loaded", async () => {
+  it("searches within what is loaded, with nothing in the URL and nothing asked of the server", async () => {
+    // The term is a name or a phone number: a query string would carry it to
+    // the server's logs, the phone's history and a sign-in's callbackUrl (#130).
+    const user = userEvent.setup();
+    serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    apiFetch.mockClear();
+
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "124");
+
+    expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    // Let any deferred load run: typing must not start one.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the search term through a filter change", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    const search = screen.getByLabelText("Search by unit, name or contact");
+    await user.type(search, "124");
+
+    await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
+
+    // Nor is the term written along with the filter.
+    expect(replace).toHaveBeenLastCalledWith("/admin/history?religion=hindu");
+    expect(search).toHaveValue("124");
+  });
+
+  it("takes no search term from the URL", async () => {
+    // An old link, or one typed by hand, does not fill the search.
     searchParams.value = new URLSearchParams("q=124");
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
 
-    expect(await screen.findByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
+    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("");
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+  });
+
+  it("clears a search typed with no other filter", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "124");
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("");
+    expect(screen.getByText(door("Blk 123, #05-123"))).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
   });
 
   it("appends the next page rather than replacing it", async () => {
@@ -373,10 +421,10 @@ describe("ConsolidatedHistory", () => {
 
   it("applies the search term to the export as well as the screen", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("q=124");
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
     await screen.findByText(door("Blk 123, #05-124"));
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "124");
 
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
 
@@ -432,10 +480,12 @@ describe("ConsolidatedHistory", () => {
   );
 
   it("says the filters match nothing when only the search excludes everything", async () => {
-    searchParams.value = new URLSearchParams("q=zzz");
+    const user = userEvent.setup();
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
-    expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
+    await screen.findByText(door("Blk 123, #05-123"));
+    await user.type(screen.getByLabelText("Search by unit, name or contact"), "zzz");
+    expect(screen.getByText("Nothing here matches those filters.")).toBeInTheDocument();
   });
 
   it("amends any historical record", async () => {

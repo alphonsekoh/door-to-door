@@ -3,7 +3,6 @@
 import { signOut } from "next-auth/react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { AuthFailure } from "@/lib/session/account-state";
-import { goTo } from "@/lib/session/navigate";
 import { signOutAndForget } from "@/lib/session/sign-out";
 import { useModal } from "@/lib/hooks/use-modal";
 import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
@@ -60,7 +59,7 @@ export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
     setFailed(false);
     setBusy(true);
     try {
-      await signOutAndForget(signOut, goTo, copy.destination);
+      await signOutAndForget(signOut, copy.destination);
     } catch {
       setFailed(true);
       setBusy(false);

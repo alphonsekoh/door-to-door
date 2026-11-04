@@ -65,7 +65,12 @@ type State =
 export function ConsolidatedHistory() {
   const router = useRouter();
   const params = useSearchParams();
-  const filters = parseHistoryFilters(new URLSearchParams(params.toString()));
+  /* Held here, never in the URL (history-filters). */
+  const [q, setQ] = useState("");
+  const filters: HistoryFilters = {
+    ...parseHistoryFilters(new URLSearchParams(params.toString())),
+    q,
+  };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [offset, setOffset] = useState(0);
@@ -172,7 +177,10 @@ export function ConsolidatedHistory() {
     router.replace(`/admin/history?${next}`);
   }, [unknownTeam, search, router]);
 
-  function setFilter<K extends keyof HistoryFilters>(key: K, value: HistoryFilters[K]): void {
+  function setFilter<K extends Exclude<keyof HistoryFilters, "q">>(
+    key: K,
+    value: HistoryFilters[K],
+  ): void {
     /* A team from the old session means nothing in the new one. */
     const reset = key === "sessionId" ? { teamId: "" } : {};
     const next = toHistorySearch({ ...filters, ...reset, [key]: value });
@@ -254,9 +262,9 @@ export function ConsolidatedHistory() {
           <input
             id="history-q"
             type="search"
-            value={filters.q}
+            value={q}
             onChange={(event) => {
-              setFilter("q", event.target.value);
+              setQ(event.target.value);
             }}
             placeholder="Unit, name or contact"
             className="min-h-12 field"
@@ -439,6 +447,7 @@ export function ConsolidatedHistory() {
             <button
               type="button"
               onClick={() => {
+                setQ("");
                 router.replace("/admin/history");
               }}
               className="min-h-11 rounded-lg px-3 text-body font-medium btn-text"
@@ -457,7 +466,7 @@ export function ConsolidatedHistory() {
 
       {groups.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border bg-surface-muted p-5 text-body text-foreground-muted">
-          {entries.length === 0 && toHistorySearch({ ...filters, q: "" }) === ""
+          {entries.length === 0 && search === ""
             ? "Nothing has been recorded yet."
             : "Nothing here matches those filters."}
         </p>

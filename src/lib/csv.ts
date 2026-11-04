@@ -12,11 +12,16 @@ import { displayName } from "@/lib/teams/team-ui";
 /*
  * Quoted whenever the value could otherwise break the row, and always when it
  * starts with a character a spreadsheet would treat as a formula. That last
- * part matters because a description is free text typed at a door.
+ * part matters because a description is free text typed at a door, and names,
+ * contacts and notes are stored as typed, untrimmed. A leading tab or CR is
+ * itself a formula start to some; others trim leading whitespace, control and
+ * format characters (a zero-width space, say) before deciding.
  */
+const FORMULA_START = [/^[\t\r]/, /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u];
+
 export function escapeCell(value: string): string {
   const risky = /[",\n\r]/.test(value);
-  const formula = /^[=+\-@\t]/.test(value);
+  const formula = FORMULA_START.some((start) => start.test(value));
   const cell = formula ? `'${value}` : value;
   return risky || formula ? `"${cell.replace(/"/g, '""')}"` : cell;
 }

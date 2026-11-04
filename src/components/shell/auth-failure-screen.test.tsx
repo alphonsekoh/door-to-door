@@ -4,11 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
 import { ConfirmDialog } from "@/components/ui/sheet";
 
-const { signOut, signOutAndForget, hasUnsynced, goTo } = vi.hoisted(() => ({
+const { signOut, signOutAndForget, hasUnsynced } = vi.hoisted(() => ({
   signOut: vi.fn(),
   signOutAndForget: vi.fn(),
   hasUnsynced: vi.fn(),
-  goTo: vi.fn(),
 }));
 
 vi.mock("next-auth/react", () => ({ signOut }));
@@ -17,7 +16,6 @@ vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 /* The member whose records are asked about: their own, never the phone's
    other users' (D-33-1). */
 vi.mock("@/lib/hooks/use-role", () => ({ useRole: () => ({ userId: "u1" }) }));
-vi.mock("@/lib/session/navigate", () => ({ goTo }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -53,7 +51,8 @@ describe("AuthFailureScreen", () => {
     const user = userEvent.setup();
     render(<AuthFailureScreen kind="deactivated" />);
     await user.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, goTo, "/sign-in");
+    // Its own navigation, which leaves no way Back to this screen (#129).
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "/sign-in");
   });
 
   it("signs out first, then asks for a fresh sign-in with the reason", async () => {
@@ -61,7 +60,7 @@ describe("AuthFailureScreen", () => {
     const user = userEvent.setup();
     render(<AuthFailureScreen kind="signed-out" />);
     await user.click(screen.getByRole("button", { name: "Sign in again" }));
-    expect(signOutAndForget).toHaveBeenCalledWith(signOut, goTo, "/sign-in?reason=signed-out");
+    expect(signOutAndForget).toHaveBeenCalledWith(signOut, "/sign-in?reason=signed-out");
   });
 
   it("holds the button while signing out", async () => {

@@ -1,5 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/app-shell";
 import { accountStore } from "@/lib/session/account-state";
 
@@ -25,6 +25,11 @@ vi.mock("@/lib/session/users", () => ({
   loadCurrentUser: () => Promise.resolve({ id: "u1", role: "member" }),
 }));
 
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.documentElement.style.removeProperty("visibility");
+});
+
 describe("AppShell", () => {
   it("renders page content inside the main landmark", () => {
     render(
@@ -46,6 +51,17 @@ describe("AppShell", () => {
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();
   });
 
+  it("loads the page again when Back restores it from the back/forward cache", () => {
+    // Whoever was signed in when it was left must not reappear on a shared phone (#129).
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+    render(<AppShell>content</AppShell>);
+
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
   it("puts the page, the banners and the nav behind the account message", () => {
     // Last: a reported failure sticks for the rest of this file.
     render(
@@ -59,5 +75,12 @@ describe("AppShell", () => {
     expect(screen.getByText("Page body").closest("[inert]")).not.toBeNull();
     expect(screen.getByText("Session").closest("[inert]")).not.toBeNull();
     expect(screen.getByRole("alertdialog", { name: "Account deactivated" })).toBeInTheDocument();
+
+    // A page left from behind the message, as by the sign-out it offers, is
+    // loaded again too.
+    const reload = vi.fn();
+    vi.stubGlobal("location", { reload });
+    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+    expect(reload).toHaveBeenCalledOnce();
   });
 });

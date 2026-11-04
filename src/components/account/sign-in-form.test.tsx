@@ -3,9 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/account/sign-in-form";
 
-const { signIn, goTo, get, clearCaches, clearLocalCopy } = vi.hoisted(() => ({
+const { signIn, goTo, get, clearCaches, clearLocalCopy, forgetSentRecords } = vi.hoisted(() => ({
   clearCaches: vi.fn(() => Promise.resolve()),
   clearLocalCopy: vi.fn(() => Promise.resolve()),
+  forgetSentRecords: vi.fn(() => Promise.resolve()),
   signIn: vi.fn(),
   goTo: vi.fn(),
   get: vi.fn<(key: string) => string | null>(),
@@ -14,6 +15,7 @@ const { signIn, goTo, get, clearCaches, clearLocalCopy } = vi.hoisted(() => ({
 vi.mock("next-auth/react", () => ({ signIn }));
 vi.mock("@/lib/pwa/sw-client", () => ({ clearServiceWorkerCaches: clearCaches }));
 vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy }));
+vi.mock("@/lib/sync/forget-sent", () => ({ forgetSentRecords }));
 vi.mock(import("@/lib/session/navigate"), async (importOriginal) => ({
   ...(await importOriginal()),
   goTo,
@@ -124,6 +126,42 @@ describe("SignInForm", () => {
     await user.click(screen.getByRole("button", { name: "Sign in" }));
     await waitFor(() => {
       expect(clearCaches).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("forgets the records already sent from the phone on sign-in, not on failure", async () => {
+    // Whoever used the phone before may never have signed out (#130).
+    signIn.mockResolvedValueOnce(failed).mockResolvedValueOnce(ok);
+    const user = userEvent.setup();
+    render(<SignInForm />);
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await screen.findByRole("alert");
+    expect(forgetSentRecords).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledOnce();
+    });
+    expect(forgetSentRecords).toHaveBeenCalledOnce();
+    expect(forgetSentRecords.mock.invocationCallOrder[0]).toBeLessThan(
+      goTo.mock.invocationCallOrder[0] ?? -Infinity,
+    );
+  });
+
+  it("still leaves when sent records cannot be forgotten", async () => {
+    signIn.mockResolvedValue(ok);
+    forgetSentRecords.mockRejectedValueOnce(new Error("IndexedDB is unavailable"));
+    const user = userEvent.setup();
+    render(<SignInForm />);
+
+    await user.type(screen.getByLabelText("Email"), "a@b.c");
+    await user.type(screen.getByLabelText("Password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => {
+      expect(goTo).toHaveBeenCalledWith("/");
     });
   });
 

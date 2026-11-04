@@ -1,4 +1,4 @@
-import { MEMBER_STATE } from "./accounts";
+import { MEMBER_STATE, SEED_MEMBER } from "./accounts";
 import { expect, test } from "./fixtures";
 
 /*
@@ -35,18 +35,61 @@ test.describe("renaming", () => {
   });
 });
 
+/*
+ * Back after signing out, on a phone someone else picks up next (#129). The
+ * sign-out replaces its page in history, so Back goes to the screen before
+ * Account. That one is no-store, and a page the browser restores from its
+ * back/forward cache anyway is loaded again, so either way the proxy sends
+ * it to sign-in with itself as the callback. Had the sign-out pushed a new
+ * entry, Back would land on Account and name that instead.
+ *
+ * Over plain http here; the same on a real iPhone over HTTPS is the owner's
+ * check.
+ */
 test.describe("signing out", () => {
-  test("Back does not return to the signed-in app", async ({ memberPage, baseURL }) => {
-    await memberPage.goto("/account");
-    await memberPage.getByRole("button", { name: "Sign out" }).click();
-    await expect(memberPage).toHaveURL(/sign-in/);
-    // A relative redirect: the origin the member was on is the one they stay on.
-    expect(new URL(memberPage.url()).origin).toBe(baseURL);
-    await expect(memberPage.getByRole("navigation", { name: "Primary" })).toBeHidden();
+  test("Back from sign-in does not return a member to the app", async ({
+    memberPage: page,
+    baseURL,
+  }) => {
+    await page.goto("/history");
+    await expect(page.getByRole("heading", { level: 1, name: "History" })).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Account" })
+      .click();
+    await expect(page.getByLabel("Your name")).not.toHaveValue("");
 
-    await memberPage.goBack();
-    await expect(memberPage).toHaveURL(/sign-in/);
-    await expect(memberPage.getByRole("navigation", { name: "Primary" })).toBeHidden();
-    await expect(memberPage.getByLabel("Your name")).toBeHidden();
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+    // A relative redirect: the origin the member was on is the one they stay on.
+    expect(new URL(page.url()).origin).toBe(baseURL);
+    await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/sign-in\?callbackUrl=%2Fhistory$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
+    await expect(page.getByRole("heading", { level: 1, name: "History" })).toBeHidden();
+  });
+
+  test("Back from sign-in does not show an admin screen's members again", async ({
+    adminPage: page,
+  }) => {
+    await page.goto("/admin/team");
+    await expect(page.getByText(SEED_MEMBER).first()).toBeVisible();
+    await page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Account" })
+      .click();
+    await expect(page.getByLabel("Your name")).not.toHaveValue("");
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(/\/sign-in$/);
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/sign-in\?callbackUrl=%2Fadmin%2Fteam$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+    await expect(page.getByText(SEED_MEMBER)).toBeHidden();
+    await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
   });
 });
