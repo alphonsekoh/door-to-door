@@ -8,6 +8,7 @@ import { requireTestDatabaseUrl } from "@/db/test-env";
 import { createFollowUp, removeFollowUp, updateFollowUp } from "@/server/follow-ups/service";
 import { removeSessionHousehold } from "@/server/sessions/households";
 import { detachBlock } from "@/server/sessions/service";
+import { updateUser } from "@/server/users/service";
 import { createVisit } from "@/server/visits/service";
 import { syncVisits } from "@/server/visits/sync";
 
@@ -38,7 +39,12 @@ type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
 const POLL_BUDGET_MS = 4_000;
 vi.setConfig({ testTimeout: 15_000 });
 
-type Held = { table: "follow_ups" | "households" | "outing_sessions"; id: string };
+type Held = {
+  table: "follow_ups" | "households" | "outing_sessions" | "users";
+  id: string;
+  /* What the request runs while it waits, where the table alone does not say enough. */
+  waitsOn?: string;
+};
 const theNote: Held = { table: "follow_ups", id: NOTE };
 
 /*
@@ -85,7 +91,7 @@ async function parked(
     await client.query("BEGIN");
     await client.query(`SELECT 1 FROM ${held.table} WHERE id = $1 FOR UPDATE`, [held.id]);
     pending = settle(start());
-    await waitingOn(`%${held.table}%`, waiters);
+    await waitingOn(held.waitsOn ?? `%${held.table}%`, waiters);
     await whileHeld(query);
     await client.query("COMMIT");
     return await pending;
@@ -631,5 +637,134 @@ describe("a visit recorded while an admin detaches its block", () => {
       ok: [{ status: "rejected", error: { code: "conflict" } }],
     });
     expect(await left()).toEqual({ attached: 0, visits: 0 });
+  });
+});
+
+describe("a visit recorded for a member while an admin deactivates them", () => {
+  const clock = { now: new Date(), toleranceMs: 300_000 };
+  const VISIT = "01960000-0000-7000-8000-00000000de01";
+  // An admin types in Alice's paper record.
+  const recordForAlice = () =>
+    createVisit(
+      db,
+      { id: VISIT, blockId: BLOCK, unitNumber: "#05-127", interestLevel: "low", memberId: ALICE },
+      clock,
+      admin,
+    );
+  const deactivateAlice = () => updateUser(db, ALICE, { deactivated: true }, ADMIN);
+  const written = async () => ({
+    visits: (await pool.query(`SELECT 1 FROM visits WHERE id = $1`, [VISIT])).rows.length,
+    households: (await pool.query(`SELECT 1 FROM households WHERE unit_number = '#05-127'`)).rows
+      .length,
+    participants: (
+      await pool.query(`SELECT 1 FROM session_participants WHERE user_id = $1`, [ALICE])
+    ).rows.length,
+  });
+  const aliceDeactivated = async () =>
+    (
+      await pool.query<{ deactivated_at: Date | null }>(
+        `SELECT deactivated_at FROM users WHERE id = $1`,
+        [ALICE],
+      )
+    ).rows[0]?.deactivated_at instanceof Date;
+
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, status, started_at, created_by)
+       VALUES ($1,'Outing','active', now() - interval '1 hour', $2)`,
+      [SESSION, ADMIN],
+    );
+    await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+      SESSION,
+      BLOCK,
+    ]);
+  });
+
+  it("refuses the record once the deactivation it waited for lands, and writes nothing", async () => {
+    const outcome = await parked(
+      { table: "users", id: ALICE, waitsOn: `%from "users"%for share%` },
+      recordForAlice,
+      (q) =>
+        q(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [ALICE]).then(() => undefined),
+    );
+
+    expect(outcome).toMatchObject({
+      error: { status: 409, code: "conflict", message: "That member's account is deactivated." },
+    });
+    expect(await written()).toEqual({ visits: 0, households: 0, participants: 0 });
+  });
+
+  it("holds the deactivation until a record that took the member first lands", async () => {
+    /*
+     * The record takes Alice's row, then parks on the session held here; the
+     * deactivation then parks on Alice. Taken after the session, or as KEY
+     * SHARE, the deactivation would not wait and the record would be refused.
+     */
+    const [recording, deactivating] = await race(
+      (q) => q(`SELECT 1 FROM outing_sessions WHERE id = $1 FOR UPDATE`, [SESSION]),
+      recordForAlice,
+      `%from "outing_sessions"%for key share%`,
+      deactivateAlice,
+      `%from "users"%for no key update%`,
+    );
+
+    expect(recording).toMatchObject({ ok: { id: VISIT, memberId: ALICE } });
+    expect(deactivating).toMatchObject({ ok: { id: ALICE } });
+    expect(await aliceDeactivated()).toBe(true);
+    expect(await written()).toEqual({ visits: 1, households: 1, participants: 1 });
+  });
+});
+
+describe("two admins demoting or deactivating each other at once", () => {
+  // Above ADMIN, so ADMIN's row is the first both changes lock.
+  const ADMIN2 = "7a7a7a7a-0000-4000-8000-000000000003";
+  const lastAdmin = {
+    status: 409,
+    code: "conflict",
+    message: "The team needs at least one active admin.",
+  };
+  const activeAdmins = async () =>
+    (await pool.query(`SELECT 1 FROM users WHERE role = 'admin' AND deactivated_at IS NULL`)).rows
+      .length;
+
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES ($1,'b@t.local','Second Admin','admin')`,
+      [ADMIN2],
+    );
+  });
+
+  const crossed = async (change: { role: "member" } | { deactivated: true }) => {
+    const outcome = await parked(
+      { table: "users", id: ADMIN, waitsOn: `%from "users"%for no key update%` },
+      () =>
+        Promise.allSettled([
+          updateUser(db, ADMIN2, change, ADMIN),
+          updateUser(db, ADMIN, change, ADMIN2),
+        ]),
+      () => Promise.resolve(),
+      2,
+    );
+    return (outcome as { ok: PromiseSettledResult<unknown>[] }).ok;
+  };
+
+  it("lets exactly one demotion through, so an active admin remains", async () => {
+    const settled = await crossed({ role: "member" });
+
+    expect(settled.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(settled.find((result) => result.status === "rejected")).toMatchObject({
+      reason: lastAdmin,
+    });
+    expect(await activeAdmins()).toBe(1);
+  });
+
+  it("lets exactly one deactivation through, so an active admin remains", async () => {
+    const settled = await crossed({ deactivated: true });
+
+    expect(settled.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(settled.find((result) => result.status === "rejected")).toMatchObject({
+      reason: lastAdmin,
+    });
+    expect(await activeAdmins()).toBe(1);
   });
 });

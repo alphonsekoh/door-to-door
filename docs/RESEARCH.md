@@ -247,7 +247,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
   _Updated (#129):_ still unverified on WebKit. Playwright's Chromium runs with bfcache
   off and its WebKit never restored a page, so neither shows a restore under WebKit over
-  HTTPS; that is the owner's iPhone check. Details in R-130.
+  HTTPS; that is the owner's iPhone check. Details in R-136.
 
 - **Source:** Browser behaviour (web.dev bfcache guidance); observed in #74
 - **Used by:** D-74-11, D-129-1
@@ -291,7 +291,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   real row lock from a second connection); the general rules are from the PostgreSQL
   docs.
 - **Source:** [PostgreSQL concurrency control, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html); #74
-- **Used by:** D-74-31, D-74-23, D-117-9, D-123-1
+- **Used by:** D-74-31, D-74-23, D-117-9, D-123-1, D-132-2
 
 ### R-36 · A fetch `TypeError` cannot tell "not sent" from "reply lost"
 
@@ -853,7 +853,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   `src/server/follow-ups/races.integration.test.ts`, which hold a real lock from a
   second connection.
 - **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS); #117
-- **Used by:** D-117-45, D-123-1, D-123-2
+- **Used by:** D-117-45, D-123-1, D-123-2, D-132-2, D-132-4
 
 ### R-83 · A DELETE body has no defined meaning; a query string is logged
 
@@ -1345,7 +1345,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS);
   PostgreSQL `src/backend/utils/adt/ri_triggers.c` (the restrict check's
   `FOR KEY SHARE OF x`); measured (#123 builder, `src/server/visits/sync-races.integration.test.ts`)
-- **Used by:** D-123-2
+- **Used by:** D-123-2, D-132-4
 
 ### R-125 · React keeps what was typed into a field while hydrating, but not in state
 
@@ -1388,7 +1388,36 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   measured in #113 (verifier round 0, builder fix round 1)
 - **Used by:** D-113-3
 
-### R-130 · What Playwright can show of a back/forward-cache restore (measured)
+### R-128 · A deactivation waits for `FOR SHARE` on the user, not for `FOR KEY SHARE` (measured)
+
+- **Finding:** `FOR SHARE` conflicts with `FOR NO KEY UPDATE` and `FOR UPDATE`;
+  `FOR KEY SHARE` only with `FOR UPDATE` (R-82). Setting `deactivated_at` changes no key
+  column, so its UPDATE takes `FOR NO KEY UPDATE` (R-124): it waits for a visit write
+  holding the author `FOR SHARE`, never for the `KEY SHARE` the visit's foreign key
+  takes. Measured in #132: with the author locked `FOR SHARE` before the session, a
+  deactivation parked behind a recording that held it, and both landed; with
+  `KEY SHARE`, or the lock taken after the session, the deactivation did not wait and
+  the test failed.
+- **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS);
+  measured (#132 builder, `src/server/follow-ups/races.integration.test.ts`)
+- **Used by:** D-132-4, D-132-5, D-132-8
+
+### R-129 · A locking SELECT locks in its `ORDER BY` order and re-checks its filter on a row it waited for
+
+- **Finding:** Under READ COMMITTED, `SELECT ... FOR <mode>` finds only rows committed
+  when the statement began. On a row another transaction holds it waits; once that
+  commits, it re-evaluates the `WHERE` clause on the new version and returns and locks
+  the row only if it still matches. A row that came to match after the statement began
+  is never seen. `ORDER BY` is applied before the locking clause, so rows are locked in
+  sort order; `EXPLAIN` shows `LockRows` above `Sort`. So two `updateUser` calls lock the
+  admins in one id order, the second drops an admin the first demoted, and an admin
+  promoted meanwhile is not counted.
+- **Source:** [PostgreSQL, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED);
+  [PostgreSQL, SELECT, the locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE);
+  `EXPLAIN` measured (#132 reviewer)
+- **Used by:** D-132-2, D-132-5
+
+### R-136 · What Playwright can show of a back/forward-cache restore (measured)
 
 - **Finding:** Playwright launches Chromium with `--disable-back-forward-cache`, so no
   page is ever restored in the suite. With the full Chromium channel and that flag
@@ -1408,7 +1437,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   rounds 0 and 1)
 - **Used by:** D-129-1, D-129-10
 
-### R-131 · A late answer sets the session cookie again after sign-out (measured)
+### R-137 · A late answer sets the session cookie again after sign-out (measured)
 
 - **Finding:** An answer to a request sent with the session, delivered after Auth.js's
   sign-out answer, carries a refreshed session cookie (R-122) and puts the cookie back, on
@@ -1421,7 +1450,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** measured (#129 verifier, rounds 1 and 2)
 - **Used by:** D-129-4, D-129-5
 
-### R-132 · `page.route` does not see what a service worker fetches
+### R-138 · `page.route` does not see what a service worker fetches
 
 - **Finding:** Playwright's docs say `page.route` and `browserContext.route` do not
   intercept requests a service worker handles, and recommend `serviceWorkers: "block"`
@@ -1432,7 +1461,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `serviceWorkers`); measured (#129 builder and verifier)
 - **Used by:** D-129-10
 
-### R-133 · OWASP's CSV injection guidance names tab and CR, and the field separator
+### R-139 · OWASP's CSV injection guidance names tab and CR, and the field separator
 
 - **Finding:** OWASP lists `=`, `+`, `-`, `@`, tab (0x09) and carriage return (0x0D) as
   the leading characters to defuse with a quote, and warns that a field separator such

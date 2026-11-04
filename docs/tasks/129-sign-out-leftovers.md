@@ -27,7 +27,7 @@ deleted, and the CSV guard missed a leading CR.
   path. Hidden, so a slow reload never shows the old screen. _Trade-off:_ a restored page
   loses unsaved input, an offline shell restored mid-recording included. That refines
   D-77-11 and D-33-22: a restore follows the member leaving the page, so it is not a
-  navigation under them. _Research:_ R-31, R-130.
+  navigation under them. _Research:_ R-31, R-136.
 - **D-129-2 · The "leaving on purpose" flag is never cleared.** `pageshow` no longer
   resets it, and the guard's reload goes through `reloadPage`. Refines D-33-28, whose "a
   page restored from the back/forward cache must warn again" no longer applies: that page
@@ -46,7 +46,7 @@ deleted, and the CSV guard missed a leading CR.
   names someone, at most 3 sign-outs in all. Past that it fails like a refused sign-out and
   stays put (extends D-74-64). An unanswered check lets the sign-out stand. _Why:_ an
   answer to a request sent before the sign-out and delivered after it sets the session
-  cookie again (R-131). The check only confirms a sign-out that succeeded, so it waits less
+  cookie again (R-137). The check only confirms a sign-out that succeeded, so it waits less
   than a send's 20 s (D-33-5).
 - **D-129-5 · `/sign-in` looks once more after a sign-out.** Sign-out leaves the
   sessionStorage note `d2d:just-signed-out`. The sign-in form's `finishSignOut` checks once
@@ -54,7 +54,7 @@ deleted, and the CSV guard missed a leading CR.
   sign-in waits for it. If the session will not go, the form says "You may still be signed
   in on this phone. Check your connection, then sign in and sign out again." instead of
   "You were signed out". Storage that cannot be used skips the look. _Why:_ the page that
-  signed out lives until `/sign-in` replaces it, and an answer can land meanwhile (R-131).
+  signed out lives until `/sign-in` replaces it, and an answer can land meanwhile (R-137).
   Waiting keeps that sign-out from landing after the new sign-in; looking only once means
   a later visit cannot sign the next member out.
 
@@ -91,7 +91,7 @@ deleted, and the CSV guard missed a leading CR.
   Quoting is unchanged. Refines D-30-4. _Why:_ some spreadsheets take a leading CR as a
   formula start, others skip leading whitespace and invisible characters first, and member
   text reaches the export as typed. _Known limit:_ a formula after a `;` mid-cell, in a
-  locale whose separator is `;`. _Research:_ R-29, R-133.
+  locale whose separator is `;`. _Research:_ R-29, R-139.
 
 ### Tests
 
@@ -102,8 +102,8 @@ deleted, and the CSV guard missed a leading CR.
   make `%2Faccount`. A third holds a session answer until the sign-out is answered, with
   the worker blocked. `pwa.spec`'s shared-phone test expects a sent record gone and an
   unsent one kept, and stops sends with `context().route`. _Why:_ neither Playwright engine
-  reaches a real restore here (R-130), so the restore itself rests on Vitest and the
-  owner's iPhone check; `page.route` misses what the worker fetches (R-132).
+  reaches a real restore here (R-136), so the restore itself rests on Vitest and the
+  owner's iPhone check; `page.route` misses what the worker fetches (R-138).
 
 ### How existing decisions are handled
 
@@ -118,7 +118,7 @@ deleted, and the CSV guard missed a leading CR.
 | D-29-4                 | Refined: the search term is never in the URL                              | D-129-7 |
 | D-77-3, D-77-5         | Refined: a copy past 12 h is deleted when read                            | D-129-8 |
 | D-30-4                 | Refined: tab, CR, and a sign behind leading whitespace or invisible chars | D-129-9 |
-| D-122-10               | Kept as worded: the probe that seemed to contradict it proves nothing     | R-130   |
+| D-122-10               | Kept as worded: the probe that seemed to contradict it proves nothing     | R-136   |
 | R-31                   | Updated: a WebKit restore is still unverified                             | D-129-1 |
 
 ## Known limits
@@ -148,7 +148,7 @@ D-74-12, D-77-6, D-77-9, D-77-13, D-83-15, D-111-68, D-122-10, D-150-1 to D-150-
 1. **A late answer fetched by the service worker can still sign the member back in.**
    After D-129-4 and D-129-5, what is left is an answer slower than the sign-out, its
    check, loading `/sign-in` and its look, fetched by the worker, whose fetch is not
-   cancelled with the page (R-131). The phone then stays signed in as the member who
+   cancelled with the page (R-137). The phone then stays signed in as the member who
    signed out. Only server-side revocation closes it, which D-83-15(b) accepted as a limit
    (R-32). Owner: accept it as a known limit and file an issue; narrow it on the client
    (the worker aborts its in-flight `/api` fetches at the pre-sign-out clear, or `/sign-in`

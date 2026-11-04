@@ -650,7 +650,9 @@ export type CreateVisitRequest = HouseholdIdentity & {
     /**
      * **Requires: admin.** Attributes the visit to this member rather
      * than to the caller, for a record phoned in or captured on paper.
-     * A member supplying anyone else's id is refused with `403`.
+     * A member supplying anyone else's id is refused with `403`. A
+     * deactivated member is refused with `409 conflict`, and nothing
+     * is written.
      *
      * The record belongs to whoever knocked, so authorship is set here
      * and never reassigned by a later amendment.
@@ -2450,7 +2452,8 @@ export type CreateVisitErrors = {
      */
     404: Error;
     /**
-     * A visit with this id already exists, or no session is active
+     * A visit with this id already exists, or the named `memberId` is
+     * deactivated (`conflict`), or no session is active
      * (`session_not_active`), or the block is not attached to the active
      * session, or a member is recording an unlisted unit in a follow-up
      * session (`not_on_follow_up_list`).
@@ -3190,7 +3193,9 @@ export type UpdateUserErrors = {
      */
     404: Error;
     /**
-     * An admin attempting to demote or deactivate themselves.
+     * An admin attempting to demote or deactivate themselves, or a
+     * change that would leave no active admin.
+     *
      */
     409: Error;
     /**

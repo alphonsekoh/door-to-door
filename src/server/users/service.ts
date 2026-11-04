@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role } from "@/db/schema";
 import { users, visits } from "@/db/schema";
@@ -144,10 +144,16 @@ export async function createUser(
 }
 
 /*
- * An admin may not demote or deactivate themselves.
+ * An admin may not demote or deactivate themselves, and nobody may demote or
+ * deactivate the last active admin. With one admin on the team - the normal
+ * case - either move locks every admin out of the app with no way back in
+ * short of the host.
  *
- * With one admin on the team - the normal case - either move locks every
- * admin out of the app with no way back in short of editing the database.
+ * The last-admin rule is judged on rows one statement locks: the target and
+ * every active admin, FOR NO KEY UPDATE in id order. Two admins demoting each
+ * other at once queue on the same rows, so the second reads the first's
+ * change, and two changes never lock in opposite orders. NO KEY UPDATE never
+ * blocks the KEY SHARE a foreign key takes on a user.
  */
 export async function updateUser(
   db: Database,
@@ -155,24 +161,47 @@ export async function updateUser(
   changes: { role?: Role | undefined; deactivated?: boolean | undefined },
   actorId: string,
 ): Promise<UserRow> {
-  const current = await getUser(db, id);
+  await db.transaction(async (tx) => {
+    const locked = await tx
+      .select({ id: users.id, role: users.role, deactivatedAt: users.deactivatedAt })
+      .from(users)
+      .where(or(eq(users.id, id), and(eq(users.role, "admin"), isNull(users.deactivatedAt))))
+      .orderBy(asc(users.id))
+      .for("no key update");
 
-  if (id === actorId) {
-    if (changes.role !== undefined && changes.role !== current.role) {
-      throw new ConflictError("conflict", "You cannot change your own role.");
+    const current = locked.find((row) => row.id === id);
+    if (!current) {
+      throw new NotFoundError("No such user.");
     }
-    if (changes.deactivated === true) {
-      throw new ConflictError("conflict", "You cannot deactivate your own account.");
+
+    if (id === actorId) {
+      if (changes.role !== undefined && changes.role !== current.role) {
+        throw new ConflictError("conflict", "You cannot change your own role.");
+      }
+      if (changes.deactivated === true) {
+        throw new ConflictError("conflict", "You cannot deactivate your own account.");
+      }
     }
-  }
 
-  const values: Record<string, unknown> = { updatedAt: new Date() };
-  if (changes.role !== undefined) values["role"] = changes.role;
-  if (changes.deactivated !== undefined) {
-    values["deactivatedAt"] = changes.deactivated ? new Date() : null;
-  }
+    const wasActiveAdmin = current.role === "admin" && current.deactivatedAt === null;
+    const staysActiveAdmin =
+      (changes.role ?? current.role) === "admin" &&
+      !(changes.deactivated ?? current.deactivatedAt !== null);
+    /* Postgres re-checks the filter on a row it waited for, so every other
+       locked row is still an active admin once the change ahead has landed. */
+    const anotherAdmin = locked.some((row) => row.id !== id);
+    if (wasActiveAdmin && !staysActiveAdmin && !anotherAdmin) {
+      throw new ConflictError("conflict", "The team needs at least one active admin.");
+    }
 
-  await db.update(users).set(values).where(eq(users.id, id));
+    const values: Record<string, unknown> = { updatedAt: new Date() };
+    if (changes.role !== undefined) values["role"] = changes.role;
+    if (changes.deactivated !== undefined) {
+      values["deactivatedAt"] = changes.deactivated ? new Date() : null;
+    }
+
+    await tx.update(users).set(values).where(eq(users.id, id));
+  });
   return getUser(db, id);
 }
 
