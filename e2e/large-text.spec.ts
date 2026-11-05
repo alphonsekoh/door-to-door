@@ -1,11 +1,12 @@
 import type { Locator, Page } from "@playwright/test";
 import { uuidv7 } from "../src/lib/uuid";
-import { SEED_BLOCK } from "./accounts";
+import { SEED_BLOCK, SEED_PASSWORD } from "./accounts";
 import {
   endActiveSession,
   ensureActiveSession,
   expect,
   listSeededHousehold,
+  signInThroughForm,
   startFollowUpSession,
   test,
   untilLive,
@@ -510,6 +511,40 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
   await page.goto("/admin/team");
   await atCap(page);
   await expectFits(page, "Team", page.getByRole("button", { name: "Make an admin" }).first());
+});
+
+/* A member's page is subtitled with their email, which has no space to break
+   at, and lists where they are signed in (#125). */
+test("a member's page fits at the largest text, whatever the length of their email", async ({
+  adminPage: page,
+  adminApi,
+  browser,
+}) => {
+  const added = await adminApi.post("/api/users", {
+    data: {
+      email: `nurul.aisyah.binte.rahman.${String(Date.now())}@example.com.sg`,
+      name: "Nurul Aisyah",
+      password: SEED_PASSWORD,
+    },
+  });
+  expect(added.status()).toBe(201);
+  const member = (await added.json()) as { id: string; email: string };
+  const phone = await browser.newContext();
+  try {
+    await signInThroughForm(await phone.newPage(), member.email);
+  } finally {
+    await phone.close();
+  }
+
+  await page.goto(`/admin/team/${member.id}`);
+  await atCap(page);
+  await expectFits(
+    page,
+    "a member's page",
+    page.getByRole("button", { name: /^Sign out .*, last used/ }),
+  );
+  await page.getByRole("button", { name: "Sign out everywhere" }).click();
+  await expectFits(page, "signing a member out everywhere", page.getByRole("alertdialog"));
 });
 
 /* A blank suggestion refused at the cap, and its Not saved answered with OK. */

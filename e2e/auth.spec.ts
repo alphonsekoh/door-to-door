@@ -55,6 +55,44 @@ test.describe("signing in", () => {
   });
 });
 
+test.describe("signing in before the page is live (#125)", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  /*
+   * Weak signal: the page is drawn well before its scripts arrive. The email
+   * form was once in that HTML as a plain GET form, so Go sent the password
+   * to the address bar, and what was typed was emptied at the first tap
+   * once the page was live.
+   */
+  test("offers Google at once, and the email form only once it can send it", async ({ page }) => {
+    const loaded: string[] = [];
+    page.on("request", (request) => {
+      if (request.isNavigationRequest()) loaded.push(request.url());
+    });
+    let arrive: () => void = () => undefined;
+    const scripts = new Promise<void>((resolve) => {
+      arrive = resolve;
+    });
+    await page.route(/\/_next\/static\/chunks\/[^?]*\.js(\?|$)/, async (route) => {
+      await scripts;
+      await route.continue();
+    });
+    await page.goto("/sign-in", { waitUntil: "commit" });
+
+    await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeVisible();
+    await expect(page.getByLabel("Email")).toHaveCount(0);
+    await expect(page.getByLabel("Password")).toHaveCount(0);
+
+    arrive();
+    await page.getByLabel("Email").fill(SEED_MEMBER);
+    await page.getByLabel("Password").fill(SEED_PASSWORD);
+    await page.getByLabel("Password").press("Enter");
+    await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
+    expect(loaded.filter((url) => url.includes("password"))).toEqual([]);
+  });
+});
+
 test.describe("response headers", () => {
   /* What the production build sends: the suite runs against it, not next dev. */
   const expected = securityHeaders({ development: false });

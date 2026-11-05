@@ -389,12 +389,6 @@ export async function signInThroughForm(
   path = "/sign-in",
 ): Promise<void> {
   await page.goto(path);
-  /* Live once React has hydrated it: an email typed before then is cleared
-     when it does (seen on WebKit with the worker running). */
-  await page.waitForFunction(() => {
-    const field = document.querySelector("#email");
-    return field !== null && Object.keys(field).some((key) => key.startsWith("__reactProps$"));
-  });
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();

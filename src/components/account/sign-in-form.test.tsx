@@ -1,6 +1,8 @@
 import "fake-indexeddb/auto";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/account/sign-in-form";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -533,5 +535,43 @@ describe("SignInForm with Google (#14)", () => {
       await user.click(screen.getByRole("button", { name: "Sign in" }));
       expect(await screen.findByRole("alert")).toHaveTextContent("Email or password is incorrect.");
     });
+  });
+});
+
+/*
+ * The page is rendered per request, so the server's HTML holds what this
+ * draws before its scripts arrive. A form there was a plain GET: Go put the
+ * password in the address bar, and what was typed was emptied once live.
+ */
+describe("SignInForm before the page is live (D-113-6)", () => {
+  it("draws Google and the server's message, but nothing to type into or send", () => {
+    get.mockImplementation((key) => (key === "error" ? "AccessDenied" : null));
+    const page = document.createElement("div");
+    page.innerHTML = renderToString(<SignInForm google />);
+
+    expect(page).toHaveTextContent("Sign in with Google");
+    expect(page).toHaveTextContent("That Google account can't sign in here.");
+    expect(page.querySelector("form")).toBeNull();
+    expect(page.querySelector("input")).toBeNull();
+    expect(within(page).queryByText("or")).toBeNull();
+  });
+
+  it("draws the email form once live, as the server drew the rest", async () => {
+    const page = document.createElement("div");
+    page.innerHTML = renderToString(<SignInForm google />);
+    document.body.append(page);
+    const mismatch = vi.fn();
+    const root = await act(() =>
+      hydrateRoot(page, <SignInForm google />, { onRecoverableError: mismatch }),
+    );
+
+    expect(mismatch).not.toHaveBeenCalled();
+    expect(within(page).getByLabelText("Email")).toBeInTheDocument();
+    expect(within(page).getByLabelText("Password")).toBeInTheDocument();
+    expect(within(page).getByRole("button", { name: "Sign in" })).toBeEnabled();
+    act(() => {
+      root.unmount();
+    });
+    page.remove();
   });
 });

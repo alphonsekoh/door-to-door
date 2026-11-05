@@ -8,6 +8,7 @@ import { finishSignOut } from "@/lib/session/sign-out";
 import { GOOGLE_UNFINISHED, googleSignInMessage } from "@/lib/session/sign-in-errors";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
+import { useLive } from "@/lib/hooks/use-live";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
 type SubmitEvent = Parameters<NonNullable<ComponentProps<"form">["onSubmit"]>>[0];
@@ -33,9 +34,15 @@ export function validate(email: string, password: string): FieldErrors {
  * Google first when the server has it set up (#14), with email and password
  * under it as the fallback; the form alone when it does not. The page
  * decides per request, so the right one is in the first paint.
+ *
+ * The email form waits for the page to be live (D-113-6). In the server's
+ * HTML it would be a plain GET form: Go before the scripts arrive put the
+ * password in the address bar and the history, and what was typed was
+ * emptied at the first tap after.
  */
 export function SignInForm({ google = false }: { google?: boolean }) {
   const params = useSearchParams();
+  const live = useLive();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<FieldErrors>({});
@@ -137,95 +144,99 @@ export function SignInForm({ google = false }: { google?: boolean }) {
       )}
 
       {google ? (
-        <>
-          <button
-            type="button"
-            disabled={leaving || submitting}
-            onClick={() => void onGoogle()}
-            className="flex min-h-12 w-full btn-primary items-center justify-center gap-3 rounded-lg px-3 text-body font-medium"
-          >
-            {/* Google's own colours, on a chip in the button's text colour so
-                its blue never sits on ours. */}
-            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-foreground">
-              <span aria-hidden="true" className="size-4.5 google-mark" />
-            </span>
-            {leaving ? "Opening Google…" : "Sign in with Google"}
-          </button>
-          <p
-            aria-hidden="true"
-            className="flex items-center gap-3 text-caption text-foreground-muted before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
-          >
-            or
-          </p>
-        </>
+        <button
+          type="button"
+          disabled={leaving || submitting}
+          onClick={() => void onGoogle()}
+          className="flex min-h-12 w-full btn-primary items-center justify-center gap-3 rounded-lg px-3 text-body font-medium"
+        >
+          {/* Google's own colours, on a chip in the button's text colour so
+              its blue never sits on ours. */}
+          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-foreground">
+            <span aria-hidden="true" className="size-4.5 google-mark" />
+          </span>
+          {leaving ? "Opening Google…" : "Sign in with Google"}
+        </button>
       ) : null}
 
-      <form
-        onSubmit={(event) => {
-          void onSubmit(event);
-        }}
-        noValidate
-        className="space-y-4"
-      >
-        <div>
-          <label htmlFor="email" className="mb-1 block text-body font-medium">
-            Email
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            inputMode="email"
-            value={email}
-            onChange={(e) => {
-              setEmail(e.target.value);
-            }}
-            aria-invalid={errors.email !== undefined}
-            aria-describedby={errors.email === undefined ? undefined : "email-error"}
-            className="min-h-12 field"
-          />
-          {errors.email === undefined ? null : (
-            <p id="email-error" className="mt-1 field-error">
-              {errors.email}
+      {live ? (
+        <>
+          {google ? (
+            <p
+              aria-hidden="true"
+              className="flex items-center gap-3 text-caption text-foreground-muted before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
+            >
+              or
             </p>
-          )}
-        </div>
-
-        <div>
-          <label htmlFor="password" className="mb-1 block text-body font-medium">
-            Password
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
+          ) : null}
+          <form
+            onSubmit={(event) => {
+              void onSubmit(event);
             }}
-            aria-invalid={errors.password !== undefined}
-            aria-describedby={errors.password === undefined ? undefined : "password-error"}
-            className="min-h-12 field"
-          />
-          {errors.password === undefined ? null : (
-            <p id="password-error" className="mt-1 field-error">
-              {errors.password}
-            </p>
-          )}
-        </div>
+            noValidate
+            className="space-y-4"
+          >
+            <div>
+              <label htmlFor="email" className="mb-1 block text-body font-medium">
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                }}
+                aria-invalid={errors.email !== undefined}
+                aria-describedby={errors.email === undefined ? undefined : "email-error"}
+                className="min-h-12 field"
+              />
+              {errors.email === undefined ? null : (
+                <p id="email-error" className="mt-1 field-error">
+                  {errors.email}
+                </p>
+              )}
+            </div>
 
-        <button
-          type="submit"
-          disabled={submitting || leaving}
-          className={`min-h-12 w-full rounded-lg text-body font-medium ${
-            google ? "btn-secondary" : "btn-primary"
-          }`}
-        >
-          {submitting ? "Signing in…" : "Sign in"}
-        </button>
-      </form>
+            <div>
+              <label htmlFor="password" className="mb-1 block text-body font-medium">
+                Password
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                }}
+                aria-invalid={errors.password !== undefined}
+                aria-describedby={errors.password === undefined ? undefined : "password-error"}
+                className="min-h-12 field"
+              />
+              {errors.password === undefined ? null : (
+                <p id="password-error" className="mt-1 field-error">
+                  {errors.password}
+                </p>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={submitting || leaving}
+              className={`min-h-12 w-full rounded-lg text-body font-medium ${
+                google ? "btn-secondary" : "btn-primary"
+              }`}
+            >
+              {submitting ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </>
+      ) : null}
     </div>
   );
 }
