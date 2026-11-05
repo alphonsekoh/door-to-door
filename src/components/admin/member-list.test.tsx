@@ -133,6 +133,32 @@ describe("MemberList", () => {
     expect(screen.getByText(/cannot change your own role/)).toBeInTheDocument();
   });
 
+  it("links every card, yours included, to that person's sign-ins (#125)", async () => {
+    apiFetch.mockResolvedValue(
+      page([member("admin", "Boss", { role: "admin" }), member("u1", "Alice")]),
+    );
+    render(<MemberList />);
+    await screen.findByText(/^Alice/);
+
+    expect(within(row("Alice")).getByRole("link", { name: "Sign-ins for Alice" })).toHaveAttribute(
+      "href",
+      "/admin/team/u1",
+    );
+    expect(within(row("Boss")).getByRole("link", { name: "Sign-ins for Boss" })).toHaveAttribute(
+      "href",
+      "/admin/team/admin",
+    );
+  });
+
+  it("says on deactivating that they are signed out everywhere", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+    render(<MemberList />);
+    await screen.findByText(/^Alice/);
+    await user.click(within(row("Alice")).getByRole("button", { name: "Deactivate" }));
+    expect(screen.getByText(/signed out on every phone/)).toBeInTheDocument();
+  });
+
   it("marks which row is you", async () => {
     apiFetch.mockResolvedValue(page([member("admin", "Boss", { role: "admin" })]));
     render(<MemberList />);

@@ -64,6 +64,14 @@ describe("createFirstAdmin on an empty database", () => {
     expect(row?.password_hash).not.toContain("correct-horse");
   });
 
+  it("stores no hash for an admin who signs in with Google only (#14)", async () => {
+    const created = await createFirstAdmin(db, { ...INPUT, password: null });
+    expect(created).toMatchObject({ email: "lead@example.org", googleOnly: true });
+    expect(await snapshotUsers()).toEqual([
+      { email: "lead@example.org", role: "admin", password_hash: null },
+    ]);
+  });
+
   it("leaves the name empty when none is given", async () => {
     const created = await createFirstAdmin(db, { ...INPUT, name: null });
     const { rows } = await pool.query("SELECT name FROM users WHERE id = $1", [created.id]);

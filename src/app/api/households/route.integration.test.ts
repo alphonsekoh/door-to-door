@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase, type Database } from "@/db/client";
 import * as schema from "@/db/schema";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 import { zError, zHouseholdHistory, zListHouseholdsResponse } from "@/generated/zod.gen";
 import { listHouseholds } from "@/server/visits/queries";
 
@@ -58,7 +58,7 @@ beforeEach(async () => {
     HOUSEHOLD,
     BLOCK,
   ]);
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: ALICE, role: "member" }));
   queryCount = 0;
 });
 

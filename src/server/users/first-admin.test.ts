@@ -35,7 +35,7 @@ describe("checkAdminPassword", () => {
   });
 
   it("accepts the contract's maximum and refuses one more", () => {
-    expect(MAX_PASSWORD_LENGTH).toBe(zCreateUserRequest.shape.password.maxLength);
+    expect(MAX_PASSWORD_LENGTH).toBe(zCreateUserRequest.shape.password.unwrap().maxLength);
     expect(() => {
       checkAdminPassword("p".repeat(MAX_PASSWORD_LENGTH));
     }).not.toThrow();

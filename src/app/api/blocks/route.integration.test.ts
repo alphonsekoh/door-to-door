@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -12,10 +12,9 @@ const pool = createTestPool();
 const ADMIN = "abababab-0000-4000-8000-000000000001";
 const MEMBER = "abababab-0000-4000-8000-000000000002";
 
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAdmin = () => auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }));
 const asMember = () =>
-  auth.mockResolvedValue({ user: { id: MEMBER, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: MEMBER, role: "member" }));
 
 const url = (q = "") => `https://test.local/api/blocks${q}`;
 const json = (body: unknown, method: string) =>

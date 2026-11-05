@@ -1,9 +1,28 @@
 import { getDatabase } from "@/db/client";
-import { zUpdateUserBody, zUpdateUserPath, zUpdateUserResponse } from "@/generated/zod.gen";
+import {
+  zGetUserPath,
+  zGetUserResponse,
+  zUpdateUserBody,
+  zUpdateUserPath,
+  zUpdateUserResponse,
+} from "@/generated/zod.gen";
 import { requireChanges, withContract } from "@/server/http/contract";
 import { currentUser } from "@/server/auth/session";
 import { toUser } from "@/server/users/serialise";
-import { updateUser } from "@/server/users/service";
+import { getUser, updateUser } from "@/server/users/service";
+
+/* One member, for their page on Admin > Team (#125). Deactivated ones included. */
+export const GET = withContract(
+  {
+    operationId: "getUser",
+    path: zGetUserPath,
+    responses: { 200: zGetUserResponse },
+  },
+  async ({ path }) => {
+    await currentUser("admin");
+    return { status: 200, body: toUser(await getUser(getDatabase(), path.id)) };
+  },
+);
 
 /*
  * Role and activation. The self-demotion, self-deactivation and last-admin

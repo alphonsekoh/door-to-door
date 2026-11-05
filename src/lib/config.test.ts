@@ -54,6 +54,7 @@ describe("parseConfig defaults", () => {
   secureCookies: false
   google:
     clientId: abc.apps.googleusercontent.com
+    issuer: http://127.0.0.1:4210
 rateLimit:
   signInAttempts: 3
   signInAttemptsPerClient: 20
@@ -68,7 +69,7 @@ sync:
     expect(config.auth).toEqual({
       trustHost: false,
       secureCookies: false,
-      google: { clientId: "abc.apps.googleusercontent.com" },
+      google: { clientId: "abc.apps.googleusercontent.com", issuer: "http://127.0.0.1:4210" },
     });
     expect(config.rateLimit).toEqual({
       signInAttempts: 3,
@@ -85,6 +86,34 @@ sync:
       "postgres://db/x",
     );
   });
+});
+
+describe("auth.google.issuer (#14)", () => {
+  const withIssuer = (issuer: string) =>
+    `${MINIMAL}auth:\n  google:\n    clientId: id\n    issuer: ${issuer}\n`;
+
+  it("is Google's own unless set", () => {
+    expect(
+      parseConfig(`${MINIMAL}auth:\n  google:\n    clientId: id\n`, SOURCE).auth.google,
+    ).toEqual({
+      clientId: "id",
+    });
+  });
+
+  it("takes an https URL", () => {
+    expect(parseConfig(withIssuer("https://idp.example"), SOURCE).auth.google?.issuer).toBe(
+      "https://idp.example",
+    );
+  });
+
+  it.each(["not a url", "ftp://idp.example", "javascript:alert(1)"])(
+    "refuses %j, naming the key",
+    (issuer) => {
+      expect(problemsOf(withIssuer(issuer))).toEqual([
+        "auth.google.issuer: must be an http or https URL",
+      ]);
+    },
+  );
 });
 
 describe("strictness", () => {

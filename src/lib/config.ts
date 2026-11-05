@@ -60,6 +60,18 @@ const databaseUrl = z.string().superRefine((value, ctx) => {
   }
 });
 
+const httpUrl = z.string().refine(
+  (value) => {
+    try {
+      const { protocol } = new URL(value);
+      return protocol === "https:" || protocol === "http:";
+    } catch {
+      return false;
+    }
+  },
+  { message: "must be an http or https URL" },
+);
+
 /*
  * Strict throughout: a typo'd key silently falling back to its default is how
  * a rate limit ends up not being the one the operator thought they set.
@@ -74,7 +86,16 @@ export const appConfigSchema = z.strictObject({
        * behind a TLS proxy that sends no X-Forwarded-Proto that is http.
        */
       secureCookies: z.boolean().default(true),
-      google: z.strictObject({ clientId: z.string().min(1) }).optional(),
+      google: z
+        .strictObject({
+          clientId: z.string().min(1),
+          /*
+           * Google's own unless set. Only for a stand-in OpenID provider, as
+           * the end-to-end tests run (#14): production never sets it.
+           */
+          issuer: httpUrl.optional(),
+        })
+        .optional(),
     })
     .prefault({}),
   rateLimit: z

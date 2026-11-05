@@ -22,7 +22,8 @@ export type SessionUser = {
   deactivated?: boolean;
 };
 
-export type SessionLike = { user?: Partial<SessionUser> | null } | null;
+/* signInId is the token's claim until resolveSession has checked it (#125). */
+export type SessionLike = { user?: Partial<SessionUser> | null; signInId?: unknown } | null;
 
 export function requireUser(session: SessionLike): SessionUser {
   const user = session?.user;

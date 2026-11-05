@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDatabase, resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -28,7 +28,7 @@ const ENDED = "74747474-0000-4000-8002-000000000003";
 const MISSING = "74747474-0000-4000-8002-0000000000ff";
 
 const as = (id: string, role: "admin" | "member" = "member") =>
-  auth.mockResolvedValue({ user: { id, role, deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id, role }));
 const asAdmin = () => as(ADMIN, "admin");
 
 type Handler = (request: Request, context: { params: Promise<never> }) => Promise<Response>;

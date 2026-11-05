@@ -18,6 +18,7 @@ import {
   sessionStatusEnum,
   sessionTeamMembers,
   sessionTeams,
+  signIns,
   users,
   verificationTokens,
   visitTeammates,
@@ -336,5 +337,20 @@ describe("Auth.js adapter tables", () => {
       "identifier",
       "token",
     ]);
+  });
+});
+
+describe("sign-ins (#125)", () => {
+  it("go with their user", () => {
+    expect(deleteActions(signIns)).toEqual({ user_id: "cascade" });
+  });
+
+  it("are found by user, for the admin's list and the ends", () => {
+    expect(indexNames(signIns)).toContain("sign_ins_user_idx");
+  });
+
+  it("let the server pick the id, which the token then names", () => {
+    expect(column(signIns, "id")?.hasDefault).toBe(true);
+    expect(column(signIns, "user_agent")?.notNull).toBe(false);
   });
 });

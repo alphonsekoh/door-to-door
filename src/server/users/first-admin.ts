@@ -63,8 +63,9 @@ export async function adminExists(db: Pick<Database, "select">): Promise<boolean
 /* Exported so a test can hold the same lock and prove the check waits on it. */
 export const CREATE_ADMIN_LOCK = "door-to-door:create-admin";
 
-export type FirstAdminInput = { email: string; name: string | null; password: string };
-export type CreatedAdmin = { id: string; email: string };
+/* A null password makes an admin who signs in with Google only (#14). */
+export type FirstAdminInput = { email: string; name: string | null; password: string | null };
+export type CreatedAdmin = { id: string; email: string; googleOnly: boolean };
 
 export async function createFirstAdmin(
   db: Database,
@@ -72,9 +73,9 @@ export async function createFirstAdmin(
 ): Promise<CreatedAdmin> {
   const email = checkAdminEmail(input.email);
   const name = input.name === null ? null : checkAdminName(input.name);
-  checkAdminPassword(input.password);
+  if (input.password !== null) checkAdminPassword(input.password);
   /* Hashed outside the transaction so the lock is not held through ~50ms of argon2. */
-  const passwordHash = await hashPassword(input.password);
+  const passwordHash = input.password === null ? null : await hashPassword(input.password);
 
   try {
     return await db.transaction(async (tx) => {
@@ -92,7 +93,7 @@ export async function createFirstAdmin(
         .insert(users)
         .values({ email, name, passwordHash, role: "admin" })
         .returning({ id: users.id, email: users.email });
-      return firstOrThrow(inserted, "the admin insert");
+      return { ...firstOrThrow(inserted, "the admin insert"), googleOnly: passwordHash === null };
     });
   } catch (error) {
     if (isConstraintViolation(error, "users_email_unique")) {

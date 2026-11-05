@@ -383,8 +383,9 @@ test.describe("the worker in charge", () => {
     }
   });
 
+  // On a sign-in of her own, as she signs out (#125).
   test("the next member to sign in on the phone sees nothing of the last one's", async ({
-    memberPage: page,
+    ownMemberPage: page,
     adminApi,
     browserName,
   }) => {
@@ -420,7 +421,7 @@ test.describe("the worker in charge", () => {
     await page.goto("/sign-in?callbackUrl=%2Faccount");
     await page.getByLabel("Email").fill(SEED_PARTNER);
     await page.getByLabel("Password").fill(SEED_PASSWORD);
-    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Account" })).toBeVisible();
     await controlled(page);
     await expect.poll(() => savedCopyMember(page)).toBeNull();
@@ -490,7 +491,7 @@ test.describe("signing in and out with the worker active", () => {
 
     await page.getByLabel("Email").fill(SEED_MEMBER);
     await page.getByLabel("Password").fill(SEED_PASSWORD);
-    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
 
     // The real button, and state rather than timing: the redirect to /sign-in

@@ -447,7 +447,7 @@ export const zRemoveFollowUpRequest = z.object({
 export const zCreateUserRequest = z.object({
     email: z.email().max(320),
     name: z.string().max(120).nullish(),
-    password: z.string().min(8).max(200),
+    password: z.string().min(8).max(200).optional(),
     role: zRole.optional().default('member')
 });
 
@@ -516,6 +516,28 @@ export const zFollowUpList = z.object({
 export const zUserList = z.object({
     data: z.array(zUser),
     pagination: zPaginationMeta
+});
+
+/**
+ * One device or browser a member is signed in on. Ending it signs that
+ * device out on its next request; the member's other sign-ins carry on.
+ *
+ */
+export const zSignIn = z.object({
+    id: z.uuid(),
+    device: z.string(),
+    signedInAt: z.iso.datetime(),
+    lastUsedAt: z.iso.datetime(),
+    current: z.boolean()
+});
+
+/**
+ * Not paged: an account keeps at most 50 sign-ins, the most recently
+ * used first. One unused for 30 days has expired and is not listed.
+ *
+ */
+export const zSignInList = z.object({
+    data: z.array(zSignIn).max(50)
 });
 
 export const zHistoryEntry = z.object({
@@ -1025,6 +1047,15 @@ export const zUpdateOwnProfileBody = zUpdateOwnProfileRequest;
  */
 export const zUpdateOwnProfileResponse = zUser;
 
+export const zGetUserPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The user.
+ */
+export const zGetUserResponse = zUser;
+
 export const zUpdateUserBody = zUpdateUserRequest;
 
 export const zUpdateUserPath = z.object({
@@ -1035,3 +1066,31 @@ export const zUpdateUserPath = z.object({
  * The updated user.
  */
 export const zUpdateUserResponse = zUser;
+
+export const zEndUserSignInsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * Ended.
+ */
+export const zEndUserSignInsResponse = z.void();
+
+export const zListUserSignInsPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The user's sign-ins.
+ */
+export const zListUserSignInsResponse = zSignInList;
+
+export const zEndUserSignInPath = z.object({
+    id: z.uuid(),
+    signInId: z.uuid()
+});
+
+/**
+ * Ended.
+ */
+export const zEndUserSignInResponse = z.void();

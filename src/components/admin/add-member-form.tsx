@@ -9,11 +9,12 @@ import { apiFetch } from "@/lib/api-client";
 const MIN_PASSWORD = 8;
 
 /*
- * Adds somebody to the team with an initial password.
+ * Adds somebody to the team, with an initial password or with none.
  *
- * There is no invite email in this app, so the admin has to read the password
- * out. It stays on screen after saving for exactly that reason - a password
- * that vanishes on success is one nobody can pass on.
+ * With none they sign in with Google only (#14). There is no invite email in
+ * this app, so a password has to be read out: it stays on screen after
+ * saving for exactly that reason - a password that vanishes on success is one
+ * nobody can pass on.
  */
 export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
   const [open, setOpen] = useState(false);
@@ -23,14 +24,15 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
   const [role, setRole] = useState<Role>("member");
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const [added, setAdded] = useState<{ email: string; password: string } | null>(null);
+  /* password null: the account signs in with Google only. */
+  const [added, setAdded] = useState<{ email: string; password: string | null } | null>(null);
 
   async function save(): Promise<void> {
     if (email.trim() === "") {
       setFailure("Enter an email address.");
       return;
     }
-    if (password.length < MIN_PASSWORD) {
+    if (password !== "" && password.length < MIN_PASSWORD) {
       setFailure(`The password needs at least ${String(MIN_PASSWORD)} characters.`);
       return;
     }
@@ -43,11 +45,11 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
         body: JSON.stringify({
           email: email.trim(),
           name: name.trim() === "" ? null : name.trim(),
-          password,
+          ...(password === "" ? {} : { password }),
           role,
         }),
       });
-      setAdded({ email: email.trim(), password });
+      setAdded({ email: email.trim(), password: password === "" ? null : password });
       setEmail("");
       setName("");
       setPassword("");
@@ -75,7 +77,11 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           Add someone
         </button>
 
-        {added === null ? null : (
+        {added === null ? null : added.password === null ? (
+          <p role="status" className="notice-success">
+            {added.email} can sign in with Google.
+          </p>
+        ) : (
           <p role="status" className="notice-success">
             {added.email} can sign in with <strong>{added.password}</strong>. Pass it on now — it is
             not shown again.
@@ -142,11 +148,15 @@ export function AddMemberForm({ onAdded }: { onAdded: (user: User) => void }) {
           type="text"
           value={password}
           autoComplete="off"
+          aria-describedby="member-password-hint"
           onChange={(event) => {
             setPassword(event.target.value);
           }}
           className="min-h-12 field"
         />
+        <p id="member-password-hint" className="mt-1 text-caption text-foreground-muted">
+          Leave empty to sign in with Google only.
+        </p>
       </div>
 
       <div>

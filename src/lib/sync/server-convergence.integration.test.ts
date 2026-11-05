@@ -3,7 +3,7 @@ import fc from "fast-check";
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Database, resetDatabase } from "@/db/client";
 import * as schema from "@/db/schema";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 import { PROBE_MS } from "@/lib/sync/backoff";
 import { type SyncController, createSyncController } from "@/lib/sync/controller";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -49,7 +49,7 @@ async function newMember(): Promise<string> {
     `INSERT INTO users (id, email, name, role) VALUES ($1, $2, 'Member', 'member')`,
     [id, `member${String(members)}@t.local`],
   );
-  auth.mockResolvedValue({ user: { id, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id, role: "member" }));
   return id;
 }
 

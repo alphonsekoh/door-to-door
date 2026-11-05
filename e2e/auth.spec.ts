@@ -14,7 +14,7 @@ async function signIn(page: Page, email: string) {
   await page.goto("/sign-in");
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(SEED_PASSWORD);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
 test.describe("signing in", () => {
@@ -43,7 +43,7 @@ test.describe("signing in", () => {
     await page.goto("/sign-in");
     await page.getByLabel("Email").fill(SEED_ADMIN);
     await page.getByLabel("Password").fill("not-the-password");
-    await page.getByRole("button", { name: /sign in/i }).click();
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
 
     await expect(page.getByRole("alert")).toBeVisible();
     await expect(page).toHaveURL(/sign-in/);

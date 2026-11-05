@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AddMemberForm } from "@/components/admin/add-member-form";
 import type { User, UserList } from "@/generated/types.gen";
@@ -131,6 +132,16 @@ export function MemberList() {
                 {lastActiveLabel(user.lastRecordedAt)}
               </p>
 
+              {/* Where they are signed in, and a way to end it (#125); your
+                  own too, for a phone left signed in somewhere. */}
+              <Link
+                href={`/admin/team/${user.id}`}
+                aria-label={`Sign-ins for ${user.name ?? user.email}`}
+                className="mt-1 inline-flex min-h-11 items-center text-body font-medium btn-text"
+              >
+                Sign-ins
+              </Link>
+
               {/*
                 Both controls are hidden on your own row. The server refuses
                 either move anyway - this only saves an admin discovering the
@@ -187,7 +198,7 @@ export function MemberList() {
         {deactivating === null ? null : (
           <ConfirmDialog
             title={`Deactivate ${deactivating.name ?? deactivating.email}?`}
-            detail="They will not be able to sign in. Everything they recorded stays, and stays attributed to them."
+            detail="They will be signed out on every phone and will not be able to sign in. Everything they recorded stays, and stays attributed to them."
             confirmLabel="Deactivate"
             busy={busy}
             onConfirm={() => void change(deactivating, { deactivated: true })}

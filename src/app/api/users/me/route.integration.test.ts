@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, truncateAll, signedInAs as withLiveSignIn } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -13,9 +13,9 @@ const USER_ID = "cccccccc-0000-4000-8000-000000000001";
 const request = () => new Request("https://test.local/api/users/me");
 
 const signedInAs = (overrides: Record<string, unknown> = {}) => {
-  auth.mockResolvedValue({
-    user: { id: USER_ID, role: "member", deactivated: false, ...overrides },
-  });
+  auth.mockImplementation(() =>
+    withLiveSignIn(pool, { id: USER_ID, role: "member", deactivated: false, ...overrides }),
+  );
 };
 
 async function seedUser(role: "admin" | "member" = "member"): Promise<void> {

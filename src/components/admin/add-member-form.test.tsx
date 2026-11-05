@@ -153,4 +153,48 @@ describe("AddMemberForm", () => {
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Add someone" })).toBeInTheDocument();
   });
+
+  describe("with no password (#14)", () => {
+    it("says how to add someone who signs in with Google only", async () => {
+      render(<AddMemberForm onAdded={vi.fn()} />);
+      await open();
+      expect(screen.getByLabelText("Initial password")).toHaveAccessibleDescription(
+        "Leave empty to sign in with Google only.",
+      );
+    });
+
+    it("adds them without sending a password, and says they sign in with Google", async () => {
+      apiFetch.mockResolvedValue(created);
+      const onAdded = vi.fn();
+      render(<AddMemberForm onAdded={onAdded} />);
+      const user = await open();
+
+      await user.type(screen.getByLabelText("Email"), "new@t.local");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+      await waitFor(() => {
+        expect(onAdded).toHaveBeenCalledWith(created);
+      });
+      // No password key at all: the contract's minimum would refuse an empty one.
+      expect(apiFetch).toHaveBeenCalledWith("/users", {
+        method: "POST",
+        body: JSON.stringify({ email: "new@t.local", name: null, role: "member" }),
+      });
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "new@t.local can sign in with Google.",
+      );
+    });
+
+    it("shows the server's refusal while Google sign-in is not set up", async () => {
+      apiFetch.mockRejectedValue(
+        new Error("Google sign-in isn't set up here, so they need a password."),
+      );
+      render(<AddMemberForm onAdded={vi.fn()} />);
+      const user = await open();
+      await user.type(screen.getByLabelText("Email"), "new@t.local");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("they need a password");
+    });
+  });
 });

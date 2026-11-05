@@ -7,6 +7,8 @@ import { buildAuthConfig } from "@/server/auth/config";
  *
  * The config is built lazily. Passing an object here would construct the
  * Drizzle adapter at module load, which makes `next build` require a live
- * database and config.yaml - builds need neither.
+ * database and config.yaml - builds need neither. Auth.js passes the request
+ * only to its own route handlers, which is how the config tells those apart
+ * from the app's auth() calls (#125).
  */
-export const { handlers, auth, signIn, signOut } = NextAuth(() => buildAuthConfig());
+export const { handlers, auth, signIn, signOut } = NextAuth((request) => buildAuthConfig(request));

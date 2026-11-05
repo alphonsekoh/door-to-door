@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDatabase, resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 import { currentClock } from "@/server/visits/clock-rules";
 import { type SyncItem, syncVisits } from "@/server/visits/sync";
 
@@ -37,7 +37,7 @@ const NOTE = "b1a4cb1a-0000-4000-8004-000000000001";
 const VISIT = "01960000-0000-7000-8000-0000000b1a01";
 
 const as = (id: string, role: "admin" | "member") => () =>
-  auth.mockResolvedValue({ user: { id, role, deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id, role }));
 const asAdmin = as(ADMIN, "admin");
 const asAlice = as(ALICE, "member");
 const asBen = as(BEN, "member");

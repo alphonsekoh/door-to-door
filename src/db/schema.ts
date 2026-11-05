@@ -97,6 +97,30 @@ export const verificationTokens = pgTable(
   (table) => [primaryKey({ columns: [table.identifier, table.token] })],
 );
 
+/*
+ * One row per device or browser signed in (#125). The session JWT names its
+ * row in the signInId claim, and every request checks the row is still
+ * there, so deleting it ends that sign-in before its token expires. Not the
+ * adapter's auth_sessions: that is keyed by a token the JWT strategy never
+ * issues.
+ */
+export const signIns = pgTable(
+  "sign_ins",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    // As sent at sign-in, cut to 512 characters; shown only as a device label.
+    userAgent: text("user_agent"),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true, mode: "date" })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("sign_ins_user_idx").on(table.userId)],
+);
+
 /* ----------------------------------------------------------------- blocks */
 
 export const blocks = pgTable(

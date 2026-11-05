@@ -8,11 +8,12 @@ type SignOut = (options: { redirect: false }) => Promise<{ url: string }>;
 
 /*
  * The answer to any request the proxy sees with a session sets the cookie
- * again, refreshed by its session check, and a sign-out cannot take the
- * token back (D-83-15). So the answer to a request sent just before signing
- * out, arriving just after, puts the cookie back. Each can do that once, and
- * a page has only a few in flight, so a session still there after this many
- * sign-outs is not going away.
+ * again, refreshed by its session check. So the answer to a request sent just
+ * before signing out, arriving just after, puts the cookie back. Its sign-in
+ * has ended on the server (#125), so the session check below names nobody
+ * and clears it; the loop stays for a server that could not end it. Each
+ * answer can do that once, and a page has only a few in flight, so a session
+ * still there after this many sign-outs is not going away.
  */
 const MAX_SIGN_OUTS = 3;
 
@@ -107,8 +108,9 @@ export async function signOutAndForget(
  * The sign-in page's second look after a sign-out. The page that signed out
  * lives until this one replaces it, and an answer to one of its requests can
  * still arrive meanwhile; once this page is up, those requests have gone with
- * it. Only one a service worker is still fetching could come later, which
- * only revoking the token on the server would rule out.
+ * it. One a service worker is still fetching can come later still, but the
+ * cookie it brings names a sign-in the server has ended (#125, #162), so it
+ * signs nobody in.
  *
  * Throws, like a sign-out, when the session it finds will not go. Either way
  * it looks only once, so a member who signs in after it cannot be signed out

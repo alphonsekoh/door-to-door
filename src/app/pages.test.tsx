@@ -10,6 +10,7 @@ import AdminFollowUpsPage from "@/app/admin/follow-ups/page";
 import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
 import AdminTeamPage from "@/app/admin/team/page";
+import AdminMemberPage from "@/app/admin/team/[id]/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockLoading from "@/app/blocks/[id]/loading";
 import BlockPage from "@/app/blocks/[id]/page";
@@ -218,5 +219,21 @@ describe("not found", () => {
     render(<NotFound />);
     expect(screen.getByRole("heading", { level: 1, name: "Not found" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to session" })).toHaveAttribute("href", "/");
+  });
+
+  it("guards one member's sign-ins before rendering them (#125)", async () => {
+    render(
+      await AdminMemberPage({
+        params: Promise.resolve({ id: "u1" }),
+        searchParams: Promise.resolve({}),
+      }),
+    );
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Member" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Team" })).toHaveAttribute(
+      "href",
+      "/admin/team",
+    );
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 });

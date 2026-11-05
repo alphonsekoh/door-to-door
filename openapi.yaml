@@ -58,6 +58,12 @@ info:
     re-checked on every request: a deactivated account receives
     `403 account_deactivated` from **every** operation, including `/users/me`.
 
+    Each sign-in also has a record on the server, and its token names it.
+    Signing out ends that sign-in only; an admin can end any of a member's
+    sign-ins, or all of them; deactivating an account ends all of them, and
+    reactivating it brings none back. A token whose sign-in has ended is
+    answered `401` by every operation, however long it has left to run.
+
     ## Same origin only
 
     Every operation other than a `GET` refuses, with `403 forbidden` and before
@@ -122,8 +128,11 @@ components:
       in: cookie
       name: __Secure-authjs.session-token
       description: |
-        Auth.js session cookie, set by Google SSO or credentials sign-in.
+        Auth.js session cookie, set by Google or email-and-password sign-in.
         Sessions are JWTs: the Credentials provider cannot use database sessions.
+        Each token carries the id of its sign-in's server-side record, which
+        is checked on every request, so a sign-in can be ended before its
+        token expires.
 
         Always `Secure`, with the `__Secure-` prefix, whatever scheme the server
         sees behind its TLS proxy. Only a server configured with
@@ -261,7 +270,9 @@ components:
         email: { type: string, format: email }
         name:
           type: [string, "null"]
-          description: Absent until an SSO profile or an admin supplies one.
+          description: |
+            Absent until an admin or the member supplies one. Signing in with
+            Google never sets or changes it.
         image: { type: [string, "null"], format: uri }
         role: { $ref: "#/components/schemas/Role" }
         deactivatedAt:
@@ -1095,7 +1106,7 @@ components:
     CreateUserRequest:
       type: object
       additionalProperties: false
-      required: [email, password]
+      required: [email]
       properties:
         email: { type: string, format: email, maxLength: 320 }
         name: { type: [string, "null"], maxLength: 120 }
@@ -1104,8 +1115,10 @@ components:
           minLength: 8
           maxLength: 200
           description: |
-            An initial password the admin passes on. There is no invite email
-            in this app, so somebody has to hand it over in person.
+            Optional. An initial password the admin passes on, for signing in
+            with email and password as well as with Google. There is no invite
+            email in this app, so somebody has to hand it over in person.
+            Without one the account signs in with Google only.
         role:
           allOf: [{ $ref: "#/components/schemas/Role" }]
           default: member
@@ -1278,6 +1291,47 @@ components:
           items: { $ref: "#/components/schemas/User" }
         pagination: { $ref: "#/components/schemas/PaginationMeta" }
 
+    SignIn:
+      type: object
+      additionalProperties: false
+      required: [id, device, signedInAt, lastUsedAt, current]
+      description: |
+        One device or browser a member is signed in on. Ending it signs that
+        device out on its next request; the member's other sign-ins carry on.
+      properties:
+        id: { type: string, format: uuid }
+        device:
+          type: string
+          description: |
+            The browser and system it signed in from, worked out from its
+            user agent, e.g. `Chrome on Android` or `Safari on iPhone`;
+            `Unknown device` when that says nothing usable.
+          examples: ["Safari on iPhone"]
+        signedInAt: { type: string, format: date-time }
+        lastUsedAt:
+          type: string
+          format: date-time
+          description: |
+            When it last made a request, to within 15 minutes: it is
+            recorded at most that often.
+        current:
+          type: boolean
+          description: |
+            This is the caller's own sign-in, the one making this request.
+
+    SignInList:
+      type: object
+      additionalProperties: false
+      required: [data]
+      description: |
+        Not paged: an account keeps at most 50 sign-ins, the most recently
+        used first. One unused for 30 days has expired and is not listed.
+      properties:
+        data:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/SignIn" }
+
     HistoryEntry:
       type: object
       additionalProperties: false
@@ -1400,8 +1454,10 @@ components:
     Unauthenticated:
       description: |
         No valid session. Also returned for a valid token whose account no
-        longer exists: the account is looked up on every request, so a deleted
-        user's old cookie is treated as signed out.
+        longer exists, or whose sign-in has ended (signed out, ended by an
+        admin, or ended by a deactivation since reversed): the account and
+        the sign-in are looked up on every request, so such a cookie is
+        treated as signed out.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -2925,9 +2981,14 @@ paths:
       operationId: createUser
       summary: Add someone to the team
       description: |
-        **Requires: admin.** Creates a credentials account with an initial
-        password. Google-only accounts arrive through sign-in instead and are
-        not created here.
+        **Requires: admin.** Adds someone who may then sign in with Google
+        using this email address, once Google has verified it. With a
+        `password` they may also sign in with email and password; without
+        one, with Google only. Signing in never creates an account: only an
+        address added here (or by `npm run create-admin`) can sign in.
+
+        A Google-only account is refused with `409` while Google sign-in is
+        not set up on this server, since nobody could sign in as it.
       requestBody:
         required: true
         content:
@@ -2943,7 +3004,9 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
-          description: That email address already belongs to someone.
+          description: |
+            That email address already belongs to someone, or no `password`
+            was given while Google sign-in is not set up on this server.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3016,6 +3079,23 @@ paths:
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
 
   /users/{id}:
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: One member of the team
+      description: "**Requires: admin.** Deactivated users included."
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
     patch:
       tags: [Users]
       operationId: updateUser
@@ -3029,7 +3109,9 @@ paths:
         admins demoting or deactivating each other at the same moment cannot
         both succeed; the second is refused.
 
-        Deactivating preserves the user's records and their attribution.
+        Deactivating preserves the user's records and their attribution, and
+        ends every one of the user's sign-ins in the same change.
+        Reactivating brings none of them back: the user signs in again.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
         required: true
@@ -3055,3 +3137,70 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  /users/{id}/sign-ins:
+    get:
+      tags: [Users]
+      operationId: listUserSignIns
+      summary: Where a member is signed in
+      description: |
+        **Requires: admin.** Each device or browser the user is signed in
+        on, the most recently used first. A deactivated user has none.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The user's sign-ins.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SignInList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      tags: [Users]
+      operationId: endUserSignIns
+      summary: Sign a member out everywhere
+      description: |
+        **Requires: admin.** Ends every one of the user's sign-ins: each of
+        their devices is signed out on its next request. Records a phone
+        holds unsent stay on it, and send once the member signs in again.
+
+        Run on your own account, it ends every sign-in but the one making
+        this request; signing out of this device is Account's Sign out.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "204": { description: Ended. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /users/{id}/sign-ins/{signInId}:
+    delete:
+      tags: [Users]
+      operationId: endUserSignIn
+      summary: Sign a member out of one device
+      description: |
+        **Requires: admin.** Ends one sign-in; the user's others carry on.
+        One that has already ended, or is not this user's, is `404`. Your own
+        current sign-in is `409`: signing out of this device is Account's
+        Sign out, which also clears what the phone holds.
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - name: signInId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Ended. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The caller's own current sign-in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }

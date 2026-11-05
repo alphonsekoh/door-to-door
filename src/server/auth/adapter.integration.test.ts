@@ -51,19 +51,22 @@ describe("Drizzle adapter wiring", () => {
     expect(await adapter.getUserByEmail?.("nobody@test.local")).toBeNull();
   });
 
-  it("creates a user, and it lands in our schema with the default role", async () => {
-    const created = await adapter.createUser?.({
-      id: crypto.randomUUID(),
-      email: "new@test.local",
-      emailVerified: null,
-    });
-    expect(created?.email).toBe("new@test.local");
+  it("never creates a user: only an admin adds anyone (#14)", async () => {
+    await expect(
+      adapter.createUser?.({
+        id: crypto.randomUUID(),
+        email: "new@test.local",
+        emailVerified: null,
+      }),
+    ).rejects.toMatchObject({ type: "AccessDenied" });
 
-    const { rows } = await pool.query<{ role: string }>(
-      `SELECT role FROM users WHERE email = 'new@test.local'`,
-    );
-    // A new SSO account must never arrive as an admin.
-    expect(rows[0]?.role).toBe("member");
+    const { rows } = await pool.query(`SELECT 1 FROM users`);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("never reads the user of a cookie already on the phone, so no Google account is linked to them (#14)", async () => {
+    const userId = await seedUser("signed-in@test.local");
+    expect(await adapter.getUser?.(userId)).toBeNull();
   });
 
   it("links an account to a user in our accounts table", async () => {

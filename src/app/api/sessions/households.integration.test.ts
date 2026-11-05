@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -36,10 +36,9 @@ const REMOVED = "b5b5b5b5-0000-4000-8003-000000000006";
 const UNKNOWN = "b5b5b5b5-0000-4000-8003-00000000ffff";
 const NO_SESSION = "b5b5b5b5-0000-4000-8002-00000000ffff";
 
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAdmin = () => auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }));
 const asAlice = () =>
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: ALICE, role: "member" }));
 
 const url = (path: string) => `https://test.local/api/sessions${path}`;
 const json = (method: string, path: string, body?: unknown) =>
