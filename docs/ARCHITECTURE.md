@@ -41,7 +41,7 @@ flowchart LR
 | `src/generated/`      | Types and Zod schemas from the contract                         | excluded | Never hand-edited; CI regenerates and diffs.                                          |
 | `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
 | `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; body caps; the error envelope; security headers.    |
-| `src/server/auth/`    | Auth.js config, route headers, guards, rate limit               | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
+| `src/server/auth/`    | Auth.js config, sign-ins, Google, route headers, guards, limits | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
@@ -49,7 +49,7 @@ flowchart LR
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
 | `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
-| `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()` → 404 for members.                              |
+| `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()`: 404 for members, sign-in with no live sign-in. |
 | `drizzle/`            | Generated migrations                                            | excluded | From `drizzle-kit generate` only.                                                     |
 | `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
@@ -68,6 +68,7 @@ households ─< follow_ups (optional visit_id and done_visit_id, set null on del
 outing_sessions ─< session_participants (never removed)
 outing_sessions ─< session_teams ─< session_team_members (unique per session+user)
 visits >── session_teams (team_id, nullable, restrict); visits ─< visit_teammates
+users ─< sign_ins (one per device signed in; cascade on delete)
 ```
 
 - **Household** = `(block_id, unit_number)`, unique. Name, contact, religion are
@@ -99,6 +100,9 @@ visits >── session_teams (team_id, nullable, restrict); visits ─< visit_te
   transaction, and `done_visit_id` keeps which visit did (D-117-65, D-117-67). Removing a
   note never changes picks (D-117-41).
 - **Blocks** are shared across members and sessions, never locked.
+- **Sign-in** (`sign_ins`): one row per device or browser signed in, named by the session
+  token's `signInId` claim. Deleting it ends that sign-in (D-125-2). At most 50 per
+  account, and expired after 30 days plus 15 minutes unused (D-125-7, D-125-8).
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
   always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
@@ -136,10 +140,12 @@ authoritative, and a change to any of them needs the owner.
   exists only because the adapter requires it, and is unused (D-07-6).
 - **Why.** The Credentials provider (email and password, #15) cannot use database
   sessions (R-2).
-- **Consequences.** A token cannot be revoked and its claims are frozen at sign-in, so
-  role and deactivation are read from the database on every API request and admin page;
-  the token's claims are UI hints only (D-83-1, D-83-3). Deactivation is a
-  `403 account_deactivated` on any operation (D-10-4, D-83-4).
+- **Consequences.** A token's claims are frozen at sign-in, so role and deactivation are
+  read from the database on every API request and admin page; the token's claims are UI
+  hints only (D-83-1, D-83-3). Deactivation is a `403 account_deactivated` on any
+  operation (D-10-4, D-83-4). A JWT cannot be taken back on its own, so each one names a
+  `sign_ins` row that the same lookup checks: deleting the row ends that sign-in before
+  its token expires (D-125-2, D-125-3).
 
 ### One active session app-wide
 
@@ -210,10 +216,11 @@ authoritative, and a change to any of them needs the owner.
    is refused on its length before any item is parsed (D-118-5, R-91). `memberIds` is
    uncapped (D-74-15, D-118-6); the 256 KiB cap bounds it at about 6,700 ids (D-126-7).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
-   which reads the user's role and deactivation from the database on every request (one
-   primary-key lookup, no cache), then calls the pure `requireUser` / `requireRole`.
-   Missing user is `401`, deactivated `403 account_deactivated`. A lookup failure is a
-   `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
+   which reads the user's role and deactivation, and the token's sign-in, from the
+   database on every request (one query, no cache), then calls the pure `requireUser` /
+   `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
+   `403 account_deactivated`, whatever its sign-in. "Last used" is written at most every
+   15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
    budget, 30 a minute, and are `429 rate_limited` once it is spent
    (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
 4. The service does the work. Text that must say something (a unit number, note, block
@@ -234,7 +241,9 @@ authoritative, and a change to any of them needs the owner.
    follow-up session's households, detaching a block and transitions lock the session
    row `FOR UPDATE` (D-117-45, D-123-4). `PATCH /users/{id}` locks the target and every
    active admin `FOR NO KEY UPDATE` in id order, and refuses a change that would leave
-   no active admin (`409 conflict`, D-132-1, D-132-2).
+   no active admin (`409 conflict`, D-132-1, D-132-2). A deactivation then deletes the
+   user's sign-ins; a new sign-in takes the user `FOR SHARE` before writing its row, so
+   none outlives a deactivation (D-125-10, D-125-11).
    Constraint violations are recognised by name through
    the cause chain (`isConstraintViolation`) and turned into specific `409`s.
 5. `withContract` parses the response; anything not in the contract fails in dev/test
@@ -263,9 +272,9 @@ per 5 s burst. The sync catch uses the same helpers.
   gets `Clear-Site-Data: "cache"` there (D-122-9, D-122-10). Next's own bodiless
   `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
 - The proxy marks `no-store` on every response that carries `Set-Cookie`, once Auth.js
-  has added its cookies. It always marks `/sign-in`, which Next would otherwise send as a
-  prerender with `s-maxage=31536000` (D-150-1, D-150-2). `/offline` still sends that
-  `s-maxage`, and sets no cookie (#146).
+  has added its cookies. It always marks `/sign-in` (D-150-1, D-150-2), which now renders
+  per request (D-14-10; its conflict with D-150-4 awaits the owner). `/offline` is a
+  prerender, sent with `s-maxage=31536000`, and sets no cookie (#146).
 
 ## Configuration
 
@@ -304,9 +313,22 @@ and debug output is dropped. Lines are throttled for 60 s, and the throttles sit
 `sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
 any admin exists (D-105-3); after that the app never leaves the team without an active
-admin (D-31-5, D-132-1).
-Google SSO (#14) is not built; it will live in `src/auth/` beside the entrypoint
-(D-115-3).
+admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only (D-14-13).
+
+Google sign-in (`src/server/auth/google.ts`, #14) is the main way in when `config.yaml`
+sets `auth.google`; email and password stay as the fallback (D-14-1, D-14-2). Only an
+address an admin added, verified by Google, on an active account, can sign in. Signing
+in creates nobody, links by email and never to a cookie already on the phone, and keeps
+no Google token (D-14-3 to D-14-7). An account added with no password is Google-only
+(D-14-12). Every Google refusal reads the same (D-14-5).
+
+Each sign-in is a `sign_ins` row named by the token's `signInId` claim (`sign-ins.ts`).
+`resolveSession` checks it on every request, and Auth.js's own routes check it in the
+`jwt` callback, so `/api/auth/session` names nobody for an ended one and clears its
+cookie (D-125-3, D-125-4). A row ends at sign-out (that device only), when an admin ends
+it on the member's page (`/admin/team/[id]`), at deactivation, or after 30 days plus
+15 minutes unused (D-125-7, D-125-9, D-125-10, D-125-15). The proxy has no database, so
+it cannot see an ended sign-in (D-16-1).
 
 The cookies are `Secure`, with the `__Secure-` and `__Host-` prefixes, whatever scheme
 the server sees, because `auth.secureCookies` (default `true`) is passed to
@@ -436,13 +458,22 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
+- Sign-in (`/sign-in`) renders per request. With Google set up, its button is in the
+  server's HTML, and the email form appears once the page is live (D-14-10, D-14-11).
+  Leaving for Google first does what a sign-in does after it succeeds: D-129-5's look,
+  then the cache and local-copy clears (D-14-9). `?error=` picks one of two fixed
+  messages (D-14-6).
+- A member's page (`/admin/team/[id]`, linked from Team) lists their sign-ins for an
+  admin, with a Sign out on each and Sign out everywhere (D-125-15, D-125-16).
 - Sign-out (`src/lib/session/sign-out.ts`): warns on the member's unsent records
   (`hasUnsyncedItems(ownerId)`, D-33-15); clears the block cache, the local copy and
   the member's own sent queue records, never an unsent one nor another member's
   (D-129-6); `signOut({ redirect: false })`; asks `/api/auth/session` and signs out
   again while it names someone, at most 3 times (D-129-4); then replaces the page with
   `/sign-in` (or a given destination, e.g. `/sign-in?reason=signed-out`) through
-  `location.replace`, so Back cannot return to it (D-129-3). A refusal (Auth.js returns
+  `location.replace`, so Back cannot return to it (D-129-3). Auth.js's sign-out deletes
+  that sign-in's row, so an answer that lands later brings back a cookie that signs
+  nobody in (D-125-9, D-125-19). A refusal (Auth.js returns
   an `error` URL with 200), or a session that keeps coming back, throws instead, and
   Account shows "Could not sign out". A sessionStorage note makes `/sign-in` check once
   more, and a sign-in there waits for it (D-129-5).

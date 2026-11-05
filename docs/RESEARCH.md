@@ -1518,9 +1518,12 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   such an answer and WebKit drops it. A fetch the service worker makes is not cancelled
   with the page: in Chromium its answer, released 3 s after `/sign-in` had looked, signed
   the member back in (2 of 2). Playwright's WebKit cannot hold a worker's request, so
-  whether iOS cancels it is unknown.
-- **Source:** measured (#129 verifier, rounds 1 and 2)
-- **Used by:** D-129-4, D-129-5
+  whether iOS cancels it is unknown. _Since #125:_ the cookie such an answer sets names a
+  sign-in the server has ended, so it signs nobody in. Held on mobile-chromium, the late
+  cookie still landed, and the API answered `401` and `/api/auth/session` `null`
+  (`sign-ins.spec`; #125 verifier, round 1).
+- **Source:** measured (#129 verifier, rounds 1 and 2; #125 verifier, round 1)
+- **Used by:** D-129-4, D-129-5, D-125-19
 
 ### R-138 · `page.route` does not see what a service worker fetches
 
@@ -1541,3 +1544,70 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   #129 planner; not fetched again by the docs step.)
 - **Source:** [OWASP, CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)
 - **Used by:** D-129-9
+
+### R-140 · Next names a loopback host `localhost` in the URL a route reads
+
+- **Finding:** Next's `NextURL` rewrites any `127.x.x.x`, `[::1]` or `localhost` host to
+  `localhost`. Auth.js therefore builds Google's callback URL on `localhost` when the app
+  is reached at `127.0.0.1`. The cookies set before leaving for Google are on
+  `127.0.0.1`, so the browser does not send them back to the `localhost` callback, and
+  the round trip fails. The Google E2E runs on `localhost`. A deployment has one name for
+  itself, so only the test harness meets this.
+- **Source:** `node_modules/next/dist/server/web/next-url.js` (`parseURL`,
+  `REGEX_LOCALHOST_HOSTNAME`), Next 16.4.3; measured (#125 builder)
+- **Used by:** D-14-14
+
+### R-141 · next-auth passes a lazy config the request only on its own routes
+
+- **Finding:** With a config function, next-auth 5.0.0-beta.32 calls it with the request
+  from its route handlers (`handlers.GET`, `handlers.POST`), from the middleware form and
+  from the `auth(handler)` wrapper. A bare `auth()` call in a server component or route
+  handler calls it with `undefined`. The app's proxy builds its own instance from the base
+  config, so only Auth.js's `/api/auth/*` routes reach the app's config with a request.
+- **Source:** `node_modules/next-auth/index.js` (`httpHandler`),
+  `node_modules/next-auth/lib/index.js` (`initAuth`)
+- **Used by:** D-125-4
+
+### R-142 · A `jwt` callback that returns `null`, or throws, clears the session cookie
+
+- **Finding:** In `@auth/core` 0.41.3's session action with the JWT strategy, a `jwt`
+  callback that returns `null` makes the answer name no session and clean the session
+  cookies. One that throws is logged as `JWTSessionError`, and the cookies are cleaned
+  too.
+- **Source:** `node_modules/@auth/core/lib/actions/session.js`
+- **Used by:** D-125-4, D-125-13
+
+### R-143 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
+
+- **Finding:** `@auth/core` 0.41.3's sign-out decodes the token and awaits
+  `events.signOut`. An error from either is caught and logged as `SignOutError`. The
+  session cookie is cleaned whatever happened.
+- **Source:** `node_modules/@auth/core/lib/actions/signout.js`
+- **Used by:** D-125-9 (its known limit)
+
+### R-144 · How Auth.js links an OAuth account
+
+- **Finding:** In `@auth/core` 0.41.3's OAuth callback with JWT sessions, a session
+  cookie already present is decoded, and its user is read through the adapter's
+  `getUser(sub)`. A new OAuth account is then linked to that signed-in user. With no
+  such user:
+  - An account already linked to this provider id signs in.
+  - Otherwise, an account with the profile's email is linked only if the provider sets
+    `allowDangerousEmailAccountLinking`. Without that setting, the result is
+    `OAuthAccountNotLinked`.
+  - With no match, `createUser` is called.
+
+  The provider's `account()` decides which token fields are stored on the link.
+
+- **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
+- **Used by:** D-14-3, D-14-4, D-14-7
+
+### R-145 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
+
+- **Finding:** `@auth/core` 0.41.3 hands the provider's `[customFetch]` (exported by
+  `next-auth`) to oauth4webapi for discovery, the token request and the JWKS. It also
+  always sets `allowInsecureRequests`. So a test can stand in for Google's servers in
+  process, and an `http` issuer works for a local stand-in.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/oauth/callback.js`,
+  `node_modules/@auth/core/lib/actions/signin/authorization-url.js`
+- **Used by:** D-14-14

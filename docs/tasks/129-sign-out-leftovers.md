@@ -132,10 +132,12 @@ deleted, and the CSV guard missed a leading CR.
 
 ## Known limits
 
-- An answer the service worker is still fetching after `/sign-in` has looked can put the
+- ~~An answer the service worker is still fetching after `/sign-in` has looked can put the
   session cookie back (verifier, Chromium 2 of 2; not reachable in Playwright WebKit;
   R-137). Accepted by the owner for this PR on 2026-11-04 and tracked in #162; D-83-15(b)
-  stands as worded.
+  stands as worded.~~ Closed by D-125-19 (#162): the cookie such an answer brings back
+  names a sign-in the server has ended, so it signs nobody in. D-83-15(b) is superseded
+  by D-125-9.
 - D-129-6: a tab still showing member A while the cookie is already B's deletes A's sent
   records at its sign-out, not B's. Rare, since next-auth refetches the session on focus,
   and nothing unsent is at risk.

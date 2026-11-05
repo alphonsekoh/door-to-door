@@ -48,7 +48,9 @@ made them a participant. Found by a security audit.
   takes only user rows in id order, and `updateOwnName`'s single UPDATE; neither holds a
   session, household, visit, note or membership. Every other user-row lock is a foreign
   key's `KEY SHARE`, which conflicts with neither. So no wait cycle forms. _Research:_
-  R-128, R-129.
+  R-128, R-129. _Extended by D-125-11:_ `startSignIn` also takes the user `FOR SHARE`,
+  then only `sign_ins` rows, and deactivation deletes `sign_ins` after its user locks;
+  nothing locks a user after a `sign_ins` row, so still no cycle.
 - **D-132-6 · Sync, `autoJoin` and team placement are unchanged.** Sync's author is
   always the caller, judged per request, so D-83-11 stands for a batch; `autoJoin`'s
   callers vouch for the author; placement already refuses a deactivated user (D-74-26).

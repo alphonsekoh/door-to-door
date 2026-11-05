@@ -610,6 +610,14 @@ well." (D-117-62 onwards).
   (D-117-73).
 - The E2E attribute sweep reads React's undocumented `__reactProps$` key; a React
   upgrade may need it changed (R-86).
+- **A household recorded before it was picked reads Visited (#135).** An admin's record
+  earlier in the session, before the household was listed and picked, makes the
+  member's row Visited and counts it in "N of M visited or done" while its note is still
+  owed. Changing it needs a "visited since picked" field on both lists, since
+  `visitedInSession` also decides whether a pick may be removed (D-117-42). Left as it is
+  (owner, 2026-11-05; #135 closed as not planned): it needs an admin to record at a
+  household in a follow-up session before picking it, which is rare, and that admin
+  knows the note is still owed.
 
 ## Relies on
 
@@ -620,11 +628,7 @@ D-77-13, D-83-15, D-85-1, D-90-2, D-111-5, D-111-7, D-111-36.
 
 ## Open questions
 
-- **A household recorded before it was picked reads Visited (#135).** An admin's record
-  earlier in the session, before the household was listed and picked, makes the
-  member's row Visited and counts it in "N of M visited or done" while its note is still
-  owed. Changing it needs a "visited since picked" field on both lists, since
-  `visitedInSession` also decides whether a pick may be removed (D-117-42).
+None. The #135 question became a known limit (owner, 2026-11-05).
 
 The owner's answers A to F, the third round's four points, the fourth round's rulings
 and the fifth round's two (D-117-65, D-117-66; #138) are recorded above.

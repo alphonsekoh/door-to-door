@@ -55,7 +55,10 @@ script is late.
   screen, Record for a member and the follow-up sheet are drawn on the client only, so
   nothing can be typed into them before the page is live; the offline shell's form
   appears after mount (D-111-40). _Why:_ the builder checked every page's server HTML as
-  an admin; only the block screen had fields.
+  an admin; only the block screen had fields. _Refined by D-14-11:_ `/sign-in` now renders
+  per request with Google's button and its messages in the server's HTML, and the email
+  form waits for `useLive`, so there is still nothing to type into before the page is
+  live.
 - **D-113-7 · The session reaches the app as a transition, through
   `DeferredSessionProvider`.** In the root layout, Auth.js's `SessionProvider` sits
   beside the app, and a relay hands its value to a `SessionContext` round the app in
