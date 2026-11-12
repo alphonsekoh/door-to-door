@@ -12,7 +12,7 @@ x-settings: &settings ${CONFIG_FILE:-./config.docker.yaml}:/config/config.yaml:r
 
 services:
   db:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
     environment:
       POSTGRES_USER: ${DATABASE_USER:-postgres}
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
@@ -31,7 +31,7 @@ services:
   # Scratch database for integration tests. tmpfs-backed: the data is
   # disposable and never needs to outlive the container.
   db-test:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres

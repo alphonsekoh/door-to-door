@@ -71,7 +71,9 @@ and add Dependabot.
   `type:chore` and `area:setup`/`area:ci` labels. _Why:_ each PR runs the full CI,
   E2E included, and Actions minutes are scarce. Majors stay apart so that one breaking
   bump cannot hold back the routine ones. The cooldown gives a hijacked publish time to
-  be pulled, and it does not delay security updates. _Research:_ R-95.
+  be pulled, and it does not delay security updates. _Research:_ R-95. _Extended by
+  D-131-5:_ `docker` and `docker-compose` entries, one group each, for the image
+  digests; actions are now pinned by SHA (D-131-3).
 - **D-118-8 · `next dev` 16.4.3's rewrite of AGENTS.md's generated block (its heading
   `#` became `##`) is committed.** _Why:_ D-02-3. Reverting it only recreates an
   uncommitted change.

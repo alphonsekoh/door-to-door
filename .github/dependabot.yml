@@ -39,3 +39,42 @@ updates:
       prefix: chore
       include: scope
     labels: ["type:chore", "area:ci"]
+
+  # Images are pinned by digest, and these keep the digests current. A new
+  # major waits for the owner: node moves with CI's NODE_VERSION, and postgres
+  # 18 cannot open a 17 data directory.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: ["type:chore", "area:docker"]
+
+  # Its postgres is also CI's service image, which Dependabot cannot see:
+  # copy the new digest into ci.yml (src/supply-chain.test.ts fails until then).
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: postgres
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-compose:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
+      include: scope
+    labels: ["type:chore", "area:docker"]

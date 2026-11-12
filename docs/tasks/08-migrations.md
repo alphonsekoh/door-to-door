@@ -11,7 +11,8 @@ Generate the first migration and the scripts to apply it.
 ## Decisions
 
 - **D-08-1 · Migrations come only from `drizzle-kit generate`; applied ones are never
-  edited.** Named explicitly (`0000_initial_schema`).
+  edited.** Named explicitly (`0000_initial_schema`). _Extended by D-131-9 and
+  D-131-10:_ `drizzle/checksums.sha256` makes an edited or deleted migration fail CI.
 - **D-08-2 · Runner in `scripts/`, logic in ~~`src/db/env.ts`~~ the config modules
   (`src/lib/config.ts`, `src/server/config.ts`).** _Why:_ entrypoints that
   need a live database stay outside the 100% gate; the testable logic stays inside it.

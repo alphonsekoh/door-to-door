@@ -19,7 +19,7 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   changed and before React has read it. React took the update's priority from
   `window.event`, so it was drawn at once with the unit still in state: the old unit was
   written back, React's value tracker with it, and `onChange` never fired. _Why:_ found
-  by recording only the `value` setter's writes, as the issue asked. _Research:_ R-144.
+  by recording only the `value` setter's writes, as the issue asked. _Research:_ R-151.
 - **D-155-2 · Answers that can land while a unit is typed are set in
   `startTransition`.** The block screen's units, session, revisit list and team; the
   form's unit history; Undo's answer; the reload after Mark done or Reopen; and
@@ -29,7 +29,7 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   redraw; waits in the spec.
 - **D-155-3 · The session kind is told to `knownSessionKind` from an effect, once this
   screen has drawn it.** _Why:_ a store's change is drawn at once whatever the lane
-  (R-144), so telling it as the answer lands could put the unit back. _Trade-off:_
+  (R-151), so telling it as the answer lands could put the unit back. _Trade-off:_
   leaving the screen before it has drawn the kind passes nothing on, and the next screen
   says "Save" until its own answer (D-117-19).
 - **D-155-4 · The guards are jsdom tests through `test/land-while-typing.ts`.** The
@@ -50,7 +50,7 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 - **D-155-7 · `useRole` subscribes to the role it derives, not to the account store's
   snapshot.** A `/users/me` that agrees with the token draws nothing; a role change still
   does. Keeps D-85-8. _Why:_ every answer replaces the snapshot, and a store's change is
-  drawn at once (R-144), so one landing in the field's `input` event put the unit back.
+  drawn at once (R-151), so one landing in the field's `input` event put the unit back.
   `AccountGate` still reads the whole snapshot, but its children do not render again.
   `deriveRoleState` is now used only by tests.
 
