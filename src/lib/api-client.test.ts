@@ -84,6 +84,96 @@ describe("apiFetch", () => {
     await expect(apiFetch("/x")).rejects.toBeInstanceOf(ApiRequestError);
   });
 
+  it("passes on a code this build does not know, with the server's words", async () => {
+    // A phone can run an older build against a newer server.
+    respond(409, { error: { code: "some_later_code", message: "Newer words." } });
+    await expect(apiFetch("/x")).rejects.toMatchObject({
+      status: 409,
+      code: "some_later_code",
+      message: "Newer words.",
+    });
+  });
+
+  describe("an answer from outside the contract", () => {
+    // A proxy, Auth.js, the platform or the service worker can answer without
+    // withContract's envelope (#165). Real Responses, so parsing is the platform's.
+    const answer = (response: Response) =>
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
+      });
+    const failure = () => apiFetch("/visits").catch((caught: unknown) => caught);
+    const generic = (status: number) => ({
+      status,
+      code: "internal_error",
+      message: "Something went wrong.",
+      details: [],
+    });
+
+    it.each([
+      ["no envelope", 413, { message: "Request Entity Too Large" }],
+      ["an empty object", 500, {}],
+      ["an error that is a string", 403, { error: "Forbidden" }],
+      ["an error that is null", 502, { error: null }],
+      ["an error without a code", 404, { error: { message: "Proxy words." } }],
+      ["an error without a message", 409, { error: { code: "conflict" } }],
+      ["an error whose message is not text", 409, { error: { code: "conflict", message: 7 } }],
+      ["null", 503, null],
+      ["a string", 502, "Bad Gateway"],
+      ["an array", 400, [{ error: { code: "conflict", message: "Taken." } }]],
+    ])("keeps the status of JSON with %s, and says something generic", async (_, status, body) => {
+      answer(json(status, body));
+      const error = await failure();
+      expect(error).toBeInstanceOf(ApiRequestError);
+      expect(error).toMatchObject(generic(status));
+    });
+
+    it("keeps the status of an HTML page, and says something generic", async () => {
+      answer(new Response("<html><body>Bad gateway</body></html>", { status: 502 }));
+      const error = await failure();
+      expect(error).toBeInstanceOf(ApiRequestError);
+      expect(error).toMatchObject(generic(502));
+    });
+
+    it("keeps the status of an empty body, and says something generic", async () => {
+      answer(new Response(null, { status: 405 }));
+      const error = await failure();
+      expect(error).toBeInstanceOf(ApiRequestError);
+      expect(error).toMatchObject(generic(405));
+    });
+
+    it("passes on only the field issues a form can read", async () => {
+      const issue = { path: "/unitNumber", message: "Too long." };
+      answer(
+        json(400, {
+          error: {
+            code: "validation_failed",
+            message: "Invalid request body.",
+            details: [issue, null, "/note", { message: "No path." }, { path: "/note", message: 3 }],
+          },
+        }),
+      );
+      expect(await failure()).toMatchObject({ code: "validation_failed", details: [issue] });
+    });
+
+    it("carries no field issues when they are not a list", async () => {
+      answer(
+        json(400, {
+          error: { code: "validation_failed", message: "Invalid.", details: { path: "/note" } },
+        }),
+      );
+      expect(await failure()).toMatchObject({ code: "validation_failed", details: [] });
+    });
+
+    it("still raises the account message for a 401 outside the envelope", async () => {
+      answer(json(401, { message: "Unauthorized" }));
+      expect(await failure()).toMatchObject(generic(401));
+      expect(reportAuthFailure).toHaveBeenCalledWith("signed-out");
+    });
+  });
+
   describe("reporting a session the server no longer accepts", () => {
     it("reports a deactivated account and still throws to the caller", async () => {
       respond(403, { error: { code: "account_deactivated", message: "Deactivated." } });
