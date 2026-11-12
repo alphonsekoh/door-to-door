@@ -82,7 +82,7 @@ describe("AccountScreen: loading", () => {
     ["gone", 401, "unauthenticated"],
   ])("keeps Sign out for an account that is %s, and nothing else", async (_label, status, code) => {
     apiFetch.mockRejectedValue(
-      new ApiRequestError(status, { error: { code, message: "Not allowed." } } as never),
+      new ApiRequestError(status, { error: { code, message: "Not allowed." } }),
     );
     render(<AccountScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Not allowed.");

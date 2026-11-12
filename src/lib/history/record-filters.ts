@@ -8,8 +8,9 @@ import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
  * and an interest level the contract does not know would come back as a 400
  * rather than an empty list.
  *
- * The search term is the exception: the screen holds it, and it is never read
- * from the URL nor written to it, as in history-filters.
+ * The search term is the exception: the screen holds it, and it is never
+ * written to the URL. An old link's `q` is the screen's to take and drop
+ * (useSearchTerm), as in history-filters.
  */
 
 export type RecordFilters = {
