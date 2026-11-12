@@ -12,7 +12,8 @@ Add members, change roles, deactivate and restore.
 
 - **D-31-1 · `POST /users` with an admin-set initial password**; email lowercased;
   duplicate is `409`. _Refined by D-14-12 (owner, 2026-11-05):_ the password is optional;
-  with none the account signs in with Google only.
+  with none the account signs in with Google only. _Refined by D-14-22 (owner,
+  2026-11-12):_ only at an address in `auth.google.domains`.
 - **D-31-2 · `User.lastRecordedAt`** (nullable) is "last activity".
 - **D-31-3 · Computed with a grouped subquery and left join, not a correlated
   subquery.** _Research:_ R-7.

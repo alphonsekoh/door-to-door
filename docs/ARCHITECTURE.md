@@ -41,8 +41,8 @@ flowchart LR
 | `src/generated/`      | Types and Zod schemas from the contract                         | excluded | Never hand-edited; CI regenerates and diffs.                                          |
 | `src/app/api/**`      | Route handlers, one file per path                               | 100%     | Thin: guard, call service, return. Wrapped in `withContract`.                         |
 | `src/server/http/`    | `withContract`, `ApiError`s, same-origin check, route registry  | 100%     | Validates request _and_ response; body caps; the error envelope; security headers.    |
-| `src/server/auth/`    | Auth.js config, sign-ins, Google, route headers, guards, limits | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
-| `src/auth/`           | The Auth.js entrypoint, imported as `@/auth`                    | 100%     | Thin wrapper (D-13-5); only `session.ts` and the auth route import it (D-83-12).      |
+| `src/server/auth/`    | Auth.js config, sign-ins and sign-out, headers, guards, limits  | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
+| `src/auth/`           | Auth.js entrypoint (`@/auth`); Google sign-in (`google.ts`)     | 100%     | Server-only (D-14-18); `@/auth` only in `session.ts` and the auth route (D-83-12).    |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
 | `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
@@ -272,9 +272,9 @@ per 5 s burst. The sync catch uses the same helpers.
   gets `Clear-Site-Data: "cache"` there (D-122-9, D-122-10). Next's own bodiless
   `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
 - The proxy marks `no-store` on every response that carries `Set-Cookie`, once Auth.js
-  has added its cookies. It always marks `/sign-in` (D-150-1, D-150-2), which now renders
-  per request (D-14-10; its conflict with D-150-4 awaits the owner). `/offline` is a
-  prerender, sent with `s-maxage=31536000`, and sets no cookie (#146).
+  has added its cookies. It always marks `/sign-in` (D-150-1, D-150-2), which renders per
+  request (D-14-10, superseding D-150-4). `/offline` is a prerender, sent with
+  `s-maxage=31536000`, and sets no cookie (#146).
 
 ## Configuration
 
@@ -313,14 +313,19 @@ and debug output is dropped. Lines are throttled for 60 s, and the throttles sit
 `sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
 any admin exists (D-105-3); after that the app never leaves the team without an active
-admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only (D-14-13).
+admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only, at an
+address in its domains (D-14-13, D-14-23).
 
-Google sign-in (`src/server/auth/google.ts`, #14) is the main way in when `config.yaml`
-sets `auth.google`; email and password stay as the fallback (D-14-1, D-14-2). Only an
-address an admin added, verified by Google, on an active account, can sign in. Signing
-in creates nobody, links by email and never to a cookie already on the phone, and keeps
-no Google token (D-14-3 to D-14-7). An account added with no password is Google-only
-(D-14-12). Every Google refusal reads the same (D-14-5).
+Google sign-in (`src/auth/google.ts`, #14) is the main way in when `config.yaml` sets
+`auth.google`; email and password stay as the fallback (D-14-1, D-14-2). Only an address
+an admin added, verified by Google, on an active account, can sign in (D-14-3), and only
+where Google vouches for it: a domain in `auth.google.domains`, and, anywhere but
+`gmail.com`, an ID token whose `hd` is a listed domain (D-14-19, D-14-20). Signing in
+creates nobody, links by email and never to a cookie already on the phone, and keeps no
+Google token (D-14-3 to D-14-7). An account added with no password is Google-only, and
+is refused outside the domains (D-14-12, D-14-22). `googleDomains()` reads the list per
+request, and the pages pass it to the forms (D-14-21). Every Google refusal reads the
+same (D-14-5).
 
 Each sign-in is a `sign_ins` row named by the token's `signInId` claim (`sign-ins.ts`).
 `resolveSession` checks it on every request, and Auth.js's own routes check it in the
@@ -328,7 +333,11 @@ Each sign-in is a `sign_ins` row named by the token's `signInId` claim (`sign-in
 cookie (D-125-3, D-125-4). A row ends at sign-out (that device only), when an admin ends
 it on the member's page (`/admin/team/[id]`), at deactivation, or after 30 days plus
 15 minutes unused (D-125-7, D-125-9, D-125-10, D-125-15). The proxy has no database, so
-it cannot see an ended sign-in (D-16-1).
+it cannot see an ended sign-in (D-16-1). Sign-out ends the row in `events.signOut`, which
+only Auth.js's own routes attach. If that fails, `failUnendedSignOut`
+(`src/server/auth/sign-out.ts`) answers the sign-out `POST` with `500`
+`{"url":"/sign-in?error=SignOutError"}` and no cookie of its own, so the phone stays
+signed in rather than holding a live sign-in it thinks is over (D-125-20).
 
 The cookies are `Secure`, with the `__Secure-` and `__Host-` prefixes, whatever scheme
 the server sees, because `auth.secureCookies` (default `true`) is passed to
@@ -464,7 +473,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   then the cache and local-copy clears (D-14-9). `?error=` picks one of two fixed
   messages (D-14-6).
 - A member's page (`/admin/team/[id]`, linked from Team) lists their sign-ins for an
-  admin, with a Sign out on each and Sign out everywhere (D-125-15, D-125-16).
+  admin, with a Sign out on each and Sign out everywhere (D-125-15, D-125-16). The
+  pressed control reads "Signing out…" until the list is read again (D-125-22).
+- Team's Add someone gets the Google domains from its page, and offers a Google-only
+  account only where one can work (D-14-24).
 - Sign-out (`src/lib/session/sign-out.ts`): warns on the member's unsent records
   (`hasUnsyncedItems(ownerId)`, D-33-15); clears the block cache, the local copy and
   the member's own sent queue records, never an unsent one nor another member's
@@ -473,10 +485,13 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `/sign-in` (or a given destination, e.g. `/sign-in?reason=signed-out`) through
   `location.replace`, so Back cannot return to it (D-129-3). Auth.js's sign-out deletes
   that sign-in's row, so an answer that lands later brings back a cookie that signs
-  nobody in (D-125-9, D-125-19). A refusal (Auth.js returns
-  an `error` URL with 200), or a session that keeps coming back, throws instead, and
-  Account shows "Could not sign out". A sessionStorage note makes `/sign-in` check once
-  more, and a sign-in there waits for it (D-129-5).
+  nobody in (D-125-9, D-125-19). An answer with an `error` URL (Auth.js's refusal with
+  200, or the server's `500` `SignOutError` when it could not end the sign-in,
+  D-125-20), an answer with no URL, or a session that keeps coming back, throws instead,
+  and Account shows "Could not sign out" (D-125-21). The loop is for a session check
+  during an outage, which keeps the cookie (D-125-13), or an old server mid-deploy. A
+  sessionStorage note makes `/sign-in` check once more, and a sign-in there waits for it
+  (D-129-5).
 - The proxy sets `Cache-Control: no-store` on signed-in page responses and `/sign-in`,
   so Back after sign-out revalidates instead of restoring the page from bfcache. API
   answers get theirs from their handlers, and also from the proxy when they carry a

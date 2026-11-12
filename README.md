@@ -286,6 +286,7 @@ default (D-75-4).
 | `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
 | `auth.secureCookies`                | `true`  | Cookies `Secure` whatever the scheme; `false` for plain http                          |
 | `auth.google.clientId`              | unset   | Google OAuth client ID; set it to offer Google sign-in (see below)                    |
+| `auth.google.domains`               | -       | **Required with `auth.google`.** The domains Google sign-in works for (see below)     |
 | `auth.google.issuer`                | unset   | **Test only:** a stand-in OpenID provider in place of Google; never in production     |
 | `rateLimit.signInAttempts`          | `10`    | Failed sign-in attempts per email within the window                                   |
 | `rateLimit.signInAttemptsPerClient` | `30`    | Failed sign-in attempts per client address within the window                          |
@@ -307,6 +308,21 @@ client ID in `auth.google.clientId` and export the client secret as
 account, gets the same refusal, and signing in never creates an account. Without
 `auth.google`, sign-in is email and password only, and every account needs a password.
 No real credentials are needed for the tests: E2E runs a stand-in provider (D-14-14).
+
+List in `auth.google.domains` only `gmail.com` and domains on Google Workspace, lower
+case, with no `@` (D-14-19, D-14-20). Google sign-in works only at those domains,
+matched exactly: no subdomains, and `googlemail.com` is not `gmail.com`. Members
+elsewhere sign in with email and password, so add them with one.
+
+- Google vouches for an address only at `gmail.com`, or for a Workspace account. On any
+  other listed domain a member must use their Workspace account; a personal Google
+  account made on that address is refused, since that mailbox could have changed hands.
+- Add a Gmail address exactly as Google has it, dots included.
+- If a listed domain is a Workspace **alias** of another (as `tjc.org` may be of
+  `tjc.sg`), rather than a secondary domain, Google reports the member's address at the
+  primary domain. Add those members at the primary domain.
+- Removing `auth.google`, or a domain from the list, strands the Google-only accounts it
+  covered, a Google-only first admin included. No password can be added in the app.
 
 `rateLimit.signInAttemptsGlobal` is an **incident switch**, off unless set. Once that many
 sign-ins have failed within the window, every new sign-in is refused, the correct password
@@ -607,10 +623,11 @@ docker run -p 3000:3000 \
   ```
 
   It prompts twice for the password without echoing it. With Google sign-in set up in
-  `config.yaml`, leave the password empty to make an admin who signs in with Google only;
-  it then asks for the email again, since a typo would leave an admin nobody can sign in
-  as. Without a terminal, point `ADMIN_PASSWORD_FILE` at a file holding it, or read it
-  into the environment unechoed with `read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD`.
+  `config.yaml` and an address in `auth.google.domains`, leave the password empty to make
+  an admin who signs in with Google only; it then asks for the email again, since a typo
+  would leave an admin nobody can sign in as. Without a terminal, point
+  `ADMIN_PASSWORD_FILE` at a file holding it, or read it into the environment unechoed
+  with `read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD`.
   Setting `ADMIN_PASSWORD` directly is meant for orchestrators and secret managers, not
   for typing at a prompt.
   There is no `--password` flag, so through the prompt or the file the password never
@@ -636,7 +653,8 @@ docker run -p 3000:3000 \
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                                                                                        |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.                                                                            |
 | "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.                                                                       |
-| "That Google account can't sign in here."                       | The address is not on **Admin → Team**, Google has not verified it, or the account is deactivated. Add it (no password needed) or restore it.                                                        |
+| "That Google account can't sign in here."                       | Not on **Admin → Team**, outside `auth.google.domains` or spelled unlike Google's; unverified; a personal Google account on a Workspace domain; or deactivated. Add, fix or restore it.              |
+| "Could not sign out."                                           | No signal, or the server could not end the sign-in (`EventError` logged). The phone is still signed in; try again.                                                                                   |
 | "Google sign-in didn't finish."                                 | The round trip failed. Check that the OAuth client's redirect URI is `<public origin>/api/auth/callback/google` and that `AUTH_GOOGLE_SECRET` is right; the server log names the Auth.js error type. |
 | Every phone shows "Signed out" after upgrading                  | Tokens from before sign-ins were recorded (#125) name no sign-in, so each phone signs in once more. Records not yet sent stay on the phone and send after.                                           |
 | Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).                                                                                  |
@@ -655,8 +673,8 @@ src/
   lib/          framework-free helpers, one folder per domain: pwa, teams, units,
                 history, follow-ups, hooks, session, sync (offline queue), offline
                 (local copy)
-  auth/         the Auth.js entrypoint, imported as @/auth
-  server/       server-only services, auth (sign-ins, Google, guards), withContract
+  auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
+  server/       server-only services, auth (sign-ins, sign-out, guards), withContract
   db/           Drizzle schema, client and seed data
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)

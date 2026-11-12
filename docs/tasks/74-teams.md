@@ -368,7 +368,9 @@ likely the old double teams fetch fixed by D-74-52.
   survives, so navigating to `/sign-in` told the member they were out when they were not.
   _Known limit:_ the alert says "Check your connection", which is wrong for a refusal;
   wording left as is. _Research:_ R-41. _Extended by D-129-4:_ so does a session still
-  there after three sign-outs.
+  there after three sign-outs. _Extended by D-125-21:_ so does an answer with no URL,
+  and the server's `500` for a sign-in it could not end (`error=SignOutError`,
+  D-125-20).
 
 ## Follow-ups
 

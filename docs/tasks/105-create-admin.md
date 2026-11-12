@@ -44,7 +44,8 @@ note (D-38-21).
   directly set `ADMIN_PASSWORD` for orchestrators and secret managers, since one typed at
   a prompt lands in history. _Refined by D-14-13 (owner, 2026-11-05):_ at a terminal, with
   `auth.google` set, an empty password and the email typed again make a Google-only
-  admin. With no terminal and no `ADMIN_PASSWORD(_FILE)` it still refuses.
+  admin. With no terminal and no `ADMIN_PASSWORD(_FILE)` it still refuses. _Refined by
+  D-14-23 (owner, 2026-11-12):_ only for an address in `auth.google.domains`.
 - **D-105-8 · Input follows the app's rules.** Email and password use the contract's
   `CreateUserRequest` (email up to 320, password 8 to 200) plus
   `assertPasswordAcceptable`; the email is trimmed and lower-cased (D-31-1); `--name`

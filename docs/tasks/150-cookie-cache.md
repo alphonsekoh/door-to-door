@@ -31,9 +31,11 @@ The #122 verifier found it. This fix ships in one PR with #128.
   already forbids every cache from storing the response, private caches included, so
   `private` adds nothing. It is also the value D-74-11, D-122-9 and D-122-10 send, so
   every such response carries the same header. _Research:_ R-123.
-- **D-150-4 · `/sign-in` stays prerendered; it is not made dynamic.** _Why:_ D-150-1 is
+- ~~**D-150-4 · `/sign-in` stays prerendered; it is not made dynamic.** _Why:_ D-150-1 is
   needed anyway for the `307`, the `401` and API answers. Making the page dynamic would
-  fix only that one page, and would render it on every request for no gain.
+  fix only that one page, and would render it on every request for no gain.~~
+  Superseded by D-14-10 (owner, 2026-11-12): `/sign-in` renders per request, so the
+  Google button is in the first paint. D-150-1 and D-150-2 still make it `no-store`.
 
 ## Evidence
 

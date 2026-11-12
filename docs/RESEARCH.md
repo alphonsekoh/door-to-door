@@ -1613,9 +1613,10 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   from the `auth(handler)` wrapper. A bare `auth()` call in a server component or route
   handler calls it with `undefined`. The app's proxy builds its own instance from the base
   config, so only Auth.js's `/api/auth/*` routes reach the app's config with a request.
-- **Source:** `node_modules/next-auth/index.js` (`httpHandler`),
+  The server-side `signOut` that `NextAuth()` returns calls it with `undefined` too.
+- **Source:** `node_modules/next-auth/index.js` (`httpHandler`, the returned `signOut`),
   `node_modules/next-auth/lib/index.js` (`initAuth`)
-- **Used by:** D-125-4
+- **Used by:** D-125-4, D-125-20
 
 ### R-146 · A `jwt` callback that returns `null`, or throws, clears the session cookie
 
@@ -1629,10 +1630,14 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 ### R-147 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
 
 - **Finding:** `@auth/core` 0.41.3's sign-out decodes the token and awaits
-  `events.signOut`. An error from either is caught and logged as `SignOutError`. The
-  session cookie is cleaned whatever happened.
-- **Source:** `node_modules/@auth/core/lib/actions/signout.js`
-- **Used by:** D-125-9 (its known limit)
+  `events.signOut`. Every event is wrapped by `eventsErrorHandler` in `init.js`, which
+  catches an error from it and logs it as `EventError`. Only a token that fails to decode
+  reaches sign-out's own catch, logged as `SignOutError`. The session cookie is cleaned
+  either way. _Corrected (#125 review, 2026-11-12):_ this entry said an event error was
+  logged as `SignOutError`.
+- **Source:** `node_modules/@auth/core/lib/actions/signout.js`,
+  `node_modules/@auth/core/lib/init.js` (`eventsErrorHandler`)
+- **Used by:** D-125-9 (its known limit), D-125-20
 
 ### R-148 · How Auth.js links an OAuth account
 
@@ -1660,3 +1665,41 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/callback/oauth/callback.js`,
   `node_modules/@auth/core/lib/actions/signin/authorization-url.js`
 - **Used by:** D-14-14
+
+### R-150 · Google is authoritative for an address only at gmail.com or with `hd`
+
+- **Finding:** Google's guidance on ID tokens says to use `email`, `email_verified` and
+  `hd` to decide whether Google is authoritative for an address. It is for an
+  `@gmail.com` address, and for one whose token has `email_verified` true and carries
+  `hd`, a Google Workspace account. Elsewhere `email_verified` means only that Google
+  checked the address when the Google account was made; ownership of that mailbox may
+  have changed since. `hd` is the hosted domain of the user's Workspace or Cloud
+  organisation, sent only for its accounts. The app reads `hd` as the organisation's
+  primary domain, which its secondary domains' accounts carry too; that reading was not
+  checked against Google here (owner check on `tjc.org`, #14).
+- **Source:** Google Identity,
+  [Authenticate with a backend server](https://developers.google.com/identity/sign-in/web/backend-auth)
+  and [OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect).
+  Cited from Google's documentation, not fetched in this session (the session's network
+  guard refused both pages); paraphrased, not quoted.
+- **Used by:** D-14-19, D-14-20
+
+### R-151 · Auth.js's Google profile is the validated ID token's claims
+
+- **Finding:** Google is an OIDC provider in `@auth/core` 0.41.3 (`type: "oidc"`). Its
+  callback validates the ID token and hands its claims to the `signIn` callback as
+  `profile`, with no userinfo request. So `email`, `email_verified` and `hd` there are
+  the signed token's.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/oauth/callback.js`
+  (`getValidatedIdTokenClaims`), `node_modules/@auth/core/providers/google.js`
+- **Used by:** D-14-19
+
+### R-152 · next-auth/react's `signOut` hands back the body whatever the status
+
+- **Finding:** In next-auth 5.0.0-beta.32, the client `signOut` posts to `/signout`,
+  reads the answer as JSON and, with `redirect: false`, returns that body without looking
+  at the status. A `500` with `{"url": …}` therefore reads like any other answer, and a
+  body that is not JSON throws. It also tells the other tabs a sign-out happened, either
+  way.
+- **Source:** `node_modules/next-auth/react.js` (`signOut`)
+- **Used by:** D-125-21

@@ -1,6 +1,6 @@
 # #125 · Sign-ins that can be ended, one device at a time (with #14 and #162)
 
-- **Status:** In progress (branch `feat/125-sign-ins-and-google`; PR not yet open)
+- **Status:** Done (PR #167)
 - **Phase:** 7 - Hardening
 - **Depends on:** #13, #31, #83, #105, #129, #132. Built with #14 and #162 in one PR.
 
@@ -11,7 +11,8 @@ reactivating an account brought every old token back (D-83-4). Each sign-in now 
 server-side row that every request checks, so a sign-out, an admin or a deactivation can
 end it. It was built with Google sign-in (#14, recorded in
 [14-google-sso.md](14-google-sso.md)), because both change the same sign-in code. It also
-fixes #162. The issue's password features are dropped (D-125-1).
+fixes #162. The issue's password features are dropped (D-125-1). The owner's rulings of
+2026-11-12 close the gap a failed sign-out left (D-125-20).
 
 ## Decisions
 
@@ -70,7 +71,8 @@ fixes #162. The issue's password features are dropped (D-125-1).
 
 - **D-125-9 · Signing out ends only that sign-in (owner, 2026-11-05).** `events.signOut`
   deletes the token's row, and the member's other devices stay signed in. **Supersedes
-  D-83-15(b).**
+  D-83-15(b).** _Amended by D-125-20 (owner, 2026-11-12):_ a sign-out whose row cannot be
+  deleted fails, and the phone keeps its cookie.
 - **D-125-10 · Deactivation ends all of the member's sign-ins, and reactivation brings
   none back (owner, 2026-11-05).** `updateUser` deletes them in its transaction, after
   D-132-2's locks. A role change ends none. The Deactivate confirmation now reads "They
@@ -114,7 +116,8 @@ fixes #162. The issue's password features are dropped (D-125-1).
   - Ending one is refused in this order. First, your own current sign-in is
     `409 conflict` ("To sign out of this phone, use Sign out on Account."). Then no such
     user is `404`. Last, a sign-in already ended, or another member's, is `404` "That
-    sign-in has already ended."
+    sign-in has already ended." _Refined by D-125-23 and D-125-24:_ ids match in either
+    case, and an expired row not yet pruned has ended.
   - "Sign out everywhere" on your own account keeps your current sign-in.
 
   _Why:_ this follows D-31-5, which keeps admins from deactivating themselves. Account's
@@ -129,7 +132,7 @@ fixes #162. The issue's password features are dropped (D-125-1).
     `ConfirmDialog`. The confirmation says records not yet sent stay on those phones.
 
   _Why:_ there was no member page. A page has a URL and Back, and suits a list of
-  buttons better than a sheet does.
+  buttons better than a sheet does. _Extended by D-125-22:_ an end in progress shows.
 
 - **D-125-17 · `requireAdminPage` sends a request with no live sign-in to
   `/sign-in?reason=signed-out`.** A member still gets a `404`. This refines D-28-5,
@@ -157,10 +160,55 @@ fixes #162. The issue's password features are dropped (D-125-1).
     asserts that the late cookie did land.
   - Playwright's WebKit cannot hold a worker's request (R-138), so on iPhone 13 the
     verifier put the late cookie back by hand. The fix does not depend on the browser.
-  - D-129-4 and D-129-5 are unchanged. Their loop stays for a sign-out the server could
-    not record (Known limits, first item).
+  - D-129-4 and D-129-5 are unchanged. ~~Their loop stays for a sign-out the server
+    could not record (Known limits, first item).~~ _Amended by D-125-20 and D-125-21
+    (owner, 2026-11-12):_ such a sign-out now fails first. The loop stays for a session
+    check during an outage, which keeps the cookie (D-125-13), or an old server
+    mid-deploy.
 
   This closes #129's known limit, and R-137 is updated.
+
+### Owner rulings of 2026-11-12 and review fixes
+
+- **D-125-20 · A sign-out that cannot end its sign-in fails, and the phone keeps its
+  cookie (owner, 2026-11-12).** Amends D-125-9 and D-125-19, and closes the gap left in
+  #162.
+  - `events.signOut` (`endThisSignIn`, `src/server/auth/sign-out.ts`) is attached only
+    when the config is built for Auth.js's own routes, which pass their request (D-125-4).
+  - If `endSignIn` throws, it notes the request in a `WeakSet` and rethrows, for Auth.js
+    to log.
+  - `failUnendedSignOut` wraps the `[...nextauth]` POST and then answers `500`
+    `{"url":"/sign-in?error=SignOutError"}` in place of Auth.js's answer. That answer sets
+    no cookie. In production the proxy may still add Auth.js's callback-url cookie, or
+    the same sign-in's token re-issued; neither changes the sign-in.
+  - Auth.js's CSRF check still runs first, so a forged sign-out ends nothing.
+  - `@/auth` no longer exports the server-side `signOut`, which builds the config with
+    no request and so could not keep the cookie.
+
+  _Why:_ Auth.js swallows the event's error and clears the cookie anyway (R-147). The
+  sign-in stayed live, so a copied cookie still worked, and a late answer (#162) signed
+  the phone back in. _Research:_ R-145, R-147.
+
+- **D-125-21 · The phone reads that answer as a failed sign-out.** `signOutOnce` throws on
+  an answer with no URL, or with any `error`, `SignOutError` included, and Account shows
+  "Could not sign out. Check your connection and try again." Extends D-74-64. D-129-4's
+  loop now covers a session check during an outage, which keeps the cookie (D-125-13),
+  or an old server mid-deploy. _Why:_ next-auth/react's `signOut` hands back the body
+  whatever the status (R-152), so the URL is the only signal. _Known limit:_ as with
+  D-74-64, the wording blames the connection when the fault is the server's.
+- **D-125-22 · The member's page shows an end in progress.** Its list is read under
+  D-28-7's generation counter, so an older read never lands last. It stays busy through
+  the reload after an end: the pressed control reads "Signing out…" (and is named so),
+  and the list is `aria-busy`, until the list is read again. Extends D-125-16. _Why:_ a
+  second Sign out meanwhile would act on rows about to change, and on weak signal a
+  dimmed button looked like nothing happened.
+- **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
+  `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
+  ids are lower case. Without this, your own current sign-in was not `409`, and "Sign
+  out other devices" ended it too.
+- **D-125-24 · `endOneSignIn` answers `404` for a sign-in that has expired but is not yet
+  pruned, and leaves the row for pruning.** Refines D-125-15 by D-125-7. _Why:_ the list
+  no longer shows it, so it has already ended.
 
 ### How existing decisions are handled
 
@@ -175,19 +223,31 @@ fixes #162. The issue's password features are dropped (D-125-1).
 | D-132-5          | Extended: `startSignIn` is a second `FOR SHARE` taker; no cycle                   | D-125-11         |
 | D-85-2           | Kept: a deactivated account reads as deactivated, whatever its sign-in            | D-125-3          |
 | D-16-1           | Kept: the proxy stays database-free                                               | D-125-17         |
-| D-129-4, D-129-5 | Kept as they are; #129's known limit is closed                                    | D-125-19         |
+| D-129-4, D-129-5 | Kept; #129's known limit is closed; the loop's purpose is restated                | D-125-19/21      |
 | R-137            | Updated: the cookie a late answer sets now signs nobody in                        | D-125-19         |
+| R-147            | Corrected: the event's error is logged as `EventError`                            | D-125-20         |
+| D-74-64          | Extended: an answer with no URL, or the server's `SignOutError`, is a failure     | D-125-21         |
+| D-28-7           | Applied to the member's page                                                      | D-125-22         |
 | D-31-1, D-31-4   | Refined (owner): the password is optional (#14)                                   | D-14-12          |
 | D-105-2/7/8      | Refined (owner): a Google-only first admin (#14)                                  | D-14-13          |
 | D-113-6          | Refined: sign-in's server HTML holds Google and messages; the form waits for live | D-14-11          |
-| D-150-4, D-115-3 | **Conflict, pending the owner** (#14)                                             | D-14-10, D-14-16 |
+| D-150-4          | Superseded (owner, 2026-11-12): `/sign-in` renders per request (#14)              | D-14-10          |
+| D-115-3, D-13-5  | Amended (owner, 2026-11-12): Google's logic is in `src/auth/` (#14)               | D-14-17          |
+| D-75-17          | Extended: ESLint keeps `src/auth` out of components and lib (#14)                 | D-14-18          |
 
 ## Known limits
 
-- If `endSignIn` throws in `events.signOut` (a database error), Auth.js logs it and
+- ~~If `endSignIn` throws in `events.signOut` (a database error), Auth.js logs it and
   clears the cookie anyway (R-147). The sign-in stays live, so a copied cookie still
   works. A late worker answer (#162) can still sign the member back in until D-129-4's
-  loop signs out again. An admin can end the sign-in.
+  loop signs out again. An admin can end the sign-in.~~ Closed by D-125-20 (owner,
+  2026-11-12).
+- If member B signs in on the phone before a late answer to A's sign-out lands, that
+  answer puts back A's ended cookie, so B is signed out. B is never signed in as A.
+- During a database outage nobody can sign out: the phone stays signed in, and says so,
+  until the database is back (D-125-20).
+- A sign-out can now fail on a server fault too (D-125-20), so #164, Sign out under the
+  bottom nav after a failed sign-out on iPhone 13, shows more often.
 - Every token issued before this release has no `signInId`, so on deploy every phone is
   signed out once (D-125-12).
 - The session endpoint keeps the cookie during a database outage (D-125-13).
@@ -197,8 +257,8 @@ fixes #162. The issue's password features are dropped (D-125-1).
 - A deactivated account reads as deactivated for any token, including one signed out
   before the deactivation. So on a deactivated member's phone, #162's late answer brings
   back the deactivated message, but no data.
-- Signing in again over a live cookie leaves the old row listed until it expires after 30
-  days.
+- Signing in again over a live cookie leaves the old sign-in live, and listed, until it
+  expires after 30 days unused.
 - The `/sign-in?reason=signed-out` redirect from admin pages drops `callbackUrl`.
 - The proxy cannot see an ended sign-in (D-16-1). The page loads, then the first `401`
   raises "Signed out". `/offline` makes no API call and shows the normal Offline page.
@@ -213,11 +273,12 @@ fixes #162. The issue's password features are dropped (D-125-1).
 
 ## Relies on
 
-D-07-6, D-13-1, D-16-1, D-28-5, D-31-5, D-33-1, D-33-2, D-83-1, D-83-3, D-83-5, D-83-6,
-D-83-7, D-85-2, D-117-45, D-123-1 to D-123-4, D-129-4, D-129-5, D-129-6, D-132-2,
-D-132-4, D-132-5.
+D-07-6, D-13-1, D-16-1, D-28-5, D-28-7, D-31-5, D-33-1, D-33-2, D-74-64, D-83-1, D-83-3,
+D-83-5, D-83-6, D-83-7, D-85-2, D-117-45, D-122-10, D-123-1 to D-123-4, D-129-4,
+D-129-5, D-129-6, D-132-2, D-132-4, D-132-5, D-150-1.
 
 ## Open questions
 
-None for #125: the owner's rulings of 2026-11-05 settle its product calls. #14's two
-conflicts (D-150-4, D-115-3) are in [14-google-sso.md](14-google-sso.md#open-questions).
+None. The owner's rulings of 2026-11-05 settle #125's product calls, and those of
+2026-11-12 settle #14's two conflicts (D-150-4, D-115-3) and the sign-out gap
+(D-125-20).

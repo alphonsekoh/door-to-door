@@ -18,4 +18,5 @@ Adapter, session strategy, and how a role reaches the app.
 - **D-13-4 · `NextAuth()` takes a config function, not an object.** _Why:_ an object
   constructs the adapter at import and makes `next build` need a database. Extended by D-75-9 to config, rate limiter, proxy and db client. The db client is a process-wide singleton since D-87-3.
 - **D-13-5 · Logic in `src/server/auth`; root `auth.ts` is a thin wrapper.** _Refined by
-  D-115-3:_ the wrapper is now `src/auth/index.ts`.
+  D-115-3:_ the wrapper is now `src/auth/index.ts`. _Refined by D-14-17 (owner,
+  2026-11-12):_ Google sign-in's logic is `src/auth/google.ts`.
