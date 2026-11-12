@@ -567,7 +567,10 @@ export function RecordVisitForm({
       before.kind === "failed" ? before.reopened : 0,
     );
     if (undoing.current === visitId) undoing.current = null;
-    setSaved(onThisSave(outcome));
+    /* The next unit's first keystroke can meet this answer (#155). */
+    startTransition(() => {
+      setSaved(onThisSave(outcome));
+    });
     void followUp?.recheck?.();
     onRecorded();
   }
@@ -822,7 +825,10 @@ export function RecordVisitForm({
           active={active}
           atDoor
           onChanged={() => {
-            setReloadKey((key) => key + 1);
+            /* Mark done answers while the next unit may be typed (#155). */
+            startTransition(() => {
+              setReloadKey((key) => key + 1);
+            });
           }}
         />
       )}

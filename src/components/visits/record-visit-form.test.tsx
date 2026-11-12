@@ -17,6 +17,7 @@ import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -665,6 +666,43 @@ describe("history before knocking", () => {
     expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
   });
 
+  /* Marked done, then on to the next unit while that is on its way: its
+     answer must not put this unit back as it lands (#155). */
+  it("keeps the next unit typed as Mark done's answer lands", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    let finish: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((_path: string, init?: { method?: string }) =>
+      init?.method === "PATCH"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve(history({ followUps: [owed] })),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        initialUnit="#05-123"
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.click(await screen.findByRole("button", { name: "Mark done" }));
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+
+    await landWhileTyping(field, "#05-124", () => {
+      finish({});
+    });
+
+    expect(field).toHaveValue("#05-124");
+    await waitFor(() => {
+      expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
+    });
+    expect(field).toHaveValue("#05-124");
+  });
+
   it("offers no Mark done in a follow-up session, where saving the visit marks it done", async () => {
     apiFetch.mockResolvedValue(history({ followUps: [owed] }));
     const user = userEvent.setup();
@@ -844,31 +882,13 @@ describe("history before knocking", () => {
         onRecorded={vi.fn()}
       />,
     );
-    const field = screen.getByLabelText("Unit number");
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/households/h1");
     });
 
-    const typing = new Event("input", { bubbles: true });
-    const event = Object.getOwnPropertyDescriptor(window, "event");
-    const actEnvironment: unknown = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
-    /* React's own scheduling, as in the browser, not act's. */
-    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
-    try {
-      // The browser's edit, which React learns of only from the event.
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
-        field,
-        "#05-1234",
-      );
-      Object.defineProperty(window, "event", { configurable: true, get: () => typing });
+    await landWhileTyping(field, "#05-1234", () => {
       answer(history());
-      for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
-    } finally {
-      if (event !== undefined) Object.defineProperty(window, "event", event);
-      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
-    }
-    act(() => {
-      field.dispatchEvent(typing);
     });
 
     expect(field).toHaveValue("#05-1234");
@@ -2360,6 +2380,29 @@ describe("in a follow-up session", () => {
         await Promise.resolve();
       });
       expect(screen.queryByText(/Undone/)).toBeNull();
+    });
+
+    /* The next unit's first keystroke can meet the answer, inside its event
+       (#155): the answer must not put the emptied field back. */
+    it("keeps the next unit typed as Undo's answer lands", async () => {
+      let finish: (value: unknown) => void = () => undefined;
+      server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+
+      await landWhileTyping(field, "#06-201", () => {
+        finish({});
+      });
+
+      // The answer was read while the text was landing, not after.
+      expect(recheck).toHaveBeenCalledTimes(1);
+      expect(field).toHaveValue("#06-201");
+      // Typed over, the save's line has gone, Undo's answer with it.
+      await waitFor(() => {
+        expect(screen.queryByRole("status")).toBeNull();
+      });
+      expect(field).toHaveValue("#06-201");
     });
 
     it("never lets a late Undo answer speak for the next unit saved", async () => {
