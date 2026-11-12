@@ -178,13 +178,16 @@ describe("MemberDetail (#125)", () => {
     /* Settled: the list read again, nothing busy, the control as it was. */
     async function expectSettledWith(message: string) {
       const row = card("Safari on iPhone");
-      expect(await within(row).findByRole("alert")).toHaveTextContent(message);
+      const alert = await within(row).findByRole("alert");
+      expect(alert).toHaveTextContent(message);
       await waitFor(() => {
         expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "false");
       });
       const button = within(row).getByRole("button", { name: /^Sign out Safari on iPhone/ });
       expect(button).toHaveTextContent("Sign out");
       expect(button).toBeEnabled();
+      // Just above the button it is about, where the admin is looking.
+      expect(alert.nextElementSibling).toBe(button);
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(within(card("Chrome on Android")).queryByRole("alert")).not.toBeInTheDocument();
     }
@@ -229,16 +232,79 @@ describe("MemberDetail (#125)", () => {
       expect(within(card("Safari on iPhone")).getByRole("button")).toBeEnabled();
     });
 
-    it("brings the message into view as it is drawn", async () => {
+    it("brings the message into view with its button as it is drawn, so neither sits under the nav", async () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
         await pressSignOut(refused);
-        const alert = await within(card("Safari on iPhone")).findByRole("alert");
-        expect(scrolled.mock.contexts).toContain(alert);
+        const row = card("Safari on iPhone");
+        const alert = await within(row).findByRole("alert");
+        const both = alert.parentElement;
+        expect(both).toContainElement(within(row).getByRole("button"));
+        expect(scrolled.mock.contexts).toContain(both);
         expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
       } finally {
         scrolled.mockRestore();
       }
+    });
+
+    it("keeps the list when the end and the read after it both get no answer", async () => {
+      // No signal at all: /api/users/* is never answered from the worker's cache.
+      const user = userEvent.setup();
+      let reads = 0;
+      apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+        if (init?.method === "DELETE") return Promise.reject(new TypeError("Failed to fetch"));
+        if (!path.endsWith("/sign-ins")) return Promise.resolve(alice);
+        reads += 1;
+        return reads === 1
+          ? Promise.resolve({
+              data: [signIn("s1", "Chrome on Android"), signIn("s2", "Safari on iPhone")],
+            })
+          : Promise.reject(new TypeError("Failed to fetch"));
+      });
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Safari on iPhone");
+
+      await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+
+      await expectSettledWith("Could not sign out. Check your connection and try again.");
+      expect(reads).toBe(2);
+      expect(screen.getByText("Chrome on Android")).toBeInTheDocument();
+      expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
+    });
+
+    it("clears an earlier failure when another end is tried, and that one works", async () => {
+      const user = userEvent.setup();
+      const phone = signIn("s1", "Chrome on Android");
+      const iphone = signIn("s2", "Safari on iPhone");
+      let refuse = true;
+      serveReads(
+        alice,
+        [
+          Promise.resolve([phone, iphone]),
+          Promise.resolve([phone, iphone]),
+          Promise.resolve([iphone]),
+        ],
+        () => (refuse ? refused() : Promise.resolve()),
+      );
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Safari on iPhone");
+
+      await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+      expect(await within(card("Safari on iPhone")).findByRole("alert")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(within(card("Chrome on Android")).getByRole("button")).toBeEnabled();
+      });
+
+      refuse = false;
+      await user.click(
+        within(card("Chrome on Android")).getByRole("button", { name: /^Sign out/ }),
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText("Chrome on Android")).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     });
 
     it("tells a failed Sign out everywhere just above that button", async () => {

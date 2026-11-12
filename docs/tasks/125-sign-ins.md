@@ -204,7 +204,9 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   dimmed button looked like nothing happened. A failed end is told just above the control
   pressed (in its row, or above Sign out everywhere) and scrolled into view, and that
   control reads "Sign out" again at once. With no answer it reads "Could not sign out.
-  Check your connection and try again."; a refusal shows the server's message.
+  Check your connection and try again."; a refusal shows the server's message. When the
+  read after a failed end fails too, the list is kept, and the row's alert still says
+  "Could not sign out. …".
 - **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
   `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
   ids are lower case. Without this, your own current sign-in was not `409`, and "Sign

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
@@ -43,27 +43,37 @@ export function MemberDetail({ userId }: { userId: string }) {
    * all.
    */
   const [failure, setFailure] = useState<{ at: string; message: string } | null>(null);
-  const failureLine = useRef<HTMLParagraphElement>(null);
+  /* The failure and the control it is about, scrolled into view together. */
+  const failureBlock = useRef<HTMLDivElement>(null);
   /* Only the newest read of the list is shown (D-28-7). */
   const generation = useRef(0);
 
-  const load = useCallback(async () => {
-    const mine = ++generation.current;
-    try {
-      const [user, signIns] = await Promise.all([
-        apiFetch<User>(`/users/${userId}`),
-        apiFetch<SignInList>(`/users/${userId}/sign-ins`),
-      ]);
-      if (mine !== generation.current) return;
-      setState({ status: "ready", user, signIns: signIns.data });
-    } catch (error) {
-      if (mine !== generation.current) return;
-      setState({
-        status: "error",
-        message: error instanceof Error ? error.message : "Could not load this member.",
-      });
-    }
-  }, [userId]);
+  /*
+   * `keepList` leaves the list as it is when the read fails, as Team keeps its
+   * own after a failed change: after an end that failed for want of signal,
+   * the read fails too, and the error screen would drop the row and the alert
+   * saying why with it.
+   */
+  const load = useCallback(
+    async ({ keepList = false }: { keepList?: boolean } = {}) => {
+      const mine = ++generation.current;
+      try {
+        const [user, signIns] = await Promise.all([
+          apiFetch<User>(`/users/${userId}`),
+          apiFetch<SignInList>(`/users/${userId}/sign-ins`),
+        ]);
+        if (mine !== generation.current) return;
+        setState({ status: "ready", user, signIns: signIns.data });
+      } catch (error) {
+        if (mine !== generation.current || keepList) return;
+        setState({
+          status: "error",
+          message: error instanceof Error ? error.message : "Could not load this member.",
+        });
+      }
+    },
+    [userId],
+  );
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);
@@ -72,22 +82,24 @@ export function MemberDetail({ userId }: { userId: string }) {
     };
   }, [load]);
 
-  /* At large text the message can reach below the screen or under the nav:
-     brought into view, clear of them, before it is painted. */
+  /* At large text the message and its control can reach below the screen or
+     under the nav: brought into view, clear of them, before they are painted. */
   useLayoutEffect(() => {
-    if (failure !== null) failureLine.current?.scrollIntoView({ block: "nearest" });
+    if (failure !== null) failureBlock.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
 
   async function end(path: string, pressed: string): Promise<void> {
     setFailure(null);
     setBusy(true);
     setEnding(pressed);
+    let failed = false;
     try {
       await apiFetch(path, { method: "DELETE" });
     } catch (error) {
       /* Already ended, on another admin's screen or by its own sign-out:
          what was asked for is done, so the list is simply read again. */
       if (!(error instanceof ApiRequestError && error.status === 404)) {
+        failed = true;
         setEnding(null);
         setFailure({
           at: pressed,
@@ -97,22 +109,30 @@ export function MemberDetail({ userId }: { userId: string }) {
     }
     setConfirming(false);
     /* Busy until the list is read again: a second Sign out meanwhile would act
-       on rows that are about to change. load() never throws. */
-    await load();
+       on rows that are about to change. Read even after a failure, since an
+       end that arrived but lost its answer drops the row. load() never throws. */
+    await load({ keepList: failed });
     setEnding(null);
     setBusy(false);
   }
 
-  const failureAt = (at: string, className = "") =>
-    failure?.at === at ? (
-      <p
-        ref={failureLine}
-        role="alert"
-        className={`scroll-clear-chrome notice-danger ${className}`}
+  /* `control`, with the failure about it just above it. */
+  const withFailure = (at: string, control: ReactNode, className = "") => {
+    const failed = failure?.at === at;
+    return (
+      <div
+        ref={failed ? failureBlock : null}
+        className={`scroll-clear-chrome space-y-3 ${className}`}
       >
-        {failure.message}
-      </p>
-    ) : null;
+        {failed ? (
+          <p role="alert" className="notice-danger">
+            {failure.message}
+          </p>
+        ) : null}
+        {control}
+      </div>
+    );
+  };
 
   if (state.status === "loading") {
     return (
@@ -181,44 +201,47 @@ export function MemberDetail({ userId }: { userId: string }) {
                 </p>
                 {/* Your own phone is signed out from Account, which also
                     clears what it holds. */}
-                {signIn.current ? null : (
-                  <>
-                    {failureAt(signIn.id, "mt-3")}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)}
-                      aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
-                      className="mt-3 min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
-                    >
-                      {ending === signIn.id ? "Signing out…" : "Sign out"}
-                    </button>
-                  </>
-                )}
+                {signIn.current
+                  ? null
+                  : withFailure(
+                      signIn.id,
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)
+                        }
+                        aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
+                        className="min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
+                      >
+                        {ending === signIn.id ? "Signing out…" : "Sign out"}
+                      </button>,
+                      "mt-3",
+                    )}
               </li>
             ))}
           </ul>
         )}
 
-        {others.length === 0 ? null : (
-          <>
-            {failureAt(EVERYWHERE)}
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setConfirming(true);
-              }}
-              className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
-            >
-              {ending === EVERYWHERE
-                ? "Signing out…"
-                : self
-                  ? "Sign out other devices"
-                  : "Sign out everywhere"}
-            </button>
-          </>
-        )}
+        {others.length === 0
+          ? null
+          : withFailure(
+              EVERYWHERE,
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setConfirming(true);
+                }}
+                className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
+              >
+                {ending === EVERYWHERE
+                  ? "Signing out…"
+                  : self
+                    ? "Sign out other devices"
+                    : "Sign out everywhere"}
+              </button>,
+            )}
       </section>
 
       <SheetPresence>
