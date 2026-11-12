@@ -44,7 +44,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   sign-in or a missing user, so `/api/auth/session` names nobody and clears the cookie.
   _Why:_ `useSession`, the queue's owner check (D-33-1) and D-129-4/5 all ask that
   endpoint. The app's own `auth()` calls carry no request and leave the check to
-  `resolveSession`, so an API request still costs one lookup. _Research:_ R-145, R-146.
+  `resolveSession`, so an API request still costs one lookup. _Research:_ R-153, R-154.
 - **D-125-5 · A claim that is not a UUID.** A `signInId` that is not a UUID is treated as
   ended (`asUuid`) and never reaches the uuid column. On Auth.js's routes, a `sub` that is
   not a UUID names nobody, and at sign-in such a user id is refused. `resolveSession`
@@ -102,7 +102,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   failed check there is logged, and the token answers as it did before #125. Every API
   request still answers `500`. D-83-5 holds for authorization, and this states its
   scope: the session endpoint authorizes nothing. _Why:_ without the catch, Auth.js
-  clears the cookie when the callback throws (R-146). An outage would then sign out
+  clears the cookie when the callback throws (R-154). An outage would then sign out
   every phone that asks: the queue's owner check and the sign-out check.
 - **D-125-14 · D-83-15(c) is partly closed.** An ended sign-in now names nobody on
   `/api/auth/session`. A live one still echoes role claims frozen at sign-in.
@@ -185,16 +185,16 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   - `@/auth` no longer exports the server-side `signOut`, which builds the config with
     no request and so could not keep the cookie.
 
-  _Why:_ Auth.js swallows the event's error and clears the cookie anyway (R-147). The
+  _Why:_ Auth.js swallows the event's error and clears the cookie anyway (R-155). The
   sign-in stayed live, so a copied cookie still worked, and a late answer (#162) signed
-  the phone back in. _Research:_ R-145, R-147.
+  the phone back in. _Research:_ R-153, R-155.
 
 - **D-125-21 · The phone reads that answer as a failed sign-out.** `signOutOnce` throws on
   an answer with no URL, or with any `error`, `SignOutError` included, and Account shows
   "Could not sign out. Check your connection and try again." Extends D-74-64. D-129-4's
   loop now covers a session check during an outage, which keeps the cookie (D-125-13),
   or an old server mid-deploy. _Why:_ next-auth/react's `signOut` hands back the body
-  whatever the status (R-152), so the URL is the only signal. _Known limit:_ as with
+  whatever the status (R-160), so the URL is the only signal. _Known limit:_ as with
   D-74-64, the wording blames the connection when the fault is the server's.
 - **D-125-22 · The member's page shows an end in progress.** Its list is read under
   D-28-7's generation counter, so an older read never lands last. It stays busy through
@@ -228,7 +228,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
 | D-16-1           | Kept: the proxy stays database-free                                               | D-125-17         |
 | D-129-4, D-129-5 | Kept; #129's known limit is closed; the loop's purpose is restated                | D-125-19/21      |
 | R-137            | Updated: the cookie a late answer sets now signs nobody in                        | D-125-19         |
-| R-147            | Corrected: the event's error is logged as `EventError`                            | D-125-20         |
+| R-155            | Corrected: the event's error is logged as `EventError`                            | D-125-20         |
 | D-74-64          | Extended: an answer with no URL, or the server's `SignOutError`, is a failure     | D-125-21         |
 | D-28-7           | Applied to the member's page                                                      | D-125-22         |
 | D-31-1, D-31-4   | Refined (owner): the password is optional (#14)                                   | D-14-12          |
@@ -241,7 +241,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
 ## Known limits
 
 - ~~If `endSignIn` throws in `events.signOut` (a database error), Auth.js logs it and
-  clears the cookie anyway (R-147). The sign-in stays live, so a copied cookie still
+  clears the cookie anyway (R-155). The sign-in stays live, so a copied cookie still
   works. A late worker answer (#162) can still sign the member back in until D-129-4's
   loop signs out again. An admin can end the sign-in.~~ Closed by D-125-20 (owner,
   2026-11-12).

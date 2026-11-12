@@ -41,7 +41,7 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
 
   The adapter's `createUser` is refused as well, and D-13-3 stays as a backstop. The
   issue's "new Google users default to `member`" and its first acceptance criterion are
-  dropped. _Research:_ R-148. _Extended by D-14-19 (owner, 2026-11-12):_ Google must also
+  dropped. _Research:_ R-156. _Extended by D-14-19 (owner, 2026-11-12):_ Google must also
   vouch for the address.
 
 - **D-14-4 · The first verified sign-in links by email, never by cookie.**
@@ -49,7 +49,7 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   a Google-verified address an admin added. The adapter's `getUser` returns `null`, so
   Auth.js never links the Google account to whoever's cookie is already on the phone.
   _Why:_ on a shared phone, A's stale cookie plus B's Google sign-in would otherwise link
-  B's Google to A's account. _Research:_ R-148. _Extended by D-14-19:_ only an address
+  B's Google to A's account. _Research:_ R-156. _Extended by D-14-19:_ only an address
   Google vouches for is linked, since the link is permanent.
 - **D-14-5 · Every Google refusal gets the same message (`googleRefusedMessage`):** "That
   Google account can't sign in here. Google sign-in is for gmail.com, tjc.sg or tjc.org
@@ -123,7 +123,7 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   - Vitest drives Auth.js through the provider's `customFetch`.
   - The Google E2E runs on `localhost`, not `127.0.0.1`.
 
-  _Research:_ R-144, R-149.
+  _Research:_ R-152, R-157.
 
 - **D-14-15 · The Google G is Google's own mark.** It is kept as `public/google-g.svg`,
   drawn by the `google-mark` utility on a chip in the button's text colour. The button
@@ -152,13 +152,13 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   - at `gmail.com`, nothing more. At any other listed domain, the ID token's `hd` must be
     a string whose lower-cased value is in the list. Any listed `hd` is accepted, not
     only the address's own domain, because a Workspace's secondary domains carry its
-    primary domain as `hd` (the app's reading, unverified: R-150, owner check below).
+    primary domain as `hd` (the app's reading, unverified: R-158, owner check below).
 
   `hd` is read from the signed ID token, which is the profile Auth.js hands the callback
   for Google. With Google not set up, it refuses everyone. Extends D-14-3 and D-14-4.
   _Why:_ `email_verified` is authoritative only for `@gmail.com`, or when the token
   carries `hd` (Google Workspace). Anywhere else, a mailbox that changed hands lets its
-  old holder in, and the link by email (D-14-4) is permanent. _Research:_ R-150, R-151.
+  old holder in, and the link by email (D-14-4) is permanent. _Research:_ R-158, R-159.
 
 - **D-14-20 · `auth.google.domains` is required whenever `auth.google` is set (owner,
   2026-11-12).** It is a non-empty list of lower-case domain names: at least two labels,

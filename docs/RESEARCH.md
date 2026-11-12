@@ -1594,7 +1594,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   (`check_csv.py` on the exported files)
 - **Used by:** D-163-1, D-163-2
 
-### R-144 · Next names a loopback host `localhost` in the URL a route reads
+### R-152 · Next names a loopback host `localhost` in the URL a route reads
 
 - **Finding:** Next's `NextURL` rewrites any `127.x.x.x`, `[::1]` or `localhost` host to
   `localhost`. Auth.js therefore builds Google's callback URL on `localhost` when the app
@@ -1606,7 +1606,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `REGEX_LOCALHOST_HOSTNAME`), Next 16.4.3; measured (#125 builder)
 - **Used by:** D-14-14
 
-### R-145 · next-auth passes a lazy config the request only on its own routes
+### R-153 · next-auth passes a lazy config the request only on its own routes
 
 - **Finding:** With a config function, next-auth 5.0.0-beta.32 calls it with the request
   from its route handlers (`handlers.GET`, `handlers.POST`), from the middleware form and
@@ -1618,7 +1618,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/next-auth/lib/index.js` (`initAuth`)
 - **Used by:** D-125-4, D-125-20
 
-### R-146 · A `jwt` callback that returns `null`, or throws, clears the session cookie
+### R-154 · A `jwt` callback that returns `null`, or throws, clears the session cookie
 
 - **Finding:** In `@auth/core` 0.41.3's session action with the JWT strategy, a `jwt`
   callback that returns `null` makes the answer name no session and clean the session
@@ -1627,7 +1627,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/session.js`
 - **Used by:** D-125-4, D-125-13
 
-### R-147 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
+### R-155 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
 
 - **Finding:** `@auth/core` 0.41.3's sign-out decodes the token and awaits
   `events.signOut`. Every event is wrapped by `eventsErrorHandler` in `init.js`, which
@@ -1639,7 +1639,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/@auth/core/lib/init.js` (`eventsErrorHandler`)
 - **Used by:** D-125-9 (its known limit), D-125-20
 
-### R-148 · How Auth.js links an OAuth account
+### R-156 · How Auth.js links an OAuth account
 
 - **Finding:** In `@auth/core` 0.41.3's OAuth callback with JWT sessions, a session
   cookie already present is decoded, and its user is read through the adapter's
@@ -1656,7 +1656,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
 - **Used by:** D-14-3, D-14-4, D-14-7
 
-### R-149 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
+### R-157 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
 
 - **Finding:** `@auth/core` 0.41.3 hands the provider's `[customFetch]` (exported by
   `next-auth`) to oauth4webapi for discovery, the token request and the JWKS. It also
@@ -1666,7 +1666,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/@auth/core/lib/actions/signin/authorization-url.js`
 - **Used by:** D-14-14
 
-### R-150 · Google is authoritative for an address only at gmail.com or with `hd`
+### R-158 · Google is authoritative for an address only at gmail.com or with `hd`
 
 - **Finding:** Google's guidance on ID tokens says to use `email`, `email_verified` and
   `hd` to decide whether Google is authoritative for an address. It is for an
@@ -1684,7 +1684,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   guard refused both pages); paraphrased, not quoted.
 - **Used by:** D-14-19, D-14-20
 
-### R-151 · Auth.js's Google profile is the validated ID token's claims
+### R-159 · Auth.js's Google profile is the validated ID token's claims
 
 - **Finding:** Google is an OIDC provider in `@auth/core` 0.41.3 (`type: "oidc"`). Its
   callback validates the ID token and hands its claims to the `signIn` callback as
@@ -1694,7 +1694,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   (`getValidatedIdTokenClaims`), `node_modules/@auth/core/providers/google.js`
 - **Used by:** D-14-19
 
-### R-152 · next-auth/react's `signOut` hands back the body whatever the status
+### R-160 · next-auth/react's `signOut` hands back the body whatever the status
 
 - **Finding:** In next-auth 5.0.0-beta.32, the client `signOut` posts to `/signout`,
   reads the answer as JSON and, with `redirect: false`, returns that body without looking

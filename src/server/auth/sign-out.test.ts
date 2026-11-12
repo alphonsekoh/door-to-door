@@ -21,7 +21,7 @@ const fire = (request: Request, message: Message = token) =>
 
 const signOutRequest = () => new Request("https://test.local/api/auth/signout", { method: "POST" });
 
-/* What Auth.js answers a sign-out with, whatever its event did (R-147). */
+/* What Auth.js answers a sign-out with, whatever its event did (R-155). */
 const cleared = () =>
   new Response(JSON.stringify({ url: "https://test.local/account" }), {
     headers: {
