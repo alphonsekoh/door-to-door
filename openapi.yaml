@@ -1116,9 +1116,10 @@ components:
           maxLength: 200
           description: |
             Optional. An initial password the admin passes on, for signing in
-            with email and password as well as with Google. There is no invite
-            email in this app, so somebody has to hand it over in person.
-            Without one the account signs in with Google only.
+            with email and password. There is no invite email in this app, so
+            somebody has to hand it over in person. Without one the account
+            signs in with Google only, which is allowed only for an address in
+            the server's `auth.google.domains` (see `createUser`).
         role:
           allOf: [{ $ref: "#/components/schemas/Role" }]
           default: member
@@ -2981,14 +2982,20 @@ paths:
       operationId: createUser
       summary: Add someone to the team
       description: |
-        **Requires: admin.** Adds someone who may then sign in with Google
-        using this email address, once Google has verified it. With a
-        `password` they may also sign in with email and password; without
-        one, with Google only. Signing in never creates an account: only an
-        address added here (or by `npm run create-admin`) can sign in.
+        **Requires: admin.** Adds someone to the team. Signing in never
+        creates an account: only an address added here (or by
+        `npm run create-admin`) can sign in.
+
+        With a `password` they sign in with email and password. They can
+        also sign in with Google, but only when Google sign-in is set up on
+        this server and the address is in its `auth.google.domains`: a
+        gmail.com address as it is, and any other listed domain only with
+        that domain's Google Workspace account (the ID token's `hd`).
+        Without a `password` they sign in with Google only.
 
         A Google-only account is refused with `409` while Google sign-in is
-        not set up on this server, since nobody could sign in as it.
+        not set up, and for an address outside `auth.google.domains`, since
+        nobody could sign in as it.
       requestBody:
         required: true
         content:
@@ -3006,7 +3013,9 @@ paths:
         "409":
           description: |
             That email address already belongs to someone, or no `password`
-            was given while Google sign-in is not set up on this server.
+            was given while Google sign-in is not set up on this server, or no
+            `password` was given for an address outside the server's
+            `auth.google.domains`. The message names those domains.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

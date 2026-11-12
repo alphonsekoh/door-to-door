@@ -843,9 +843,10 @@ export type CreateUserRequest = {
     name?: string | null;
     /**
      * Optional. An initial password the admin passes on, for signing in
-     * with email and password as well as with Google. There is no invite
-     * email in this app, so somebody has to hand it over in person.
-     * Without one the account signs in with Google only.
+     * with email and password. There is no invite email in this app, so
+     * somebody has to hand it over in person. Without one the account
+     * signs in with Google only, which is allowed only for an address in
+     * the server's `auth.google.domains` (see `createUser`).
      *
      */
     password?: string;
@@ -3316,7 +3317,9 @@ export type CreateUserErrors = {
     403: Error;
     /**
      * That email address already belongs to someone, or no `password`
-     * was given while Google sign-in is not set up on this server.
+     * was given while Google sign-in is not set up on this server, or no
+     * `password` was given for an address outside the server's
+     * `auth.google.domains`. The message names those domains.
      *
      */
     409: Error;
