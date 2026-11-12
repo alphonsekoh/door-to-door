@@ -33,7 +33,7 @@ export function useSearchTerm(
    */
   const href = search === "" ? path : `${path}?${search}`;
   useLayoutEffect(() => {
-    /* Before any effect sends a request. Next's state in the entry is kept by
+    /* Before this screen sends a request. Next's state in the entry is kept by
        hand: its own replaceState, which keeps it, may not be installed yet. */
     if (linked !== null) window.history.replaceState(window.history.state, "", href);
   }, [linked, href]);

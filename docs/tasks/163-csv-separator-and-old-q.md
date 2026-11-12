@@ -1,6 +1,6 @@
 # #163 · CSV `;` guard, and an old `?q=` dropped on load
 
-- **Status:** In progress (branch `fix/163-csv-separator-and-old-q`)
+- **Status:** Done (PR #170)
 - **Phase:** 7 - Hardening
 - **Depends on:** #16, #29, #30, #129 (with #130)
 
