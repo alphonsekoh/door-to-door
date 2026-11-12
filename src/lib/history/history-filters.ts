@@ -53,7 +53,7 @@ function asDate(value: string | null): string {
  * or a phone number, and a query string goes to the server, its logs, the
  * phone's history and a sign-in's callbackUrl. The search runs on what is
  * already loaded (D-30-6), so nothing needs it there. An old link's `q` is
- * ignored.
+ * the screen's to take and drop (useSearchTerm).
  */
 export function parseHistoryFilters(params: URLSearchParams): HistoryFilters {
   const sessionId = params.get("sessionId") ?? "";

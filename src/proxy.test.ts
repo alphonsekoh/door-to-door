@@ -78,6 +78,13 @@ describe("unauthenticated visitors", () => {
     );
   });
 
+  it("carries an old link's search term no further (#163)", async () => {
+    const response = await proxy(request("/admin/records", null, "?q=Tan&interestLevel=high"));
+    const location = decodeURIComponent(response.headers.get("location") ?? "");
+    expect(location).toContain("/admin/records?interestLevel=high");
+    expect(location).not.toContain("Tan");
+  });
+
   it("answers an API request with 401 rather than an HTML redirect", async () => {
     // A fetch() could do nothing useful with a redirect to a sign-in page.
     const response = await proxy(request("/api/sessions"));

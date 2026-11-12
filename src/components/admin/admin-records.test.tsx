@@ -255,15 +255,27 @@ describe("AdminRecords", () => {
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it("takes no search term from the URL", async () => {
-    // An old link, or one typed by hand, does not fill the search.
+  it("moves an old link's search term from the URL into the search (#163)", async () => {
+    // Left in the address, it would ride into a sign-in's callbackUrl.
+    searchParams.value = new URLSearchParams("q=124&interestLevel=low");
+    serve([entry("#05-123"), entry("#05-124")]);
+    render(<AdminRecords />);
+
+    expect(await screen.findByText("#05-124")).toBeInTheDocument();
+    expect(screen.queryByText("#05-123")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("124");
+    expect(replace).toHaveBeenCalledWith("/admin/records?interestLevel=low", { scroll: false });
+    const asked = [...replace.mock.calls, ...apiFetch.mock.calls].map(([path]) => String(path));
+    expect(asked.filter((path) => /q=|124/.test(path))).toEqual([]);
+  });
+
+  it("goes back to the bare screen when the search term was all the link held", async () => {
     searchParams.value = new URLSearchParams("q=124");
     serve([entry("#05-123"), entry("#05-124")]);
     render(<AdminRecords />);
 
-    expect(await screen.findByText("#05-123")).toBeInTheDocument();
-    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("");
-    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+    expect(await screen.findByText("#05-124")).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/admin/records", { scroll: false });
   });
 
   it("clears the search along with the filters", async () => {

@@ -334,15 +334,19 @@ describe("ConsolidatedHistory", () => {
     expect(search).toHaveValue("124");
   });
 
-  it("takes no search term from the URL", async () => {
-    // An old link, or one typed by hand, does not fill the search.
-    searchParams.value = new URLSearchParams("q=124");
+  it("moves an old link's search term from the URL into the search (#163)", async () => {
+    // Left in the address, it would ride into a sign-in's callbackUrl.
+    searchParams.value = new URLSearchParams("q=124&religion=hindu");
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
 
-    expect(await screen.findByText(door("Blk 123, #05-123"))).toBeInTheDocument();
-    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("");
-    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+    expect(await screen.findByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("124");
+    expect(screen.getByRole("button", { name: "Clear filters" })).toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/admin/history?religion=hindu", { scroll: false });
+    const asked = [...replace.mock.calls, ...apiFetch.mock.calls].map(([path]) => String(path));
+    expect(asked.filter((path) => /q=|124/.test(path))).toEqual([]);
   });
 
   it("clears a search typed with no other filter", async () => {
