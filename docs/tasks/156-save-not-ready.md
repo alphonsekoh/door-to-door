@@ -1,6 +1,6 @@
 # #156 · Save reads as not ready before the block screen is live
 
-- **Status:** In review, with #155
+- **Status:** Done (PR #172), with #155
 - **Phase:** 7 - Hardening
 - **Depends on:** #113, #122
 

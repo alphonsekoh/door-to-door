@@ -1,6 +1,6 @@
 # #155 · A unit typed as the block screen's answers land
 
-- **Status:** In review, with #156
+- **Status:** Done (PR #172), with #156
 - **Phase:** 7 - Hardening
 - **Depends on:** #113
 
@@ -36,8 +36,8 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   helper sets the field, makes `window.event` that `input` event, releases the answer
   under React's own scheduling rather than `act`'s, then dispatches the event. Eight
   tests use it, covering every update in D-155-2 and D-155-7. _Why:_ `:56` cannot tell
-  fixed from broken (Evidence). The in-engine probe is not in `e2e/` (D-37-6; Open
-  questions).
+  fixed from broken (Evidence). The in-engine probe is not in `e2e/` yet: the owner
+  moved it to its own issue, #176 (2026-11-12).
 - **D-155-5 · The follow-up and promote sheets' answers stay urgent.** _Why:_ they land
   while their sheet is open, and the page behind an open sheet is inert (D-90-7), so the
   unit field cannot be taking text. The other paths left urgent are under Known limits.
@@ -75,7 +75,8 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 - Still urgent: `save()`'s own continuations (a follow-up re-check's refusal, a failed
   direct save) and `SyncProvider`'s `setConfirmed(undefined)` when the sign-in check
   names someone else. A keystroke landing with one can still be lost. A save that
-  succeeds replaces the unit by design (D-25-5).
+  succeeds replaces the unit by design (D-25-5). The owner accepted these as limits
+  (2026-11-12): each follows the member's own Save or a change of account.
 - With `setLive` a transition, a queued save's line can say "Saved … on this phone."
   briefly before it says "Sending" (reviewer, round 1). Its rows are held (D-117-59,
   D-117-71), so nothing moves.
@@ -91,7 +92,7 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 | D-113-7  | Kept: the session still reaches the app as a transition; now answers do | D-155-2          |
 | D-117-19 | Kept: the kind is still told to the next screen, once drawn here        | D-155-3          |
 | D-85-8   | Kept: the latest `/users/me` still wins for the same account            | D-155-7          |
-| D-37-6   | Kept: no probe spec added; the suite stays thin                         | D-155-4          |
+| D-37-6   | Kept here: the probe spec is #176 (owner)                               | D-155-4          |
 
 ## Relies on
 
@@ -99,8 +100,5 @@ D-25-5, D-37-6, D-85-8, D-90-7, D-113-1, D-113-7, D-117-19, D-117-59, D-117-71.
 
 ## Open questions
 
-- Should the paths under Known limits' first item stay urgent, as limits, or land as
-  transitions too? The reviewer asked for them to be recorded as limits only if the
-  owner accepts that.
-- Should the deterministic probe become an E2E spec? It is not a new flow, so the
-  verifier added none (D-37-6).
+None. The owner ruled on 2026-11-12: the paths under Known limits' first item stay
+urgent, as recorded limits, and the deterministic probe becomes an E2E spec in #176.
