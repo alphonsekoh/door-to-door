@@ -29,17 +29,30 @@ export type SessionUser = {
   deactivated?: boolean | undefined;
 };
 
-export function deriveRoleState(
-  status: "loading" | "authenticated" | "unauthenticated",
-  user?: SessionUser,
-  serverUser?: ServerUser | null,
-): RoleState {
-  const isSignedIn = status === "authenticated" && user?.deactivated !== true;
+type SessionStatus = "loading" | "authenticated" | "unauthenticated";
+
+function signedIn(status: SessionStatus, user: SessionUser | undefined): boolean {
+  return status === "authenticated" && user?.deactivated !== true;
+}
+
+function deriveRole(
+  status: SessionStatus,
+  user: SessionUser | undefined,
+  serverUser: ServerUser | null | undefined,
+): Role | undefined {
+  if (!signedIn(status, user)) return undefined;
   /* The token's role is a hint set at sign-in (D-83-3); the latest /users/me
      for the same account wins, so a demotion or promotion shows without
      signing in again. */
-  const sameAccount = isSignedIn && serverUser != null && serverUser.id === user?.id;
-  const role = sameAccount ? serverUser.role : isSignedIn ? user?.role : undefined;
+  return serverUser != null && serverUser.id === user?.id ? serverUser.role : user?.role;
+}
+
+function roleState(
+  status: SessionStatus,
+  user: SessionUser | undefined,
+  role: Role | undefined,
+): RoleState {
+  const isSignedIn = signedIn(status, user);
   return {
     userId: isSignedIn ? user?.id : undefined,
     role,
@@ -50,12 +63,25 @@ export function deriveRoleState(
   };
 }
 
+export function deriveRoleState(
+  status: SessionStatus,
+  user?: SessionUser,
+  serverUser?: ServerUser | null,
+): RoleState {
+  return roleState(status, user, deriveRole(status, user, serverUser));
+}
+
 export function useRole(): RoleState {
   const { data, status } = useSession();
-  const { serverUser } = useSyncExternalStore(
+  const user = data?.user;
+  /* The role, not the store's snapshot: a store's change is drawn at once,
+     transition or not, so a /users/me that agrees with the token would draw
+     every screen again for nothing, and one landing as text lands in the
+     unit field would put the unit back (#155). */
+  const role = useSyncExternalStore(
     accountStore.subscribe,
-    accountStore.getSnapshot,
-    accountStore.getServerSnapshot,
+    () => deriveRole(status, user, accountStore.getSnapshot().serverUser),
+    () => deriveRole(status, user, accountStore.getServerSnapshot().serverUser),
   );
-  return deriveRoleState(status, data?.user, serverUser);
+  return roleState(status, user, role);
 }
