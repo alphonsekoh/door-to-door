@@ -3,20 +3,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SignInPage from "@/app/sign-in/page";
 
 vi.mock("next-auth/react", () => ({ signIn: vi.fn(), signOut: vi.fn() }));
+const { connection, googleDomains, error } = vi.hoisted(() => ({
+  connection: vi.fn(() => Promise.resolve()),
+  googleDomains: vi.fn<() => readonly string[] | null>(),
+  error: { value: null as string | null },
+}));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
-  useSearchParams: () => ({ get: () => null }),
-}));
-
-const { connection, googleSignInEnabled } = vi.hoisted(() => ({
-  connection: vi.fn(() => Promise.resolve()),
-  googleSignInEnabled: vi.fn(() => false),
+  useSearchParams: () => ({ get: (key: string) => (key === "error" ? error.value : null) }),
 }));
 vi.mock("next/server", () => ({ connection }));
-vi.mock("@/auth/google", () => ({ googleSignInEnabled }));
+vi.mock("@/auth/google", () => ({ googleDomains }));
 
 beforeEach(() => {
   vi.clearAllMocks();
+  googleDomains.mockReturnValue(null);
+  error.value = null;
 });
 
 describe("sign-in page", () => {
@@ -37,8 +39,17 @@ describe("sign-in page", () => {
     expect(connection).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Sign in with Google" })).not.toBeInTheDocument();
 
-    googleSignInEnabled.mockReturnValue(true);
+    googleDomains.mockReturnValue(["gmail.com"]);
     render(await SignInPage());
     expect(screen.getByRole("button", { name: "Sign in with Google" })).toBeInTheDocument();
+  });
+
+  it("names the domains config.yaml gives Google when Google refuses someone (#14)", async () => {
+    googleDomains.mockReturnValue(["gmail.com", "tjc.sg"]);
+    error.value = "AccessDenied";
+    render(await SignInPage());
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Google sign-in works only for addresses at gmail.com or tjc.sg.",
+    );
   });
 });

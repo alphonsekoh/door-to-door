@@ -4,6 +4,11 @@ import type { Role } from "@/db/schema";
 import { signIns, users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { checkOwnName } from "@/lib/session/own-name";
+import {
+  GOOGLE_NOT_SET_UP_MESSAGE,
+  inGoogleDomains,
+  outsideGoogleDomainsMessage,
+} from "@/lib/session/google-domains";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
 import { hashPassword } from "@/server/password";
 
@@ -114,12 +119,11 @@ export async function getUser(
   return found;
 }
 
-export const GOOGLE_NOT_SET_UP_MESSAGE =
-  "Google sign-in isn't set up here, so they need a password.";
-
 /*
- * With no password the account signs in with Google only (#14), which is
- * refused while Google sign-in is not set up: nobody could sign in as it.
+ * With no password the account signs in with Google only (#14). That is
+ * refused while Google sign-in is not set up, and for an address outside
+ * `googleDomains`, where Google refuses to sign anyone in: nobody could sign
+ * in as it.
  */
 export async function createUser(
   db: Database,
@@ -129,15 +133,20 @@ export async function createUser(
     password?: string | undefined;
     role?: Role;
   },
-  googleSignIn: boolean,
+  googleDomains: readonly string[] | null,
 ): Promise<UserRow> {
-  if (input.password === undefined && !googleSignIn) {
-    throw new ConflictError("conflict", GOOGLE_NOT_SET_UP_MESSAGE);
+  const email = input.email.trim().toLowerCase();
+  if (input.password === undefined) {
+    if (googleDomains === null) {
+      throw new ConflictError("conflict", GOOGLE_NOT_SET_UP_MESSAGE);
+    }
+    if (!inGoogleDomains(email, googleDomains)) {
+      throw new ConflictError("conflict", outsideGoogleDomainsMessage(googleDomains));
+    }
   }
   /* Hashed before the insert so a weak password is refused without leaving a
      half-made account behind. */
   const passwordHash = input.password === undefined ? null : await hashPassword(input.password);
-  const email = input.email.trim().toLowerCase();
 
   try {
     const inserted = await db

@@ -23,7 +23,7 @@ async function main(): Promise<void> {
       prompt: process.stdin.isTTY
         ? (question) => promptHidden(question, process.stdin, process.stdout)
         : undefined,
-      googleSignIn: loadAppConfig().auth.google !== undefined,
+      googleDomains: loadAppConfig().auth.google?.domains ?? null,
     });
     console.log(
       admin.googleOnly

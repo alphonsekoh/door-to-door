@@ -22,7 +22,8 @@ export function lastActiveLabel(lastRecordedAt: string | null): string {
   return `last recorded ${formatDay(lastRecordedAt)}`;
 }
 
-export function MemberList() {
+/* `googleDomains`: where Google sign-in works, or null when it is not set up (#14). */
+export function MemberList({ googleDomains }: { googleDomains: readonly string[] | null }) {
   const { userId } = useRole();
   const [state, setState] = useState<State>({ status: "loading" });
   const [deactivating, setDeactivating] = useState<User | null>(null);
@@ -90,7 +91,7 @@ export function MemberList() {
 
   return (
     <div className="space-y-4">
-      <AddMemberForm onAdded={() => void load()} />
+      <AddMemberForm onAdded={() => void load()} googleDomains={googleDomains} />
 
       {failure === null ? null : (
         <p role="alert" className="notice-danger">

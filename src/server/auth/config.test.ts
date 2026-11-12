@@ -87,7 +87,10 @@ describe("providers", () => {
   it("adds Google once config.yaml sets it up (#14)", () => {
     getConfig.mockReturnValue({
       ...BASE,
-      auth: { ...BASE.auth, google: { clientId: "id.apps.googleusercontent.com" } },
+      auth: {
+        ...BASE.auth,
+        google: { clientId: "id.apps.googleusercontent.com", domains: ["gmail.com"] },
+      },
       googleClientSecret: "secret",
     });
     expect(ids(config())).toEqual(["credentials", "google"]);
@@ -96,7 +99,10 @@ describe("providers", () => {
   it("refuses a Google client id with no secret rather than send Google a blank one", () => {
     getConfig.mockReturnValue({
       ...BASE,
-      auth: { ...BASE.auth, google: { clientId: "id.apps.googleusercontent.com" } },
+      auth: {
+        ...BASE.auth,
+        google: { clientId: "id.apps.googleusercontent.com", domains: ["gmail.com"] },
+      },
     });
     expect(config).toThrow("AUTH_GOOGLE_SECRET");
   });

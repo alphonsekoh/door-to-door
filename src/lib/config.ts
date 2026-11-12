@@ -72,6 +72,14 @@ const httpUrl = z.string().refine(
   { message: "must be an http or https URL" },
 );
 
+/* Lower-case labels of letters, digits and inner hyphens, at least two of them. */
+const DOMAIN_NAME =
+  /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+const domainName = z.string().regex(DOMAIN_NAME, {
+  message: "must be a lower-case domain name, such as gmail.com, with no @",
+});
+
 /*
  * Strict throughout: a typo'd key silently falling back to its default is how
  * a rate limit ends up not being the one the operator thought they set.
@@ -94,6 +102,20 @@ export const appConfigSchema = z.strictObject({
            * the end-to-end tests run (#14): production never sets it.
            */
           issuer: httpUrl.optional(),
+          /*
+           * Where Google may sign anyone in. Google speaks for an address only
+           * at gmail.com or on a Google Workspace domain; elsewhere the mailbox
+           * can pass to someone new while the old holder's Google account still
+           * names it. Required, so leaving it out cannot mean "anywhere".
+           */
+          domains: z
+            .array(domainName, {
+              error: (issue) =>
+                issue.input === undefined
+                  ? "is required once auth.google is set: list the domains Google sign-in is for"
+                  : "must be a list of domain names",
+            })
+            .min(1, { message: "must list at least one domain" }),
         })
         .optional(),
     })

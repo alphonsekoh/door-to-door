@@ -6,12 +6,7 @@ import { accounts, authSessions, users, verificationTokens } from "@/db/schema";
 import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { applyUserToToken } from "@/server/auth/callbacks";
 import { authorizeFromRawCredentials } from "@/server/auth/credentials";
-import {
-  SignInRefused,
-  allowGoogleSignIn,
-  googleProviders,
-  linkByEmailOnly,
-} from "@/auth/google";
+import { SignInRefused, allowGoogleSignIn, googleProviders, linkByEmailOnly } from "@/auth/google";
 import { asUuid, checkSignIn, endSignIn, startSignIn } from "@/server/auth/sign-ins";
 import { getConfig } from "@/server/config";
 
@@ -64,7 +59,9 @@ export function buildAuthConfig(
       ...base.callbacks,
       // Credentials have been judged by authorize already.
       signIn: ({ user, account, profile }) =>
-        account?.provider === "google" ? allowGoogleSignIn(db, user, profile) : true,
+        account?.provider === "google"
+          ? allowGoogleSignIn(db, config.auth.google, user, profile)
+          : true,
       async jwt(params) {
         const { token, user, trigger } = params;
         /*

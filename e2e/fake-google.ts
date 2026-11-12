@@ -7,9 +7,10 @@ import { createServer } from "node:http";
  * Google provider, pointed here by auth.google.issuer: discovery, an
  * authorize page, the token endpoint and the signing key.
  *
- * The authorize page asks for an email and whether Google has verified it,
- * and the code it hands back carries that answer to the token endpoint,
- * which signs an ID token saying so. Vitest calls `handle` as Auth.js's
+ * The authorize page asks for an email, whether Google has verified it and
+ * the account's Workspace domain (`hd`, none for a consumer account), and
+ * the code it hands back carries that answer to the token endpoint, which
+ * signs an ID token saying so. Vitest calls `handle` as Auth.js's
  * customFetch; Playwright runs it as a server (see the end of the file).
  */
 
@@ -18,6 +19,12 @@ export type FakeGoogleAccount = {
   verified: boolean;
   /* Google's id for the account; by default one per email, as Google's is. */
   sub?: string;
+  /*
+   * The Google Workspace domain the account belongs to, which Google sends
+   * only for a Workspace account. Any JSON value, so a test can send one
+   * that is not a string.
+   */
+  hd?: unknown;
 };
 
 export const FAKE_GOOGLE_CLIENT_ID = "fake-client.apps.googleusercontent.com";
@@ -44,6 +51,7 @@ function readCode(code: string): FakeGoogleAccount | null {
         email: parsed.email,
         verified: parsed.verified,
         ...(sub === undefined ? {} : { sub }),
+        ...("hd" in parsed ? { hd: parsed.hd } : {}),
       };
     }
   } catch {
@@ -77,6 +85,7 @@ export function createFakeGoogle(issuer: string, clientId = FAKE_GOOGLE_CLIENT_I
       sub: account.sub ?? subFor(account.email),
       email: account.email,
       email_verified: account.verified,
+      ...(account.hd === undefined ? {} : { hd: account.hd }),
       name: "Name From Google",
       picture: "https://example.invalid/picture.png",
       iat: now,
@@ -100,6 +109,7 @@ export function createFakeGoogle(issuer: string, clientId = FAKE_GOOGLE_CLIENT_I
 <form method="post" action="/approve">${fields}
 <label>Email <input name="email" type="email"></label>
 <label><input name="verified" type="checkbox" checked> Verified by Google</label>
+<label>Workspace domain <input name="hd"></label>
 <button type="submit">Continue</button></form></body></html>`;
     return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
   }
@@ -107,9 +117,14 @@ export function createFakeGoogle(issuer: string, clientId = FAKE_GOOGLE_CLIENT_I
   async function approve(request: Request): Promise<Response> {
     const form = new URLSearchParams(await request.text());
     const redirect = new URL(form.get("redirect_uri") ?? "");
+    const hd = form.get("hd") ?? "";
     redirect.searchParams.set(
       "code",
-      fakeGoogleCode({ email: form.get("email") ?? "", verified: form.get("verified") === "on" }),
+      fakeGoogleCode({
+        email: form.get("email") ?? "",
+        verified: form.get("verified") === "on",
+        ...(hd === "" ? {} : { hd }),
+      }),
     );
     redirect.searchParams.set("state", form.get("state") ?? "");
     return new Response(null, { status: 302, headers: { location: redirect.toString() } });

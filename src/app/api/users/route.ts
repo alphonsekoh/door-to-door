@@ -6,7 +6,7 @@ import {
   zListUsersResponse,
 } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { googleSignInEnabled } from "@/auth/google";
+import { googleDomains } from "@/auth/google";
 import { currentUser } from "@/server/auth/session";
 import { toUser } from "@/server/users/serialise";
 import { createUser, listUsers } from "@/server/users/service";
@@ -61,7 +61,7 @@ export const POST = withContract(
     const user = await createUser(
       getDatabase(),
       { email: body.email, password: body.password, name: body.name, role: body.role },
-      googleSignInEnabled(),
+      googleDomains(),
     );
     return { status: 201, body: toUser(user) };
   },

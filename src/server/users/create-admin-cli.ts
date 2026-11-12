@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import type { Database } from "@/db/client";
 import { readSecret, type EnvSource, type ReadTextFile } from "@/lib/config";
+import { inGoogleDomains } from "@/lib/session/google-domains";
 import {
   ADMIN_EXISTS_MESSAGE,
   CreateAdminError,
@@ -8,6 +9,7 @@ import {
   checkAdminEmail,
   checkAdminName,
   checkAdminPassword,
+  checkGoogleOnlyAdmin,
   createFirstAdmin,
   type CreatedAdmin,
 } from "@/server/users/first-admin";
@@ -21,7 +23,8 @@ import {
  *
  * Left empty at the prompt, it makes an admin who signs in with Google only
  * (#14), once the email has been typed again: a typo there would leave an
- * admin nobody can sign in as, and this works only once.
+ * admin nobody can sign in as, and this works only once. Offered only for an
+ * address on one of the domains Google signs in for.
  */
 
 export const USAGE = 'Usage: npm run create-admin -- --email <address> [--name "<name>"]';
@@ -35,12 +38,9 @@ export type CreateAdminIo = {
   readFile: ReadTextFile;
   /* Undefined when there is no terminal to ask on. */
   prompt: ((question: string) => Promise<string>) | undefined;
-  /* Whether config.yaml sets up Google sign-in (auth.google). */
-  googleSignIn: boolean;
+  /* config.yaml's auth.google.domains, or null when Google sign-in is not set up. */
+  googleDomains: readonly string[] | null;
 };
-
-export const GOOGLE_ONLY_NEEDS_GOOGLE =
-  "Google sign-in is not set up in config.yaml (auth.google), so the first admin needs a password.";
 
 type Args = { email: string; name: string | null };
 
@@ -80,13 +80,13 @@ async function readPassword(io: CreateAdminIo, email: string): Promise<string | 
   if (io.prompt === undefined) {
     throw new CreateAdminError(`No password given: ${PASSWORD_SOURCES}.`);
   }
+  const googleOnly = io.googleDomains !== null && inGoogleDomains(email, io.googleDomains);
   const password = await io.prompt(
-    io.googleSignIn ? "Password (leave empty for Google sign-in only): " : "Password: ",
+    googleOnly ? "Password (leave empty for Google sign-in only): " : "Password: ",
   );
   if (password === "") {
-    if (!io.googleSignIn) {
-      throw new CreateAdminError(GOOGLE_ONLY_NEEDS_GOOGLE);
-    }
+    /* Before the email is asked for again, so a refusal costs one prompt. */
+    checkGoogleOnlyAdmin(email, io.googleDomains);
     const again = await io.prompt("Type the email again to confirm: ");
     if (again.trim().toLowerCase() !== email) {
       throw new CreateAdminError("The emails did not match, so nothing was changed.");
@@ -111,5 +111,5 @@ export async function runCreateAdmin(db: Database, io: CreateAdminIo): Promise<C
     throw new CreateAdminError(ADMIN_EXISTS_MESSAGE);
   }
   const password = await readPassword(io, args.email);
-  return createFirstAdmin(db, { ...args, password });
+  return createFirstAdmin(db, { ...args, password }, io.googleDomains);
 }

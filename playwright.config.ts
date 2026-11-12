@@ -51,7 +51,11 @@ writeFileSync(
     database: { url: target.toString() },
     auth: {
       secureCookies: false,
-      google: { clientId: FAKE_GOOGLE_CLIENT_ID, issuer: GOOGLE_ISSUER },
+      google: {
+        clientId: FAKE_GOOGLE_CLIENT_ID,
+        issuer: GOOGLE_ISSUER,
+        domains: ["gmail.com", "tjc.sg", "tjc.org"],
+      },
     },
   }),
 );

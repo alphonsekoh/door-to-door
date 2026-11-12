@@ -55,6 +55,7 @@ describe("parseConfig defaults", () => {
   google:
     clientId: abc.apps.googleusercontent.com
     issuer: http://127.0.0.1:4210
+    domains: [gmail.com, tjc.sg]
 rateLimit:
   signInAttempts: 3
   signInAttemptsPerClient: 20
@@ -69,7 +70,11 @@ sync:
     expect(config.auth).toEqual({
       trustHost: false,
       secureCookies: false,
-      google: { clientId: "abc.apps.googleusercontent.com", issuer: "http://127.0.0.1:4210" },
+      google: {
+        clientId: "abc.apps.googleusercontent.com",
+        issuer: "http://127.0.0.1:4210",
+        domains: ["gmail.com", "tjc.sg"],
+      },
     });
     expect(config.rateLimit).toEqual({
       signInAttempts: 3,
@@ -88,15 +93,15 @@ sync:
   });
 });
 
+const GOOGLE = `${MINIMAL}auth:\n  google:\n    clientId: id\n    domains: [gmail.com]\n`;
+
 describe("auth.google.issuer (#14)", () => {
-  const withIssuer = (issuer: string) =>
-    `${MINIMAL}auth:\n  google:\n    clientId: id\n    issuer: ${issuer}\n`;
+  const withIssuer = (issuer: string) => `${GOOGLE}    issuer: ${issuer}\n`;
 
   it("is Google's own unless set", () => {
-    expect(
-      parseConfig(`${MINIMAL}auth:\n  google:\n    clientId: id\n`, SOURCE).auth.google,
-    ).toEqual({
+    expect(parseConfig(GOOGLE, SOURCE).auth.google).toEqual({
       clientId: "id",
+      domains: ["gmail.com"],
     });
   });
 
@@ -111,6 +116,42 @@ describe("auth.google.issuer (#14)", () => {
     (issuer) => {
       expect(problemsOf(withIssuer(issuer))).toEqual([
         "auth.google.issuer: must be an http or https URL",
+      ]);
+    },
+  );
+});
+
+describe("auth.google.domains (#14, owner 2026-11-12)", () => {
+  const withDomains = (domains: string) =>
+    `${MINIMAL}auth:\n  google:\n    clientId: id\n    domains: ${domains}\n`;
+
+  it("takes the domains Google may sign in for", () => {
+    expect(parseConfig(withDomains("[gmail.com, tjc.sg, tjc.org]"), SOURCE).auth.google).toEqual({
+      clientId: "id",
+      domains: ["gmail.com", "tjc.sg", "tjc.org"],
+    });
+  });
+
+  it("is required once Google is set up, so leaving it out never means anywhere", () => {
+    expect(problemsOf(`${MINIMAL}auth:\n  google:\n    clientId: id\n`)).toEqual([
+      "auth.google.domains: is required once auth.google is set: list the domains Google sign-in is for",
+    ]);
+  });
+
+  it("refuses an empty list, and a single name that is not a list", () => {
+    expect(problemsOf(withDomains("[]"))).toEqual([
+      "auth.google.domains: must list at least one domain",
+    ]);
+    expect(problemsOf(withDomains("gmail.com"))).toEqual([
+      "auth.google.domains: must be a list of domain names",
+    ]);
+  });
+
+  it.each(["Gmail.com", "@gmail.com", "ann@gmail.com", "gmail", "https://gmail.com", "-x.com", ""])(
+    "refuses %j, naming the entry but never its value",
+    (domain) => {
+      expect(problemsOf(withDomains(`[tjc.sg, "${domain}"]`))).toEqual([
+        "auth.google.domains.1: must be a lower-case domain name, such as gmail.com, with no @",
       ]);
     },
   );
@@ -387,7 +428,11 @@ describe("resolveAuthSecrets", () => {
   const config = parseConfig(MINIMAL, SOURCE);
   const withGoogle: AppConfig = {
     ...config,
-    auth: { trustHost: true, secureCookies: true, google: { clientId: "id" } },
+    auth: {
+      trustHost: true,
+      secureCookies: true,
+      google: { clientId: "id", domains: ["gmail.com"] },
+    },
   };
   const noFile = () => "";
 

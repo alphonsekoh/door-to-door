@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import AccountPage from "@/app/account/page";
 import FollowUpsPage from "@/app/follow-ups/page";
@@ -21,6 +22,7 @@ import type * as ApiClientModule from "@/lib/api-client";
 
 const { requireAdminPage } = vi.hoisted(() => ({ requireAdminPage: vi.fn() }));
 vi.mock("@/server/auth/pages", () => ({ requireAdminPage }));
+vi.mock("@/auth/google", () => ({ googleDomains: () => ["gmail.com", "tjc.sg"] }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useSelectedLayoutSegment: () => null,
@@ -199,6 +201,20 @@ describe("admin screens", () => {
     expect(requireAdminPage).toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Team" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("tells Add someone where Google sign-in works, as config.yaml has it (#14)", async () => {
+    const { apiFetch } = await import("@/lib/api-client");
+    vi.mocked(apiFetch).mockResolvedValueOnce({
+      data: [],
+      pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+    });
+    const user = userEvent.setup();
+    render(await AdminTeamPage());
+    await user.click(await screen.findByRole("button", { name: "Add someone" }));
+    expect(screen.getByLabelText("Initial password")).toHaveAccessibleDescription(
+      "Leave empty to sign in with Google only. That works for addresses at gmail.com or tjc.sg.",
+    );
   });
 
   it("guards one outing's detail before rendering it", async () => {

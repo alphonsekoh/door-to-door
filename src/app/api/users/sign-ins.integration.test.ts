@@ -13,10 +13,13 @@ import { createRateLimiter } from "@/server/auth/rate-limit";
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
 
-const { googleSignInEnabled } = vi.hoisted(() => ({ googleSignInEnabled: vi.fn(() => true) }));
+const DOMAINS = ["gmail.com", "tjc.sg", "tjc.org"];
+const { googleDomains } = vi.hoisted(() => ({
+  googleDomains: vi.fn<() => readonly string[] | null>(),
+}));
 vi.mock("@/auth/google", async (importOriginal) => ({
   ...(await importOriginal<typeof Google>()),
-  googleSignInEnabled,
+  googleDomains,
 }));
 
 const userRoute = await import("./[id]/route");
@@ -95,7 +98,7 @@ beforeEach(async () => {
     [ADMIN, ALICE, BEN],
   );
   auth.mockReset();
-  googleSignInEnabled.mockReturnValue(true);
+  googleDomains.mockReturnValue(DOMAINS);
   await asAdmin();
 });
 
@@ -241,35 +244,53 @@ describe("POST /users with no password (#14)", () => {
   const post = (body: unknown) => usersRoute.POST(request("POST", "/users", body));
 
   it("adds someone who signs in with Google only", async () => {
-    const response = await post({ email: "New@T.local", name: "New" });
+    const response = await post({ email: "New@TJC.sg", name: "New" });
     expect(response.status).toBe(201);
     const { rows } = await pool.query<{ password_hash: string | null }>(
-      `SELECT password_hash FROM users WHERE email = 'new@t.local'`,
+      `SELECT password_hash FROM users WHERE email = 'new@tjc.sg'`,
     );
     expect(rows).toEqual([{ password_hash: null }]);
   });
 
-  it("is 409 while Google sign-in is not set up here, and adds nobody", async () => {
-    googleSignInEnabled.mockReturnValue(false);
+  it("is 409 for an address outside the domains Google signs in for, naming them, and adds nobody", async () => {
+    // Google would refuse every sign-in to it (owner, 2026-11-12).
     const response = await post({ email: "new@t.local" });
+    expect(response.status).toBe(409);
+    expect(await errorOf(response)).toEqual({
+      code: "conflict",
+      message:
+        "Google sign-in works only for addresses at gmail.com, tjc.sg or tjc.org, so they need a password.",
+    });
+    expect((await pool.query(`SELECT 1 FROM users WHERE email = 'new@t.local'`)).rows).toEqual([]);
+  });
+
+  it("takes such an address with a password", async () => {
+    expect((await post({ email: "new@t.local", password: "correct-horse-1" })).status).toBe(201);
+  });
+
+  it("is 409 while Google sign-in is not set up here, and adds nobody", async () => {
+    googleDomains.mockReturnValue(null);
+    const response = await post({ email: "new@gmail.com" });
     expect(response.status).toBe(409);
     expect((await errorOf(response)).message).toBe(
       "Google sign-in isn't set up here, so they need a password.",
     );
-    expect((await pool.query(`SELECT 1 FROM users WHERE email = 'new@t.local'`)).rows).toEqual([]);
+    expect((await pool.query(`SELECT 1 FROM users WHERE email = 'new@gmail.com'`)).rows).toEqual(
+      [],
+    );
   });
 
   it("still takes a password, while Google is not set up too", async () => {
-    googleSignInEnabled.mockReturnValue(false);
+    googleDomains.mockReturnValue(null);
     expect((await post({ email: "new@t.local", password: "correct-horse-1" })).status).toBe(201);
   });
 
   it("leaves a Google-only account refused by the password form with the message any failure gets", async () => {
-    await post({ email: "new@t.local" });
+    await post({ email: "new@gmail.com" });
     const limiter = () => createRateLimiter({ limit: 100, windowMs: 60_000 });
     await expect(
       authorizeCredentials(
-        { email: "new@t.local", password: "anything-at-all" },
+        { email: "new@gmail.com", password: "anything-at-all" },
         { db: getDatabase(), limiter: limiter(), clientLimiter: limiter() },
       ),
     ).rejects.toThrow(SIGN_IN_FAILED_MESSAGE);

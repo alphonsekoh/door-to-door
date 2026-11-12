@@ -22,6 +22,8 @@ import {
 
 const ISSUER = "https://fake-google.test";
 const fake = createFakeGoogle(ISSUER);
+/* As the owner's config.yaml has it: tjc.sg and tjc.org are on Google Workspace. */
+const DOMAINS = ["gmail.com", "tjc.sg", "tjc.org"];
 
 vi.mock("@/server/config", async (importOriginal) => {
   const actual = await importOriginal<typeof ServerConfig>();
@@ -31,7 +33,10 @@ vi.mock("@/server/config", async (importOriginal) => {
       const config = actual.getConfig();
       return {
         ...config,
-        auth: { ...config.auth, google: { clientId: FAKE_GOOGLE_CLIENT_ID, issuer: ISSUER } },
+        auth: {
+          ...config.auth,
+          google: { clientId: FAKE_GOOGLE_CLIENT_ID, issuer: ISSUER, domains: DOMAINS },
+        },
         googleClientSecret: FAKE_GOOGLE_CLIENT_SECRET,
       };
     },
@@ -52,16 +57,27 @@ const PIXEL =
 const ALICE = "6006e000-0000-4000-8000-000000000001";
 const BEN = "6006e000-0000-4000-8000-000000000002";
 const GONE = "6006e000-0000-4000-8000-000000000003";
+const CAROL = "6006e000-0000-4000-8000-000000000004";
+const DAVE = "6006e000-0000-4000-8000-000000000005";
+
+/* Ben's Workspace account, as Google sends it. */
+const BEN_AT_WORK = { email: "ben@tjc.sg", verified: true, hd: "tjc.sg" };
 
 beforeEach(async () => {
   await truncateAll(pool);
-  // Alice is Google-only; Ben also has a password; Gone is deactivated.
+  /*
+   * Alice is Google-only, at gmail.com; Ben, at tjc.sg, also has a password;
+   * Gone is deactivated. Carol is at tjc.org, a secondary domain of tjc.sg's
+   * Workspace. Dave is at a domain not listed, so he has a password.
+   */
   await pool.query(
     `INSERT INTO users (id, email, name, role, password_hash, deactivated_at) VALUES
-      ($1,'alice@t.local','Alice','member',NULL,NULL),
-      ($2,'ben@t.local','Ben','member','not-a-real-hash',NULL),
-      ($3,'gone@t.local','Gone','member',NULL,now())`,
-    [ALICE, BEN, GONE],
+      ($1,'alice@gmail.com','Alice','member',NULL,NULL),
+      ($2,'ben@tjc.sg','Ben','member','not-a-real-hash',NULL),
+      ($3,'gone@gmail.com','Gone','member',NULL,now()),
+      ($4,'carol@tjc.org','Carol','member',NULL,NULL),
+      ($5,'dave@example.org','Dave','member','not-a-real-hash',NULL)`,
+    [ALICE, BEN, GONE, CAROL, DAVE],
   );
 });
 
@@ -133,7 +149,7 @@ const REFUSED = `${ORIGIN}/sign-in?error=AccessDenied`;
 
 describe("leaving for Google", () => {
   it("asks Google for its account chooser every time, at the configured issuer", async () => {
-    const { authorize } = await signInWithGoogle({ email: "alice@t.local", verified: true });
+    const { authorize } = await signInWithGoogle({ email: "alice@gmail.com", verified: true });
     expect(`${authorize.origin}${authorize.pathname}`).toBe(`${ISSUER}/authorize`);
     expect(authorize.searchParams.get("prompt")).toBe("select_account");
     expect(authorize.searchParams.get("client_id")).toBe(FAKE_GOOGLE_CLIENT_ID);
@@ -142,7 +158,7 @@ describe("leaving for Google", () => {
 
 describe("an address an admin added, verified by Google", () => {
   it("links to that account and signs in, keeping no Google token and changing nothing on it", async () => {
-    const { callback, jar } = await signInWithGoogle({ email: "alice@t.local", verified: true });
+    const { callback, jar } = await signInWithGoogle({ email: "alice@gmail.com", verified: true });
 
     expect(callback.headers.get("location")).toBe(`${ORIGIN}/`);
     expect(jar.has(SESSION_COOKIE)).toBe(true);
@@ -166,23 +182,23 @@ describe("an address an admin added, verified by Google", () => {
     const { rows: users } = await pool.query(`SELECT name, email, image FROM users WHERE id = $1`, [
       ALICE,
     ]);
-    expect(users).toEqual([{ name: "Alice", email: "alice@t.local", image: null }]);
+    expect(users).toEqual([{ name: "Alice", email: "alice@gmail.com", image: null }]);
     const { rows: signIns } = await pool.query(`SELECT user_id, user_agent FROM sign_ins`);
     expect(signIns).toEqual([{ user_id: ALICE, user_agent: PIXEL }]);
   });
 
   it("uses the same link the next time, with a sign-in of its own", async () => {
-    await signInWithGoogle({ email: "alice@t.local", verified: true });
-    const second = await signInWithGoogle({ email: "Alice@T.local", verified: true });
+    await signInWithGoogle({ email: "alice@gmail.com", verified: true });
+    const second = await signInWithGoogle({ email: "Alice@Gmail.com", verified: true });
 
     expect(await signedInAs(second.jar)).toBe(ALICE);
-    expect(await counts()).toEqual({ users: 3, accounts: 1, sign_ins: 2 });
+    expect(await counts()).toEqual({ users: 5, accounts: 1, sign_ins: 2 });
   });
 
   it("links to the address's own account, never to the one whose cookie is on the phone", async () => {
     // Alice is signed in on a shared phone; Ben picks it up and signs in with Google.
-    const alice = await signInWithGoogle({ email: "alice@t.local", verified: true });
-    const ben = await signInWithGoogle({ email: "ben@t.local", verified: true }, alice.jar);
+    const alice = await signInWithGoogle({ email: "alice@gmail.com", verified: true });
+    const ben = await signInWithGoogle(BEN_AT_WORK, alice.jar);
 
     expect(await signedInAs(ben.jar)).toBe(BEN);
     const { rows } = await pool.query<{ user_id: string }>(
@@ -194,9 +210,9 @@ describe("an address an admin added, verified by Google", () => {
 
 describe("refused, with one message for every reason (D-15-1), and nothing created", () => {
   it.each<[string, FakeGoogleAccount]>([
-    ["an address nobody added", { email: "stranger@t.local", verified: true }],
-    ["an address Google has not verified", { email: "alice@t.local", verified: false }],
-    ["a deactivated account", { email: "gone@t.local", verified: true }],
+    ["an address nobody added", { email: "stranger@gmail.com", verified: true }],
+    ["an address Google has not verified", { email: "alice@gmail.com", verified: false }],
+    ["a deactivated account", { email: "gone@gmail.com", verified: true }],
   ])("%s", async (_name, account) => {
     const before = await counts();
     const { callback, jar } = await signInWithGoogle(account);
@@ -208,18 +224,71 @@ describe("refused, with one message for every reason (D-15-1), and nothing creat
 
   it("a Google account linked to someone whose address it no longer carries", async () => {
     const sub = "google-account-of-alice";
-    await signInWithGoogle({ email: "alice@t.local", verified: true, sub });
+    await signInWithGoogle({ email: "alice@gmail.com", verified: true, sub });
     // The same Google account, now carrying Ben's address.
-    const { callback, jar } = await signInWithGoogle({ email: "ben@t.local", verified: true, sub });
+    const { callback, jar } = await signInWithGoogle({ ...BEN_AT_WORK, sub });
 
     expect(callback.headers.get("location")).toBe(REFUSED);
     expect(jar.has(SESSION_COOKIE)).toBe(false);
   });
 
   it("a linked account deactivated since", async () => {
-    await signInWithGoogle({ email: "alice@t.local", verified: true });
+    await signInWithGoogle({ email: "alice@gmail.com", verified: true });
     await pool.query(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [ALICE]);
-    const { callback } = await signInWithGoogle({ email: "alice@t.local", verified: true });
+    const { callback } = await signInWithGoogle({ email: "alice@gmail.com", verified: true });
+    expect(callback.headers.get("location")).toBe(REFUSED);
+  });
+});
+
+/*
+ * The owner's ruling of 2026-11-12. Google speaks for an address only at
+ * gmail.com or on a Workspace domain, which the ID token's hd names.
+ * Anywhere else a mailbox can pass to someone new, whose Google account
+ * would then sign in as the member, and the link would last.
+ */
+describe("only where Google vouches for the address", () => {
+  it.each<[string, FakeGoogleAccount, string]>([
+    ["a gmail.com address, with no hd", { email: "alice@gmail.com", verified: true }, ALICE],
+    ["a listed Workspace domain whose hd is its own", BEN_AT_WORK, BEN],
+    [
+      "a listed domain whose hd is another listed domain, its Workspace's primary",
+      { email: "carol@tjc.org", verified: true, hd: "tjc.sg" },
+      CAROL,
+    ],
+  ])("accepts %s", async (_name, account, id) => {
+    const { callback, jar } = await signInWithGoogle(account);
+    expect(callback.headers.get("location")).toBe(`${ORIGIN}/`);
+    expect(await signedInAs(jar)).toBe(id);
+  });
+
+  it.each<[string, FakeGoogleAccount]>([
+    [
+      "a listed domain with no hd: a consumer Google account made on that address",
+      { email: "ben@tjc.sg", verified: true },
+    ],
+    ["an hd that is not listed", { email: "ben@tjc.sg", verified: true, hd: "elsewhere.example" }],
+    [
+      "an unlisted domain, even with an hd of its own",
+      { email: "dave@example.org", verified: true, hd: "example.org" },
+    ],
+    ["an hd that is not a string", { email: "ben@tjc.sg", verified: true, hd: ["tjc.sg"] }],
+  ])("refuses %s, linking nothing", async (_name, account) => {
+    const before = await counts();
+    const { callback, jar } = await signInWithGoogle(account);
+
+    expect(callback.headers.get("location")).toBe(REFUSED);
+    expect(jar.has(SESSION_COOKIE)).toBe(false);
+    expect(await counts()).toEqual(before);
+  });
+
+  it("refuses a consumer account on a listed domain even once its Workspace account is linked", async () => {
+    await signInWithGoogle({ ...BEN_AT_WORK, sub: "ben-at-work" });
+    // A different Google account, with no hd, that also claims Ben's address.
+    const { callback } = await signInWithGoogle({
+      email: "ben@tjc.sg",
+      verified: true,
+      sub: "ben-consumer",
+    });
     expect(callback.headers.get("location")).toBe(REFUSED);
   });
 });

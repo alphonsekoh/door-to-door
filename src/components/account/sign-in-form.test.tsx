@@ -403,12 +403,15 @@ describe("SignInForm", () => {
   });
 });
 
+/* As config.yaml's auth.google.domains has them. */
+const DOMAINS = ["gmail.com", "tjc.sg", "tjc.org"];
+
 /* Google first when the server has it set up, the email form as the fallback. */
 describe("SignInForm with Google (#14)", () => {
   const google = () => screen.getByRole("button", { name: "Sign in with Google" });
 
   it("offers Google first, then the email form under its own exact name", () => {
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     const buttons = screen.getAllByRole("button");
     expect(buttons.map((button) => button.textContent)).toEqual(["Sign in with Google", "Sign in"]);
     // Nothing else is labelled: "Email" and "Password" each name one field.
@@ -426,7 +429,7 @@ describe("SignInForm with Google (#14)", () => {
     get.mockImplementation((key) => (key === "callbackUrl" ? "/history" : null));
     signIn.mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     await user.click(google());
 
     await waitFor(() => {
@@ -444,7 +447,7 @@ describe("SignInForm with Google (#14)", () => {
     get.mockImplementation((key) => (key === "callbackUrl" ? "//evil.example/" : null));
     signIn.mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     await user.click(google());
     await waitFor(() => {
       expect(signIn).toHaveBeenCalledWith("google", { redirectTo: "/" });
@@ -460,7 +463,7 @@ describe("SignInForm with Google (#14)", () => {
     );
     signIn.mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     await user.click(google());
 
     expect(signIn).not.toHaveBeenCalled();
@@ -475,7 +478,7 @@ describe("SignInForm with Google (#14)", () => {
     clearLocalCopy.mockRejectedValueOnce(new Error("IndexedDB is unavailable"));
     signIn.mockResolvedValue(undefined);
     const user = userEvent.setup();
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     await user.click(google());
     await waitFor(() => {
       expect(signIn).toHaveBeenCalledOnce();
@@ -485,7 +488,7 @@ describe("SignInForm with Google (#14)", () => {
   it("says so, and lets the member try again, when it cannot leave", async () => {
     signIn.mockRejectedValue(new Error("Failed to fetch"));
     const user = userEvent.setup();
-    render(<SignInForm google />);
+    render(<SignInForm googleDomains={DOMAINS} />);
     await user.click(google());
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
@@ -499,17 +502,19 @@ describe("SignInForm with Google (#14)", () => {
       get.mockImplementation((key) => (key === "error" ? error : null));
     };
 
-    it("gives every refusal one message, whoever has an account (D-15-1)", () => {
+    it("gives every refusal one message, whoever has an account, naming Google's domains (D-15-1)", () => {
       withError("AccessDenied");
-      render(<SignInForm google />);
+      render(<SignInForm googleDomains={DOMAINS} />);
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "That Google account can't sign in here. Use the email address your admin added.",
+        "That Google account can't sign in here. Use the email address your admin added. " +
+          "Google sign-in works only for addresses at gmail.com, tjc.sg or tjc.org. " +
+          "For any other address, sign in with your email and password.",
       );
     });
 
     it("gives anything else a message to act on, never the raw value", () => {
       withError("<b>Configuration</b>");
-      render(<SignInForm google />);
+      render(<SignInForm googleDomains={DOMAINS} />);
       const alert = screen.getByRole("alert");
       expect(alert).toHaveTextContent("Google sign-in didn't finish.");
       expect(alert.textContent).not.toContain("Configuration");
@@ -527,7 +532,7 @@ describe("SignInForm with Google (#14)", () => {
       );
       signIn.mockResolvedValue(failed);
       const user = userEvent.setup();
-      render(<SignInForm google />);
+      render(<SignInForm googleDomains={DOMAINS} />);
       expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
       await user.type(screen.getByLabelText("Email"), "a@b.c");
@@ -547,7 +552,7 @@ describe("SignInForm before the page is live (D-113-6)", () => {
   it("draws Google and the server's message, but nothing to type into or send", () => {
     get.mockImplementation((key) => (key === "error" ? "AccessDenied" : null));
     const page = document.createElement("div");
-    page.innerHTML = renderToString(<SignInForm google />);
+    page.innerHTML = renderToString(<SignInForm googleDomains={DOMAINS} />);
 
     expect(page).toHaveTextContent("Sign in with Google");
     expect(page).toHaveTextContent("That Google account can't sign in here.");
@@ -558,11 +563,11 @@ describe("SignInForm before the page is live (D-113-6)", () => {
 
   it("draws the email form once live, as the server drew the rest", async () => {
     const page = document.createElement("div");
-    page.innerHTML = renderToString(<SignInForm google />);
+    page.innerHTML = renderToString(<SignInForm googleDomains={DOMAINS} />);
     document.body.append(page);
     const mismatch = vi.fn();
     const root = await act(() =>
-      hydrateRoot(page, <SignInForm google />, { onRecoverableError: mismatch }),
+      hydrateRoot(page, <SignInForm googleDomains={DOMAINS} />, { onRecoverableError: mismatch }),
     );
 
     expect(mismatch).not.toHaveBeenCalled();

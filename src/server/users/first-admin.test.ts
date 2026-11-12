@@ -7,6 +7,7 @@ import {
   checkAdminEmail,
   checkAdminName,
   checkAdminPassword,
+  checkGoogleOnlyAdmin,
   createFirstAdmin,
 } from "@/server/users/first-admin";
 
@@ -61,10 +62,14 @@ describe("createFirstAdmin", () => {
     const stub = { transaction } as unknown as Database;
 
     await expect(
-      createFirstAdmin(stub, { email: "lead@example.org", name: null, password: "short" }),
+      createFirstAdmin(stub, { email: "lead@example.org", name: null, password: "short" }, null),
     ).rejects.toThrow(/at least 8 characters/);
     await expect(
-      createFirstAdmin(stub, { email: "lead@example.org", name: " ", password: "password123" }),
+      createFirstAdmin(
+        stub,
+        { email: "lead@example.org", name: " ", password: "password123" },
+        null,
+      ),
     ).rejects.toThrow("Enter your name.");
     expect(transaction).not.toHaveBeenCalled();
   });
@@ -75,7 +80,42 @@ describe("createFirstAdmin", () => {
     } as unknown as Database;
 
     await expect(
-      createFirstAdmin(stub, { email: "lead@example.org", name: null, password: "password123" }),
+      createFirstAdmin(
+        stub,
+        { email: "lead@example.org", name: null, password: "password123" },
+        null,
+      ),
     ).rejects.toThrow("connection reset");
+  });
+
+  it("refuses an admin with no password whom Google would not sign in, before touching the database (#14)", async () => {
+    const transaction = vi.fn();
+    const stub = { transaction } as unknown as Database;
+    const googleOnly = { email: "lead@example.org", name: null, password: null };
+
+    await expect(createFirstAdmin(stub, googleOnly, null)).rejects.toThrow(
+      "Google sign-in is not set up in config.yaml (auth.google), so the first admin needs a password.",
+    );
+    await expect(createFirstAdmin(stub, googleOnly, ["gmail.com", "tjc.sg"])).rejects.toThrow(
+      "Google sign-in works only for addresses at gmail.com or tjc.sg (auth.google.domains), so the first admin needs a password.",
+    );
+    expect(transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe("checkGoogleOnlyAdmin", () => {
+  it("passes an address on one of the domains Google signs in for", () => {
+    expect(() => {
+      checkGoogleOnlyAdmin("lead@tjc.sg", ["gmail.com", "tjc.sg"]);
+    }).not.toThrow();
+  });
+
+  it("refuses anywhere else, and while Google is not set up, as CreateAdminError", () => {
+    expect(() => {
+      checkGoogleOnlyAdmin("lead@example.org", ["gmail.com"]);
+    }).toThrow(CreateAdminError);
+    expect(() => {
+      checkGoogleOnlyAdmin("lead@gmail.com", null);
+    }).toThrow(CreateAdminError);
   });
 });

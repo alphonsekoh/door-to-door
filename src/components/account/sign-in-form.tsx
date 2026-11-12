@@ -33,14 +33,15 @@ export function validate(email: string, password: string): FieldErrors {
 /*
  * Google first when the server has it set up (#14), with email and password
  * under it as the fallback; the form alone when it does not. The page
- * decides per request, so the right one is in the first paint.
+ * decides per request, so the right one is in the first paint, and passes
+ * the domains Google sign-in is for, or null when it is not set up.
  *
  * The email form waits for the page to be live (D-113-6). In the server's
  * HTML it would be a plain GET form: Go before the scripts arrive put the
  * password in the address bar and the history, and what was typed was
  * emptied at the first tap after.
  */
-export function SignInForm({ google = false }: { google?: boolean }) {
+export function SignInForm({ googleDomains = null }: { googleDomains?: readonly string[] | null }) {
   const params = useSearchParams();
   const live = useLive();
   const [email, setEmail] = useState("");
@@ -63,7 +64,10 @@ export function SignInForm({ google = false }: { google?: boolean }) {
 
   /* Auth.js sends a Google sign-in that went wrong back here with ?error=,
      which is anyone's to write: it picks a message and is never shown. */
-  const googleFailure = google && freshVisit ? googleSignInMessage(params.get("error")) : null;
+  const googleFailure =
+    googleDomains !== null && freshVisit
+      ? googleSignInMessage(params.get("error"), googleDomains)
+      : null;
   const shownFailure = failure ?? googleFailure;
 
   /*
@@ -143,7 +147,7 @@ export function SignInForm({ google = false }: { google?: boolean }) {
         </p>
       )}
 
-      {google ? (
+      {googleDomains === null ? null : (
         <button
           type="button"
           disabled={leaving || submitting}
@@ -157,18 +161,18 @@ export function SignInForm({ google = false }: { google?: boolean }) {
           </span>
           {leaving ? "Opening Google…" : "Sign in with Google"}
         </button>
-      ) : null}
+      )}
 
       {live ? (
         <>
-          {google ? (
+          {googleDomains === null ? null : (
             <p
               aria-hidden="true"
               className="flex items-center gap-3 text-caption text-foreground-muted before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border"
             >
               or
             </p>
-          ) : null}
+          )}
           <form
             onSubmit={(event) => {
               void onSubmit(event);
@@ -229,7 +233,7 @@ export function SignInForm({ google = false }: { google?: boolean }) {
               type="submit"
               disabled={submitting || leaving}
               className={`min-h-12 w-full rounded-lg text-body font-medium ${
-                google ? "btn-secondary" : "btn-primary"
+                googleDomains === null ? "btn-primary" : "btn-secondary"
               }`}
             >
               {submitting ? "Signing in…" : "Sign in"}

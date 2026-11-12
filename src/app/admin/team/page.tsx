@@ -1,3 +1,4 @@
+import { googleDomains } from "@/auth/google";
 import { MemberList } from "@/components/admin/member-list";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdminPage } from "@/server/auth/pages";
@@ -13,7 +14,7 @@ export default async function AdminTeamPage() {
         subtitle="Who can sign in, and what they can do."
         back={{ href: "/admin/sessions", label: "Sessions" }}
       />
-      <MemberList />
+      <MemberList googleDomains={googleDomains()} />
     </>
   );
 }

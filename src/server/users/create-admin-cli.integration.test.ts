@@ -6,17 +6,15 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import { firstOrThrow } from "@/server/db-utils";
 import { verifyPassword } from "@/server/password";
 import { allowGoogleSignIn } from "@/auth/google";
-import {
-  GOOGLE_ONLY_NEEDS_GOOGLE,
-  runCreateAdmin,
-  type CreateAdminIo,
-} from "@/server/users/create-admin-cli";
-import { ADMIN_EXISTS_MESSAGE } from "@/server/users/first-admin";
+import { runCreateAdmin, type CreateAdminIo } from "@/server/users/create-admin-cli";
+import { ADMIN_EXISTS_MESSAGE, GOOGLE_ONLY_NEEDS_GOOGLE } from "@/server/users/first-admin";
 
 const pool = createTestPool();
 const db = drizzle(pool, { schema }) as unknown as Database;
 
 const ARGV = ["--email", "lead@example.org"];
+/* Google sign-in set up, for the admin's domain among others. */
+const GOOGLE = { domains: ["gmail.com", "example.org"] };
 
 function io(overrides: Partial<CreateAdminIo> = {}): CreateAdminIo {
   return {
@@ -26,7 +24,7 @@ function io(overrides: Partial<CreateAdminIo> = {}): CreateAdminIo {
       throw new Error("no files here");
     },
     prompt: undefined,
-    googleSignIn: false,
+    googleDomains: null,
     ...overrides,
   };
 }
@@ -136,7 +134,7 @@ describe("runCreateAdmin refusals change nothing", () => {
 describe("runCreateAdmin for an admin who signs in with Google only (#14)", () => {
   it("takes an empty password and the email typed again, and stores no hash", async () => {
     const prompt = vi.fn().mockResolvedValueOnce("").mockResolvedValueOnce(" Lead@Example.org ");
-    const created = await runCreateAdmin(db, io({ prompt, googleSignIn: true }));
+    const created = await runCreateAdmin(db, io({ prompt, googleDomains: GOOGLE.domains }));
 
     expect(prompt.mock.calls).toEqual([
       ["Password (leave empty for Google sign-in only): "],
@@ -146,20 +144,21 @@ describe("runCreateAdmin for an admin who signs in with Google only (#14)", () =
     expect(await storedHash()).toBeNull();
     // The way in is Google's, once it vouches for the address (D-105-2).
     const email = "lead@example.org";
-    expect(await allowGoogleSignIn(db, { email }, { email, email_verified: true })).toBe(true);
+    const profile = { email, email_verified: true, hd: "example.org" };
+    expect(await allowGoogleSignIn(db, GOOGLE, { email }, profile)).toBe(true);
   });
 
   it("says a password admin is not Google-only", async () => {
     const created = await runCreateAdmin(
       db,
-      io({ env: { ADMIN_PASSWORD: "from-the-env" }, googleSignIn: true }),
+      io({ env: { ADMIN_PASSWORD: "from-the-env" }, googleDomains: GOOGLE.domains }),
     );
     expect(created.googleOnly).toBe(false);
   });
 
   it("refuses an email typed differently the second time, and writes nothing", async () => {
     const prompt = vi.fn().mockResolvedValueOnce("").mockResolvedValueOnce("lead@example.com");
-    await expect(runCreateAdmin(db, io({ prompt, googleSignIn: true }))).rejects.toThrow(
+    await expect(runCreateAdmin(db, io({ prompt, googleDomains: GOOGLE.domains }))).rejects.toThrow(
       "The emails did not match, so nothing was changed.",
     );
     expect(await userCount()).toBe(0);
@@ -172,8 +171,27 @@ describe("runCreateAdmin for an admin who signs in with Google only (#14)", () =
     expect(await userCount()).toBe(0);
   });
 
+  it("offers no empty password for an address outside Google's domains, and refuses one", async () => {
+    const prompt = vi.fn().mockResolvedValue("");
+    await expect(
+      runCreateAdmin(db, io({ prompt, googleDomains: ["gmail.com", "tjc.sg"] })),
+    ).rejects.toThrow(
+      "Google sign-in works only for addresses at gmail.com or tjc.sg (auth.google.domains), so the first admin needs a password.",
+    );
+    // Refused before the email is asked for again.
+    expect(prompt.mock.calls).toEqual([["Password: "]]);
+    expect(await userCount()).toBe(0);
+  });
+
+  it("still takes a password for an address outside Google's domains", async () => {
+    const prompt = vi.fn().mockResolvedValue("typed-at-prompt");
+    const created = await runCreateAdmin(db, io({ prompt, googleDomains: ["gmail.com"] }));
+    expect(created.googleOnly).toBe(false);
+    expect(prompt.mock.calls).toEqual([["Password: "], ["Confirm password: "]]);
+  });
+
   it("still refuses with no terminal and no password, Google or not", async () => {
-    await expect(runCreateAdmin(db, io({ googleSignIn: true }))).rejects.toThrow(
+    await expect(runCreateAdmin(db, io({ googleDomains: GOOGLE.domains }))).rejects.toThrow(
       /No password given/,
     );
     expect(await userCount()).toBe(0);
@@ -182,7 +200,7 @@ describe("runCreateAdmin for an admin who signs in with Google only (#14)", () =
   it("still works only once (D-105-3)", async () => {
     await pool.query("INSERT INTO users (email, role) VALUES ('first@t.local', 'admin')");
     const prompt = vi.fn();
-    await expect(runCreateAdmin(db, io({ prompt, googleSignIn: true }))).rejects.toThrow(
+    await expect(runCreateAdmin(db, io({ prompt, googleDomains: GOOGLE.domains }))).rejects.toThrow(
       ADMIN_EXISTS_MESSAGE,
     );
     expect(prompt).not.toHaveBeenCalled();

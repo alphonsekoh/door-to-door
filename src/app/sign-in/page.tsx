@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { SignInForm } from "@/components/account/sign-in-form";
-import { googleSignInEnabled } from "@/auth/google";
+import { googleDomains } from "@/auth/google";
 
 export const metadata = { title: "Sign in" };
 
@@ -13,13 +13,13 @@ export const metadata = { title: "Sign in" };
  */
 export default async function SignInPage() {
   await connection();
-  const google = googleSignInEnabled();
+  const domains = googleDomains();
   return (
     <>
       <PageHeader title="Sign in" subtitle="Use the account your admin set up for you." />
       {/* useSearchParams needs a boundary. */}
       <Suspense fallback={null}>
-        <SignInForm google={google} />
+        <SignInForm googleDomains={domains} />
       </Suspense>
     </>
   );
