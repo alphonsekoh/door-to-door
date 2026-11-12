@@ -635,7 +635,7 @@ src/
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)
 drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
-test/           Vitest setup files
+test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
                 check-standalone (postbuild)
 docs/           architecture, research and per-issue decisions

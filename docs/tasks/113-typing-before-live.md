@@ -41,7 +41,7 @@ script is late.
   submitted the form natively, reloading `/blocks/X?` without the unit. A disabled
   default button blocks that. It is markup, not an inline script, so the Report-Only CSP
   and its E2E guard are untouched (D-122-2, D-122-8). _Research:_ R-68.
-- **D-113-5 · A Save tapped before the page is live saves nothing and says nothing.**
+- ~~**D-113-5 · A Save tapped before the page is live saves nothing and says nothing.**
   The tap lands on the stand-in, a `type="button"` with no handler and a different
   element from the form's Save (D-111-40). React 19 does not move it there: it hydrates
   at once and dispatches to the same target, or drops the tap while the screen's code is
@@ -50,7 +50,8 @@ script is late.
   Save as the page goes live sees the adopted unit, so the Not saved pop-up does not open
   for a unit that was typed. Keeps D-33-29 and D-119-15 for a unit really left out.
   _Why:_ the issue's second ask; the stand-in has no code to save with until the screen's
-  script arrives. Owner, 2026-11-04: silent here; showing it is #156.
+  script arrives. Owner, 2026-11-04: silent here; showing it is #156.~~ Superseded by
+  D-156-1: the stand-in is a disabled "Getting ready…"; a tap on it still saves nothing.
 - **D-113-6 · Only the block screen's recording form needs this.** Sign-in, the account
   screen, Record for a member and the follow-up sheet are drawn on the client only, so
   nothing can be typed into them before the page is live; the offline shell's form
@@ -82,7 +83,9 @@ script is late.
 
   The reflow and large-text sweeps measure a level by its tile. _Why:_ typing before
   live is kept now (D-113-1), but a tap on the stand-in still saves nothing (D-113-5).
-  `page.route` misses the service worker's requests in WebKit.
+  `page.route` misses the service worker's requests in WebKit. _Refined by D-156-4:_
+  the stand-in is disabled, so the test force-taps it, and `untilLive` matches only the
+  real Save.
 
 - **D-113-10 · The `follow-up-session.spec.ts:56` WebKit flake is not fixed here.**
   After `fill("#09-999")` the field still goes back to `#05-123`: 2 of 40 on WebKit at
@@ -91,7 +94,8 @@ script is late.
   The fill lands in the commit of the screen's first answers, and a probe with capture
   listeners hid it (0 of 140). No wait was added. _Why:_ the task asked for the cause to
   be fixed, not waited out, and it has not been found. Owner, 2026-11-04: its own issue,
-  #155.
+  #155. _Resolved by #155 (D-155-1, D-155-2):_ an answer landing inside the field's
+  `input` event was drawn at once and wrote the old unit back.
 
 ### How existing decisions are handled
 
@@ -114,8 +118,9 @@ script is late.
   in which Save sends the stale unit (verifier).
 - The late-chunk E2E finds the form's chunk by its copy. If that text moved to another
   chunk, the test would hold nothing and pass silently (reviewer).
-- A screen whose chunk never arrives stays the server's HTML with a Save that does
-  nothing. Before e0ea12f it showed "Loading the block…"; neither saved anything.
+- A screen whose chunk never arrives stays the server's HTML ~~with a Save that does
+  nothing~~, with a disabled "Getting ready…" indefinitely (D-156-1). Before e0ea12f it
+  showed "Loading the block…"; none of them saves anything.
 - Native radios, form restoration and Enter's implicit submission are checked in
   Playwright's engines only, not on an iPhone; VoiceOver and TalkBack were not run.
 
@@ -126,4 +131,4 @@ D-111-66, D-111-67, D-119-13, D-119-15, D-119-22, D-122-2, D-122-8.
 
 ## Open questions
 
-None. The owner ruled on both (D-113-5, D-113-10).
+None. The owner ruled on both (D-113-5, D-113-10); #156 and #155 have since closed them.

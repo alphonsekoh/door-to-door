@@ -54,7 +54,7 @@ flowchart LR
 | `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
-| `test/`               | Vitest setup and global setup                                   | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
+| `test/`               | Vitest setup, global setup and shared test helpers              | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
 
 ## Domain model
 
@@ -323,7 +323,14 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   is late keeps its server HTML. Until that screen is live, the shell reads `loading`
   (D-113-7).
 - `useRole()` is UI affordance only. Its role comes from the latest `GET /users/me`
-  (`loadCurrentUser()`) when that matches the token's user, else from the token.
+  (`loadCurrentUser()`) when that matches the token's user, else from the token. It
+  subscribes to that role, not the account store, so an answer that changes nothing
+  draws nothing (D-155-7).
+- An answer that can land while a field is taking text is set in `startTransition`: the
+  block screen's reads, the form's history, Undo and Mark done, and the sync queue's
+  state. Set urgently inside the field's `input` event, it was drawn at once and wrote
+  the old value back (D-155-1, D-155-2). A store's change is drawn at once whatever the
+  lane, so the session kind is told to `knownSessionKind` from an effect (D-155-3).
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
@@ -381,10 +388,12 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
   draws a `standIn` there until it mounts, so Save is in the server's HTML (D-111-20,
-  D-111-40). A tap on the stand-in saves nothing. The unit and the level typed into the
-  server's HTML are adopted as the form mounts (`useEarlyInput`), and until then
-  `useLive` keeps Enter from submitting the form natively (D-113-1 to D-113-5). Unit
-  numbers are shown through `UnitNumber`, which never splits them (D-111-36).
+  D-111-40). On the block screen the stand-in is `SaveNotReady`, a disabled "Getting
+  ready…" in the live Save's box, and a tap on it saves nothing (D-156-1). The unit and
+  the level typed into the server's HTML are adopted as the form mounts
+  (`useEarlyInput`), and until then `useLive` keeps Enter from submitting the form
+  natively (D-113-1 to D-113-4). Unit numbers are shown through `UnitNumber`, which
+  never splits them (D-111-36).
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).

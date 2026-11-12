@@ -1541,3 +1541,25 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   #129 planner; not fetched again by the docs step.)
 - **Source:** [OWASP, CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)
 - **Used by:** D-129-9
+
+### R-144 · An answer that lands inside a field's `input` event is drawn at once, and writes the old value back (measured)
+
+- **Finding:** In WebKit, the continuation of a `fetch` can run inside the `input` event
+  of text landing in a field: after the field has changed, between React's capture and
+  bubble listeners at the document. In react-dom 19.2.8, an update with no priority set
+  takes it from `window.event` (`resolveUpdatePriority`), and `input` is discrete, so it
+  is drawn at once. Drawn with the state it still holds, a controlled input gets its old
+  value written back, and React's value tracker with it (`track`), so
+  `getInstIfValueChanged` sees no change and `onChange` never fires. An update in
+  `startTransition` is drawn after the event. A `useSyncExternalStore` change is always
+  drawn at `SyncLane` (`forceStoreRerender`), whatever lane its caller had.
+  Measured: in #155's builder probe, which recorded only the `value` setter's writes,
+  answers released 4 to 5 ms before `fill` lost the unit in 1 of 80 WebKit runs, with
+  one write, `#05-123` over `#09-999`, from React's commit while `window.event` was
+  `input`. Releasing the answers from a capture `input` listener lost it 10 of 10 on
+  both engines without transitions, 0 of 10 with them. Not seen with a real keystroke
+  or paste, which fire `keydown` or `paste` before the field changes.
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
+  `resolveUpdatePriority`, `getEventPriority`, `forceStoreRerender`, `track`,
+  `getInstIfValueChanged`; measured in #155 (builder probe; verifier rounds 0 to 2)
+- **Used by:** D-155-1, D-155-2, D-155-3, D-155-6, D-155-7
