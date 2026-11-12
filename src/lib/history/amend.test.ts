@@ -11,7 +11,7 @@ const member = (userId: string | undefined, teamIds: string[] = []) => ({
   teamIds,
 });
 const error = (status: number, code: string) =>
-  new ApiRequestError(status, { error: { code, message: "server words" } } as never);
+  new ApiRequestError(status, { error: { code, message: "server words" } });
 
 describe("mayAmendVisit", () => {
   it("lets an admin amend anything", () => {

@@ -101,7 +101,7 @@ describe("joining the outing", () => {
     const button = await screen.findByRole("button", { name: "Join this session" });
     apiFetch.mockImplementationOnce(() =>
       Promise.reject(
-        new ApiRequestError(409, { error: { code: "session_not_active", message: "x" } } as never),
+        new ApiRequestError(409, { error: { code: "session_not_active", message: "x" } }),
       ),
     );
     await userEvent.click(button);
@@ -189,7 +189,7 @@ describe("with no team", () => {
     await userEvent.type(within(sheet).getByLabelText(/Team name/), "!");
     apiFetch.mockReset();
     apiFetch.mockRejectedValue(
-      new ApiRequestError(409, { error: { code: "conflict", message: "raw" } } as never),
+      new ApiRequestError(409, { error: { code: "conflict", message: "raw" } }),
     );
     await userEvent.click(within(sheet).getByRole("button", { name: "Create team" }));
     expect(await within(sheet).findByRole("alert")).toHaveTextContent(/already on a team/);
@@ -250,7 +250,7 @@ describe("with no team", () => {
     apiFetch.mockImplementation((path: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         return Promise.reject(
-          new ApiRequestError(409, { error: { code: "conflict", message: "x" } } as never),
+          new ApiRequestError(409, { error: { code: "conflict", message: "x" } }),
         );
       }
       return Promise.resolve(
@@ -416,9 +416,7 @@ describe("on a team", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Leave" }));
     apiFetch.mockImplementation((path: string, init?: RequestInit) =>
       init?.method === "DELETE"
-        ? Promise.reject(
-            new ApiRequestError(403, { error: { code: "forbidden", message: "x" } } as never),
-          )
+        ? Promise.reject(new ApiRequestError(403, { error: { code: "forbidden", message: "x" } }))
         : Promise.resolve(
             path === "/users/me"
               ? world.me
@@ -505,7 +503,7 @@ describe("offline", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: /Ben Lim/ }));
     writes = () =>
       Promise.reject(
-        new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } } as never),
+        new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } }),
       );
     await userEvent.click(within(sheet).getByRole("button", { name: "Create team" }));
 
@@ -524,7 +522,7 @@ describe("loading", () => {
 
   it("offers a retry when the first read fails", async () => {
     apiFetch.mockRejectedValue(
-      new ApiRequestError(403, { error: { code: "forbidden", message: "x" } } as never),
+      new ApiRequestError(403, { error: { code: "forbidden", message: "x" } }),
     );
     render(<OutingTeam sessionId="s1" tick={0} />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/not allowed/);
@@ -575,7 +573,7 @@ describe("coming back online", () => {
     const view = render(<OutingTeam sessionId="s1" tick={0} />);
     await screen.findByText("You've joined this session");
     apiFetch.mockRejectedValue(
-      new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } } as never),
+      new ApiRequestError(401, { error: { code: "unauthenticated", message: "x" } }),
     );
     view.rerender(<OutingTeam sessionId="s1" tick={1} />);
     expect(await screen.findByRole("alert")).toHaveTextContent(/Sign in again/);

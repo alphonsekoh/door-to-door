@@ -150,8 +150,8 @@ deleted, and the CSV guard missed a leading CR.
   lapses on that page still carries it into `callbackUrl` (#163).
 - No E2E test guards `/sign-in`'s second look on its own; Vitest does.
 - Older than this PR, seen by its verifier: after a failed sign-out, Sign out sits under
-  the bottom nav on iPhone 13 (#164); `ApiRequestError` throws on a JSON error body
-  without the `{ error }` envelope (#165).
+  the bottom nav on iPhone 13 (#164); `ApiRequestError` threw on a JSON error body
+  without the `{ error }` envelope, fixed by #165 (D-165-2).
 
 ## Owner checks (real iPhone over HTTPS; not claimed by the PR)
 

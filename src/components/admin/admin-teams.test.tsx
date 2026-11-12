@@ -54,7 +54,7 @@ let world: World;
 let writes: ((path: string, init: RequestInit) => unknown) | undefined;
 
 const error = (status: number, code: string) =>
-  new ApiRequestError(status, { error: { code, message: "server words" } } as never);
+  new ApiRequestError(status, { error: { code, message: "server words" } });
 
 beforeEach(() => {
   vi.clearAllMocks();

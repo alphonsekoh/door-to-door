@@ -21,7 +21,7 @@ const participant = (id: string, teamId: string | null = null, name: string | nu
   joinedAt: "",
 });
 const error = (status: number, code: string) =>
-  new ApiRequestError(status, { error: { code, message: "server words" } } as never);
+  new ApiRequestError(status, { error: { code, message: "server words" } });
 
 describe("names", () => {
   it("builds 'Ann & Ben' from first names", () => {
