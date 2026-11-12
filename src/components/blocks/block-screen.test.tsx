@@ -538,6 +538,66 @@ describe("BlockScreen", () => {
     expect(JSON.parse(sent.body)).toMatchObject({ unitNumber: "#05-124", interestLevel: "low" });
   });
 
+  /* WebKit can run the screen's first answers inside the event of text
+     landing in the unit field: after the field has changed, before React
+     has read it (#155). Here that event is made the current one while the
+     answers land, as the browser has it then. */
+  it("keeps a unit typed as the screen's first answers land", async () => {
+    let answerSession: (value: unknown) => void = () => undefined;
+    let answerUnits: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) {
+        return new Promise((resolve) => {
+          answerSession = resolve;
+        });
+      }
+      if (path.startsWith("/households?")) {
+        return new Promise((resolve) => {
+          answerUnits = resolve;
+        });
+      }
+      return new Promise(() => undefined);
+    });
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    const field = screen.getByLabelText("Unit number");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(2);
+    });
+
+    const typing = new Event("input", { bubbles: true });
+    const event = Object.getOwnPropertyDescriptor(window, "event");
+    const actEnvironment: unknown = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    /* React's own scheduling, as in the browser, not act's. */
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+    try {
+      // The browser's edit, which React learns of only from the event.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        field,
+        "#09-999",
+      );
+      Object.defineProperty(window, "event", { configurable: true, get: () => typing });
+      answerSession(active);
+      answerUnits(list(["#05-123"]));
+      /* The answers and whatever React does at once with them; nothing it
+         leaves for later. */
+      for (let turn = 0; turn < 50; turn += 1) await Promise.resolve();
+    } finally {
+      if (event !== undefined) Object.defineProperty(window, "event", event);
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+    }
+    act(() => {
+      field.dispatchEvent(typing);
+    });
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    await screen.findByRole("tab", { name: "All units (1)" });
+    expect(field).toHaveValue("#09-999");
+    await waitFor(() => {
+      expect(knownSessionKind.getSnapshot()).toBe("regular");
+    });
+    expect(field).toHaveValue("#09-999");
+  });
+
   it("opens on the recording form, not the list", async () => {
     // At a door the form is the whole job; the list is for between floors.
     serve(list(["#05-123"]));

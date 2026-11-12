@@ -824,6 +824,60 @@ describe("history before knocking", () => {
     expect(await screen.findByText("Mr Tan")).toBeInTheDocument();
   });
 
+  /* As the block screen's answers can (#155): WebKit can run the history's
+     answer inside the event of text landing in the field, after the field
+     has changed and before React has read it. */
+  it("keeps what is typed as the unit's history lands", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        initialUnit="#05-123"
+        onRecorded={vi.fn()}
+      />,
+    );
+    const field = screen.getByLabelText("Unit number");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/households/h1");
+    });
+
+    const typing = new Event("input", { bubbles: true });
+    const event = Object.getOwnPropertyDescriptor(window, "event");
+    const actEnvironment: unknown = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    /* React's own scheduling, as in the browser, not act's. */
+    Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", false);
+    try {
+      // The browser's edit, which React learns of only from the event.
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(
+        field,
+        "#05-1234",
+      );
+      Object.defineProperty(window, "event", { configurable: true, get: () => typing });
+      answer(history());
+      for (let turn = 0; turn < 20; turn += 1) await Promise.resolve();
+    } finally {
+      if (event !== undefined) Object.defineProperty(window, "event", event);
+      Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+    }
+    act(() => {
+      field.dispatchEvent(typing);
+    });
+
+    expect(field).toHaveValue("#05-1234");
+    await waitFor(() => {
+      expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
+    });
+    expect(field).toHaveValue("#05-1234");
+  });
+
   it("shows nothing for a unit never visited", async () => {
     const user = userEvent.setup();
     render(

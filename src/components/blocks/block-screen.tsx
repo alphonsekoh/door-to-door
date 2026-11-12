@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BlockViews } from "@/components/blocks/block-views";
 import { DockHost } from "@/components/ui/docked-actions";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
@@ -13,6 +13,7 @@ import type {
   HouseholdSummary,
   RevisitEntry,
   RevisitList,
+  SessionKind,
   TeamList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -43,10 +44,22 @@ export function BlockScreen({
   /* The pages of the reads that failed since: shown over it, never saved. */
   const [arrived, setArrived] = useState<HouseholdSummary[]>([]);
   const [active, setActive] = useState<ActiveSession | null>(null);
+  /* What this screen's own answer said of the session's kind: null when none
+     is running, undefined until it has heard. */
+  const [heardHere, setHeardHere] = useState<SessionKind | null | undefined>(undefined);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const sessionId = active?.session.id ?? null;
   const units = useMemo(() => keepEachOnce([known ?? [], arrived]), [known, arrived]);
+
+  /*
+   * Every answer lands as a transition (#155). WebKit can run an answer's
+   * code inside the event of text landing in the unit field: after the field
+   * has changed, before React has read it. Set then, an answer is as urgent
+   * as the event, so React drew the form again at once with the unit it
+   * still held, writing it back over what was typed, which was then never
+   * read. A transition is drawn after the event.
+   */
 
   /*
    * The units already recorded on this block. Held here so the form can show a
@@ -73,18 +86,22 @@ export function BlockScreen({
     if (read.complete) {
       if (mine < landed.current.whole) return;
       landed.current.whole = mine;
-      setKnown(read.units);
-      if (newest) {
-        landed.current.any = mine;
-        setArrived([]);
-        setError(null);
-      }
+      if (newest) landed.current.any = mine;
+      startTransition(() => {
+        setKnown(read.units);
+        if (newest) {
+          setArrived([]);
+          setError(null);
+        }
+      });
       return;
     }
     if (!newest) return;
     landed.current.any = mine;
-    setArrived((shown) => keepEachOnce([shown, read.units]));
-    setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
+    startTransition(() => {
+      setArrived((shown) => keepEachOnce([shown, read.units]));
+      setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
+    });
   }, [blockId]);
 
   /* Separate from the units: the session marks tonight's rows and is what a
@@ -93,19 +110,28 @@ export function BlockScreen({
   const loadSession = useCallback(async (): Promise<OutingAnswer> => {
     try {
       const answer = await apiFetch<ActiveSession>("/sessions/active");
-      setActive(answer);
-      knownSessionKind.note(answer.session.kind);
+      startTransition(() => {
+        setActive(answer);
+        setHeardHere(answer.session.kind);
+      });
       return { kind: "running", id: answer.session.id };
     } catch (caught) {
-      setActive(null);
       // The contract's 404 is the one answer that means no session is running.
-      if (caught instanceof ApiRequestError && caught.status === 404) {
-        knownSessionKind.note(null);
-        return { kind: "none" };
-      }
-      return { kind: "unknown" };
+      const none = caught instanceof ApiRequestError && caught.status === 404;
+      startTransition(() => {
+        setActive(null);
+        if (none) setHeardHere(null);
+      });
+      return none ? { kind: "none" } : { kind: "unknown" };
     }
   }, []);
+
+  /* Told to the next screen once drawn here: a store's change is drawn at
+     once, transition or not, so told as it lands it could put the unit back
+     as an urgent answer did. */
+  useEffect(() => {
+    if (heardHere !== undefined) knownSessionKind.note(heardHere);
+  }, [heardHere]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -143,12 +169,18 @@ export function BlockScreen({
     try {
       const list = await apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`);
       if (mine === revisitsGeneration.current) {
-        setRevisits(list.data);
+        startTransition(() => {
+          setRevisits(list.data);
+        });
         noteRevisits(followUpSession, list.data);
       }
       return list.data;
     } catch {
-      if (mine === revisitsGeneration.current) setRevisits((current) => current ?? null);
+      if (mine === revisitsGeneration.current) {
+        startTransition(() => {
+          setRevisits((current) => current ?? null);
+        });
+      }
       return null;
     }
   }, [followUpSession, noteRevisits]);
@@ -201,10 +233,15 @@ export function BlockScreen({
       (teams) => {
         if (mine !== teamsGeneration.current) return;
         const team = findMyTeam(teams.data, userId);
-        setTeamIds(team === undefined ? [] : [team.id]);
+        startTransition(() => {
+          setTeamIds(team === undefined ? [] : [team.id]);
+        });
       },
       () => {
-        if (mine === teamsGeneration.current) setTeamIds([]);
+        if (mine !== teamsGeneration.current) return;
+        startTransition(() => {
+          setTeamIds([]);
+        });
       },
     );
     return () => {

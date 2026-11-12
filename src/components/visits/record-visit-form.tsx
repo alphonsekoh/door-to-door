@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
@@ -304,9 +312,14 @@ export function RecordVisitForm({
       };
     }
     let cancelled = false;
+    /* As a transition, as the block screen's answers are: one landing as a
+       unit is typed must not put the unit back (#155). */
     void apiFetch<HouseholdHistory>(`/households/${matchId}`)
       .then((data) => {
-        if (!cancelled) setHistory(data);
+        if (cancelled) return;
+        startTransition(() => {
+          setHistory(data);
+        });
       })
       .catch(() => {
         /*
@@ -314,9 +327,10 @@ export function RecordVisitForm({
          * re-read after a follow-up change keeps what is already shown for
          * this unit rather than blanking it just before the knock.
          */
-        if (!cancelled) {
+        if (cancelled) return;
+        startTransition(() => {
           setHistory((current) => (current?.household.id === matchId ? current : null));
-        }
+        });
       });
     return () => {
       cancelled = true;
