@@ -359,6 +359,12 @@ npm run db:migrate
 Never edit a migration that has been applied; add a new one. Drizzle records what it has
 run, so `db:migrate` is safe to re-run.
 
+`db:generate` also appends each new migration's SHA-256 to `drizzle/checksums.sha256`
+(its `postdb:generate` hook), and `npm test` fails if a listed migration changed or is
+gone, or a `.sql` file has no line. Only ever append to that file. If you drop a
+migration that was never merged, delete its line too. A `--custom` migration fails the
+test: its empty file is recorded before the SQL is written.
+
 ### Seeded logins
 
 Development only. The seed is deterministic and idempotent: re-running it changes nothing.
@@ -397,7 +403,7 @@ to `medium` between March and June.
 | `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)  |
 | `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433) |
 | `npm run test:e2e:ui`      | The same in Playwright's UI mode                                             |
-| `npm run db:generate`      | Generate a migration from schema changes (no running database needed)        |
+| `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)    |
 | `npm run db:migrate`       | Apply pending migrations                                                     |
 | `npm run db:seed`          | Seed deterministic demo data                                                 |
 | `npm run db:reset`         | Migrate, then seed. Does not delete anything                                 |
@@ -492,11 +498,18 @@ Every push to `main` and every pull request runs four jobs
 | **E2E**    | the Playwright suite on Chromium and WebKit                                                               |
 | **Build**  | production `next build`, with no config file and no database                                              |
 
+The jobs' token can only read the repository, and checkout leaves it nowhere on disk.
+Every action is pinned by commit and every image by digest, and Dependabot keeps them
+current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
+cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
+copy the digest into `ci.yml` (the test fails until you do).
+
 ## Deployment
 
 The app ships as a Docker image: the `runner` stage of the [`Dockerfile`](Dockerfile),
-Next.js standalone output on `node:24-alpine`, running as uid 1001 on port 3000. No
-hosting target has been chosen; anything that runs a container next to PostgreSQL will do.
+Next.js standalone output on `node:24-alpine` (pinned by digest), running as uid 1001 on
+port 3000. No hosting target has been chosen; anything that runs a container next to
+PostgreSQL will do.
 
 ```bash
 docker build -t door-to-door .

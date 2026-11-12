@@ -2,7 +2,7 @@
 
 # Alpine keeps the image small. @node-rs/argon2 ships musl prebuilds, so no
 # native toolchain is needed for the password hashing in #9.
-FROM node:24-alpine AS base
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS base
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 

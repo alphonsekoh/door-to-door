@@ -50,7 +50,7 @@ flowchart LR
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
 | `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
 | `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()` → 404 for members.                              |
-| `drizzle/`            | Generated migrations                                            | excluded | From `drizzle-kit generate` only.                                                     |
+| `drizzle/`            | Generated migrations and their checksums                        | excluded | From `npm run db:generate` only, which appends `checksums.sha256` (D-131-9).          |
 | `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
@@ -607,5 +607,10 @@ CSP violation (D-122-8).
   on the next query. The query in flight rejects, so the request is a `500` and never
   crashes the process.
 - **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
-  tests with coverage against Postgres, production build, E2E. Dependabot
-  (`.github/dependabot.yml`) opens grouped npm and Actions updates weekly (D-118-7).
+  tests with coverage against Postgres, production build, E2E. The token can only read,
+  and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by
+  commit and images by digest, and `src/supply-chain.test.ts` refuses a new line that
+  is not (D-131-3, D-131-4). Dependabot (`.github/dependabot.yml`) opens grouped npm,
+  Actions, Docker and Compose updates weekly (D-118-7, D-131-5); CI's postgres image
+  follows Compose's by hand (D-131-6). A test refuses an edited, deleted or unrecorded
+  migration against `drizzle/checksums.sha256` (D-131-9).

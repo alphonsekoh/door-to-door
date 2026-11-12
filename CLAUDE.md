@@ -113,6 +113,13 @@ must fail a test, not ship.
 **[convention]** So generate every migration with `npm run db:generate`; never hand-write
 or hand-edit migration SQL, and never edit an applied migration - add a new one.
 
+**[CI]** An edited or deleted migration fails the tests: `npm run db:generate` appends
+each new migration's SHA-256 to `drizzle/checksums.sha256`, and a test checks every
+`.sql` file against it (D-131-9).
+
+**[convention]** Only ever append to `checksums.sha256`. Rewriting a line hides an edited
+migration from that test, so review any other change to the file as one (D-131-10).
+
 ### Configuration
 
 **[convention]** Settings are keys in `config.yaml`, validated by the strict schema in
