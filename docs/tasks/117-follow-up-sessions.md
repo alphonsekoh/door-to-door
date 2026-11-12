@@ -159,7 +159,9 @@ well." (D-117-62 onwards).
   D-25-5. _Why:_ the next door is the next household on the list, not the next number;
   "and next" promised the wrong thing in weak signal. _Research:_ R-80. _Refined by
   D-117-59:_ Back to the list has its own row; _by D-117-71 and D-117-77:_ a follow-up
-  row with Undo, and only the line is scrolled into view.
+  row with Undo, and only the line is scrolled into view; _by D-156-3:_ the server's HTML
+  says "Getting ready…", not "Save", and the guess from the kind applies once the page is
+  live.
 
 ### Screens
 

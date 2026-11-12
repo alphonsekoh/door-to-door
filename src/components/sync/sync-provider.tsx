@@ -1,6 +1,13 @@
 "use client";
 
-import { type ReactNode, createContext, useContext, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  startTransition,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 import {
   type SyncController,
   type SyncSnapshot,
@@ -130,8 +137,13 @@ export function SyncProvider({
         exclusive,
         announce: () => channel?.postMessage("changed"),
         persist,
+        /* As a transition, as the block screen's answers are (#155): a send
+           finishing as text lands in the unit field must not draw the form
+           again with the unit it still holds. */
         onChange: (snapshot) => {
-          setLive({ ownerId, controller, snapshot });
+          startTransition(() => {
+            setLive({ ownerId, controller, snapshot });
+          });
         },
       });
 
