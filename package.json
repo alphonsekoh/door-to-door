@@ -19,6 +19,7 @@
     "test:components": "vitest run --project components",
     "test:coverage": "vitest run --coverage",
     "db:generate": "drizzle-kit generate",
+    "postdb:generate": "tsx scripts/record-migration-checksums.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",

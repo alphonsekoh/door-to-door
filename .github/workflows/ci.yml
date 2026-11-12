@@ -63,8 +63,10 @@ jobs:
             exit 1
           fi
 
-      # Migrations are generated from the schema; a hand-edited migration or a
-      # schema change without one would silently diverge from the database.
+      # Migrations are generated from the schema; a hand-edited snapshot or a
+      # schema change without a migration would silently diverge from the
+      # database. This never reads the .sql files: an edited one fails the
+      # tests instead, against drizzle/checksums.sha256.
       - name: Migrations match the schema
         run: |
           npm run db:generate
