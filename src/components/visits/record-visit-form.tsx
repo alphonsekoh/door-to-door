@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { UnitNumber } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
@@ -304,9 +312,14 @@ export function RecordVisitForm({
       };
     }
     let cancelled = false;
+    /* As a transition, as the block screen's answers are: one landing as a
+       unit is typed must not put the unit back (#155). */
     void apiFetch<HouseholdHistory>(`/households/${matchId}`)
       .then((data) => {
-        if (!cancelled) setHistory(data);
+        if (cancelled) return;
+        startTransition(() => {
+          setHistory(data);
+        });
       })
       .catch(() => {
         /*
@@ -314,9 +327,10 @@ export function RecordVisitForm({
          * re-read after a follow-up change keeps what is already shown for
          * this unit rather than blanking it just before the knock.
          */
-        if (!cancelled) {
+        if (cancelled) return;
+        startTransition(() => {
           setHistory((current) => (current?.household.id === matchId ? current : null));
-        }
+        });
       });
     return () => {
       cancelled = true;
@@ -553,7 +567,10 @@ export function RecordVisitForm({
       before.kind === "failed" ? before.reopened : 0,
     );
     if (undoing.current === visitId) undoing.current = null;
-    setSaved(onThisSave(outcome));
+    /* The next unit's first keystroke can meet this answer (#155). */
+    startTransition(() => {
+      setSaved(onThisSave(outcome));
+    });
     void followUp?.recheck?.();
     onRecorded();
   }
@@ -808,7 +825,10 @@ export function RecordVisitForm({
           active={active}
           atDoor
           onChanged={() => {
-            setReloadKey((key) => key + 1);
+            /* Mark done answers while the next unit may be typed (#155). */
+            startTransition(() => {
+              setReloadKey((key) => key + 1);
+            });
           }}
         />
       )}
@@ -997,29 +1017,38 @@ export function RecordVisitForm({
   );
 }
 
-/*
- * The form's Save. With no form named it is the stand-in the block screen
- * draws before the page is live: a plain button, so a tap cannot submit
- * natively and reload the page. Such a tap saves nothing, but what was typed
- * and picked before it is kept (#113), so the next tap saves it.
- */
+/* One box for Save and its stand-in, so nothing moves as one replaces the
+   other. */
+const SAVE_BUTTON = "min-h-14 w-full btn-primary rounded-xl text-title font-semibold";
+
+/* The form's Save, naming its form: a DockHost moves the bar out of it. */
 export function SaveAndNext({
   form,
   saving = false,
   next = true,
 }: {
-  form?: string;
+  form: string;
   saving?: boolean;
   next?: boolean;
 }) {
   return (
-    <button
-      type={form === undefined ? "button" : "submit"}
-      form={form}
-      disabled={saving}
-      className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-    >
+    <button type="submit" form={form} disabled={saving} className={SAVE_BUTTON}>
       {saving ? "Saving…" : next ? "Save and next" : "Save"}
+    </button>
+  );
+}
+
+/*
+ * What the block screen draws where Save docks until its script has run
+ * (D-111-40). It has nothing to save with yet, so it says so, dimmed as a
+ * Save that is busy, from the server's HTML alone (#156). A plain button
+ * naming no form, so a tap cannot submit natively and reload the page; what
+ * was typed and picked is kept (#113) for the Save that replaces it.
+ */
+export function SaveNotReady() {
+  return (
+    <button type="button" disabled className={SAVE_BUTTON}>
+      Getting ready…
     </button>
   );
 }

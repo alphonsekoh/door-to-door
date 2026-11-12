@@ -397,9 +397,10 @@ export async function signInThroughForm(
 
 /*
  * A block screen loaded by address is live once its docked Save is the
- * form's own: until then it is the stand-in in the server's HTML, a plain
- * button, and a tap on it saves nothing. What is typed and picked before
- * then is kept (#113), so a test waits for this only before it taps Save.
+ * form's own: until then it is the stand-in in the server's HTML, a disabled
+ * "Getting ready…" (#156), and a tap on it saves nothing. What is typed and
+ * picked before then is kept (#113), so a test waits for this only before it
+ * taps Save.
  */
 export async function untilLive(page: Page): Promise<void> {
   /* Only Save in a follow-up session, where no next unit is guessed. */

@@ -51,7 +51,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** Object schemas strip unknown keys rather than rejecting them, so
   parsing alone does not detect a response with an extra field.
 - **Source:** Probed in `withContract` tests (#12)
-- **Used by:** D-12-2
+- **Used by:** D-12-2, D-131-1
 
 ### R-7 · Drizzle behaviour that types do not show
 
@@ -1005,7 +1005,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   release back for that many days, for version updates only. Security updates also
   need Dependabot security updates turned on in the repository settings.
 - **Source:** [GitHub Docs, Dependabot options reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference)
-- **Used by:** D-118-7
+- **Used by:** D-118-7, D-131-5
 
 ### R-96 · Who sets `Sec-Fetch-Site`, and when
 
@@ -1593,6 +1593,107 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `semicolonFields` in `src/lib/csv.test.ts`; #163 verifier, round 1
   (`check_csv.py` on the exported files)
 - **Used by:** D-163-1, D-163-2
+
+### R-144 · A job's `permissions` replaces the workflow's for that job
+
+- **Finding:** `permissions` can sit at the top of a workflow, for every job, or in one
+  job, whose steps then get exactly the access it names. So a single job-level grant
+  widens the token for that job whatever the top level says.
+- **Source:** [GitHub Docs, workflow syntax: `permissions`](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions)
+- **Used by:** D-131-1
+
+### R-145 · `actions/checkout` leaves the token on disk unless `persist-credentials: false`
+
+- **Finding:** By default checkout keeps the token for the rest of the job, so later git
+  commands are authenticated, and removes it at post-job cleanup. Since v6 it is written
+  to a file under `$RUNNER_TEMP` that git still reads, not into `.git/config` itself.
+  `persist-credentials: false` writes it nowhere.
+- **Source:** [actions/checkout README at v7.0.1](https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/README.md)
+  ("Checkout v6", "Usage")
+- **Used by:** D-131-2
+
+### R-146 · The pinned action releases are lightweight tags on their major's commit
+
+- **Finding:** On 2026-11-12 `actions/checkout` v7.0.1 and v7 were both `3d3c42e5…`,
+  `actions/setup-node` v7.1.0 and v7 `949feb24…`, `actions/upload-artifact` v7.0.2 and v7
+  `cf430e03…`, and `actions/cache` v6.1.0 and v6 `55cc8345…`. Every ref points straight
+  at a commit, so none needed dereferencing. Dependabot updates an `owner/repo@<sha>`
+  action and a version comment on the same line.
+- **Source:** `gh api repos/actions/<name>/git/matching-refs/tags/v<major>` (#131
+  builder, reviewer and docs); [GitHub Docs, supported ecosystems: GitHub Actions](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories#github-actions)
+- **Used by:** D-131-3
+
+### R-147 · The images' multi-arch index digests, and how often they move
+
+- **Finding:** `postgres:17-alpine` is the OCI image index `sha256:e5d2edd2…` (16
+  manifests) and `node:24-alpine` the index `sha256:116b800c…` (6: amd64, arm64, s390x,
+  each with an attestation). An index digest still lets each machine pull its own
+  platform. Each tag is re-pushed with a new digest often: `node:24-alpine` 7 times in
+  the four weeks to 2026-11-12, never more than 7 days apart; `postgres:17-alpine` 7
+  times since 2026-10-22, once 10 days apart.
+- **Source:** docker-library/repo-info, `repos/postgres/remote/17-alpine.md` and
+  `repos/node/remote/24-alpine.md` and their commit history, read with `gh api` on
+  2026-11-12. The registry itself was not queried (a local hook blocks curl to it, and
+  Docker was not running); the PR's CI pull is the check.
+- **Used by:** D-131-4, D-131-5
+
+### R-148 · What Dependabot's image updaters read
+
+- **Finding:** `docker` updates images in Dockerfiles and in Kubernetes manifests or Helm
+  charts; `docker-compose` updates Compose v2 and v3 files. `github-actions` updates only
+  `uses:` in `owner/repo@ref` form, not `docker://`. None names a workflow's
+  `services.<id>.image`. Neither image ecosystem gets security updates, only version
+  updates. A digest pin is updated to the digest Dependabot checked, which must match
+  the registry's metadata. Its Docker Hub cooldown dates a tag by `tag_last_pushed`, so
+  pushing the tag again can restart the cooldown. Dependabot works from the default branch unless
+  `target-branch` says otherwise.
+- **Source:** [GitHub Docs, supported ecosystems](https://docs.github.com/en/code-security/reference/supply-chain-security/supported-ecosystems-and-repositories),
+  [Dependabot options reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference);
+  [dependabot-core `docker/README.md`](https://github.com/dependabot/dependabot-core/blob/main/docker/README.md)
+  ("Cooldown publication dates")
+- **Used by:** D-131-5, D-131-6
+
+### R-149 · A caret on a prerelease takes every later prerelease of that version
+
+- **Finding:** `^5.0.0-beta.32` means `>=5.0.0-beta.32 <6.0.0`, and prereleases of
+  5.0.0 itself are allowed from beta.32 up, so any later beta satisfies it. Measured: npm
+  11.17.0's `npm install --package-lock-only` changed the lockfile's root entry and also
+  added six bundled `@tailwindcss/oxide-wasm32-wasi` entries, which were reverted by
+  hand; `npm ci` then installed the same tree.
+- **Source:** `node_modules/semver/README.md`, "Caret Ranges"; #131 builder (measured)
+- **Used by:** D-131-7
+
+### R-150 · drizzle's migrator hashes each migration file with SHA-256
+
+- **Finding:** drizzle-orm 0.45.2's `readMigrationFiles` hashes each `.sql` file's whole
+  text with SHA-256 (hex), and the Postgres migrator stores that value in
+  `__drizzle_migrations.hash`. `drizzle/meta/_journal.json` holds no hashes, only tags
+  and timestamps.
+- **Source:** `node_modules/drizzle-orm/migrator.js` (line 23),
+  `node_modules/drizzle-orm/pg-core/dialect.js` (line 67)
+- **Used by:** D-131-9
+
+### R-151 · An answer that lands inside a field's `input` event is drawn at once, and writes the old value back (measured)
+
+- **Finding:** In WebKit, the continuation of a `fetch` can run inside the `input` event
+  of text landing in a field: after the field has changed, between React's capture and
+  bubble listeners at the document. In react-dom 19.2.8, an update with no priority set
+  takes it from `window.event` (`resolveUpdatePriority`), and `input` is discrete, so it
+  is drawn at once. Drawn with the state it still holds, a controlled input gets its old
+  value written back, and React's value tracker with it (`track`), so
+  `getInstIfValueChanged` sees no change and `onChange` never fires. An update in
+  `startTransition` is drawn after the event. A `useSyncExternalStore` change is always
+  drawn at `SyncLane` (`forceStoreRerender`), whatever lane its caller had.
+  Measured: in #155's builder probe, which recorded only the `value` setter's writes,
+  answers released 4 to 5 ms before `fill` lost the unit in 1 of 80 WebKit runs, with
+  one write, `#05-123` over `#09-999`, from React's commit while `window.event` was
+  `input`. Releasing the answers from a capture `input` listener lost it 10 of 10 on
+  both engines without transitions, 0 of 10 with them. Not seen with a real keystroke
+  or paste, which fire `keydown` or `paste` before the field changes.
+- **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
+  `resolveUpdatePriority`, `getEventPriority`, `forceStoreRerender`, `track`,
+  `getInstIfValueChanged`; measured in #155 (builder probe; verifier rounds 0 to 2)
+- **Used by:** D-155-1, D-155-2, D-155-3, D-155-6, D-155-7
 
 ### R-152 · Next names a loopback host `localhost` in the URL a route reads
 

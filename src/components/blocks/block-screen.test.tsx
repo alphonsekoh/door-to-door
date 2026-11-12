@@ -9,6 +9,7 @@ import { ApiRequestError } from "@/lib/api-client";
 import { knownSessionKind } from "@/lib/session/known-kind";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import type { QueuedVisit } from "@/lib/sync/types";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -484,17 +485,23 @@ describe("BlockScreen", () => {
     serve(list([]));
     const container = document.createElement("div");
     container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-    // The server cannot know the kind of session, so it promises no next unit.
-    const first = within(container).getByRole("button", { name: "Save" });
+    // With no script yet there is nothing to save with, and it says so (#156).
+    const first = within(container).getByRole("button", { name: "Getting ready…" });
+    expect(first).toBeDisabled();
+    expect(within(container).queryByRole("button", { name: /^Save/ })).toBeNull();
     // At the end of the screen, where it can rise to the nav at any text
-    // size; and, with no script yet to save, a tap must not reload the page.
+    // size; and a tap must not reload the page.
     expect(container.querySelector("form")).not.toContainElement(first);
     expect(first).toHaveAttribute("type", "button");
 
     render(<BlockScreen blockId="b1" />);
     const save = await screen.findByRole("button", { name: "Save and next" });
+    expect(save).toBeEnabled();
     expect(save).toHaveAttribute("type", "submit");
     expect(save).toHaveAttribute("form", document.querySelector("form")?.id);
+    // The same box, so nothing moves as one replaces the other.
+    expect(save).toHaveClass(first.className, { exact: true });
+    expect(screen.queryByRole("button", { name: "Getting ready…" })).toBeNull();
   });
 
   /* On a slow connection the server's HTML is up well before its script
@@ -515,7 +522,7 @@ describe("BlockScreen", () => {
     field.value = "#05-124";
     within(container).getByRole("radio", { name: "Low" }).click();
     // The stand-in: with no script yet, a tap on it does nothing.
-    within(container).getByRole("button", { name: "Save" }).click();
+    within(container).getByRole("button", { name: "Getting ready…" }).click();
 
     const mismatch = vi.fn();
     const root = await act(() => hydrateRoot(container, page, { onRecoverableError: mismatch }));
@@ -536,6 +543,77 @@ describe("BlockScreen", () => {
     });
     const sent = apiFetch.mock.calls.find(([path]) => path === "/visits")?.[1] as { body: string };
     expect(JSON.parse(sent.body)).toMatchObject({ unitNumber: "#05-124", interestLevel: "low" });
+  });
+
+  /* WebKit can run the screen's answers inside the event of text landing in
+     the unit field (#155): each must land without putting back the unit
+     the field held before. */
+  it("keeps a unit typed as the screen's first answers land", async () => {
+    let answerSession: (value: unknown) => void = () => undefined;
+    let answerUnits: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) {
+        return new Promise((resolve) => {
+          answerSession = resolve;
+        });
+      }
+      if (path.startsWith("/households?")) {
+        return new Promise((resolve) => {
+          answerUnits = resolve;
+        });
+      }
+      return new Promise(() => undefined);
+    });
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledTimes(2);
+    });
+
+    await landWhileTyping(field, "#09-999", () => {
+      answerSession(active);
+      answerUnits(list(["#05-123"]));
+    });
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    await screen.findByRole("tab", { name: "All units (1)" });
+    expect(field).toHaveValue("#09-999");
+    await waitFor(() => {
+      expect(knownSessionKind.getSnapshot()).toBe("regular");
+    });
+    expect(field).toHaveValue("#09-999");
+  });
+
+  it("keeps a unit typed as the viewer's team lands", async () => {
+    let answerTeams: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+      if (path === "/sessions/s1/teams") {
+        return new Promise((resolve) => {
+          answerTeams = resolve;
+        });
+      }
+      if (path.startsWith("/households?")) {
+        return Promise.resolve(list(["#05-123"], { id: "ann", name: "Ann Tan" }, "t1"));
+      }
+      // The picked unit's history: not what this is about.
+      return new Promise(() => undefined);
+    });
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+    await screen.findByRole("tab", { name: "All units (1)" });
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
+    });
+
+    await landWhileTyping(field, "#09-999", () => {
+      answerTeams(teamOf("t1", ["ann", "u1"]));
+    });
+
+    expect(field).toHaveValue("#09-999");
+    // The team landed all the same: a teammate's unit opens for amending.
+    await openUnit("#05-123");
+    expect(await screen.findByRole("button", { name: "Save changes" })).toBeInTheDocument();
   });
 
   it("opens on the recording form, not the list", async () => {
@@ -601,10 +679,11 @@ describe("BlockScreen", () => {
       });
       const container = document.createElement("div");
       container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-      expect(within(container).getByRole("button", { name: "Save" })).toHaveAttribute(
+      expect(within(container).getByRole("button", { name: "Getting ready…" })).toHaveAttribute(
         "type",
         "button",
       );
+      expect(within(container).queryByRole("button", { name: /^Save/ })).toBeNull();
 
       render(<BlockScreen blockId="b1" />);
       await waitFor(() => {
@@ -1077,6 +1156,39 @@ describe("in a follow-up session", () => {
     serveFollowUp();
     render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  /* The third answer of the screen, so the one most likely to meet a
+     member's first paste (#155). */
+  it("keeps a unit typed over the picked one as the list lands", async () => {
+    let answerList: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") {
+        return new Promise((resolve) => {
+          answerList = resolve;
+        });
+      }
+      if (path.startsWith("/households?")) return Promise.resolve(list(["#05-123"]));
+      // The picked unit's history: not what this is about.
+      return new Promise(() => undefined);
+    });
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/revisits");
+    });
+
+    await landWhileTyping(field, "#09-999", () => {
+      answerList(revisits);
+    });
+
+    // The answer was read while the text was landing, not after.
+    expect(noteRevisits).toHaveBeenCalledWith(followUp, revisits.data);
+    const chips = within(await screen.findByRole("list", { name: "On the list in this block" }));
+    expect(chips.getByRole("button", { name: "#05-123" })).toHaveAttribute("aria-pressed", "false");
+    expect(field).toHaveValue("#09-999");
   });
 
   it("asks for no list in a door-to-door session", async () => {

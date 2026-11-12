@@ -344,7 +344,9 @@ round 8, and they are in the PR #112 body too.
   and the E2E waits it out (D-111-66).~~ _Corrected again by D-113-5:_ React does not
   move a tap on the stand-in to the form's Save, so it saves nothing (R-73). What was
   typed and picked before the page is live is kept (D-113-1, D-113-2). _Refined by
-  D-111-55:_ the stand-in is glass while pinned.
+  D-111-55:_ the stand-in is glass while pinned. _Refined by D-156-1:_ the stand-in is
+  `SaveNotReady`, a disabled "Getting ready…", not `SaveAndNext` naming no form, and
+  `SaveAndNext` now requires `form`.
 - **D-111-41 · The scrim follows the sheet.** Its opacity comes from the sheet's offset
   (`scrimOpacity`): it lightens as the sheet is pulled and darkens as it rises or
   settles. Under reduced motion it cross-fades with the panel on open and close, and

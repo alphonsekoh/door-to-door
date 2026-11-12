@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SyncProvider, useSyncQueue } from "@/components/sync/sync-provider";
 import { SyncStatusBar } from "@/components/sync/sync-status-bar";
@@ -10,6 +11,7 @@ import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import type * as SignedInModule from "@/lib/sync/signed-in";
 import type { SignedIn } from "@/lib/sync/signed-in";
 import type { QueuedVisit, SendOutcome } from "@/lib/sync/types";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { usePathname, useRole, fetchSignedIn } = vi.hoisted(() => ({
   usePathname: vi.fn<() => string>(),
@@ -142,6 +144,59 @@ describe("SyncProvider", () => {
     });
     expect(send).toHaveBeenCalledTimes(1);
     expect(text("version")).toBe("1");
+  });
+
+  /* As the block screen's answers can (#155): WebKit can run a send's
+     answer inside the event of text landing in the unit field. What the
+     queue then says must not draw the form again over what was typed. */
+  it("keeps a unit typed as a send's answer lands", async () => {
+    function UnitField() {
+      const queue = useSyncQueue();
+      const [unit, setUnit] = useState("#05-02");
+      return (
+        <>
+          <input
+            aria-label="Unit number"
+            value={unit}
+            onChange={(event) => {
+              setUnit(event.target.value);
+            }}
+          />
+          <p data-testid="units">
+            {queue.records.map((r) => `${r.item.unitNumber}:${r.state}`).join(",")}
+          </p>
+        </>
+      );
+    }
+    let answer: () => void = () => undefined;
+    const send = vi.fn(
+      (items: VisitSyncItem[]) =>
+        new Promise<SendOutcome>((resolve) => {
+          answer = () => {
+            resolve(applied(items));
+          };
+        }),
+    );
+    const queue = createMemoryQueue([stored("ann", "#05-01")]);
+    render(
+      <SyncProvider openQueue={() => Promise.resolve(queue)} send={send}>
+        <UnitField />
+      </SyncProvider>,
+    );
+    await waitFor(() => {
+      expect(send).toHaveBeenCalledTimes(1);
+    });
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+
+    await landWhileTyping(field, "#05-03", () => {
+      answer();
+    });
+
+    expect(field).toHaveValue("#05-03");
+    await waitFor(() => {
+      expect(text("units")).toBe("#05-01:synced");
+    });
+    expect(field).toHaveValue("#05-03");
   });
 
   it("saves into the queue and sends it", async () => {
