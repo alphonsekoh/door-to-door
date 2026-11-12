@@ -33,12 +33,25 @@ export function isApiPath(pathname: string): boolean {
 }
 
 /*
+ * No screen keeps a search term in its URL (D-129-7), so an old link's `q` is
+ * dropped rather than carried into the sign-in page's address (#163). Any
+ * other query is left exactly as it came.
+ */
+function withoutSearchTerm(search: string): string {
+  const query = new URLSearchParams(search);
+  if (!query.has("q")) return search;
+  query.delete("q");
+  const rest = query.toString();
+  return rest === "" ? "" : `?${rest}`;
+}
+
+/*
  * Where to send an unauthenticated visitor. The destination is preserved so
  * they land where they were going rather than on the home screen - a member
  * following a link to a unit should reach that unit after signing in.
  */
 export function signInRedirect(pathname: string, search: string): string {
-  const destination = `${pathname}${search}`;
+  const destination = `${pathname}${withoutSearchTerm(search)}`;
   if (destination === "/" || destination === "") {
     return "/sign-in";
   }

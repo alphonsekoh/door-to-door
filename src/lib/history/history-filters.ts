@@ -49,11 +49,11 @@ function asDate(value: string | null): string {
  * an "Ann & Ben" - so the team filter is offered, and kept, only once an
  * outing is chosen.
  *
- * The search term is never read from the URL nor written to it: it is a name
- * or a phone number, and a query string goes to the server, its logs, the
- * phone's history and a sign-in's callbackUrl. The search runs on what is
- * already loaded (D-30-6), so nothing needs it there. An old link's `q` is
- * ignored.
+ * The search term is never written to the URL, and these filters never read
+ * it: it is a name or a phone number, and a query string goes to the server,
+ * its logs, the phone's history and a sign-in's callbackUrl. The search runs
+ * on what is already loaded (D-30-6), so nothing needs it there. An old
+ * link's `q` is the screen's to take and drop (useSearchTerm).
  */
 export function parseHistoryFilters(params: URLSearchParams): HistoryFilters {
   const sessionId = params.get("sessionId") ?? "";

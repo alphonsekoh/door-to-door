@@ -25,6 +25,7 @@ import {
 } from "@/lib/follow-ups/marked-done";
 import { asHouseholdSummary } from "@/lib/history/history";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { loadAllUsers } from "@/lib/session/users";
 import {
   hasAnyFilter,
@@ -88,9 +89,11 @@ async function teamsOf(sessionId: string): Promise<Team[] | null> {
 export function AdminRecords() {
   const router = useRouter();
   const params = useSearchParams();
+  const inUrl = parseFilters(new URLSearchParams(params.toString()));
+  const search = toSearchParams(inUrl);
   /* Held here, never in the URL (record-filters). */
-  const [q, setQ] = useState("");
-  const filters: RecordFilters = { ...parseFilters(new URLSearchParams(params.toString())), q };
+  const [q, setQ] = useSearchTerm("/admin/records", search);
+  const filters: RecordFilters = { ...inUrl, q };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [members, setMembers] = useState<User[]>([]);
@@ -137,8 +140,6 @@ export function AdminRecords() {
       setMembers([]);
     }
   }, []);
-
-  const search = toSearchParams(filters);
 
   useEffect(() => {
     const current = parseFilters(new URLSearchParams(search));
