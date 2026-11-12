@@ -31,13 +31,14 @@ bar, from where a lapsed session carried it into `/sign-in?callbackUrl=`.
 - **D-163-3 · No `sep=` line.** _Why:_ only some spreadsheets read it as a hint; to
   others, and to a script, it is a first row of data. The guard has to hold whichever
   separator the reader picks.
-- **D-163-4 · The cost: a visible `'` mid-cell for a comma reader (pending the owner).**
+- **D-163-4 · The cost: a visible `'` mid-cell for a comma reader (owner, 2026-11-12).**
   Any line, or part after a `;`, that starts with a sign shows its `'` in an ordinary
   import. A dash-bullet note exports as `"Notes\n'- one\n'- two"`, a second number as
   `9123 4567;' +65 8123 4567`, a `+65` number on its own line in notes gains one, and so
   does a teammate whose name starts with a sign, after the `; ` of D-74-59. Text with
   `;` or `,` and no sign after it round-trips unchanged. _Why:_ the price of D-163-1's
-  line-break guard. See Open questions.
+  line-break guard; narrowing the guard to `;` alone would leave a formula on a later
+  line runnable in a `;` reader. The owner accepted this cost.
 
 ### An old `?q=` link
 
@@ -76,8 +77,9 @@ bar, from where a lapsed session carried it into `/sign-in?callbackUrl=`.
   requests (URL or headers), no request after the strip (any header) and no
   `callbackUrl` carries the term. The document request always does, being the link; the
   shell's first-load `Referer` is a known limit below. The issue's `/history?q=` is read
-  as `/admin/history`: the member's `/history` has no search, never read `q`, and is
-  unchanged. _Why:_ what a client-side strip can promise.
+  as `/admin/history` (confirmed by the owner, 2026-11-12): the member's `/history` has
+  no search, never read `q`, and is unchanged. _Why:_ what a client-side strip can
+  promise.
 
 ### How existing decisions are handled
 
@@ -126,10 +128,5 @@ D-15-6, D-29-5, D-30-6, D-32-4, D-74-55, D-74-59, D-122-6, D-129-7, D-129-9.
 
 ## Open questions
 
-- **D-163-4: is a visible `'` in a comma import an acceptable cost?** It is needed: a
-  `;` reader starts a row at a line break in any cell but the first, so without it
-  `Tan\n=HYPERLINK(...);` would run. But comma-locale admins will see `'` before dash
-  bullets and before a second number (`9123 4567;' +65 8123 4567`). The issue asks that
-  the export "still round-trips ordinary text"; the builder read that as text with no
-  sign after a `;` or line break. Narrowing the guard to `;` alone would leave a
-  formula on a later line runnable.
+None. The owner settled D-163-4 (the visible `'` is an accepted cost) and confirmed
+D-163-9's reading of `/history?q=` as `/admin/history` on 2026-11-12.
