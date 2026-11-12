@@ -2989,8 +2989,9 @@ paths:
         With a `password` they sign in with email and password. They can
         also sign in with Google, but only when Google sign-in is set up on
         this server and the address is in its `auth.google.domains`: a
-        gmail.com address as it is, and any other listed domain only with
-        that domain's Google Workspace account (the ID token's `hd`).
+        gmail.com address as it is, and any other listed domain only for an
+        account of a Google Workspace whose primary domain (the ID token's
+        `hd`) is listed too.
         Without a `password` they sign in with Google only.
 
         A Google-only account is refused with `409` while Google sign-in is

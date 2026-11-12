@@ -12,7 +12,7 @@ import { listDomains } from "@/lib/session/google-domains";
  * names the domains Google sign-in is for, which are the same for everyone.
  */
 
-/* Short enough to leave both sign-in buttons in view at the largest text. */
+/* Kept short: at the largest text, less to scroll past to the sign-in buttons. */
 export function googleRefusedMessage(domains: readonly string[]): string {
   return (
     "That Google account can't sign in here. Google sign-in is for " +

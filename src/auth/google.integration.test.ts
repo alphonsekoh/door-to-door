@@ -240,12 +240,7 @@ describe("refused, with one message for every reason (D-15-1), and nothing creat
   });
 });
 
-/*
- * The owner's ruling of 2026-11-12. Google speaks for an address only at
- * gmail.com or on a Workspace domain, which the ID token's hd names.
- * Anywhere else a mailbox can pass to someone new, whose Google account
- * would then sign in as the member, and the link would last.
- */
+/* The owner's ruling of 2026-11-12; the why is in googleVouchesFor. */
 describe("only where Google vouches for the address", () => {
   it.each<[string, FakeGoogleAccount, string]>([
     ["a gmail.com address, with no hd", { email: "alice@gmail.com", verified: true }, ALICE],

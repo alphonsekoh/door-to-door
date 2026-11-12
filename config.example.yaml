@@ -39,7 +39,7 @@ auth:
   # redirect URI is <public origin>/api/auth/callback/google.
   # google:
   #   clientId: 1234567890-abcdef.apps.googleusercontent.com
-  #   # Required. List gmail.com and Google Workspace domains only; others are refused.
+  #   # Required. gmail.com and Google Workspace domains; list a secondary domain's primary too.
   #   domains: [gmail.com, tjc.sg, tjc.org]
   #   # TEST ONLY. A stand-in OpenID provider in place of Google, as the
   #   # end-to-end tests run one. Never set it in production.
