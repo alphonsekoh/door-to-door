@@ -61,7 +61,7 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   _Why:_ that wording would send a Google user looking for a password they never had.
   _Changed in review (2026-11-12):_ it was the constant `GOOGLE_REFUSED`, "That Google
   account can't sign in here. Use the email address your admin added." It now names the
-  domains (D-14-19), and is shorter, so there is less to scroll past at the largest text.
+  domains (D-14-19).
 - **D-14-6 · Callback errors show one of two fixed messages, never the raw value**
   (`googleSignInMessage`). `?error=AccessDenied` shows D-14-5's message. Any other value
   shows "Google sign-in didn't finish. Try again, or sign in with your email and

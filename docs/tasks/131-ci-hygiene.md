@@ -88,9 +88,9 @@ D-02-1, D-02-4, D-06-1, D-06-2, D-08-1, D-111-2, D-118-1, D-118-7.
   weekly run may rarely find it old enough. If no docker PR has come in a month, shorten
   or drop the cooldown on the two image entries; that departs from D-118-7 and needs the
   owner. The pins themselves are at most a day old, younger than the cooldown allows.
-- **Merge order with PR #167:** its `0006_sign_ins.sql` has no checksum line. Whichever
-  of #167 and #131 merges second must append it (`npm run db:generate` records any
-  unrecorded `.sql`), or the test fails on `main`.
+- ~~**Merge order with PR #167:** its `0006_sign_ins.sql` has no checksum line.~~
+  Closed: #131 merged first, and merging `main` into #167 ran `npm run db:generate`,
+  which appended `0006_sign_ins.sql` to `drizzle/checksums.sha256` (D-131-9).
 - **Owner check after merge:** Dependabot works from the default branch, so whether it
   accepts the `docker` and `docker-compose` entries shows only once this is on `main`
   (Insights → Dependency graph → Dependabot).
