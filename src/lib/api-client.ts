@@ -21,10 +21,10 @@ const isFieldIssue = (issue: unknown): issue is FieldIssue =>
   typeof field(issue, "path") === "string" && typeof field(issue, "message") === "string";
 
 /*
- * Every contract route answers in the envelope, but a proxy, Auth.js, the
- * platform or the service worker may not, and their words are not the app's
- * to show: only the status is kept (#165). Known by its shape, not by a code
- * this build knows, so a newer server's code still reaches the caller.
+ * Every contract route answers in the envelope, but a proxy, Auth.js or the
+ * platform may not, and their words are not the app's to show: only the
+ * status is kept (#165). Known by its shape, not by a code this build knows,
+ * so a newer server's code still reaches the caller.
  */
 function readFailure(body: unknown): Failure {
   const error = field(body, "error");

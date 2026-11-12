@@ -95,8 +95,8 @@ describe("apiFetch", () => {
   });
 
   describe("an answer from outside the contract", () => {
-    // A proxy, Auth.js, the platform or the service worker can answer without
-    // withContract's envelope (#165). Real Responses, so parsing is the platform's.
+    // A proxy, Auth.js or the platform can answer without withContract's
+    // envelope (#165). Real Responses, so parsing is the platform's.
     const answer = (response: Response) =>
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue(response));
     const json = (status: number, body: unknown) =>

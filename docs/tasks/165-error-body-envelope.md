@@ -1,6 +1,6 @@
 # #165 · ApiRequestError reads any error body, not only the envelope
 
-- **Status:** In progress (branch `fix/165-error-body-envelope`, not pushed)
+- **Status:** Done (PR #169)
 - **Phase:** 7 - Hardening
 - **Depends on:** #33, #85, #119
 
@@ -39,10 +39,11 @@ Client only: no contract or schema change.
   _Why:_ the old `ErrorBody | undefined` parameter made `apiFetch` cast the parsed body,
   which hid the missing check.
 - **D-165-5 · In the sync queue, a JSON refusal outside the envelope gets the outcome
-  for its status, as an HTML or empty body already did.** `400` and `413` turn isolation
-  on, and quarantine a record sent alone as `invalid` (D-33-6, D-126-11). `401` pauses
-  the queue as signed out (D-85-2, D-33-17). `429` waits out the rate limit. Every other
-  status backs off as a server failure. `classify.ts` is unchanged. The reviewer agreed.
+  for its status, as an HTML or empty body already did (owner, 2026-11-12).** `400` and
+  `413` turn isolation on, and quarantine a record sent alone as `invalid` (D-33-6,
+  D-126-11). `401` pauses the queue as signed out (D-85-2, D-33-17). `429` waits out the
+  rate limit. Every other status backs off as a server failure. `classify.ts` is
+  unchanged. The reviewer agreed.
   _Why:_ such a body used to read as no signal only because the `TypeError` fell into
   `transport.ts`'s catch-all, and D-33-5 keeps no signal for no answer at all. Nothing
   unsent is deleted (D-33-2), and a quarantined record can still be retried with a tap.
