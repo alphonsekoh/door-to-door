@@ -17,9 +17,10 @@ workflow and offline model documented; ADR-style notes for contested decisions.
 - **D-38-3 · The ADR notes are a "Contested decisions" section in `ARCHITECTURE.md`**
   (context, decision, why, consequences), each citing its task records; no `docs/adr/`.
   _Why:_ D-38-1 already makes the task records the ADRs; a second copy would drift.
-- **D-38-4 · Google SSO is documented as "not built (#14)"**, and `auth.google.clientId`
+- ~~**D-38-4 · Google SSO is documented as "not built (#14)"**, and `auth.google.clientId`
   and `AUTH_GOOGLE_SECRET` stay documented as reserved. _Why:_ both exist and are
-  validated at startup; leaving them out would mislead. Reword when #14 lands.
+  validated at startup; leaving them out would mislead. Reword when #14 lands.~~
+  Superseded by D-14-2: #14 is built (owner rulings, 2026-11-05).
 - **D-38-5 · `.env.example` is a placeholder-only checklist of variables to export**, not
   a file the app relies on; tracked through `!.env.example`. Relies on D-75-2 and D-75-16.
   _Why:_ the issue asks for it and contributors need one list. _Amended (fix round 3):_
@@ -72,7 +73,9 @@ compose up` itself was not run (only `docker compose config`). _Why:_ code chang
 - **D-38-17 · `.env.example` suggests a file outside the repo**, sourced with
   `set -a; . ~/door-to-door.env; set +a`, not `.env.local`. _Why:_ Next loads `.env.local`
   too, which would trip the D-75-16 warning and still miss the `tsx` scripts.
-- **D-38-18 · Owner: Google SSO stays "not built yet (#14)";** confirms D-38-4.
+- ~~**D-38-18 · Owner: Google SSO stays "not built yet (#14)";** confirms D-38-4.~~
+  Superseded by D-14-2: the owner ruled on 2026-11-05 that Google becomes the main
+  sign-in.
 - **D-38-19 · Owner: hosting is not chosen;** deployment notes stay provider-neutral
   (D-38-13) until it is.
 - **D-38-20 · Owner: production migrations run from a checkout or a `dev`-stage container

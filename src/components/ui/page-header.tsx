@@ -43,10 +43,13 @@ export function PageHeader({ title, subtitle, back, inline = false }: PageHeader
   return (
     <header className="mb-5">
       <WayBack back={back} />
-      {/* A session's title is whatever an admin typed: a long word breaks
-          rather than push the screen sideways at large text. */}
+      {/* A session's title is whatever an admin typed, and a member's page
+          is subtitled with their email: a long word breaks rather than push
+          the screen sideways. */}
       <h1 className="text-heading font-semibold text-balance break-words">{title}</h1>
-      {subtitle ? <p className="mt-1 text-body text-foreground-muted">{subtitle}</p> : null}
+      {subtitle ? (
+        <p className="mt-1 text-body break-words text-foreground-muted">{subtitle}</p>
+      ) : null}
     </header>
   );
 }

@@ -21,6 +21,9 @@ const created = {
   createdAt: "2026-03-14T11:00:00.000Z",
 };
 
+/* As config.yaml's auth.google.domains has them; t.local stands for a listed one. */
+const DOMAINS = ["gmail.com", "t.local"];
+
 async function open() {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Add someone" }));
@@ -33,14 +36,14 @@ beforeEach(() => {
 
 describe("AddMemberForm", () => {
   it("stays out of the way until asked for", () => {
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   });
 
   it("adds someone with an initial password", async () => {
     const onAdded = vi.fn();
     apiFetch.mockResolvedValue(created);
-    render(<AddMemberForm onAdded={onAdded} />);
+    render(<AddMemberForm onAdded={onAdded} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "new@t.local");
@@ -64,7 +67,7 @@ describe("AddMemberForm", () => {
 
   it("can add an admin", async () => {
     apiFetch.mockResolvedValue({ ...created, role: "admin" });
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "boss@t.local");
@@ -82,7 +85,7 @@ describe("AddMemberForm", () => {
   it("keeps the password on screen so it can be passed on", async () => {
     // There is no invite email; somebody has to read it out.
     apiFetch.mockResolvedValue(created);
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "new@t.local");
@@ -94,13 +97,13 @@ describe("AddMemberForm", () => {
   });
 
   it("does not mask the password from the admin setting it", async () => {
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     await open();
     expect(screen.getByLabelText("Initial password")).toHaveAttribute("type", "text");
   });
 
   it("refuses an empty email before a round trip", async () => {
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Initial password"), "password123");
@@ -111,7 +114,7 @@ describe("AddMemberForm", () => {
   });
 
   it("refuses a password shorter than the contract allows", async () => {
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "new@t.local");
@@ -124,7 +127,7 @@ describe("AddMemberForm", () => {
 
   it("keeps what was typed when the server refuses the email", async () => {
     apiFetch.mockRejectedValue(new Error("That email address already belongs to someone."));
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "alice@t.local");
@@ -137,7 +140,7 @@ describe("AddMemberForm", () => {
 
   it("copes with a non-Error failure", async () => {
     apiFetch.mockRejectedValue("boom");
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
     await user.type(screen.getByLabelText("Email"), "new@t.local");
@@ -148,9 +151,80 @@ describe("AddMemberForm", () => {
   });
 
   it("folds away again on cancel", async () => {
-    render(<AddMemberForm onAdded={vi.fn()} />);
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.getByRole("button", { name: "Add someone" })).toBeInTheDocument();
+  });
+
+  describe("with no password (#14)", () => {
+    it("says how to add someone who signs in with Google only, and where that works", async () => {
+      render(
+        <AddMemberForm onAdded={vi.fn()} googleDomains={["gmail.com", "tjc.sg", "tjc.org"]} />,
+      );
+      await open();
+      expect(screen.getByLabelText("Initial password")).toHaveAccessibleDescription(
+        "Leave empty to sign in with Google only. That works for addresses at gmail.com, tjc.sg or tjc.org.",
+      );
+    });
+
+    it("offers no such thing while Google sign-in is not set up, and asks for a password", async () => {
+      render(<AddMemberForm onAdded={vi.fn()} googleDomains={null} />);
+      const user = await open();
+      expect(screen.getByLabelText("Initial password")).not.toHaveAccessibleDescription();
+      expect(screen.queryByText(/Google/)).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Email"), "new@t.local");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Enter an initial password.");
+      expect(apiFetch).not.toHaveBeenCalled();
+    });
+
+    it("refuses an address Google would not sign in, naming where it works, before a round trip", async () => {
+      render(<AddMemberForm onAdded={vi.fn()} googleDomains={["gmail.com", "tjc.sg"]} />);
+      const user = await open();
+      await user.type(screen.getByLabelText("Email"), "new@example.com");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "Google sign-in works only for addresses at gmail.com or tjc.sg, so they need a password.",
+      );
+      expect(apiFetch).not.toHaveBeenCalled();
+    });
+
+    it("adds them without sending a password, and says they sign in with Google", async () => {
+      apiFetch.mockResolvedValue(created);
+      const onAdded = vi.fn();
+      render(<AddMemberForm onAdded={onAdded} googleDomains={DOMAINS} />);
+      const user = await open();
+
+      await user.type(screen.getByLabelText("Email"), "new@t.local");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+      await waitFor(() => {
+        expect(onAdded).toHaveBeenCalledWith(created);
+      });
+      // No password key at all: the contract's minimum would refuse an empty one.
+      expect(apiFetch).toHaveBeenCalledWith("/users", {
+        method: "POST",
+        body: JSON.stringify({ email: "new@t.local", name: null, role: "member" }),
+      });
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        "new@t.local can sign in with Google.",
+      );
+    });
+
+    it("shows the server's refusal, which is what holds", async () => {
+      // Set up when the page was drawn, and since taken out of config.yaml.
+      apiFetch.mockRejectedValue(
+        new Error("Google sign-in isn't set up here, so they need a password."),
+      );
+      render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
+      const user = await open();
+      await user.type(screen.getByLabelText("Email"), "new@t.local");
+      await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("they need a password");
+    });
   });
 });

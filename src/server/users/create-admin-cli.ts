@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 import type { Database } from "@/db/client";
 import { readSecret, type EnvSource, type ReadTextFile } from "@/lib/config";
+import { inGoogleDomains } from "@/lib/session/google-domains";
 import {
   ADMIN_EXISTS_MESSAGE,
   CreateAdminError,
@@ -8,6 +9,7 @@ import {
   checkAdminEmail,
   checkAdminName,
   checkAdminPassword,
+  checkGoogleOnlyAdmin,
   createFirstAdmin,
   type CreatedAdmin,
 } from "@/server/users/first-admin";
@@ -18,6 +20,11 @@ import {
  * The password is never a flag: arguments end up in shell history and in
  * `ps` output for anyone on the host. It comes from ADMIN_PASSWORD (or
  * ADMIN_PASSWORD_FILE) or, on a terminal, from a prompt that does not echo.
+ *
+ * Left empty at the prompt, it makes an admin who signs in with Google only
+ * (#14), once the email has been typed again: a typo there would leave an
+ * admin nobody can sign in as, and this works only once. Offered only for an
+ * address on one of the domains Google signs in for.
  */
 
 export const USAGE = 'Usage: npm run create-admin -- --email <address> [--name "<name>"]';
@@ -31,6 +38,8 @@ export type CreateAdminIo = {
   readFile: ReadTextFile;
   /* Undefined when there is no terminal to ask on. */
   prompt: ((question: string) => Promise<string>) | undefined;
+  /* config.yaml's auth.google.domains, or null when Google sign-in is not set up. */
+  googleDomains: readonly string[] | null;
 };
 
 type Args = { email: string; name: string | null };
@@ -61,7 +70,8 @@ export function parseCreateAdminArgs(argv: readonly string[]): Args {
   };
 }
 
-async function readPassword(io: CreateAdminIo): Promise<string> {
+/* Null for an admin who signs in with Google only. */
+async function readPassword(io: CreateAdminIo, email: string): Promise<string | null> {
   const fromEnv = readSecret("ADMIN_PASSWORD", io.env, io.readFile);
   if (fromEnv !== undefined) {
     checkAdminPassword(fromEnv);
@@ -70,8 +80,20 @@ async function readPassword(io: CreateAdminIo): Promise<string> {
   if (io.prompt === undefined) {
     throw new CreateAdminError(`No password given: ${PASSWORD_SOURCES}.`);
   }
+  const googleOnly = io.googleDomains !== null && inGoogleDomains(email, io.googleDomains);
+  const password = await io.prompt(
+    googleOnly ? "Password (leave empty for Google sign-in only): " : "Password: ",
+  );
+  if (password === "") {
+    /* Before the email is asked for again, so a refusal costs one prompt. */
+    checkGoogleOnlyAdmin(email, io.googleDomains);
+    const again = await io.prompt("Type the email again to confirm: ");
+    if (again.trim().toLowerCase() !== email) {
+      throw new CreateAdminError("The emails did not match, so nothing was changed.");
+    }
+    return null;
+  }
   /* Checked before the confirmation, so a short one is caught on the first try. */
-  const password = await io.prompt("Password: ");
   checkAdminPassword(password);
   if ((await io.prompt("Confirm password: ")) !== password) {
     throw new CreateAdminError("The passwords did not match, so nothing was changed.");
@@ -88,6 +110,6 @@ export async function runCreateAdmin(db: Database, io: CreateAdminIo): Promise<C
   if (await adminExists(db)) {
     throw new CreateAdminError(ADMIN_EXISTS_MESSAGE);
   }
-  const password = await readPassword(io);
-  return createFirstAdmin(db, { ...args, password });
+  const password = await readPassword(io, args.email);
+  return createFirstAdmin(db, { ...args, password }, io.googleDomains);
 }

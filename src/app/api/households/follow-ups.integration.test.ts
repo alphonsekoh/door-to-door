@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -27,10 +27,9 @@ const REMOVED = "b9b9b9b9-0000-4000-8003-000000000003";
 const DISMISSED = "b9b9b9b9-0000-4000-8003-000000000004";
 const RESOLVED = "b9b9b9b9-0000-4000-8003-000000000005";
 
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAdmin = () => auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }));
 const asAlice = () =>
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: ALICE, role: "member" }));
 
 beforeEach(async () => {
   await truncateAll(pool);

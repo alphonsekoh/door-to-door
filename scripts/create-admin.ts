@@ -3,7 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { attachPoolErrorHandler } from "../src/db/pool-errors";
 import * as schema from "../src/db/schema";
-import { loadDatabaseUrl } from "../src/server/config";
+import { loadAppConfig, loadDatabaseUrl } from "../src/server/config";
 import { promptHidden } from "../src/server/prompt";
 import { runCreateAdmin } from "../src/server/users/create-admin-cli";
 
@@ -23,8 +23,13 @@ async function main(): Promise<void> {
       prompt: process.stdin.isTTY
         ? (question) => promptHidden(question, process.stdin, process.stdout)
         : undefined,
+      googleDomains: loadAppConfig().auth.google?.domains ?? null,
     });
-    console.log(`Created admin ${admin.email}. Sign in with that email and the password given.`);
+    console.log(
+      admin.googleOnly
+        ? `Created admin ${admin.email}. Sign in with Google as ${admin.email}.`
+        : `Created admin ${admin.email}. Sign in with that email and the password given.`,
+    );
   } finally {
     await pool.end();
   }

@@ -31,11 +31,19 @@ auth:
   # right password (MissingCSRF in the server log). Default: true.
   secureCookies: true
 
-  # Reserved for Google sign-in (#14), which is not built yet: setting it only
-  # makes AUTH_GOOGLE_SECRET (or AUTH_GOOGLE_SECRET_FILE) required at startup.
-  # The client ID is public; the secret never goes in this file.
+  # Google sign-in. Set it to offer "Sign in with Google" above the email
+  # form; leave it out for email and password only. Only addresses an admin
+  # has added can sign in. Setting it makes AUTH_GOOGLE_SECRET (or
+  # AUTH_GOOGLE_SECRET_FILE) required at startup. The client ID is public; the
+  # secret never goes in this file. On the Google OAuth client, the authorised
+  # redirect URI is <public origin>/api/auth/callback/google.
   # google:
   #   clientId: 1234567890-abcdef.apps.googleusercontent.com
+  #   # Required. gmail.com and Google Workspace domains; list a secondary domain's primary too.
+  #   domains: [gmail.com, tjc.sg, tjc.org]
+  #   # TEST ONLY. A stand-in OpenID provider in place of Google, as the
+  #   # end-to-end tests run one. Never set it in production.
+  #   # issuer: http://localhost:4210
 
 rateLimit:
   # Failed sign-in attempts allowed per email within the window, before further

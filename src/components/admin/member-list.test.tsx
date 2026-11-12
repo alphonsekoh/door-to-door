@@ -75,7 +75,7 @@ describe("MemberList", () => {
     apiFetch.mockResolvedValue(
       page([member("u1", "Alice"), member("u2", "Ben", { lastRecordedAt: null })]),
     );
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
 
     expect(await screen.findByText(/^Alice/)).toBeInTheDocument();
     expect(within(row("Alice")).getByText("Member")).toBeInTheDocument();
@@ -84,7 +84,7 @@ describe("MemberList", () => {
 
   it("includes deactivated people, because this is where they come back", async () => {
     apiFetch.mockResolvedValue(page([member("u1", "Alice", { deactivated: true })]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
 
     await screen.findByText(/^Alice/);
     expect(apiFetch).toHaveBeenCalledWith("/users?limit=100&includeDeactivated=true");
@@ -95,7 +95,7 @@ describe("MemberList", () => {
   it("promotes a member", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     await user.click(within(row("Alice")).getByRole("button", { name: "Make an admin" }));
@@ -110,7 +110,7 @@ describe("MemberList", () => {
   it("demotes an admin", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u2", "Ben", { role: "admin" })]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Ben/);
 
     await user.click(within(row("Ben")).getByRole("button", { name: "Make a member" }));
@@ -125,7 +125,7 @@ describe("MemberList", () => {
   it("offers neither control on your own row", async () => {
     // The server refuses both; this saves an admin finding out by trying.
     apiFetch.mockResolvedValue(page([member("admin", "Boss", { role: "admin" })]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
 
     await screen.findByText(/^Boss/);
     expect(screen.queryByRole("button", { name: /Make a/ })).not.toBeInTheDocument();
@@ -133,16 +133,42 @@ describe("MemberList", () => {
     expect(screen.getByText(/cannot change your own role/)).toBeInTheDocument();
   });
 
+  it("links every card, yours included, to that person's sign-ins (#125)", async () => {
+    apiFetch.mockResolvedValue(
+      page([member("admin", "Boss", { role: "admin" }), member("u1", "Alice")]),
+    );
+    render(<MemberList googleDomains={null} />);
+    await screen.findByText(/^Alice/);
+
+    expect(within(row("Alice")).getByRole("link", { name: "Sign-ins for Alice" })).toHaveAttribute(
+      "href",
+      "/admin/team/u1",
+    );
+    expect(within(row("Boss")).getByRole("link", { name: "Sign-ins for Boss" })).toHaveAttribute(
+      "href",
+      "/admin/team/admin",
+    );
+  });
+
+  it("says on deactivating that they are signed out everywhere", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+    render(<MemberList googleDomains={null} />);
+    await screen.findByText(/^Alice/);
+    await user.click(within(row("Alice")).getByRole("button", { name: "Deactivate" }));
+    expect(screen.getByText(/signed out on every phone/)).toBeInTheDocument();
+  });
+
   it("marks which row is you", async () => {
     apiFetch.mockResolvedValue(page([member("admin", "Boss", { role: "admin" })]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     expect(await screen.findByText(/\(you\)/)).toBeInTheDocument();
   });
 
   it("asks before deactivating, and says the records survive", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     await user.click(within(row("Alice")).getByRole("button", { name: "Deactivate" }));
@@ -153,7 +179,7 @@ describe("MemberList", () => {
   it("deactivates nobody until it is confirmed", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     await user.click(within(row("Alice")).getByRole("button", { name: "Deactivate" }));
@@ -166,7 +192,7 @@ describe("MemberList", () => {
   it("deactivates once confirmed", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     await user.click(within(row("Alice")).getByRole("button", { name: "Deactivate" }));
@@ -184,7 +210,7 @@ describe("MemberList", () => {
   it("reactivates somebody", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice", { deactivated: true })]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     await user.click(within(row("Alice")).getByRole("button", { name: "Reactivate" }));
@@ -199,7 +225,7 @@ describe("MemberList", () => {
   it("shows the server's own refusal rather than a generic one", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     apiFetch.mockRejectedValue(new Error("You cannot change your own role."));
@@ -211,7 +237,7 @@ describe("MemberList", () => {
   it("copes with a non-Error change failure", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     apiFetch.mockRejectedValue("boom");
@@ -223,7 +249,7 @@ describe("MemberList", () => {
   it("shows the new person without a manual refresh", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
     apiFetch.mockImplementation((path: string, init?: RequestInit) =>
@@ -242,7 +268,7 @@ describe("MemberList", () => {
   it("offers a retry when the team fails to load", async () => {
     const user = userEvent.setup();
     apiFetch.mockRejectedValue(new Error("Could not reach the server."));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
 
@@ -253,14 +279,14 @@ describe("MemberList", () => {
 
   it("copes with a non-Error load failure", async () => {
     apiFetch.mockRejectedValue("boom");
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the team.");
   });
 
   it("falls back to the email for somebody with no name, in the row and when deactivating", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([{ ...member("u1", "Alice"), name: null }]));
-    render(<MemberList />);
+    render(<MemberList googleDomains={null} />);
     expect(await screen.findAllByText("alice@t.local")).toHaveLength(2);
 
     await user.click(screen.getByRole("button", { name: "Deactivate" }));

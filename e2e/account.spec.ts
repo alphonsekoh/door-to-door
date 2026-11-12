@@ -46,9 +46,10 @@ test.describe("renaming", () => {
  * Over plain http here; the same on a real iPhone over HTTPS is the owner's
  * check.
  */
+/* Each on a sign-in of its own: signing out ends only that one (#125). */
 test.describe("signing out", () => {
   test("Back from sign-in does not return a member to the app", async ({
-    memberPage: page,
+    ownMemberPage: page,
     baseURL,
   }) => {
     await page.goto("/history");
@@ -73,7 +74,7 @@ test.describe("signing out", () => {
   });
 
   test("Back from sign-in does not show an admin screen's members again", async ({
-    adminPage: page,
+    ownAdminPage: page,
   }) => {
     await page.goto("/admin/team");
     await expect(page.getByText(SEED_MEMBER).first()).toBeVisible();
@@ -105,7 +106,7 @@ test.describe("signing out with a request still out", () => {
   test.use({ serviceWorkers: "block" });
 
   test("its answer landing after the sign-out does not sign the member back in", async ({
-    memberPage: page,
+    ownMemberPage: page,
   }) => {
     await page.goto("/account");
     await expect(page.getByLabel("Your name")).not.toHaveValue("");

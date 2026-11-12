@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,9 +23,44 @@ export async function truncateAll(pool: Pool): Promise<void> {
     TRUNCATE follow_ups, visit_teammates, visits, session_team_members, session_teams,
              session_participants, session_households, households, session_blocks,
              outing_sessions,
-             accounts, auth_sessions, verification_tokens, blocks, users
+             accounts, auth_sessions, verification_tokens, sign_ins, blocks, users
     RESTART IDENTITY CASCADE
   `);
+}
+
+/* A sign-in id of its own for each user, fixed so a test can name it. */
+export function testSignInId(userId: string): string {
+  const hex = createHash("sha256").update(`sign-in:${userId}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
+export type TestSession = {
+  user: { id: string; role: "admin" | "member"; deactivated: boolean } & Record<string, unknown>;
+  signInId: string;
+};
+
+/*
+ * What a mocked auth() returns for a user with a live sign-in behind it
+ * (#125): every request checks the token's sign-in, so a session without one
+ * is signed out. Set as the mock's implementation, so the row is written when
+ * the handler asks, after whatever the test truncated or seeded:
+ *
+ *   auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }))
+ *
+ * A user that does not exist gets no row, and an ended sign-in is written
+ * again on the next call; a test about ending sign-ins resolves the mock once.
+ */
+export async function signedInAs(
+  pool: Pool,
+  user: { id: string; role?: "admin" | "member" } & Record<string, unknown>,
+): Promise<TestSession> {
+  const signInId = testSignInId(user.id);
+  await pool.query(
+    `INSERT INTO sign_ins (id, user_id) SELECT $1, id FROM users WHERE id = $2
+     ON CONFLICT (id) DO NOTHING`,
+    [signInId, user.id],
+  );
+  return { user: { role: "member", deactivated: false, ...user }, signInId };
 }
 
 /*

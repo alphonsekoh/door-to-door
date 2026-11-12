@@ -1,13 +1,14 @@
-import { eq } from "drizzle-orm";
 import { auth } from "@/auth";
 import { getDatabase, type Database } from "@/db/client";
-import { users, type Role } from "@/db/schema";
+import type { Role } from "@/db/schema";
 import {
   requireAdmin,
   requireUser,
   type SessionLike,
   type SessionUser,
 } from "@/server/auth/guards";
+import { checkSignIn } from "@/server/auth/sign-ins";
+import { AccountDeactivatedError, UnauthenticatedError } from "@/server/http/errors";
 
 /*
  * Where a request's identity is decided.
@@ -16,7 +17,9 @@ import {
  * role and deactivated claims are written at sign-in and stay valid until the
  * token expires, so trusting them would leave a deactivated account working
  * and a demoted admin still an admin. Both are read from the database here,
- * on every request: one primary-key lookup.
+ * on every request, with the token's sign-in in the same query: a sign-in
+ * that has ended (signed out, ended by an admin, or by a deactivation) is
+ * signed out however long its token has left (#125).
  *
  * Deliberately uncached. Any TTL is a window in which a deactivated account
  * still works, and the cache would be per-process, so with several instances
@@ -24,41 +27,37 @@ import {
  *
  * Returning a SessionLike keeps requireUser/requireRole/requireAdmin pure.
  */
-export async function resolveSession(db: Database, session: SessionLike): Promise<SessionLike> {
+
+type ResolvedUser = Required<Pick<SessionUser, "id" | "email" | "name" | "role">>;
+
+/* A deactivated account carries no sign-in: it may not use one. */
+export type ResolvedSession =
+  | { user: ResolvedUser & { deactivated: false }; signInId: string }
+  | { user: ResolvedUser & { deactivated: true } };
+
+export async function resolveSession(
+  db: Database,
+  session: SessionLike,
+): Promise<ResolvedSession | null> {
   const id = session?.user?.id;
   if (typeof id !== "string" || id === "") {
     return null;
   }
 
-  const rows = await db
-    .select({
-      email: users.email,
-      name: users.name,
-      role: users.role,
-      deactivatedAt: users.deactivatedAt,
-    })
-    .from(users)
-    .where(eq(users.id, id))
-    .limit(1);
-
-  const row = rows[0];
-  // The token outlived the account: treated as signed out, not as an error.
-  if (!row) {
+  const checked = await checkSignIn(db, id, session?.signInId);
+  // The token outlived the account, or its sign-in ended: signed out, not an error.
+  if (checked.status === "no-user" || checked.status === "ended") {
     return null;
   }
-  return {
-    user: {
-      id,
-      email: row.email,
-      name: row.name,
-      role: row.role,
-      deactivated: row.deactivatedAt !== null,
-    },
-  };
+  const { email, name, role } = checked.account;
+  if (checked.status === "deactivated") {
+    return { user: { id, email, name, role, deactivated: true } };
+  }
+  return { user: { id, email, name, role, deactivated: false }, signInId: checked.signInId };
 }
 
 /* A lookup failure propagates: it must surface as a 500, never as "allowed". */
-export async function currentSession(): Promise<SessionLike> {
+export async function currentSession(): Promise<ResolvedSession | null> {
   // auth() first: it opts the page into dynamic rendering, so the database
   // (and config.yaml) are never touched while `next build` prerenders.
   const session = await auth();
@@ -72,4 +71,17 @@ export async function currentSession(): Promise<SessionLike> {
 export async function currentUser(role?: Role): Promise<SessionUser> {
   const session = await currentSession();
   return role === "admin" ? requireAdmin(session) : requireUser(session);
+}
+
+/* The caller and the sign-in making this request, for the handlers that act on sign-ins. */
+export async function currentSignIn(role?: Role): Promise<{ user: SessionUser; signInId: string }> {
+  const session = await currentSession();
+  if (session === null) {
+    throw new UnauthenticatedError();
+  }
+  if (!("signInId" in session)) {
+    throw new AccountDeactivatedError();
+  }
+  const user = role === "admin" ? requireAdmin(session) : requireUser(session);
+  return { user, signInId: session.signInId };
 }

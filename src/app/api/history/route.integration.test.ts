@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -19,10 +19,9 @@ const JUNE = "badbadba-0000-4000-8002-000000000002";
 const H_A = "badbadba-0000-4000-8003-000000000001";
 const H_B = "badbadba-0000-4000-8003-000000000002";
 
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAdmin = () => auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }));
 const asAlice = () =>
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: ALICE, role: "member" }));
 
 const all = (q = "") => allHistory(new Request(`https://test.local/api/history${q}`));
 const mine = (q = "") => ownHistory(new Request(`https://test.local/api/history/mine${q}`));

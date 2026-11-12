@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -21,7 +21,7 @@ const TONIGHT = "aceaceac-0000-4000-8002-000000000002";
 const VISIT = "01960000-0000-7000-8000-00000000ce01";
 
 const as = (id: string, role: "admin" | "member") => () =>
-  auth.mockResolvedValue({ user: { id, role, deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id, role }));
 const asAdmin = as(ADMIN, "admin");
 const asAlice = as(ALICE, "member");
 const asBen = as(BEN, "member");
@@ -308,8 +308,8 @@ describe("suggesting a return visit", () => {
   it("lets exactly one of two members suggesting the same door at once succeed", async () => {
     // The database decides the race; there is no window between a check and the insert.
     auth
-      .mockResolvedValueOnce({ user: { id: ALICE, role: "member", deactivated: false } })
-      .mockResolvedValueOnce({ user: { id: BEN, role: "member", deactivated: false } });
+      .mockImplementationOnce(() => signedInAs(pool, { id: ALICE, role: "member" }))
+      .mockImplementationOnce(() => signedInAs(pool, { id: BEN, role: "member" }));
     const responses = await Promise.all([
       create({ householdId: HOUSEHOLD, note: "Alice's" }),
       create({ householdId: HOUSEHOLD, note: "Ben's" }),

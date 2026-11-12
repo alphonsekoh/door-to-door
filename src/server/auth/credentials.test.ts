@@ -105,7 +105,7 @@ describe("over-long credentials", () => {
 
   it("uses the caps POST /users enforces, so no account can hold a longer value", () => {
     expect(MAX_EMAIL_LENGTH).toBe(zCreateUserRequest.shape.email.maxLength);
-    expect(MAX_PASSWORD_LENGTH).toBe(zCreateUserRequest.shape.password.maxLength);
+    expect(MAX_PASSWORD_LENGTH).toBe(zCreateUserRequest.shape.password.unwrap().maxLength);
   });
 });
 

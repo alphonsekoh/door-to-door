@@ -19,7 +19,8 @@ note (D-38-21).
   (D-08-2, D-09-4 pattern).
 - **D-105-2 · Hashed with the app's own `hashPassword`.** The integration test signs in
   through `authorizeCredentials`. _Why:_ the acceptance criterion is "can sign in", not
-  "row has a hash".
+  "row has a hash". _Refined by D-14-13 (owner, 2026-11-05):_ a Google-only admin has no
+  hash, and its test passes the Google gate (`allowGoogleSignIn`).
 - **D-105-3 · Refuses if any admin exists, deactivated ones included; nothing changes.**
   _Why:_ the script must never become a second way to add admins; later admins are added
   on Admin → Team. Owner decision: confirmed; a database left adminless by a hand edit is
@@ -41,12 +42,16 @@ note (D-38-21).
   is claimed only for the prompt and the file; the README recommends
   `ADMIN_PASSWORD_FILE` or `read -rs ADMIN_PASSWORD` without a terminal, and keeps a
   directly set `ADMIN_PASSWORD` for orchestrators and secret managers, since one typed at
-  a prompt lands in history.
+  a prompt lands in history. _Refined by D-14-13 (owner, 2026-11-05):_ at a terminal, with
+  `auth.google` set, an empty password and the email typed again make a Google-only
+  admin. With no terminal and no `ADMIN_PASSWORD(_FILE)` it still refuses. _Refined by
+  D-14-23 (owner, 2026-11-12):_ only for an address in `auth.google.domains`.
 - **D-105-8 · Input follows the app's rules.** Email and password use the contract's
   `CreateUserRequest` (email up to 320, password 8 to 200) plus
   `assertPasswordAcceptable`; the email is trimmed and lower-cased (D-31-1); `--name`
   uses the own-name rule (D-74-4). _Why:_ an admin made here is indistinguishable from
-  one made in the app.
+  one made in the app. _Refined by D-14-13:_ the password is optional, as in
+  `CreateUserRequest` (D-14-12), and its rules apply only when one is given.
 - **D-105-9 · Fix round: the race test forces the interleaving.** It holds the advisory
   lock on another connection, waits until the run blocks in `pg_locks`, inserts an admin,
   releases, and expects the refusal. _Why:_ the timing-based version failed only about one

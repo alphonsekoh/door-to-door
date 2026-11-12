@@ -4,15 +4,23 @@ import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { forgetSentRecords } from "@/lib/sync/forget-sent";
 import { fetchSignedIn } from "@/lib/sync/signed-in";
 
-type SignOut = (options: { redirect: false }) => Promise<{ url: string }>;
+/* Typed as next-auth/react's, but read as what the server may really send. */
+type SignOut = (options: { redirect: false }) => Promise<{ url?: unknown }>;
 
 /*
  * The answer to any request the proxy sees with a session sets the cookie
- * again, refreshed by its session check, and a sign-out cannot take the
- * token back (D-83-15). So the answer to a request sent just before signing
- * out, arriving just after, puts the cookie back. Each can do that once, and
- * a page has only a few in flight, so a session still there after this many
- * sign-outs is not going away.
+ * again, refreshed by its session check. So the answer to a request sent just
+ * before signing out, arriving just after, puts the cookie back. Its sign-in
+ * has ended on the server (#125), so the session check below names nobody
+ * and clears it. A server that could not end it answers the sign-out itself
+ * with a failure (#162), which signOutOnce throws on first.
+ *
+ * The loop stays for a check that still names someone after a sign-out that
+ * held: the session endpoint keeps the cookie through a database outage
+ * (D-125-13), and a server from before #125, mid-deploy, ends no sign-in at
+ * all. Each answer can put the cookie back once, and a page has only a few
+ * in flight, so a session still there after this many sign-outs is not
+ * going away.
  */
 const MAX_SIGN_OUTS = 3;
 
@@ -24,8 +32,17 @@ const CHECK_WITHIN_MS = 5_000;
 /* Set as a sign-out leaves for the sign-in page, which checks once more. */
 const JUST_SIGNED_OUT = "d2d:just-signed-out";
 
+/*
+ * Auth.js names a refused sign-out by the error in the URL it answers with,
+ * and the server names a sign-in it could not end the same way (#162). An
+ * answer with no URL at all, such as Auth.js's configuration error, ended
+ * nothing either.
+ */
 async function signOutOnce(signOut: SignOut): Promise<void> {
   const { url } = await signOut({ redirect: false });
+  if (typeof url !== "string") {
+    throw new Error("Sign-out got an answer with no URL");
+  }
   const refusal = new URL(url, "http://relative.invalid").searchParams.get("error");
   if (refusal !== null) {
     throw new Error(`Sign-out was refused: ${refusal}`);
@@ -107,8 +124,9 @@ export async function signOutAndForget(
  * The sign-in page's second look after a sign-out. The page that signed out
  * lives until this one replaces it, and an answer to one of its requests can
  * still arrive meanwhile; once this page is up, those requests have gone with
- * it. Only one a service worker is still fetching could come later, which
- * only revoking the token on the server would rule out.
+ * it. One a service worker is still fetching can come later still, but the
+ * cookie it brings names a sign-in the server has ended (#125, #162), so it
+ * signs nobody in.
  *
  * Throws, like a sign-out, when the session it finds will not go. Either way
  * it looks only once, so a member who signs in after it cannot be signed out

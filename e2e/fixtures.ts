@@ -9,8 +9,11 @@ import {
   ADMIN_STATE,
   MEMBER_STATE,
   PARTNER_STATE,
+  SEED_ADMIN,
   SEED_BLOCK,
   SEED_LISTED_HOUSEHOLD,
+  SEED_MEMBER,
+  SEED_PASSWORD,
 } from "./accounts";
 
 /*
@@ -286,6 +289,11 @@ type Fixtures = {
   memberPage: Page;
   /* A second member (Ben), for anything that needs two people on one outing. */
   partnerPage: Page;
+  /* Signed in through the form, on a sign-in of their own (#125). Any test
+     that signs out, or ends a sign-in, uses one of these: the saved
+     sign-ins above are shared by every spec after it. */
+  ownAdminPage: Page;
+  ownMemberPage: Page;
   /* Admin's cookies, for setting state up over the API rather than by driving
      six screens to reach the one under test. */
   adminApi: APIRequestContext;
@@ -334,6 +342,32 @@ export const test = base.extend<Fixtures>({
     }
   },
 
+  ownAdminPage: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const check = await watch(page);
+    await signInThroughForm(page, SEED_ADMIN);
+    await use(page);
+    try {
+      await check();
+    } finally {
+      await context.close();
+    }
+  },
+
+  ownMemberPage: async ({ browser }, use) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const check = await watch(page);
+    await signInThroughForm(page, SEED_MEMBER);
+    await use(page);
+    try {
+      await check();
+    } finally {
+      await context.close();
+    }
+  },
+
   adminApi: async ({ playwright, baseURL }, use) => {
     const request = await adminRequest(playwright, baseURL);
     await use(request);
@@ -342,6 +376,24 @@ export const test = base.extend<Fixtures>({
 });
 
 export { expect };
+
+/*
+ * Signs in with email and password as a phone does, starting a sign-in of its
+ * own (#125). The button is "Sign in" exactly: "Sign in with Google" sits
+ * above it.
+ */
+export async function signInThroughForm(
+  page: Page,
+  email: string,
+  password = SEED_PASSWORD,
+  path = "/sign-in",
+): Promise<void> {
+  await page.goto(path);
+  await page.getByLabel("Email").fill(email);
+  await page.getByLabel("Password").fill(password);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
+}
 
 /*
  * A block screen loaded by address is live once its docked Save is the

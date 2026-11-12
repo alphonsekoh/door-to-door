@@ -12,6 +12,8 @@ import type { Role } from "@/db/schema";
 
 declare module "next-auth" {
   interface Session {
+    /* The sign-in's server-side record (#125); resolveSession checks it. */
+    signInId?: string;
     user: {
       id: string;
       role: Role;
@@ -29,5 +31,6 @@ declare module "next-auth/jwt" {
   interface JWT {
     role?: Role;
     deactivated?: boolean;
+    signInId?: string;
   }
 }

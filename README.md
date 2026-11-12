@@ -49,14 +49,17 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Decide the follow-up list: review members' suggestions, add households that showed
   interest, take them off again (soft, always with a reason the author sees).
 - View and amend every record, current and historical; see a unit's consolidated history.
-- Manage members (add, change role, deactivate, restore) and session teams.
+- Manage members (add, with or without a password, change role, deactivate, restore)
+  and session teams. See where each member is signed in, and sign them out of one device
+  or all of them.
 
 **In the field**
 
 - Installable on a phone. Visits are saved on the phone first and sent when there is
   signal; a cold start with no signal opens an offline recording screen.
 
-**Not built yet:** Google sign-in (#14). Sign-in is email and password only.
+**Signing in** is with Google, for the addresses an admin has added, with email and
+password as the fallback. Signing out ends that device's sign-in only.
 
 ## Known limits
 
@@ -184,9 +187,11 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
   by the database. A session is door-to-door or follow-up, fixed when it is created. A
   follow-up session goes back to households an admin picked from the follow-up list,
   and its blocks follow them; members record only at households on its list.
-- **Auth** is Auth.js v5 with email and password (argon2id), on JWT sessions. Every
-  handler re-reads the user's role and deactivation from the database; the token's role
-  is a UI hint only.
+- **Auth** is Auth.js v5: Google for the addresses an admin added, and email and password
+  (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
+  every request checks, so a sign-out, an admin or a deactivation ends it. Every handler
+  re-reads the user's role and deactivation from the database; the token's role is a UI
+  hint only.
 - **Settings** are a YAML file read at runtime; secrets come from the environment.
 
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the full picture: layers, the request
@@ -280,7 +285,9 @@ default (D-75-4).
 | `database.url`                      | -       | **Required.** Connection URL **without** username or password                         |
 | `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
 | `auth.secureCookies`                | `true`  | Cookies `Secure` whatever the scheme; `false` for plain http                          |
-| `auth.google.clientId`              | unset   | Google client ID, reserved for Google sign-in (#14, not built)                        |
+| `auth.google.clientId`              | unset   | Google OAuth client ID; set it to offer Google sign-in (see below)                    |
+| `auth.google.domains`               | -       | **Required with `auth.google`.** The domains Google sign-in works for (see below)     |
+| `auth.google.issuer`                | unset   | **Test only:** a stand-in OpenID provider in place of Google; never in production     |
 | `rateLimit.signInAttempts`          | `10`    | Failed sign-in attempts per email within the window                                   |
 | `rateLimit.signInAttemptsPerClient` | `30`    | Failed sign-in attempts per client address within the window                          |
 | `rateLimit.signInAttemptsGlobal`    | unset   | Failed sign-in attempts app-wide: an incident switch, see below                       |
@@ -291,6 +298,31 @@ default (D-75-4).
 Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
 `database.url` may carry only the `sslmode` and `application_name` query parameters;
 credentials in it are refused (D-75-3).
+
+**Google sign-in** needs an OAuth client of type "Web application" in the Google Cloud
+console. Register `<public origin>/api/auth/callback/google` as its authorised redirect
+URI (for local development, `http://localhost:3000/api/auth/callback/google`). Put the
+client ID in `auth.google.clientId` and export the client secret as
+`AUTH_GOOGLE_SECRET`. Only an address an admin has added (on **Admin → Team**, or with
+`create-admin`) can sign in, once Google has verified it. Anyone else, and a deactivated
+account, gets the same refusal, and signing in never creates an account. Without
+`auth.google`, sign-in is email and password only, and every account needs a password.
+No real credentials are needed for the tests: E2E runs a stand-in provider (D-14-14).
+
+List in `auth.google.domains` only `gmail.com` and domains on Google Workspace, lower
+case, with no `@` (D-14-19, D-14-20). Google sign-in works only at those domains,
+matched exactly: no subdomains, and `googlemail.com` is not `gmail.com`. Members
+elsewhere sign in with email and password, so add them with one.
+
+- Google vouches for an address only at `gmail.com`, or for a Workspace account. On any
+  other listed domain a member must use their Workspace account; a personal Google
+  account made on that address is refused, since that mailbox could have changed hands.
+- Add a Gmail address exactly as Google has it, dots included.
+- If a listed domain is a Workspace **alias** of another (as `tjc.org` may be of
+  `tjc.sg`), rather than a secondary domain, Google reports the member's address at the
+  primary domain. Add those members at the primary domain.
+- Removing `auth.google`, or a domain from the list, strands the Google-only accounts it
+  covered, a Google-only first admin included. No password can be added in the app.
 
 `rateLimit.signInAttemptsGlobal` is an **incident switch**, off unless set. Once that many
 sign-ins have failed within the window, every new sign-in is refused, the correct password
@@ -327,7 +359,7 @@ both is a startup error (D-75-2).
 | ------------------------------------ | --------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
 | `DATABASE_USER`, `DATABASE_PASSWORD` | yes                                     | app, `db:*` scripts | Added to `database.url`, percent-encoded for you                                                    |
 | `AUTH_SECRET`                        | yes                                     | app                 | Signs session cookies. 32+ random characters, not a placeholder (D-75-6): `openssl rand -base64 32` |
-| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google client secret, reserved for #14                                                              |
+| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google OAuth client secret                                                                          |
 
 **Not secret, all optional** (the test URLs carry credentials, but only for throwaway local databases)
 
@@ -343,6 +375,7 @@ both is a startup error (D-75-2).
 | `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8) |
 | `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                 |
 | `E2E_PORT`                                 | `3210`                                                           | E2E only: the port the suite serves the build on                                                                                                            |
+| `E2E_GOOGLE_PORT`                          | `E2E_PORT` + 1000                                                | E2E only: the port of the stand-in Google provider (`e2e/fake-google.ts`)                                                                                   |
 | `FC_SEED`, `FC_RUNS`                       | `34`, `150`                                                      | Offline sync fuzz test: replay or extend it                                                                                                                 |
 | `CI`                                       | unset                                                            | Playwright: forbids `test.only`, never reuses a running server, GitHub reporter                                                                             |
 
@@ -474,14 +507,17 @@ npm run test:e2e
 Playwright builds the app, serves the standalone output and drives it on two phone
 profiles, **Pixel 5 (Chromium)** and **iPhone 13 (WebKit)**. It creates and reseeds its
 own `door_to_door_e2e` database, so it never disturbs the integration suite. The specs in
-`e2e/` cover signing in and the role split, recording a visit (with and without signal),
-a session's lifecycle, a follow-up session, teams, the account screen and sign-out, and
-the PWA (the worker, offline fallback, caching and phone layout). Three offline-navigation
-tests are skipped on WebKit because Playwright's WebKit offline emulation bypasses the
-service worker (D-32-18). The browser runs at UTC+14 and the server at UTC−12, so their
-dates always differ, and a spec fails on any hydration mismatch on a page it loads,
-attributes included (D-117-64). It fails on any Content Security Policy violation too:
-the policy only reports for now (#146), so nothing else would notice one.
+`e2e/` cover signing in and the role split, Google sign-in against a local stand-in
+(never the real Google), an admin ending a member's sign-ins, recording a visit (with and
+without signal), a session's lifecycle, a follow-up session, teams, the account screen
+and sign-out, and the PWA (the worker, offline fallback, caching and phone layout).
+Four offline tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit offline
+emulation bypasses the service worker (D-32-18), and two in `sign-ins.spec` because it
+cannot hold or stop the worker's requests (R-138). The browser runs at UTC+14 and the
+server at UTC−12, so their dates always differ, and a spec fails on any hydration
+mismatch on a page it loads, attributes included (D-117-64). It fails on any Content
+Security Policy violation too: the policy only reports for now (#146), so nothing else
+would notice one.
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.
@@ -599,36 +635,45 @@ docker run -p 3000:3000 \
   npm run create-admin -- --email lead@example.org --name "Lead Organiser"
   ```
 
-  It prompts twice for the password without echoing it. Without a terminal, point
+  It prompts twice for the password without echoing it. With Google sign-in set up in
+  `config.yaml` and an address in `auth.google.domains`, leave the password empty to make
+  an admin who signs in with Google only; it then asks for the email again, since a typo
+  would leave an admin nobody can sign in as. Without a terminal, point
   `ADMIN_PASSWORD_FILE` at a file holding it, or read it into the environment unechoed
-  with `read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD`. Setting `ADMIN_PASSWORD`
-  directly is meant for orchestrators and secret managers, not for typing at a prompt.
+  with `read -rs ADMIN_PASSWORD && export ADMIN_PASSWORD`.
+  Setting `ADMIN_PASSWORD` directly is meant for orchestrators and secret managers, not
+  for typing at a prompt.
   There is no `--password` flag, so through the prompt or the file the password never
   lands in shell history or `ps`. The email and password follow the rules of
-  **Admin → Team** (a valid address, 8 to 200 characters).
+  **Admin → Team** (a valid address, and a password of 8 to 200 characters when there is
+  one). A Google-only admin needs a terminal.
   The script refuses, changing nothing, if any admin already exists, deactivated ones
   included: later admins are added in the app.
 
 ## Troubleshooting
 
-| Symptom                                                         | Cause and fix                                                                                                                   |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                               |
-| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. `db:migrate`, `db:seed` and `db:reset` never read `.env`.    |
-| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                              |
-| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                              |
-| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                         |
-| `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` from the directory the server runs in. Move settings to `config.yaml`, export secrets, delete it.          |
-| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running. |
-| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                            |
-| `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.        |
-| Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                   |
-| "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.       |
-| "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.  |
-| Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).             |
-| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.     |
-| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                            |
-| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                       |
+| Symptom                                                         | Cause and fix                                                                                                                                                                                        |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Cannot start: Configuration file not found at .../config.yaml` | Copy `config.example.yaml` to `config.yaml`, or point `CONFIG_PATH` at your file.                                                                                                                    |
+| `Cannot start: AUTH_SECRET is not set` (or `DATABASE_USER`...)  | Export the variable in the shell that starts the server or script. `db:migrate`, `db:seed` and `db:reset` never read `.env`.                                                                         |
+| `AUTH_SECRET must be a random value of at least 32 characters`  | It is short or looks like a placeholder (`changeme`, `example`...). Use `openssl rand -base64 32`.                                                                                                   |
+| `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                                                                                                   |
+| `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                                                                                              |
+| `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` from the directory the server runs in. Move settings to `config.yaml`, export secrets, delete it.                                                                               |
+| `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running.                                                                      |
+| The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                                                                                                 |
+| `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.                                                                             |
+| Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                                                                                        |
+| "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.                                                                            |
+| "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.                                                                       |
+| "That Google account can't sign in here."                       | Not on **Admin → Team**, outside `auth.google.domains` or spelled unlike Google's; unverified; a personal Google account on a Workspace domain; or deactivated. Add, fix or restore it.              |
+| "Could not sign out."                                           | No signal, or the server could not end the sign-in (`EventError` logged). The phone is still signed in; try again.                                                                                   |
+| "Google sign-in didn't finish."                                 | The round trip failed. Check that the OAuth client's redirect URI is `<public origin>/api/auth/callback/google` and that `AUTH_GOOGLE_SECRET` is right; the server log names the Auth.js error type. |
+| Every phone shows "Signed out" after upgrading                  | Tokens from before sign-ins were recorded (#125) name no sign-in, so each phone signs in once more. Records not yet sent stay on the phone and send after.                                           |
+| Older iPhones stay on "The server is busy" and never send       | The proxy hides the public host, so their writes get `403`. Pass `Host` or set `X-Forwarded-Host` (see Deployment).                                                                                  |
+| A new deploy does not show up on a phone                        | Updates are prompted, never forced. The banner waits while the member still has records being sent; tap it once it appears.                                                                          |
+| The service worker never registers in development               | By design: it is enabled only in production builds. Use `npm run build && npm run start:standalone`.                                                                                                 |
+| The dev server does not hot-reload in Docker                    | Compose sets `WATCHPACK_POLLING`; if you run `next dev` in another container, set it too.                                                                                                            |
 
 ## Project structure
 
@@ -641,8 +686,8 @@ src/
   lib/          framework-free helpers, one folder per domain: pwa, teams, units,
                 history, follow-ups, hooks, session, sync (offline queue), offline
                 (local copy)
-  auth/         the Auth.js entrypoint, imported as @/auth; Google sign-in (#14) goes here
-  server/       server-only services, auth guards, withContract
+  auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
+  server/       server-only services, auth (sign-ins, sign-out, guards), withContract
   db/           Drizzle schema, client and seed data
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)

@@ -47,7 +47,10 @@ deleted, and the CSV guard missed a leading CR.
   stays put (extends D-74-64). An unanswered check lets the sign-out stand. _Why:_ an
   answer to a request sent before the sign-out and delivered after it sets the session
   cookie again (R-137). The check only confirms a sign-out that succeeded, so it waits less
-  than a send's 20 s (D-33-5).
+  than a send's 20 s (D-33-5). _Restated by D-125-21:_ since #125 such a cookie names an
+  ended sign-in, and a sign-out the server could not complete fails first (D-125-20). The
+  loop stays for a session check during an outage, which keeps the cookie (D-125-13), or
+  an old server mid-deploy.
 - **D-129-5 · `/sign-in` looks once more after a sign-out.** Sign-out leaves the
   sessionStorage note `d2d:just-signed-out`. The sign-in form's `finishSignOut` checks once
   on arrival, signs out again as D-129-4 does, and drops the note whatever the outcome; a
@@ -134,10 +137,12 @@ deleted, and the CSV guard missed a leading CR.
 
 ## Known limits
 
-- An answer the service worker is still fetching after `/sign-in` has looked can put the
+- ~~An answer the service worker is still fetching after `/sign-in` has looked can put the
   session cookie back (verifier, Chromium 2 of 2; not reachable in Playwright WebKit;
   R-137). Accepted by the owner for this PR on 2026-11-04 and tracked in #162; D-83-15(b)
-  stands as worded.
+  stands as worded.~~ Closed by D-125-19 (#162): the cookie such an answer brings back
+  names a sign-in the server has ended, so it signs nobody in. D-83-15(b) is superseded
+  by D-125-9.
 - D-129-6: a tab still showing member A while the cookie is already B's deletes A's sent
   records at its sign-out, not B's. Rare, since next-auth refetches the session on focus,
   and nothing unsent is at risk.

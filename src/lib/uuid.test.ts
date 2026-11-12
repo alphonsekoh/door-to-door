@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { uuidv7 } from "@/lib/uuid";
+import { sameUuid, uuidv7 } from "@/lib/uuid";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -49,5 +49,13 @@ describe("uuidv7", () => {
   it("is deterministic given a fixed clock and source of randomness", () => {
     const fixed = () => 0.5;
     expect(uuidv7(1_700_000_000_000, fixed)).toBe(uuidv7(1_700_000_000_000, fixed));
+  });
+});
+
+describe("sameUuid", () => {
+  it("matches an id in either case, and only that id", () => {
+    const id = "5191d000-0000-4000-8000-00000000000a";
+    expect(sameUuid(id, id.toUpperCase())).toBe(true);
+    expect(sameUuid(id, "5191d000-0000-4000-8000-00000000000b")).toBe(false);
   });
 });

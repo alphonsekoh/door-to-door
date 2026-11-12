@@ -1,9 +1,14 @@
 import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { Role } from "@/db/schema";
-import { users, visits } from "@/db/schema";
+import { signIns, users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { checkOwnName } from "@/lib/session/own-name";
+import {
+  GOOGLE_NOT_SET_UP_MESSAGE,
+  inGoogleDomains,
+  outsideGoogleDomainsMessage,
+} from "@/lib/session/google-domains";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
 import { hashPassword } from "@/server/password";
 
@@ -114,14 +119,34 @@ export async function getUser(
   return found;
 }
 
+/*
+ * With no password the account signs in with Google only (#14). That is
+ * refused while Google sign-in is not set up, and for an address outside
+ * `googleDomains`, where Google refuses to sign anyone in: nobody could sign
+ * in as it.
+ */
 export async function createUser(
   db: Database,
-  input: { email: string; name?: string | null | undefined; password: string; role?: Role },
+  input: {
+    email: string;
+    name?: string | null | undefined;
+    password?: string | undefined;
+    role?: Role;
+  },
+  googleDomains: readonly string[] | null,
 ): Promise<UserRow> {
+  const email = input.email.trim().toLowerCase();
+  if (input.password === undefined) {
+    if (googleDomains === null) {
+      throw new ConflictError("conflict", GOOGLE_NOT_SET_UP_MESSAGE);
+    }
+    if (!inGoogleDomains(email, googleDomains)) {
+      throw new ConflictError("conflict", outsideGoogleDomainsMessage(googleDomains));
+    }
+  }
   /* Hashed before the insert so a weak password is refused without leaving a
      half-made account behind. */
-  const passwordHash = await hashPassword(input.password);
-  const email = input.email.trim().toLowerCase();
+  const passwordHash = input.password === undefined ? null : await hashPassword(input.password);
 
   try {
     const inserted = await db
@@ -154,6 +179,11 @@ export async function createUser(
  * other at once queue on the same rows, so the second reads the first's
  * change, and two changes never lock in opposite orders. NO KEY UPDATE never
  * blocks the KEY SHARE a foreign key takes on a user.
+ *
+ * Deactivating also ends every one of the user's sign-ins, after those locks
+ * and in the same transaction (#125). A sign-in being started holds the user
+ * FOR SHARE, so it either lands first and is ended here, or waits and finds
+ * the account deactivated; reactivating then brings none back.
  */
 export async function updateUser(
   db: Database,
@@ -201,6 +231,9 @@ export async function updateUser(
     }
 
     await tx.update(users).set(values).where(eq(users.id, id));
+    if (changes.deactivated === true) {
+      await tx.delete(signIns).where(eq(signIns.userId, id));
+    }
   });
   return getUser(db, id);
 }

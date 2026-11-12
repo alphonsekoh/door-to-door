@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDatabase, resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, truncateAll, signedInAs as withLiveSignIn } from "@/db/testing";
 import { updateOwnName } from "@/server/users/service";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
@@ -20,7 +20,9 @@ const HOUSE = "abababab-0000-4000-8003-000000000001";
 const VISIT = "01960000-0000-7000-8040-000000000001";
 
 const signedInAs = (id: string, overrides: Record<string, unknown> = {}) =>
-  auth.mockResolvedValue({ user: { id, role: "member", deactivated: false, ...overrides } });
+  auth.mockImplementation(() =>
+    withLiveSignIn(pool, { id, role: "member", deactivated: false, ...overrides }),
+  );
 
 const rename = (body: unknown) =>
   PATCH(

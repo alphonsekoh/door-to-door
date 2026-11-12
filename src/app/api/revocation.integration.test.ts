@@ -1,21 +1,25 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { getDatabase, resetDatabase } from "@/db/client";
+import { createTestPool, signedInAs, testSignInId, truncateAll } from "@/db/testing";
 
 /*
  * The token below never changes: it still says "admin, not deactivated", as a
- * real JWT does until it expires. Only the database row moves, and the handlers
- * must follow it on the very next request (#83).
+ * real JWT does until it expires, and names the same sign-in. Only the
+ * database rows move, and the handlers must follow them on the very next
+ * request (#83, #125).
  */
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
 
-const { notFound } = vi.hoisted(() => ({
+const { notFound, redirect } = vi.hoisted(() => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
   }),
+  redirect: vi.fn((to: string) => {
+    throw new Error(`NEXT_REDIRECT ${to}`);
+  }),
 }));
-vi.mock("next/navigation", () => ({ notFound }));
+vi.mock("next/navigation", () => ({ notFound, redirect }));
 
 const me = await import("./users/me/route");
 const visits = await import("./visits/route");
@@ -51,6 +55,7 @@ const teamRoute = await import("./teams/[id]/route");
 const teamMembersRoute = await import("./teams/[id]/members/route");
 const teamMemberRoute = await import("./teams/[id]/members/[userId]/route");
 const { requireAdminPage } = await import("@/server/auth/pages");
+const { updateUser } = await import("@/server/users/service");
 
 const pool = createTestPool();
 const USER = "f1f1f1f1-0000-4000-8000-000000000001";
@@ -273,8 +278,21 @@ beforeEach(async () => {
     BLOCK,
   ]);
   auth.mockReset();
-  auth.mockResolvedValue({ user: { id: USER, role: "admin", deactivated: false } });
+  // Resolved once, as a real token: an ended sign-in stays ended.
+  auth.mockResolvedValue(await signedInAs(pool, { id: USER, role: "admin" }));
 });
+
+const SECOND_ADMIN = "f1f1f1f1-0000-4000-8000-0000000000aa";
+
+/* As an admin does on Team: through the service, which ends the sign-ins too. */
+const setDeactivated = async (deactivated: boolean) => {
+  await pool.query(
+    `INSERT INTO users (id, email, name, role) VALUES ($1,'a2@t.local','Second','admin')
+     ON CONFLICT (id) DO NOTHING`,
+    [SECOND_ADMIN],
+  );
+  await updateUser(getDatabase(), USER, { deactivated }, SECOND_ADMIN);
+};
 
 afterAll(async () => {
   await pool.end();
@@ -307,12 +325,78 @@ describe("a deactivated account, holding the same token", () => {
     expect(rows[0]).toEqual({ name: "User", visits: "0" });
   });
 
-  it("works again once reactivated, without signing in again", async () => {
-    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
-    expect((await me.GET(json("GET", "/users/me"))).status).toBe(403);
+  it("is signed out once reactivated: deactivating ended its sign-in (#125)", async () => {
+    await setDeactivated(true);
+    const deactivated = await me.GET(json("GET", "/users/me"));
+    expect(deactivated.status).toBe(403);
+    expect(await errorCode(deactivated)).toBe("account_deactivated");
 
-    await pool.query("update users set deactivated_at = null where id = $1", [USER]);
+    await setDeactivated(false);
+    const reactivated = await me.GET(json("GET", "/users/me"));
+    expect(reactivated.status).toBe(401);
+    expect(await errorCode(reactivated)).toBe("unauthenticated");
+  });
+});
+
+describe("an ended sign-in, holding the same token (#125)", () => {
+  const endIt = () => pool.query("delete from sign_ins where id = $1", [testSignInId(USER)]);
+
+  it.each([...memberCalls, ...adminCalls, ...extraMemberCalls, ...extraAdminCalls])(
+    "%s is 401 unauthenticated",
+    async (_n, call) => {
+      await endIt();
+      const response = await call();
+      expect(response.status).toBe(401);
+      expect(await errorCode(response)).toBe("unauthenticated");
+    },
+  );
+
+  it("changes nothing when an ended sign-in tries to write", async () => {
+    await endIt();
+    await me.PATCH(json("PATCH", "/users/me", { name: "Hijack" }));
+    await visits.POST(json("POST", "/visits", visitBody()));
+
+    const { rows } = await pool.query<{ name: string; visits: string }>(
+      "select name, (select count(*) from visits) as visits from users where id = $1",
+      [USER],
+    );
+    expect(rows[0]).toEqual({ name: "User", visits: "0" });
+  });
+
+  it("leaves the member's other sign-ins working", async () => {
+    const other = await pool.query<{ id: string }>(
+      "insert into sign_ins (user_id) values ($1) returning id",
+      [USER],
+    );
+    await endIt();
+    // The same member, on their other phone.
+    auth.mockResolvedValueOnce({
+      user: { id: USER, role: "admin", deactivated: false },
+      signInId: other.rows[0]?.id,
+    });
     expect((await me.GET(json("GET", "/users/me"))).status).toBe(200);
+    expect((await me.GET(json("GET", "/users/me"))).status).toBe(401);
+  });
+
+  it("is sent from the admin pages to sign in", async () => {
+    await endIt();
+    await expect(requireAdminPage()).rejects.toThrow("NEXT_REDIRECT /sign-in?reason=signed-out");
+  });
+});
+
+describe("a token from before sign-ins were recorded (#125)", () => {
+  it("is 401: everyone signs in once more", async () => {
+    auth.mockResolvedValue({ user: { id: USER, role: "admin", deactivated: false } });
+    const response = await me.GET(json("GET", "/users/me"));
+    expect(response.status).toBe(401);
+  });
+
+  it("still tells a deactivated member so, rather than signed out", async () => {
+    auth.mockResolvedValue({ user: { id: USER, role: "admin", deactivated: false } });
+    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+    const response = await me.GET(json("GET", "/users/me"));
+    expect(response.status).toBe(403);
+    expect(await errorCode(response)).toBe("account_deactivated");
   });
 });
 
@@ -340,11 +424,11 @@ describe("a demoted admin, holding the same token", () => {
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
-  it("hides the admin pages from a deactivated admin, and restores them on reactivation", async () => {
-    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+  it("hides the admin pages from a deactivated admin, and sends them to sign in once reactivated", async () => {
+    await setDeactivated(true);
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
-    await pool.query("update users set deactivated_at = null where id = $1", [USER]);
-    await expect(requireAdminPage()).resolves.toBeUndefined();
+    await setDeactivated(false);
+    await expect(requireAdminPage()).rejects.toThrow("NEXT_REDIRECT /sign-in?reason=signed-out");
   });
 });
 
@@ -365,9 +449,9 @@ describe("a deleted account, holding the same token", () => {
     expect(await errorCode(response)).toBe("unauthenticated");
   });
 
-  it("is hidden the admin pages", async () => {
+  it("is sent from the admin pages to sign in", async () => {
     await deleteUser();
-    await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    await expect(requireAdminPage()).rejects.toThrow("NEXT_REDIRECT /sign-in?reason=signed-out");
   });
 });
 
@@ -501,11 +585,11 @@ describe("teams and participants, holding the same token", () => {
     expect(await errorCode(response)).toBe("account_deactivated");
   });
 
-  it("works again once reactivated, without signing in again", async () => {
-    await pool.query("update users set deactivated_at = now() where id = $1", [USER]);
+  it("is signed out once reactivated (#125)", async () => {
+    await setDeactivated(true);
     expect((await teamCalls[0]?.[1]())?.status).toBe(403);
-    await pool.query("update users set deactivated_at = null where id = $1", [USER]);
-    expect((await teamCalls[0]?.[1]())?.status).toBe(200);
+    await setDeactivated(false);
+    expect((await teamCalls[0]?.[1]())?.status).toBe(401);
   });
 
   it.each(teamCalls)("%s is 401 once the account is deleted", async (_n, call) => {

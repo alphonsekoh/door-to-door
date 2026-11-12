@@ -40,7 +40,7 @@ afterAll(async () => {
 
 describe("createFirstAdmin on an empty database", () => {
   it("creates one active admin who can sign in with the chosen password", async () => {
-    const created = await createFirstAdmin(db, INPUT);
+    const created = await createFirstAdmin(db, INPUT, null);
 
     expect(created.email).toBe("lead@example.org");
     const { rows } = await pool.query(
@@ -58,14 +58,22 @@ describe("createFirstAdmin on an empty database", () => {
   });
 
   it("stores an argon2id hash, never the password", async () => {
-    await createFirstAdmin(db, INPUT);
+    await createFirstAdmin(db, INPUT, null);
     const [row] = await snapshotUsers();
     expect(row?.password_hash).toMatch(/^\$argon2id\$/);
     expect(row?.password_hash).not.toContain("correct-horse");
   });
 
+  it("stores no hash for an admin who signs in with Google only (#14)", async () => {
+    const created = await createFirstAdmin(db, { ...INPUT, password: null }, ["example.org"]);
+    expect(created).toMatchObject({ email: "lead@example.org", googleOnly: true });
+    expect(await snapshotUsers()).toEqual([
+      { email: "lead@example.org", role: "admin", password_hash: null },
+    ]);
+  });
+
   it("leaves the name empty when none is given", async () => {
-    const created = await createFirstAdmin(db, { ...INPUT, name: null });
+    const created = await createFirstAdmin(db, { ...INPUT, name: null }, null);
     const { rows } = await pool.query("SELECT name FROM users WHERE id = $1", [created.id]);
     expect(rows).toEqual([{ name: null }]);
   });
@@ -78,7 +86,7 @@ describe("createFirstAdmin refusals", () => {
     );
     const before = await snapshotUsers();
 
-    await expect(createFirstAdmin(db, INPUT)).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
+    await expect(createFirstAdmin(db, INPUT, null)).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
     expect(await snapshotUsers()).toEqual(before);
   });
 
@@ -86,14 +94,14 @@ describe("createFirstAdmin refusals", () => {
     await pool.query(
       "INSERT INTO users (email, role, deactivated_at) VALUES ('gone@t.local', 'admin', now())",
     );
-    await expect(createFirstAdmin(db, INPUT)).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
+    await expect(createFirstAdmin(db, INPUT, null)).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
     expect(await snapshotUsers()).toHaveLength(1);
   });
 
   it("does not count members as admins", async () => {
     await pool.query("INSERT INTO users (email, role) VALUES ('member@t.local', 'member')");
     expect(await adminExists(db)).toBe(false);
-    await expect(createFirstAdmin(db, INPUT)).resolves.toMatchObject({
+    await expect(createFirstAdmin(db, INPUT, null)).resolves.toMatchObject({
       email: "lead@example.org",
     });
   });
@@ -102,7 +110,7 @@ describe("createFirstAdmin refusals", () => {
     await pool.query("INSERT INTO users (email, role) VALUES ('lead@example.org', 'member')");
     const before = await snapshotUsers();
 
-    const refusal = createFirstAdmin(db, INPUT);
+    const refusal = createFirstAdmin(db, INPUT, null);
     await expect(refusal).rejects.toBeInstanceOf(CreateAdminError);
     await expect(refusal).rejects.toThrow(
       "lead@example.org already belongs to an account, so nothing was changed.",
@@ -118,7 +126,7 @@ describe("createFirstAdmin refusals", () => {
       await holder.query("BEGIN");
       await holder.query("SELECT pg_advisory_xact_lock(hashtext($1))", [CREATE_ADMIN_LOCK]);
 
-      const run = createFirstAdmin(db, INPUT);
+      const run = createFirstAdmin(db, INPUT, null);
       run.catch(() => undefined);
 
       const deadline = Date.now() + 5_000;

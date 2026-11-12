@@ -15,6 +15,8 @@ export type TokenClaims = {
   sub?: string;
   role?: Role;
   deactivated?: boolean;
+  /* The sign-in's row, written once at sign-in (#125). Not iat: a refresh rewrites that. */
+  signInId?: string;
   [key: string]: unknown;
 };
 
@@ -62,15 +64,21 @@ export function applyUpdateToToken(token: TokenClaims, data: unknown): TokenClai
  */
 export type SessionShape = {
   user?: { id?: string; role?: Role; deactivated?: boolean } | undefined;
+  signInId?: string;
 };
 
-/* Surfaces the token's claims on the session the app reads. */
+/*
+ * Surfaces the token's claims on the session the app reads. The sign-in id
+ * goes with them, for resolveSession to check: auth() hands the app the
+ * session, never the token.
+ */
 export function applyTokenToSession<T extends SessionShape>(session: T, token: TokenClaims): T {
   if (!session.user) {
     return session;
   }
   return {
     ...session,
+    ...(token.signInId === undefined ? {} : { signInId: token.signInId }),
     user: {
       ...session.user,
       ...(token.sub === undefined ? {} : { id: token.sub }),

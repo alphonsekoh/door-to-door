@@ -28,7 +28,9 @@ behaviour change, no renamed exports.
 - **D-115-3 · `auth.ts` moves to `src/auth/index.ts`, imported as `@/auth` (owner).**
   Google SSO (#14) and its pieces land in the same folder. Refines D-13-5: the logic stays
   in `src/server/auth`, only the thin wrapper moves. _Why:_ #14 adds auth code of its own,
-  and one folder keeps it together.
+  and one folder keeps it together. _Amended by D-14-17 (owner, 2026-11-12):_ for Google,
+  the logic is in `src/auth/` too (`google.ts`); the rest of the auth logic stays in
+  `src/server/auth`. ESLint keeps the folder out of components and lib (D-14-18).
 - **D-115-4 · `src/auth/**` is gated at 100%, and the wrapper gets its own test.**
   Amends D-04-2 (adds a glob, changes none), as D-36-10 did. _Why:_ at the root,
   `auth.ts` was outside `coverage.include`; under `src/` with no glob, a drop would still

@@ -58,6 +58,7 @@ describe("migrations", () => {
       "session_participants",
       "session_team_members",
       "session_teams",
+      "sign_ins",
       "users",
       "verification_tokens",
       "visit_teammates",

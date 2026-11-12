@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -33,7 +33,7 @@ const STAMPED = "01960000-0000-7000-8000-00000000ccc1";
 const NEW_ID = "01960000-0000-7000-8000-00000000ccc2";
 
 const as = (id: string, role: "admin" | "member" = "member") =>
-  auth.mockResolvedValue({ user: { id, role, deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id, role }));
 
 const json = (method: string, body: unknown) => ({
   method,

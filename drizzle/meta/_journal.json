@@ -43,6 +43,13 @@
       "when": 1793611903201,
       "tag": "0005_not_blank_text",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793863511337,
+      "tag": "0006_sign_ins",
+      "breakpoints": true
     }
   ]
 }

@@ -6,6 +6,7 @@ import {
   zListUsersResponse,
 } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
+import { googleDomains } from "@/auth/google";
 import { currentUser } from "@/server/auth/session";
 import { toUser } from "@/server/users/serialise";
 import { createUser, listUsers } from "@/server/users/service";
@@ -44,9 +45,10 @@ export const GET = withContract(
 );
 
 /*
- * There is no invite email in this app, so an admin sets an initial password
- * and hands it over. hashPassword refuses a weak one before anything is
- * written, so a rejected password leaves no half-made account.
+ * There is no invite email in this app. Someone added with a password has it
+ * handed over in person; without one they sign in with Google only (#14).
+ * hashPassword refuses a weak one before anything is written, so a rejected
+ * password leaves no half-made account.
  */
 export const POST = withContract(
   {
@@ -56,12 +58,11 @@ export const POST = withContract(
   },
   async ({ body }) => {
     await currentUser("admin");
-    const user = await createUser(getDatabase(), {
-      email: body.email,
-      password: body.password,
-      name: body.name,
-      role: body.role,
-    });
+    const user = await createUser(
+      getDatabase(),
+      { email: body.email, password: body.password, name: body.name, role: body.role },
+      googleDomains(),
+    );
     return { status: 201, body: toUser(user) };
   },
 );

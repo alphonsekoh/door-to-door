@@ -24,16 +24,24 @@ injected a session object.
   hints for nav and affordance; nothing server-side reads them for authorization. _Why:_
   they are frozen at sign-in.
 - **D-83-4 · Outcomes.** Missing user row: `401`. Deactivated: `403 account_deactivated`.
-  Demoted admin: `403` on admin routes, `404` on admin pages. Reactivated: works again
-  without signing in. _Why:_ matches D-10-4 and the existing page convention.
+  Demoted admin: `403` on admin routes, `404` on admin pages. ~~Reactivated: works again
+  without signing in.~~ _Why:_ matches D-10-4 and the existing page convention.
+  _Partly superseded by D-125-10 (owner, 2026-11-05):_ deactivation ends every sign-in,
+  so a reactivated member signs in again. _Refined by D-125-17:_ a request with no live
+  sign-in, a deleted account's included, is sent from admin pages to sign in, not to a
+  `404`.
 - **D-83-5 · A lookup failure rejects and surfaces as `500`; it never fails open.** A
   session with no usable user id resolves to `null`, and `isAdmin` also requires an id.
-  _Why:_ an outage must not grant access.
+  _Why:_ an outage must not grant access. _Scope stated by D-125-13:_ this governs
+  authorization. Auth.js's session endpoint, which authorizes nothing, keeps the cookie
+  when its sign-in check fails.
 - **D-83-6 · No cache, not even a short TTL.** _Why:_ a TTL is a window where a
   deactivated account still works, and a per-process cache cannot bound it across
   instances.
 - **D-83-7 · Cost accepted.** One indexed lookup per request; two on `GET /users/me`
   (it also loads `lastRecordedAt`). _Why:_ correctness over a saved query on a small table.
+  _Extended by D-125-3 and D-125-6:_ the same query also checks the token's sign-in, and
+  "last used" costs at most one write per sign-in per 15 minutes.
 - **D-83-8 · `currentSession` awaits `auth()` before `getDatabase()`, and a signed-out
   request skips `getDatabase()`.** _Why:_ the reverse order made `next build` read the
   database for prerendered admin pages; `auth()` opts the page into dynamic rendering.
@@ -58,8 +66,10 @@ injected a session object.
   `403 account_deactivated`.** _Why:_ otherwise a stale session cannot be cleared.
 - **D-83-15 · Known limits, accepted.** (a) A demoted admin sees a stale "Admin" nav item
   until the token refreshes; nothing privileged is reachable, and D-74-6 means the token
-  update accepts only a name; closed by D-85-8. (b) The old cookie still works after sign-out (stateless
-  JWT). (c) Auth.js `/api/auth/session` echoes stale claims. (d) Validation runs before
+  update accepts only a name; closed by D-85-8. (b) ~~The old cookie still works after
+  sign-out (stateless JWT).~~ Superseded by D-125-9 (owner, 2026-11-05): signing out ends
+  that sign-in on the server. (c) Auth.js `/api/auth/session` echoes stale claims; partly
+  closed by D-125-14, since an ended sign-in now names nobody. (d) Validation runs before
   auth on some routes, so malformed input gets `400` before `403`; cosmetic.
 
 ## Supersedes and amends

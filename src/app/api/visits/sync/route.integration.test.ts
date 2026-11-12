@@ -1,7 +1,7 @@
 import type * as ConfigModule from "@/server/config";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase } from "@/db/client";
-import { createTestPool, truncateAll } from "@/db/testing";
+import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -29,11 +29,10 @@ const BLOCK = "fafafafa-0000-4000-8001-000000000001";
 const SESSION = "fafafafa-0000-4000-8002-000000000001";
 
 const asAlice = () =>
-  auth.mockResolvedValue({ user: { id: ALICE, role: "member", deactivated: false } });
+  auth.mockImplementation(() => signedInAs(pool, { id: ALICE, role: "member" }));
 
 /* The limiter is per member and persists across tests, so the clock tests use another caller. */
-const asAdmin = () =>
-  auth.mockResolvedValue({ user: { id: ADMIN, role: "admin", deactivated: false } });
+const asAdmin = () => auth.mockImplementation(() => signedInAs(pool, { id: ADMIN, role: "admin" }));
 
 let seq = 0;
 const nextId = () => `01960000-0000-7000-8000-${String(++seq).padStart(12, "0")}`;
@@ -220,7 +219,7 @@ describe("POST /api/visits/sync", () => {
 
     it("counts a clock_skew refusal against the rate limit", async () => {
       // Deliberate: the limiter runs first, so probing sentAt cannot be free.
-      auth.mockResolvedValue({ user: { id: BEN, role: "member", deactivated: false } });
+      auth.mockImplementation(() => signedInAs(pool, { id: BEN, role: "member" }));
       for (let i = 0; i < 30; i += 1) {
         expect((await sync({ sentAt: ago(3_600_000), items: [item()] })).status).toBe(422);
       }

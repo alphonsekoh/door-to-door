@@ -11,7 +11,7 @@ const { NextAuth, buildAuthConfig, config, instance } = vi.hoisted(() => {
   return {
     config,
     instance,
-    NextAuth: vi.fn((_config: () => unknown) => instance),
+    NextAuth: vi.fn((_config: (request?: Request) => unknown) => instance),
     buildAuthConfig: vi.fn(() => config),
   };
 });
@@ -46,12 +46,25 @@ describe("the Auth.js entrypoint", () => {
     expect(buildAuthConfig).toHaveBeenCalledOnce();
   });
 
+  it("passes on the request Auth.js gives its own routes, which check the sign-in (#125)", async () => {
+    await import("@/auth");
+    const factory = NextAuth.mock.calls[0]?.[0];
+    const request = new Request("https://test.local/api/auth/session");
+
+    factory?.(request);
+    expect(buildAuthConfig).toHaveBeenCalledWith(request);
+  });
+
   it("exports what Auth.js returns", async () => {
     const entry = await import("@/auth");
 
     expect(entry.handlers).toBe(instance.handlers);
     expect(entry.auth).toBe(instance.auth);
     expect(entry.signIn).toBe(instance.signIn);
-    expect(entry.signOut).toBe(instance.signOut);
+  });
+
+  it("does not export a server-side sign-out, which could clear the cookie of a sign-in it failed to end (#162)", async () => {
+    const entry = await import("@/auth");
+    expect(entry).not.toHaveProperty("signOut");
   });
 });

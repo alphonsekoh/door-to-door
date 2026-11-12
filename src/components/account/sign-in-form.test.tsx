@@ -1,6 +1,8 @@
 import "fake-indexeddb/auto";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInForm, validate } from "@/components/account/sign-in-form";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
@@ -398,5 +400,182 @@ describe("SignInForm", () => {
     await waitFor(() => {
       expect(goTo).toHaveBeenCalledWith("/");
     });
+  });
+});
+
+/* As config.yaml's auth.google.domains has them. */
+const DOMAINS = ["gmail.com", "tjc.sg", "tjc.org"];
+
+/* Google first when the server has it set up, the email form as the fallback. */
+describe("SignInForm with Google (#14)", () => {
+  const google = () => screen.getByRole("button", { name: "Sign in with Google" });
+
+  it("offers Google first, then the email form under its own exact name", () => {
+    render(<SignInForm googleDomains={DOMAINS} />);
+    const buttons = screen.getAllByRole("button");
+    expect(buttons.map((button) => button.textContent)).toEqual(["Sign in with Google", "Sign in"]);
+    // Nothing else is labelled: "Email" and "Password" each name one field.
+    expect(screen.getAllByLabelText(/email|password/i)).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveClass("btn-secondary");
+  });
+
+  it("is not offered while the server has no Google sign-in", () => {
+    render(<SignInForm />);
+    expect(screen.queryByRole("button", { name: "Sign in with Google" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toHaveClass("btn-primary");
+  });
+
+  it("leaves for Google with where the member was headed, after the clears sign-in makes", async () => {
+    get.mockImplementation((key) => (key === "callbackUrl" ? "/history" : null));
+    signIn.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+
+    await waitFor(() => {
+      expect(signIn).toHaveBeenCalledWith("google", { redirectTo: "/history" });
+    });
+    const leftAt = signIn.mock.invocationCallOrder[0] ?? -Infinity;
+    expect(clearCaches.mock.invocationCallOrder[0]).toBeLessThan(leftAt);
+    expect(clearLocalCopy.mock.invocationCallOrder[0]).toBeLessThan(leftAt);
+    // A second tap while Google's page loads would start a second trip.
+    expect(screen.getByRole("button", { name: "Opening Google…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeDisabled();
+  });
+
+  it("does not follow a callback to another site", async () => {
+    get.mockImplementation((key) => (key === "callbackUrl" ? "//evil.example/" : null));
+    signIn.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+    await waitFor(() => {
+      expect(signIn).toHaveBeenCalledWith("google", { redirectTo: "/" });
+    });
+  });
+
+  it("leaves only once the look after a sign-out is done (D-129-5)", async () => {
+    let done: () => void = () => undefined;
+    finishSignOut.mockReturnValue(
+      new Promise<void>((resolve) => {
+        done = resolve;
+      }),
+    );
+    signIn.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+
+    expect(signIn).not.toHaveBeenCalled();
+    done();
+    await waitFor(() => {
+      expect(signIn).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("still leaves when the clears fail", async () => {
+    clearCaches.mockRejectedValueOnce(new Error("storage is restricted"));
+    clearLocalCopy.mockRejectedValueOnce(new Error("IndexedDB is unavailable"));
+    signIn.mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+    await waitFor(() => {
+      expect(signIn).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("says so, and lets the member try again, when it cannot leave", async () => {
+    signIn.mockRejectedValue(new Error("Failed to fetch"));
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Google sign-in didn't finish. Try again, or sign in with your email and password.",
+    );
+    expect(google()).toBeEnabled();
+  });
+
+  describe("back from Google with ?error=", () => {
+    const withError = (error: string) => {
+      get.mockImplementation((key) => (key === "error" ? error : null));
+    };
+
+    it("gives every refusal one message, whoever has an account, naming Google's domains (D-15-1)", () => {
+      withError("AccessDenied");
+      render(<SignInForm googleDomains={DOMAINS} />);
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "That Google account can't sign in here. Google sign-in is for " +
+          "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
+      );
+    });
+
+    it("gives anything else a message to act on, never the raw value", () => {
+      withError("<b>Configuration</b>");
+      render(<SignInForm googleDomains={DOMAINS} />);
+      const alert = screen.getByRole("alert");
+      expect(alert).toHaveTextContent("Google sign-in didn't finish.");
+      expect(alert.textContent).not.toContain("Configuration");
+    });
+
+    it("shows nothing for it while the server has no Google sign-in", () => {
+      withError("AccessDenied");
+      render(<SignInForm />);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("stands in for the signed-out note, then goes once the member tries again", async () => {
+      get.mockImplementation((key) =>
+        key === "error" ? "AccessDenied" : key === "reason" ? "signed-out" : null,
+      );
+      signIn.mockResolvedValue(failed);
+      const user = userEvent.setup();
+      render(<SignInForm googleDomains={DOMAINS} />);
+      expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Email or password is incorrect.");
+    });
+  });
+});
+
+/*
+ * The page is rendered per request, so the server's HTML holds what this
+ * draws before its scripts arrive. A form there was a plain GET: Go put the
+ * password in the address bar, and what was typed was emptied once live.
+ */
+describe("SignInForm before the page is live (D-113-6)", () => {
+  it("draws Google and the server's message, but nothing to type into or send", () => {
+    get.mockImplementation((key) => (key === "error" ? "AccessDenied" : null));
+    const page = document.createElement("div");
+    page.innerHTML = renderToString(<SignInForm googleDomains={DOMAINS} />);
+
+    expect(page).toHaveTextContent("Sign in with Google");
+    expect(page).toHaveTextContent("That Google account can't sign in here.");
+    expect(page.querySelector("form")).toBeNull();
+    expect(page.querySelector("input")).toBeNull();
+    expect(within(page).queryByText("or")).toBeNull();
+  });
+
+  it("draws the email form once live, as the server drew the rest", async () => {
+    const page = document.createElement("div");
+    page.innerHTML = renderToString(<SignInForm googleDomains={DOMAINS} />);
+    document.body.append(page);
+    const mismatch = vi.fn();
+    const root = await act(() =>
+      hydrateRoot(page, <SignInForm googleDomains={DOMAINS} />, { onRecoverableError: mismatch }),
+    );
+
+    expect(mismatch).not.toHaveBeenCalled();
+    expect(within(page).getByLabelText("Email")).toBeInTheDocument();
+    expect(within(page).getByLabelText("Password")).toBeInTheDocument();
+    expect(within(page).getByRole("button", { name: "Sign in" })).toBeEnabled();
+    act(() => {
+      root.unmount();
+    });
+    page.remove();
   });
 });

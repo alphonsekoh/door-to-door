@@ -389,6 +389,12 @@
   @apply press disabled:opacity-60;
 }
 
+/* Google's G for "Sign in with Google" (#14), drawn as Google draws it: a
+   brand mark kept in public/ like the app icons, not a colour of ours. */
+@utility google-mark {
+  background: url("/google-g.svg") center / contain no-repeat;
+}
+
 @utility btn-danger-outline {
   border: 1px solid var(--app-danger);
   color: var(--app-danger);

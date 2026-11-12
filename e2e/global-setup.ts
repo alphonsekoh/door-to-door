@@ -74,7 +74,7 @@ async function signInAndSave(baseURL: string, email: string, path: string): Prom
   await page.goto(`${baseURL}/sign-in`);
   await page.getByLabel("Email").fill(email);
   await page.getByLabel("Password").fill(SEED_PASSWORD);
-  await page.getByRole("button", { name: /sign in/i }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
   /* Waits on having left the sign-in page, not on a timer: a fixed pause here
      is the first place a suite goes flaky. */
   await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));

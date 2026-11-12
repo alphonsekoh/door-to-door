@@ -1,6 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 import { authLogger } from "@/server/auth/auth-log";
 import { applyTokenToSession, applyUpdateToToken, applyUserToToken } from "@/server/auth/callbacks";
+import { SESSION_MAX_AGE_SECONDS } from "@/server/auth/lifetime";
 
 export type BaseAuthSettings = {
   authSecret: string;
@@ -31,7 +32,7 @@ export function buildBaseAuthConfig({ authSecret, auth }: BaseAuthSettings) {
        * contract and is unused at runtime.
        */
       strategy: "jwt",
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: SESSION_MAX_AGE_SECONDS,
     },
     pages: {
       signIn: "/sign-in",

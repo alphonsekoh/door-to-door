@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { stringify } from "yaml";
+import { FAKE_GOOGLE_CLIENT_ID, FAKE_GOOGLE_CLIENT_SECRET } from "./e2e/fake-google";
 
 /*
  * A deliberately thin E2E layer. Vitest owns UI coverage; these specs exist
@@ -12,6 +13,10 @@ import { stringify } from "yaml";
 
 const PORT = Number(process.env["E2E_PORT"] ?? 3210);
 const BASE_URL = `http://127.0.0.1:${String(PORT)}`;
+
+/* A stand-in for Google's sign-in (#14): nothing here may need the real one. */
+const GOOGLE_PORT = Number(process.env["E2E_GOOGLE_PORT"] ?? PORT + 1000);
+const GOOGLE_ISSUER = `http://127.0.0.1:${String(GOOGLE_PORT)}`;
 
 /* Its own database, on the scratch server the integration suite already uses.
    A separate name rather than a separate container: e2e truncates and reseeds,
@@ -38,10 +43,21 @@ target.username = "";
 target.password = "";
 const CONFIG_PATH = resolve("e2e/.auth/config.yaml");
 mkdirSync(dirname(CONFIG_PATH), { recursive: true });
-/* The suite runs over plain http, where WebKit drops a Secure cookie. */
+/* The suite runs over plain http, where WebKit drops a Secure cookie. Google
+   sign-in is set up against the stand-in, so the sign-in page offers it. */
 writeFileSync(
   CONFIG_PATH,
-  stringify({ database: { url: target.toString() }, auth: { secureCookies: false } }),
+  stringify({
+    database: { url: target.toString() },
+    auth: {
+      secureCookies: false,
+      google: {
+        clientId: FAKE_GOOGLE_CLIENT_ID,
+        issuer: GOOGLE_ISSUER,
+        domains: ["gmail.com", "tjc.sg", "tjc.org"],
+      },
+    },
+  }),
 );
 
 export default defineConfig({
@@ -93,27 +109,37 @@ export default defineConfig({
     { name: "mobile-webkit", use: { ...devices["iPhone 13"] } },
   ],
 
-  webServer: {
-    /*
-     * The production build, not the dev server: dev compiles on first request
-     * and the first navigation of a run would eat the timeout.
-     *
-     * `next start` refuses to serve a standalone build - it warns and then
-     * hands back a shell with no client bundle, which looks exactly like a
-     * broken sign-in form. The standalone server is what Docker runs too.
-     */
-    command: "npm run build && npm run start:standalone",
-    url: BASE_URL,
-    reuseExistingServer: !process.env["CI"],
-    timeout: 180_000,
-    env: {
-      /* UTC-12: the POSIX sign is the other way round. */
-      TZ: "Etc/GMT+12",
-      PORT: String(PORT),
-      HOSTNAME: "127.0.0.1",
-      CONFIG_PATH,
-      ...CREDENTIALS,
-      AUTH_SECRET: process.env["AUTH_SECRET"] ?? "e2e-secret-not-used-anywhere-else",
+  webServer: [
+    {
+      /*
+       * The production build, not the dev server: dev compiles on first
+       * request and the first navigation of a run would eat the timeout.
+       *
+       * `next start` refuses to serve a standalone build - it warns and then
+       * hands back a shell with no client bundle, which looks exactly like a
+       * broken sign-in form. The standalone server is what Docker runs too.
+       */
+      command: "npm run build && npm run start:standalone",
+      url: BASE_URL,
+      reuseExistingServer: !process.env["CI"],
+      timeout: 180_000,
+      env: {
+        /* UTC-12: the POSIX sign is the other way round. */
+        TZ: "Etc/GMT+12",
+        PORT: String(PORT),
+        HOSTNAME: "127.0.0.1",
+        CONFIG_PATH,
+        ...CREDENTIALS,
+        AUTH_SECRET: process.env["AUTH_SECRET"] ?? "e2e-secret-not-used-anywhere-else",
+        AUTH_GOOGLE_SECRET: FAKE_GOOGLE_CLIENT_SECRET,
+      },
     },
-  },
+    {
+      command: "npx tsx e2e/fake-google.ts",
+      url: `${GOOGLE_ISSUER}/.well-known/openid-configuration`,
+      reuseExistingServer: !process.env["CI"],
+      timeout: 30_000,
+      env: { FAKE_GOOGLE_PORT: String(GOOGLE_PORT) },
+    },
+  ],
 });

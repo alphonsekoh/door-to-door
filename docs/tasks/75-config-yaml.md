@@ -58,7 +58,8 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
 - **D-75-16 · One-time `.env found and ignored` warning.** _Why:_ stale `.env` files would
   otherwise silently stop working. _Research:_ R-28.
 - **D-75-17 · ESLint restricts importing `config`/`yaml` from `components` and `lib`.**
-  _Why:_ keeps settings and the file reader out of client bundles.
+  _Why:_ keeps settings and the file reader out of client bundles. _Extended by D-14-18:_
+  `src/auth` (`@/auth`, `@/auth/*` and relative paths) is refused there too.
 - **D-75-18 · `yaml` is a runtime dependency.** _Why:_ the production image reads the file.
 - **D-75-19 · Compose mounts the file at `/config/config.yaml` with a public, local-only
   dev `AUTH_SECRET`; the Docker runner never copies the file.** _Why:_ the image holds no
