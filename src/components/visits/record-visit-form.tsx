@@ -1011,29 +1011,38 @@ export function RecordVisitForm({
   );
 }
 
-/*
- * The form's Save. With no form named it is the stand-in the block screen
- * draws before the page is live: a plain button, so a tap cannot submit
- * natively and reload the page. Such a tap saves nothing, but what was typed
- * and picked before it is kept (#113), so the next tap saves it.
- */
+/* One box for Save and its stand-in, so nothing moves as one replaces the
+   other. */
+const SAVE_BUTTON = "min-h-14 w-full btn-primary rounded-xl text-title font-semibold";
+
+/* The form's Save, naming its form: a DockHost moves the bar out of it. */
 export function SaveAndNext({
   form,
   saving = false,
   next = true,
 }: {
-  form?: string;
+  form: string;
   saving?: boolean;
   next?: boolean;
 }) {
   return (
-    <button
-      type={form === undefined ? "button" : "submit"}
-      form={form}
-      disabled={saving}
-      className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-    >
+    <button type="submit" form={form} disabled={saving} className={SAVE_BUTTON}>
       {saving ? "Saving…" : next ? "Save and next" : "Save"}
+    </button>
+  );
+}
+
+/*
+ * What the block screen draws where Save docks until its script has run
+ * (D-111-40). It has nothing to save with yet, so it says so, dimmed as a
+ * Save that is busy, from the server's HTML alone (#156). A plain button
+ * naming no form, so a tap cannot submit natively and reload the page; what
+ * was typed and picked is kept (#113) for the Save that replaces it.
+ */
+export function SaveNotReady() {
+  return (
+    <button type="button" disabled className={SAVE_BUTTON}>
+      Getting ready…
     </button>
   );
 }

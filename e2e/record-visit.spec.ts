@@ -48,6 +48,23 @@ async function expectTappable(target: Locator): Promise<void> {
     .toBe(true);
 }
 
+/* Wholly on screen and above the bottom nav, as the page first opens; its
+   size, rounded to the pixel. Not where it is: resting at the end of a short
+   form, it moves with whatever the screen's answers add above it. */
+async function clearOfTheNav(
+  page: Page,
+  target: Locator,
+): Promise<{ width: number; height: number }> {
+  const [box, nav] = await Promise.all([
+    target.boundingBox(),
+    page.getByRole("navigation", { name: "Primary" }).boundingBox(),
+  ]);
+  if (box === null || nav === null) throw new Error("Save or the nav is not on screen");
+  expect(box.y, "Save above the top of the screen").toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height, "Save under the nav").toBeLessThanOrEqual(nav.y + 0.5);
+  return { width: Math.round(box.width), height: Math.round(box.height) };
+}
+
 test.beforeEach(async ({ adminApi }) => {
   await ensureActiveSession(adminApi);
 });
@@ -129,9 +146,12 @@ test("Save is on the first paint, above the nav, before any script has run", asy
       });
     });
     await page.goto(`/blocks/${SEED_BLOCK}`);
-    // Plain Save: the server's HTML cannot know whether a next unit follows.
-    const save = page.getByRole("button", { name: "Save", exact: true });
+    /* With no script there is nothing to save with, and it reads so from
+       the server's HTML and styles alone (#156). */
+    const save = page.getByRole("button", { name: "Getting ready…" });
     await expect(save).toBeVisible();
+    await expect(save).toBeDisabled();
+    await expect(save).toHaveCSS("opacity", "0.6");
     const bar = page.locator('[data-dock="nav"]');
     const [saveBox, navBox, barBox, unitBox] = await Promise.all([
       save.boundingBox(),
@@ -188,8 +208,10 @@ test.describe("typed before the page is live (#113)", () => {
     const high = memberPage.getByRole("radio", { name: "High" });
     await high.click();
     await expect(high).toBeChecked();
-    /* The stand-in Save: tapped before the page is live, it saves nothing. */
-    await memberPage.getByRole("button", { name: "Save", exact: true }).click();
+    /* The stand-in Save says it is not ready, and a tap on it saves nothing. */
+    const standIn = memberPage.getByRole("button", { name: "Getting ready…" });
+    await expect(standIn).toBeDisabled();
+    await standIn.click({ force: true });
 
     arrive();
     await untilLive(memberPage);
@@ -255,13 +277,29 @@ test.describe("typed before the page is live (#113)", () => {
     await expect(unit).toHaveValue(EARLY_UNIT);
     await expect(high).toBeChecked();
 
+    /* Save reads as not ready while the screen's script is out (#156), in
+       view above the nav at the size the live Save will be. */
+    const standIn = memberPage.getByRole("button", { name: "Getting ready…" });
+    await expect(standIn).toBeDisabled();
+    await expect(standIn).toHaveCSS("opacity", "0.6");
+    const waiting = await clearOfTheNav(memberPage, standIn);
+
     arrive();
     await untilLive(memberPage);
     await expect(memberPage.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
     await expect(unit).toHaveValue(EARLY_UNIT);
     await expect(high).toBeChecked();
 
-    await memberPage.getByRole("button", { name: "Save and next" }).click();
+    const save = memberPage.getByRole("button", { name: "Save and next" });
+    await expect(standIn).toHaveCount(0);
+    await expect(save).toBeEnabled();
+    await expect(save).toHaveCSS("opacity", "1");
+    expect(
+      await clearOfTheNav(memberPage, save),
+      "Save changed size as the page went live",
+    ).toEqual(waiting);
+
+    await save.click();
     await expect(
       memberPage.getByRole("status").filter({ hasText: `Saved ${EARLY_UNIT}` }),
     ).toBeVisible();

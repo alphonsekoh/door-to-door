@@ -484,17 +484,23 @@ describe("BlockScreen", () => {
     serve(list([]));
     const container = document.createElement("div");
     container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-    // The server cannot know the kind of session, so it promises no next unit.
-    const first = within(container).getByRole("button", { name: "Save" });
+    // With no script yet there is nothing to save with, and it says so (#156).
+    const first = within(container).getByRole("button", { name: "Getting ready…" });
+    expect(first).toBeDisabled();
+    expect(within(container).queryByRole("button", { name: /^Save/ })).toBeNull();
     // At the end of the screen, where it can rise to the nav at any text
-    // size; and, with no script yet to save, a tap must not reload the page.
+    // size; and a tap must not reload the page.
     expect(container.querySelector("form")).not.toContainElement(first);
     expect(first).toHaveAttribute("type", "button");
 
     render(<BlockScreen blockId="b1" />);
     const save = await screen.findByRole("button", { name: "Save and next" });
+    expect(save).toBeEnabled();
     expect(save).toHaveAttribute("type", "submit");
     expect(save).toHaveAttribute("form", document.querySelector("form")?.id);
+    // The same box, so nothing moves as one replaces the other.
+    expect(save).toHaveClass(first.className, { exact: true });
+    expect(screen.queryByRole("button", { name: "Getting ready…" })).toBeNull();
   });
 
   /* On a slow connection the server's HTML is up well before its script
@@ -515,7 +521,7 @@ describe("BlockScreen", () => {
     field.value = "#05-124";
     within(container).getByRole("radio", { name: "Low" }).click();
     // The stand-in: with no script yet, a tap on it does nothing.
-    within(container).getByRole("button", { name: "Save" }).click();
+    within(container).getByRole("button", { name: "Getting ready…" }).click();
 
     const mismatch = vi.fn();
     const root = await act(() => hydrateRoot(container, page, { onRecoverableError: mismatch }));
@@ -661,10 +667,11 @@ describe("BlockScreen", () => {
       });
       const container = document.createElement("div");
       container.innerHTML = renderToString(<BlockScreen blockId="b1" />);
-      expect(within(container).getByRole("button", { name: "Save" })).toHaveAttribute(
+      expect(within(container).getByRole("button", { name: "Getting ready…" })).toHaveAttribute(
         "type",
         "button",
       );
+      expect(within(container).queryByRole("button", { name: /^Save/ })).toBeNull();
 
       render(<BlockScreen blockId="b1" />);
       await waitFor(() => {

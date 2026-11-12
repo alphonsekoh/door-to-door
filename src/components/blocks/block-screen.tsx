@@ -6,7 +6,7 @@ import { BlockViews } from "@/components/blocks/block-views";
 import { DockHost } from "@/components/ui/docked-actions";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { PageHeader } from "@/components/ui/page-header";
-import { SaveAndNext } from "@/components/visits/record-visit-form";
+import { SaveNotReady } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import type {
   ActiveSession,
@@ -267,9 +267,10 @@ export function BlockScreen({
   const guessNext = kind === "regular" || kind === null;
 
   /* The form's Save is docked at the end of the screen, so it is drawn
-     there on the first paint too, before the form can move it. */
+     there on the first paint too, before the form can move it, as not
+     ready until this screen's script has run. */
   return (
-    <DockHost className="space-y-5" standIn={<SaveAndNext next={guessNext} />}>
+    <DockHost className="space-y-5" standIn={<SaveNotReady />}>
       <PageHeader
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
         subtitle={
