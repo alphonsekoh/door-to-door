@@ -201,7 +201,10 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   the reload after an end: the pressed control reads "Signing out…" (and is named so),
   and the list is `aria-busy`, until the list is read again. Extends D-125-16. _Why:_ a
   second Sign out meanwhile would act on rows about to change, and on weak signal a
-  dimmed button looked like nothing happened.
+  dimmed button looked like nothing happened. A failed end is told just above the control
+  pressed (in its row, or above Sign out everywhere) and scrolled into view, and that
+  control reads "Sign out" again at once. With no answer it reads "Could not sign out.
+  Check your connection and try again."; a refusal shows the server's message.
 - **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
   `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
   ids are lower case. Without this, your own current sign-in was not `409`, and "Sign

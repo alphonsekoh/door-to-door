@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
@@ -11,6 +11,9 @@ const BACK = { href: "/admin/team", label: "Team" };
 
 /* Sign out everywhere, as against one sign-in, which is named by its id. */
 const EVERYWHERE = "everywhere";
+
+/* As Account's sign-out says it, for a request that got no answer. */
+const NO_ANSWER = "Could not sign out. Check your connection and try again.";
 
 type State =
   | { status: "loading" }
@@ -27,12 +30,20 @@ type State =
  */
 export function MemberDetail({ userId }: { userId: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
-  /* What was pressed, from the tap until the list is read again: a sign-in's
-     id, or EVERYWHERE. That control says so, and the list is busy. */
+  /* From a tap until the list is read again, the list is busy, and the
+     control pressed (a sign-in's id, or EVERYWHERE) says it is signing out
+     unless that has failed. */
+  const [busy, setBusy] = useState(false);
   const [ending, setEnding] = useState<string | null>(null);
-  const busy = ending !== null;
   const [confirming, setConfirming] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  /*
+   * Drawn just above the control pressed, where the admin is looking: at the
+   * top of a long list it was off the screen. Not drawn once the list read
+   * again no longer has that control, which means it was signed out after
+   * all.
+   */
+  const [failure, setFailure] = useState<{ at: string; message: string } | null>(null);
+  const failureLine = useRef<HTMLParagraphElement>(null);
   /* Only the newest read of the list is shown (D-28-7). */
   const generation = useRef(0);
 
@@ -61,8 +72,15 @@ export function MemberDetail({ userId }: { userId: string }) {
     };
   }, [load]);
 
+  /* At large text the message can reach below the screen or under the nav:
+     brought into view, clear of them, before it is painted. */
+  useLayoutEffect(() => {
+    if (failure !== null) failureLine.current?.scrollIntoView({ block: "nearest" });
+  }, [failure]);
+
   async function end(path: string, pressed: string): Promise<void> {
     setFailure(null);
+    setBusy(true);
     setEnding(pressed);
     try {
       await apiFetch(path, { method: "DELETE" });
@@ -70,7 +88,11 @@ export function MemberDetail({ userId }: { userId: string }) {
       /* Already ended, on another admin's screen or by its own sign-out:
          what was asked for is done, so the list is simply read again. */
       if (!(error instanceof ApiRequestError && error.status === 404)) {
-        setFailure(error instanceof Error ? error.message : "Could not sign that out.");
+        setEnding(null);
+        setFailure({
+          at: pressed,
+          message: error instanceof ApiRequestError ? error.message : NO_ANSWER,
+        });
       }
     }
     setConfirming(false);
@@ -78,7 +100,19 @@ export function MemberDetail({ userId }: { userId: string }) {
        on rows that are about to change. load() never throws. */
     await load();
     setEnding(null);
+    setBusy(false);
   }
+
+  const failureAt = (at: string, className = "") =>
+    failure?.at === at ? (
+      <p
+        ref={failureLine}
+        role="alert"
+        className={`scroll-clear-chrome notice-danger ${className}`}
+      >
+        {failure.message}
+      </p>
+    ) : null;
 
   if (state.status === "loading") {
     return (
@@ -121,12 +155,6 @@ export function MemberDetail({ userId }: { userId: string }) {
           Signed in on
         </h2>
 
-        {failure === null ? null : (
-          <p role="alert" className="notice-danger">
-            {failure}
-          </p>
-        )}
-
         {user.deactivatedAt !== null ? (
           <p className="text-body text-foreground-muted">Deactivated, so signed out everywhere.</p>
         ) : signIns.length === 0 ? (
@@ -154,15 +182,18 @@ export function MemberDetail({ userId }: { userId: string }) {
                 {/* Your own phone is signed out from Account, which also
                     clears what it holds. */}
                 {signIn.current ? null : (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)}
-                    aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
-                    className="mt-3 min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
-                  >
-                    {ending === signIn.id ? "Signing out…" : "Sign out"}
-                  </button>
+                  <>
+                    {failureAt(signIn.id, "mt-3")}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)}
+                      aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
+                      className="mt-3 min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
+                    >
+                      {ending === signIn.id ? "Signing out…" : "Sign out"}
+                    </button>
+                  </>
                 )}
               </li>
             ))}
@@ -170,20 +201,23 @@ export function MemberDetail({ userId }: { userId: string }) {
         )}
 
         {others.length === 0 ? null : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => {
-              setConfirming(true);
-            }}
-            className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
-          >
-            {ending === EVERYWHERE
-              ? "Signing out…"
-              : self
-                ? "Sign out other devices"
-                : "Sign out everywhere"}
-          </button>
+          <>
+            {failureAt(EVERYWHERE)}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                setConfirming(true);
+              }}
+              className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
+            >
+              {ending === EVERYWHERE
+                ? "Signing out…"
+                : self
+                  ? "Sign out other devices"
+                  : "Sign out everywhere"}
+            </button>
+          </>
         )}
       </section>
 

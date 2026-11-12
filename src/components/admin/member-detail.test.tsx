@@ -56,10 +56,14 @@ const deletes = () =>
  * Answers the user at once and each read of the sign-ins with the next of
  * `reads`, which a test can hold and settle in any order.
  */
-function serveReads(user: User, reads: Promise<SignIn[]>[]) {
+function serveReads(
+  user: User,
+  reads: Promise<SignIn[]>[],
+  onDelete: () => Promise<unknown> = () => Promise.resolve(),
+) {
   let next = 0;
   apiFetch.mockImplementation((path: string, init?: RequestInit) => {
-    if (init?.method === "DELETE") return Promise.resolve();
+    if (init?.method === "DELETE") return onDelete();
     if (!path.endsWith("/sign-ins")) return Promise.resolve(user);
     const read = reads[next];
     next += 1;
@@ -149,25 +153,134 @@ describe("MemberDetail (#125)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
-  it("shows the server's reason when it refuses", async () => {
-    const user = userEvent.setup();
-    serve(alice, [signIn("s1", "Chrome on Android")], () =>
-      Promise.reject(new Error("You do not have access to this.")),
+  /*
+   * A failed end is told beside the control pressed, which reads Sign out
+   * again and can be tapped: at the top of a long list the message was off
+   * the screen, and the tap looked as if it did nothing.
+   */
+  describe("when an end fails", () => {
+    const refused = () =>
+      Promise.reject(
+        new ApiRequestError(403, {
+          error: { code: "forbidden", message: "You do not have access to this." },
+        }),
+      );
+
+    async function pressSignOut(onDelete: () => Promise<unknown>) {
+      const user = userEvent.setup();
+      serve(alice, [signIn("s1", "Chrome on Android"), signIn("s2", "Safari on iPhone")], onDelete);
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Safari on iPhone");
+      await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+      return user;
+    }
+
+    /* Settled: the list read again, nothing busy, the control as it was. */
+    async function expectSettledWith(message: string) {
+      const row = card("Safari on iPhone");
+      expect(await within(row).findByRole("alert")).toHaveTextContent(message);
+      await waitFor(() => {
+        expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "false");
+      });
+      const button = within(row).getByRole("button", { name: /^Sign out Safari on iPhone/ });
+      expect(button).toHaveTextContent("Sign out");
+      expect(button).toBeEnabled();
+      expect(screen.getAllByRole("alert")).toHaveLength(1);
+      expect(within(card("Chrome on Android")).queryByRole("alert")).not.toBeInTheDocument();
+    }
+
+    it("shows the server's reason in that row, and lets the admin try again", async () => {
+      await pressSignOut(refused);
+      await expectSettledWith("You do not have access to this.");
+    });
+
+    it.each([
+      ["a request that never arrived", () => Promise.reject(new TypeError("Failed to fetch"))],
+      ["a failure that is not an Error", vi.fn<() => Promise<unknown>>().mockRejectedValue("boom")],
+    ])(
+      "says to check the connection for %s, never the browser's words",
+      async (_name, onDelete) => {
+        await pressSignOut(onDelete);
+        await expectSettledWith("Could not sign out. Check your connection and try again.");
+        expect(screen.queryByText("Failed to fetch")).not.toBeInTheDocument();
+      },
     );
-    render(<MemberDetail userId="u1" />);
-    await screen.findByText("Chrome on Android");
-    await user.click(screen.getByRole("button", { name: /^Sign out Chrome/ }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have access to this.");
-  });
+    it("stops saying Signing out once it has failed, while the list is read again", async () => {
+      const user = userEvent.setup();
+      const afterFailure = held();
+      const iphone = signIn("s2", "Safari on iPhone");
+      serveReads(alice, [Promise.resolve([iphone]), afterFailure.promise], refused);
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Safari on iPhone");
 
-  it("copes with a refusal that is not an Error", async () => {
-    const user = userEvent.setup();
-    serve(alice, [signIn("s1", "Chrome on Android")], vi.fn().mockRejectedValue("boom"));
-    render(<MemberDetail userId="u1" />);
-    await screen.findByText("Chrome on Android");
-    await user.click(screen.getByRole("button", { name: /^Sign out Chrome/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not sign that out.");
+      await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+
+      const row = card("Safari on iPhone");
+      expect(await within(row).findByRole("alert")).toHaveTextContent("You do not have access");
+      expect(within(row).getByRole("button")).toHaveTextContent("Sign out");
+      expect(screen.queryByText("Signing out…")).not.toBeInTheDocument();
+      expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "true");
+
+      afterFailure.settle([iphone]);
+      await waitFor(() => {
+        expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "false");
+      });
+      expect(within(card("Safari on iPhone")).getByRole("button")).toBeEnabled();
+    });
+
+    it("brings the message into view as it is drawn", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        await pressSignOut(refused);
+        const alert = await within(card("Safari on iPhone")).findByRole("alert");
+        expect(scrolled.mock.contexts).toContain(alert);
+        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("tells a failed Sign out everywhere just above that button", async () => {
+      const user = userEvent.setup();
+      serve(alice, [signIn("s1", "Chrome on Android")], refused);
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Chrome on Android");
+
+      await user.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+      await user.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", {
+          name: "Sign out everywhere",
+        }),
+      );
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("You do not have access to this.");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Sign out everywhere" })).toBeEnabled();
+      });
+      expect(alert.nextElementSibling).toBe(
+        screen.getByRole("button", { name: "Sign out everywhere" }),
+      );
+      expect(within(card("Chrome on Android")).queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("draws nothing once the list read again no longer has what was pressed", async () => {
+      const user = userEvent.setup();
+      const phone = signIn("s1", "Chrome on Android");
+      const iphone = signIn("s2", "Safari on iPhone");
+      serveReads(alice, [Promise.resolve([phone, iphone]), Promise.resolve([phone])], refused);
+      render(<MemberDetail userId="u1" />);
+      await screen.findByText("Safari on iPhone");
+
+      await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+
+      // Signed out after all, though the answer was lost.
+      await waitFor(() => {
+        expect(screen.queryByText("Safari on iPhone")).not.toBeInTheDocument();
+      });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
   });
 
   /*
