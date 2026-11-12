@@ -39,11 +39,7 @@ auth:
   # redirect URI is <public origin>/api/auth/callback/google.
   # google:
   #   clientId: 1234567890-abcdef.apps.googleusercontent.com
-  #   # Required. The only domains Google sign-in works for, lower-case, with
-  #   # no @. List gmail.com and Google Workspace domains only: an address
-  #   # anywhere else is refused even if listed, since Google cannot vouch
-  #   # that its mailbox still belongs to the person who verified it. Anyone
-  #   # at another domain signs in with email and password.
+  #   # Required. List gmail.com and Google Workspace domains only; others are refused.
   #   domains: [gmail.com, tjc.sg, tjc.org]
   #   # TEST ONLY. A stand-in OpenID provider in place of Google, as the
   #   # end-to-end tests run one. Never set it in production.

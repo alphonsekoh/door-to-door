@@ -40,14 +40,17 @@ export function endThisSignIn(db: Database, request: Request): SignOutEvent {
 }
 
 /*
- * What the phone gets when its sign-in could not be ended: no Set-Cookie,
- * so the cookie stays, and the shape of Auth.js's own refused sign-out, an
- * error URL. next-auth/react's signOut hands that back, and the client's
- * sign-out reports it as a failure (src/lib/session/sign-out.ts).
+ * What the phone gets when its sign-in could not be ended: the shape of
+ * Auth.js's own refused sign-out, an error URL, which next-auth/react's
+ * signOut hands back and the client's sign-out reports as a failure
+ * (src/lib/session/sign-out.ts). This answer sets no cookie, so nothing
+ * clears the session's. The proxy in front may still add its own:
+ * Auth.js's callback-url cookie, or the same sign-in's token re-issued by
+ * its session refresh. Neither ends or changes the sign-in, which is what
+ * the phone should keep.
  */
 export const SIGN_OUT_FAILED_URL = "/sign-in?error=SignOutError";
 
-/* Wraps Auth.js's POST handler. */
 export function failUnendedSignOut<TRequest extends Request>(
   handler: (request: TRequest) => Promise<Response>,
 ): (request: TRequest) => Promise<Response> {

@@ -1,9 +1,7 @@
 /*
  * The domains Google sign-in is for (#14): config.yaml's auth.google.domains,
- * handed to the forms as props. Google speaks for an address only at
- * gmail.com or on a Google Workspace domain; anywhere else the mailbox can
- * pass to someone new while the old holder's Google account still names it.
- * The server enforces this; the forms only say so.
+ * handed to the forms as props. Why only those is in googleVouchesFor
+ * (src/auth/google.ts). The server enforces it; the forms only say so.
  */
 
 /* Lower-cased; empty for something that is not an address. */

@@ -49,7 +49,7 @@ describe("sign-in page", () => {
     error.value = "AccessDenied";
     render(await SignInPage());
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Google sign-in works only for addresses at gmail.com or tjc.sg.",
+      "Google sign-in is for gmail.com or tjc.sg addresses your admin added;",
     );
   });
 });

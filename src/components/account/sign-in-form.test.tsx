@@ -506,9 +506,8 @@ describe("SignInForm with Google (#14)", () => {
       withError("AccessDenied");
       render(<SignInForm googleDomains={DOMAINS} />);
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "That Google account can't sign in here. Use the email address your admin added. " +
-          "Google sign-in works only for addresses at gmail.com, tjc.sg or tjc.org. " +
-          "For any other address, sign in with your email and password.",
+        "That Google account can't sign in here. Google sign-in is for " +
+          "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
       );
     });
 

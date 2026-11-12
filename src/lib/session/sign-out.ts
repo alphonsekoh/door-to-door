@@ -12,9 +12,15 @@ type SignOut = (options: { redirect: false }) => Promise<{ url?: unknown }>;
  * again, refreshed by its session check. So the answer to a request sent just
  * before signing out, arriving just after, puts the cookie back. Its sign-in
  * has ended on the server (#125), so the session check below names nobody
- * and clears it; the loop stays for a server that could not end it. Each
- * answer can do that once, and a page has only a few in flight, so a session
- * still there after this many sign-outs is not going away.
+ * and clears it. A server that could not end it answers the sign-out itself
+ * with a failure (#162), which signOutOnce throws on first.
+ *
+ * The loop stays for a check that still names someone after a sign-out that
+ * held: the session endpoint keeps the cookie through a database outage
+ * (D-125-13), and a server from before #125, mid-deploy, ends no sign-in at
+ * all. Each answer can put the cookie back once, and a page has only a few
+ * in flight, so a session still there after this many sign-outs is not
+ * going away.
  */
 const MAX_SIGN_OUTS = 3;
 

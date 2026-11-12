@@ -12,11 +12,11 @@ import { listDomains } from "@/lib/session/google-domains";
  * names the domains Google sign-in is for, which are the same for everyone.
  */
 
+/* Short enough to leave both sign-in buttons in view at the largest text. */
 export function googleRefusedMessage(domains: readonly string[]): string {
   return (
-    "That Google account can't sign in here. Use the email address your admin added. " +
-    `Google sign-in works only for addresses at ${listDomains(domains)}. ` +
-    "For any other address, sign in with your email and password."
+    "That Google account can't sign in here. Google sign-in is for " +
+    `${listDomains(domains)} addresses your admin added; otherwise, use your email and password.`
   );
 }
 

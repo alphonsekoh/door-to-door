@@ -85,6 +85,12 @@ const eslintConfig = defineConfig([
               group: ["@/auth", "@/auth/*"],
               message: "Auth.js and Google sign-in are server-only; pass what UI needs as props.",
             },
+            // The same folder by a relative path. A regex, because a glob such as
+            // "**/auth/*" would also catch "@/server/auth/routes", which UI may use.
+            {
+              regex: "^(?:\\.\\./)+(?:src/)?auth(?:/|$)",
+              message: "Auth.js and Google sign-in are server-only; pass what UI needs as props.",
+            },
           ],
         },
       ],

@@ -60,9 +60,8 @@ test("an address nobody added is turned away with the one message, and no accoun
   await expect(page).toHaveURL(/\/sign-in\?error=AccessDenied$/);
   await expect(
     page.getByText(
-      "That Google account can't sign in here. Use the email address your admin added. " +
-        "Google sign-in works only for addresses at gmail.com, tjc.sg or tjc.org. " +
-        "For any other address, sign in with your email and password.",
+      "That Google account can't sign in here. Google sign-in is for " +
+        "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
     ),
   ).toHaveAttribute("role", "alert");
   await expect(page.locator("body")).not.toContainText("AccessDenied");

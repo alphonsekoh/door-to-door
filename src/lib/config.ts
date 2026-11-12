@@ -103,10 +103,9 @@ export const appConfigSchema = z.strictObject({
            */
           issuer: httpUrl.optional(),
           /*
-           * Where Google may sign anyone in. Google speaks for an address only
-           * at gmail.com or on a Google Workspace domain; elsewhere the mailbox
-           * can pass to someone new while the old holder's Google account still
-           * names it. Required, so leaving it out cannot mean "anywhere".
+           * Where Google may sign anyone in; why, in googleVouchesFor
+           * (src/auth/google.ts). Required, so leaving it out cannot mean
+           * "anywhere".
            */
           domains: z
             .array(domainName, {
