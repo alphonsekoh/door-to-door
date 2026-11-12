@@ -19,6 +19,8 @@ const Workflow = z.object({
   jobs: z.record(
     z.string(),
     z.object({
+      // Declared so a job's own grant is seen: zod strips an undeclared key.
+      permissions: z.unknown().optional(),
       services: z.record(z.string(), z.object({ image: z.string() })).optional(),
       steps: z.array(
         z.object({
@@ -53,6 +55,9 @@ describe("GitHub Actions workflows", () => {
       .filter((step) => step.uses?.startsWith("actions/checkout@"));
 
     expect(permissions).toEqual({ contents: "read" });
+    // A job-level grant replaces the top-level one for that job.
+    const ownGrants = Object.entries(jobs).filter(([, job]) => job.permissions !== undefined);
+    expect(ownGrants.map(([name]) => name)).toEqual([]);
     expect(checkouts.length).toBeGreaterThan(0);
     for (const step of checkouts) expect(step.with?.["persist-credentials"]).toBe(false);
   });
