@@ -130,7 +130,7 @@ test.describe("response headers", () => {
   });
 
   test("/sign-in is no-store, whether or not it sets a cookie (#150)", async ({ request }) => {
-    // Prerendered, so Next would send s-maxage=31536000 with Auth.js's CSRF cookie.
+    // A shared cache must never keep it, with Auth.js's CSRF cookie or without.
     const setCookies = (response: APIResponse) =>
       response.headersArray().filter(({ name }) => name.toLowerCase() === "set-cookie");
 

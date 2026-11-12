@@ -52,6 +52,30 @@ const deletes = () =>
     .filter(([, init]) => (init as RequestInit | undefined)?.method === "DELETE")
     .map(([path]) => path as string);
 
+/*
+ * Answers the user at once and each read of the sign-ins with the next of
+ * `reads`, which a test can hold and settle in any order.
+ */
+function serveReads(user: User, reads: Promise<SignIn[]>[]) {
+  let next = 0;
+  apiFetch.mockImplementation((path: string, init?: RequestInit) => {
+    if (init?.method === "DELETE") return Promise.resolve();
+    if (!path.endsWith("/sign-ins")) return Promise.resolve(user);
+    const read = reads[next];
+    next += 1;
+    if (read === undefined) throw new Error(`no read ${String(next)} of the sign-ins`);
+    return read.then((data) => ({ data }));
+  });
+}
+
+function held() {
+  let settle: (signIns: SignIn[]) => void = () => undefined;
+  const promise = new Promise<SignIn[]>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, settle };
+}
+
 function card(device: string): HTMLElement {
   const label = screen.getAllByText(device)[0];
   const li = label?.closest("li");
@@ -144,6 +168,92 @@ describe("MemberDetail (#125)", () => {
     await screen.findByText("Chrome on Android");
     await user.click(screen.getByRole("button", { name: /^Sign out Chrome/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not sign that out.");
+  });
+
+  /*
+   * Two quick Sign outs, the first's list read again answering after the
+   * second's would have: the stale list would bring back a sign-in already
+   * ended. So the second waits for the first's list (D-28-7).
+   */
+  it("holds a second Sign out until the first's list is read again, so an older list never answers last", async () => {
+    const user = userEvent.setup();
+    const phone = signIn("s1", "Chrome on Android");
+    const iphone = signIn("s2", "Safari on iPhone");
+    const firefox = signIn("s3", "Firefox on Android");
+    const afterFirst = held();
+    serveReads(alice, [
+      Promise.resolve([phone, iphone, firefox]),
+      afterFirst.promise,
+      Promise.resolve([firefox]),
+    ]);
+    render(<MemberDetail userId="u1" />);
+    await screen.findByText("Chrome on Android");
+
+    await user.click(within(card("Chrome on Android")).getByRole("button", { name: /^Sign out/ }));
+    await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+    expect(deletes()).toEqual(["/users/u1/sign-ins/s1"]);
+    expect(
+      within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }),
+    ).toBeDisabled();
+
+    afterFirst.settle([iphone, firefox]);
+    await waitFor(() => {
+      expect(screen.queryByText("Chrome on Android")).not.toBeInTheDocument();
+    });
+    await user.click(within(card("Safari on iPhone")).getByRole("button", { name: /^Sign out/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Safari on iPhone")).not.toBeInTheDocument();
+    });
+    expect(deletes()).toEqual(["/users/u1/sign-ins/s1", "/users/u1/sign-ins/s2"]);
+    expect(screen.getByText("Firefox on Android")).toBeInTheDocument();
+  });
+
+  it("shows the newest read of the list when an older one answers last (D-28-7)", async () => {
+    // Try again, tapped twice on a weak signal.
+    const user = userEvent.setup();
+    const older = held();
+    const newer = held();
+    apiFetch.mockRejectedValueOnce(new Error("Could not reach the server."));
+    render(<MemberDetail userId="u1" />);
+    await screen.findByRole("alert");
+
+    serveReads(alice, [older.promise, newer.promise]);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    newer.settle([signIn("s2", "Safari on iPhone")]);
+    expect(await screen.findByText("Safari on iPhone")).toBeInTheDocument();
+    older.settle([signIn("s1", "Chrome on Android"), signIn("s2", "Safari on iPhone")]);
+    await older.promise;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByText("Chrome on Android")).not.toBeInTheDocument();
+  });
+
+  it("drops an older read that fails after a newer one has answered", async () => {
+    const user = userEvent.setup();
+    const newer = held();
+    let failOlder: (error: Error) => void = () => undefined;
+    const older = new Promise<SignIn[]>((_resolve, reject) => {
+      failOlder = reject;
+    });
+    apiFetch.mockRejectedValueOnce(new Error("Could not reach the server."));
+    render(<MemberDetail userId="u1" />);
+    await screen.findByRole("alert");
+
+    serveReads(alice, [older, newer.promise]);
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+    await user.click(screen.getByRole("button", { name: "Try again" }));
+
+    newer.settle([signIn("s2", "Safari on iPhone")]);
+    expect(await screen.findByText("Safari on iPhone")).toBeInTheDocument();
+    failOlder(new Error("Could not reach the server."));
+    await older.catch(() => undefined);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByText("Safari on iPhone")).toBeInTheDocument();
   });
 
   it("asks before signing them out everywhere, and says their unsent records stay", async () => {

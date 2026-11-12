@@ -48,3 +48,11 @@ export function uuidv7(now: number = Date.now(), random: () => number = Math.ran
     hex.slice(20, 32),
   ].join("-");
 }
+
+/*
+ * The same id, in either case. A path's id is checked as a UUID, which takes
+ * upper case, while ids from the database and the session are lower case.
+ */
+export function sameUuid(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase();
+}

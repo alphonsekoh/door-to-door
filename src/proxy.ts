@@ -32,9 +32,10 @@ const guard = auth((request) => {
      * 401 - rather than asking the server, which would redirect to sign-in.
      * no-store also keeps a page out of bfcache in Chromium.
      *
-     * /sign-in is prerendered, which Next sends as s-maxage=31536000. A
+     * /sign-in too, though it renders per request (D-14-10) and is public: a
      * shared cache keeping it would answer later visitors without the CSRF
      * cookie their first visit needs (D-32-19), or with the one it set (#150).
+     * This holds however Next renders the page.
      */
     if (!isApiPath(pathname)) {
       response.headers.set("Cache-Control", "no-store");

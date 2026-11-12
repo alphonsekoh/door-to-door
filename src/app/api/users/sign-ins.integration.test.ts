@@ -187,6 +187,22 @@ describe("DELETE /users/{id}/sign-ins/{signInId}", () => {
     expect((await endOne(ADMIN, other)).status).toBe(204);
   });
 
+  it("is 409 for the admin's own current sign-in however its ids are cased", async () => {
+    // The path takes an upper-case UUID; the session's are lower case.
+    const response = await endOne(ADMIN.toUpperCase(), testSignInId(ADMIN).toUpperCase());
+    expect(response.status).toBe(409);
+    expect(await left(ADMIN)).toEqual([testSignInId(ADMIN)]);
+  });
+
+  it("is 404, ending nothing, for a sign-in that has expired but is not yet pruned", async () => {
+    // Past 30 days and the touch interval: over, and no longer listed (D-125-7).
+    const expired = await seed(ALICE, "31 days", PIXEL);
+    const response = await endOne(ALICE, expired);
+    expect(response.status).toBe(404);
+    expect((await errorOf(response)).message).toBe("That sign-in has already ended.");
+    expect(await left(ALICE)).toEqual([expired]);
+  });
+
   it("is 404 for nobody and 403 for a member, before anything is ended", async () => {
     const phone = await seed(ALICE, "1 minute", PIXEL);
     expect((await endOne(NOBODY, phone)).status).toBe(404);
@@ -210,6 +226,12 @@ describe("DELETE /users/{id}/sign-ins", () => {
   it("keeps the admin's own current sign-in on their own account", async () => {
     await seed(ADMIN, "1 minute", PIXEL);
     expect((await endAll(ADMIN)).status).toBe(204);
+    expect(await left(ADMIN)).toEqual([testSignInId(ADMIN)]);
+  });
+
+  it("keeps it however the account's id is cased in the path", async () => {
+    await seed(ADMIN, "1 minute", PIXEL);
+    expect((await endAll(ADMIN.toUpperCase())).status).toBe(204);
     expect(await left(ADMIN)).toEqual([testSignInId(ADMIN)]);
   });
 

@@ -154,23 +154,13 @@ describe("jwt callback at sign-in (#125)", () => {
     expect(startSignIn).toHaveBeenCalledWith(expect.anything(), USER, PIXEL);
   });
 
-  it("does the same for an account Auth.js calls new, and without a user agent", async () => {
-    startSignIn.mockResolvedValue(SIGN_IN);
-    const token = await jwt(config(), {
-      token: {},
-      user: { id: USER },
-      account: null,
-      trigger: "signUp",
-    });
-    expect(token).toMatchObject({ signInId: SIGN_IN });
-    expect(startSignIn).toHaveBeenCalledWith(expect.anything(), USER, null);
-  });
-
   it("refuses, as AccessDenied, an account deactivated since it was judged", async () => {
     startSignIn.mockResolvedValue(null);
     await expect(
       jwt(config(), { token: {}, user: { id: USER }, account: null, trigger: "signIn" }),
     ).rejects.toMatchObject({ type: "AccessDenied" });
+    // With no request, there is no device to name.
+    expect(startSignIn).toHaveBeenCalledWith(expect.anything(), USER, null);
   });
 
   it("refuses a user with no id of ours, writing nothing", async () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
@@ -27,15 +27,20 @@ export function MemberDetail({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* Only the newest read of the list is shown (D-28-7). */
+  const generation = useRef(0);
 
   const load = useCallback(async () => {
+    const mine = ++generation.current;
     try {
       const [user, signIns] = await Promise.all([
         apiFetch<User>(`/users/${userId}`),
         apiFetch<SignInList>(`/users/${userId}/sign-ins`),
       ]);
+      if (mine !== generation.current) return;
       setState({ status: "ready", user, signIns: signIns.data });
     } catch (error) {
+      if (mine !== generation.current) return;
       setState({
         status: "error",
         message: error instanceof Error ? error.message : "Could not load this member.",
@@ -61,11 +66,12 @@ export function MemberDetail({ userId }: { userId: string }) {
       if (!(error instanceof ApiRequestError && error.status === 404)) {
         setFailure(error instanceof Error ? error.message : "Could not sign that out.");
       }
-    } finally {
-      setConfirming(false);
-      setBusy(false);
     }
+    setConfirming(false);
+    /* Busy until the list is read again: a second Sign out meanwhile would act
+       on rows that are about to change. load() never throws. */
     await load();
+    setBusy(false);
   }
 
   if (state.status === "loading") {

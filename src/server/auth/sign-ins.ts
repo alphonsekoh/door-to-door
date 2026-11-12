@@ -170,11 +170,21 @@ export async function endSignIn(db: Database, userId: string, claim: unknown): P
   await db.delete(signIns).where(and(eq(signIns.id, signInId), eq(signIns.userId, userId)));
 }
 
-/* An admin ending one of a member's sign-ins. */
+/*
+ * An admin ending one of a member's sign-ins. One that has expired is
+ * already over, though not yet pruned: it is left for that, and answered as
+ * ended, as the list no longer shows it.
+ */
 export async function endOneSignIn(db: Database, userId: string, signInId: string): Promise<void> {
   const ended = await db
     .delete(signIns)
-    .where(and(eq(signIns.id, signInId), eq(signIns.userId, userId)))
+    .where(
+      and(
+        eq(signIns.id, signInId),
+        eq(signIns.userId, userId),
+        gte(signIns.lastUsedAt, expiredBefore),
+      ),
+    )
     .returning({ id: signIns.id });
   if (ended.length === 0) {
     throw new NotFoundError("That sign-in has already ended.");

@@ -144,7 +144,7 @@ describe("caching of signed-in pages", () => {
 });
 
 describe("caching of the sign-in page (#150)", () => {
-  it("marks /sign-in no-store, so a shared cache never keeps its prerender", async () => {
+  it("marks /sign-in no-store, so a shared cache never keeps a copy", async () => {
     // A copy kept would reach later visitors without the CSRF cookie a first visit needs.
     const response = await proxy(request("/sign-in"));
     expect(response.headers.get("cache-control")).toBe("no-store");

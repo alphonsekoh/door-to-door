@@ -70,7 +70,7 @@ export function buildAuthConfig(
          * account deactivated since it was judged is refused here, under the
          * lock startSignIn takes.
          */
-        if (trigger === "signIn" || trigger === "signUp") {
+        if (trigger === "signIn") {
           const userId = asUuid(user.id);
           const signInId =
             userId === null

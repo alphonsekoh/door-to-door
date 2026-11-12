@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getDatabase } from "@/db/client";
 import { zEndUserSignInPath } from "@/generated/zod.gen";
+import { sameUuid } from "@/lib/uuid";
 import { withContract } from "@/server/http/contract";
 import { ConflictError } from "@/server/http/errors";
 import { currentSignIn } from "@/server/auth/session";
@@ -16,7 +17,7 @@ export const DELETE = withContract(
   },
   async ({ path }) => {
     const { user, signInId } = await currentSignIn("admin");
-    if (path.id === user.id && path.signInId === signInId) {
+    if (sameUuid(path.id, user.id) && sameUuid(path.signInId, signInId)) {
       throw new ConflictError("conflict", "To sign out of this phone, use Sign out on Account.");
     }
     const db = getDatabase();

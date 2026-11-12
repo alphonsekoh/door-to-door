@@ -5,6 +5,7 @@ import {
   zListUserSignInsPath,
   zListUserSignInsResponse,
 } from "@/generated/zod.gen";
+import { sameUuid } from "@/lib/uuid";
 import { withContract } from "@/server/http/contract";
 import { currentSignIn } from "@/server/auth/session";
 import { endAllSignIns, listSignIns } from "@/server/auth/sign-ins";
@@ -53,7 +54,7 @@ export const DELETE = withContract(
     const { user, signInId } = await currentSignIn("admin");
     const db = getDatabase();
     await getUser(db, path.id);
-    await endAllSignIns(db, path.id, path.id === user.id ? signInId : null);
+    await endAllSignIns(db, path.id, sameUuid(path.id, user.id) ? signInId : null);
     return { status: 204 };
   },
 );
