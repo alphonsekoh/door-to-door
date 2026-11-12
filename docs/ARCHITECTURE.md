@@ -187,8 +187,8 @@ authoritative, and a change to any of them needs the owner.
 
 ## Request path
 
-1. `src/proxy.ts` redirects page requests with no session to `/sign-in` and returns
-   `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
+1. `src/proxy.ts` redirects page requests with no session to `/sign-in`, the page as
+   `callbackUrl` less any `q` (D-163-8), and returns `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
    It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
    return before `auth()` runs (D-32-19). On every path it matches (all but static
    files), Next buffers at most 2 MiB of the body and hands the handler that much: a
@@ -456,6 +456,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `src/lib/session/navigate.ts`, D-129-1).
 - The admin history and records screens keep their filters in the URL, except the search
   term, which the screen holds in state and never writes to the URL (D-29-4, D-129-7).
+  An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
+  through the History API, keeping only the recognised filters, with no router round
+  trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
+  (D-163-8).
 
 ## PWA and service worker
 

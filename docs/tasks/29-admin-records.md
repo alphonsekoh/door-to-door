@@ -18,7 +18,9 @@ behalf.
   for, never deleted.
 - **D-29-4 · Filters live in the URL and are validated on read.** _Why:_ a URL is
   editable; unknown values are dropped, not forwarded. _Refined by D-129-7:_ except the
-  search term, which the screen holds and the URL never carries; an old `?q=` is ignored.
+  search term, which the screen holds and the URL never carries; ~~an old `?q=` is
+  ignored~~. _Refined by D-163-5:_ an old `?q=` fills the search and leaves the address
+  on load, which keeps only the recognised filters.
 - **D-29-5 · Text search is client-side over the loaded page.** The screen says how
   many it is showing.
 - **D-29-6 · One amend sheet for members and admins.**
