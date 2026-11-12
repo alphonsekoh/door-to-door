@@ -209,6 +209,62 @@ describe("MemberDetail (#125)", () => {
     expect(screen.getByText("Firefox on Android")).toBeInTheDocument();
   });
 
+  /* On weak signal a tap that only dims the buttons looks like it did nothing. */
+  it("says it is signing out, on the control pressed and the list, until the list is read again", async () => {
+    const user = userEvent.setup();
+    const phone = signIn("s1", "Chrome on Android");
+    const iphone = signIn("s2", "Safari on iPhone");
+    const afterEnd = held();
+    serveReads(alice, [Promise.resolve([phone, iphone]), afterEnd.promise]);
+    render(<MemberDetail userId="u1" />);
+    await screen.findByText("Chrome on Android");
+    const list = screen.getByRole("list");
+    expect(list).toHaveAttribute("aria-busy", "false");
+
+    await user.click(within(card("Chrome on Android")).getByRole("button", { name: /^Sign out/ }));
+
+    const pressed = within(card("Chrome on Android")).getByRole("button", {
+      name: /^Signing out Chrome on Android/,
+    });
+    expect(pressed).toHaveTextContent("Signing out…");
+    expect(pressed).toBeDisabled();
+    expect(list).toHaveAttribute("aria-busy", "true");
+    // Only the control pressed says so; the others are just unavailable.
+    expect(within(card("Safari on iPhone")).getByRole("button")).toHaveTextContent("Sign out");
+    expect(screen.getByRole("button", { name: "Sign out everywhere" })).toBeDisabled();
+
+    afterEnd.settle([iphone]);
+    await waitFor(() => {
+      expect(screen.queryByText("Chrome on Android")).not.toBeInTheDocument();
+    });
+    expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "false");
+    expect(screen.queryByText("Signing out…")).not.toBeInTheDocument();
+    expect(within(card("Safari on iPhone")).getByRole("button")).toBeEnabled();
+  });
+
+  it("says Sign out everywhere is signing out once confirmed, until the list is read again", async () => {
+    const user = userEvent.setup();
+    const afterEnd = held();
+    serveReads(alice, [
+      Promise.resolve([signIn("s1", "Chrome on Android"), signIn("s2", "Safari on iPhone")]),
+      afterEnd.promise,
+    ]);
+    render(<MemberDetail userId="u1" />);
+    await screen.findByText("Chrome on Android");
+
+    await user.click(screen.getByRole("button", { name: "Sign out everywhere" }));
+    await user.click(
+      within(screen.getByRole("alertdialog")).getByRole("button", { name: "Sign out everywhere" }),
+    );
+
+    expect(await screen.findByRole("button", { name: "Signing out…" })).toBeDisabled();
+    expect(screen.getByRole("list")).toHaveAttribute("aria-busy", "true");
+
+    afterEnd.settle([]);
+    expect(await screen.findByText("Not signed in anywhere.")).toBeInTheDocument();
+    expect(screen.queryByText("Signing out…")).not.toBeInTheDocument();
+  });
+
   it("shows the newest read of the list when an older one answers last (D-28-7)", async () => {
     // Try again, tapped twice on a weak signal.
     const user = userEvent.setup();

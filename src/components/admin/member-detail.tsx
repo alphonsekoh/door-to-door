@@ -9,6 +9,9 @@ import { formatDayTime } from "@/lib/history/dates";
 
 const BACK = { href: "/admin/team", label: "Team" };
 
+/* Sign out everywhere, as against one sign-in, which is named by its id. */
+const EVERYWHERE = "everywhere";
+
 type State =
   | { status: "loading" }
   | { status: "ready"; user: User; signIns: SignIn[] }
@@ -24,7 +27,10 @@ type State =
  */
 export function MemberDetail({ userId }: { userId: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
-  const [busy, setBusy] = useState(false);
+  /* What was pressed, from the tap until the list is read again: a sign-in's
+     id, or EVERYWHERE. That control says so, and the list is busy. */
+  const [ending, setEnding] = useState<string | null>(null);
+  const busy = ending !== null;
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   /* Only the newest read of the list is shown (D-28-7). */
@@ -55,9 +61,9 @@ export function MemberDetail({ userId }: { userId: string }) {
     };
   }, [load]);
 
-  async function end(path: string): Promise<void> {
+  async function end(path: string, pressed: string): Promise<void> {
     setFailure(null);
-    setBusy(true);
+    setEnding(pressed);
     try {
       await apiFetch(path, { method: "DELETE" });
     } catch (error) {
@@ -71,7 +77,7 @@ export function MemberDetail({ userId }: { userId: string }) {
     /* Busy until the list is read again: a second Sign out meanwhile would act
        on rows that are about to change. load() never throws. */
     await load();
-    setBusy(false);
+    setEnding(null);
   }
 
   if (state.status === "loading") {
@@ -126,7 +132,7 @@ export function MemberDetail({ userId }: { userId: string }) {
         ) : signIns.length === 0 ? (
           <p className="text-body text-foreground-muted">Not signed in anywhere.</p>
         ) : (
-          <ul className="space-y-2">
+          <ul aria-busy={busy} className="space-y-2">
             {signIns.map((signIn) => (
               <li key={signIn.id} className="rounded-xl border border-border bg-surface p-4">
                 {/* At large text the tag drops under the device rather than
@@ -151,11 +157,11 @@ export function MemberDetail({ userId }: { userId: string }) {
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => void end(`/users/${userId}/sign-ins/${signIn.id}`)}
-                    aria-label={`Sign out ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
+                    onClick={() => void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)}
+                    aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
                     className="mt-3 min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
                   >
-                    Sign out
+                    {ending === signIn.id ? "Signing out…" : "Sign out"}
                   </button>
                 )}
               </li>
@@ -172,7 +178,11 @@ export function MemberDetail({ userId }: { userId: string }) {
             }}
             className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
           >
-            {self ? "Sign out other devices" : "Sign out everywhere"}
+            {ending === EVERYWHERE
+              ? "Signing out…"
+              : self
+                ? "Sign out other devices"
+                : "Sign out everywhere"}
           </button>
         )}
       </section>
@@ -188,7 +198,7 @@ export function MemberDetail({ userId }: { userId: string }) {
             }
             confirmLabel={self ? "Sign out other devices" : "Sign out everywhere"}
             busy={busy}
-            onConfirm={() => void end(`/users/${userId}/sign-ins`)}
+            onConfirm={() => void end(`/users/${userId}/sign-ins`, EVERYWHERE)}
             onCancel={() => {
               setConfirming(false);
             }}
