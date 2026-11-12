@@ -4,7 +4,8 @@ import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { forgetSentRecords } from "@/lib/sync/forget-sent";
 import { fetchSignedIn } from "@/lib/sync/signed-in";
 
-type SignOut = (options: { redirect: false }) => Promise<{ url: string }>;
+/* Typed as next-auth/react's, but read as what the server may really send. */
+type SignOut = (options: { redirect: false }) => Promise<{ url?: unknown }>;
 
 /*
  * The answer to any request the proxy sees with a session sets the cookie
@@ -25,8 +26,17 @@ const CHECK_WITHIN_MS = 5_000;
 /* Set as a sign-out leaves for the sign-in page, which checks once more. */
 const JUST_SIGNED_OUT = "d2d:just-signed-out";
 
+/*
+ * Auth.js names a refused sign-out by the error in the URL it answers with,
+ * and the server names a sign-in it could not end the same way (#162). An
+ * answer with no URL at all, such as Auth.js's configuration error, ended
+ * nothing either.
+ */
 async function signOutOnce(signOut: SignOut): Promise<void> {
   const { url } = await signOut({ redirect: false });
+  if (typeof url !== "string") {
+    throw new Error("Sign-out got an answer with no URL");
+  }
   const refusal = new URL(url, "http://relative.invalid").searchParams.get("error");
   if (refusal !== null) {
     throw new Error(`Sign-out was refused: ${refusal}`);

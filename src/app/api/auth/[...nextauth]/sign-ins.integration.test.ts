@@ -1,3 +1,4 @@
+import { format } from "node:util";
 import { encode } from "next-auth/jwt";
 import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,16 +86,22 @@ async function signIn(userAgent: string): Promise<Jar> {
   return jar;
 }
 
-async function signOut(jar: Jar): Promise<void> {
+/* As next-auth/react's signOut posts it, asking for JSON rather than a redirect. */
+async function signOut(jar: Jar): Promise<Response> {
   const csrfToken = await csrf(jar);
   const response = await POST(
     new NextRequest(`${ORIGIN}/api/auth/signout`, {
       method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", cookie: header(jar) },
-      body: new URLSearchParams({ csrfToken }),
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "x-auth-return-redirect": "1",
+        cookie: header(jar),
+      },
+      body: new URLSearchParams({ csrfToken, callbackUrl: `${ORIGIN}/account` }),
     }),
   );
   keep(jar, response);
+  return response;
 }
 
 async function session(jar: Jar): Promise<{ named: string | null; response: Response }> {
@@ -144,6 +151,70 @@ describe("signing out", () => {
     const old = await session(copied);
     expect(old.named).toBeNull();
     expect(clears(old.response)).toBe(true);
+  });
+});
+
+/*
+ * #162 in the failure mode of R-143: Auth.js clears the cookie whatever its
+ * signOut event does, and a sign-in left live is brought back by a late
+ * answer setting the old cookie again.
+ */
+describe("signing out when the sign-in cannot be ended", () => {
+  it("answers as Auth.js always has once it is ended: the cookie cleared, back to where it was", async () => {
+    const phone = await signIn(PIXEL);
+    const response = await signOut(phone);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ url: `${ORIGIN}/account` });
+    expect(clears(response)).toBe(true);
+    expect(await signInRows()).toEqual([]);
+  });
+
+  it("fails, keeping the cookie and the sign-in, so the member can try again", async () => {
+    const phone = await signIn(PIXEL);
+    const before = new Map(phone);
+    const broken = vi.spyOn(getPool(), "query").mockRejectedValue(new Error("connection lost"));
+    const logged: string[] = [];
+    const errors = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      logged.push(format(...args));
+    });
+    let response: Response;
+    try {
+      response = await signOut(phone);
+    } finally {
+      broken.mockRestore();
+      errors.mockRestore();
+    }
+
+    expect(response.status).toBe(500);
+    // What the client's sign-out reads as refused (src/lib/session/sign-out.ts).
+    expect(await response.json()).toEqual({ url: "/sign-in?error=SignOutError" });
+    expect(response.headers.getSetCookie().filter((set) => set.startsWith(SESSION_COOKIE))).toEqual(
+      [],
+    );
+    expect(phone).toEqual(before);
+    expect((await signInRows()).map((row) => row.user_agent)).toEqual([PIXEL]);
+    expect((await session(phone)).named).toBe(ALICE);
+    // Auth.js's own line for an event that threw, and only that.
+    expect(logged).toEqual([expect.stringMatching(/^\[auth\]\[error\] EventError/)]);
+
+    // Once the database is back, signing out again works.
+    expect(clears(await signOut(phone))).toBe(true);
+    expect(await signInRows()).toEqual([]);
+  });
+
+  it("ends nothing for a sign-out Auth.js refuses, a forged one with no CSRF token", async () => {
+    const phone = await signIn(PIXEL);
+    const response = await POST(
+      new NextRequest(`${ORIGIN}/api/auth/signout`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded", cookie: header(phone) },
+        body: new URLSearchParams({}),
+      }),
+    );
+
+    expect(clears(response)).toBe(false);
+    expect(await signInRows()).toHaveLength(1);
   });
 });
 

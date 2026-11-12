@@ -5,6 +5,7 @@ import { AccountScreen } from "@/components/account/account-screen";
 import type { User } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
+import type * as SignOutModule from "@/lib/session/sign-out";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget, role, sync } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -28,6 +29,15 @@ vi.mock("@/lib/api-client", async () => ({
   ...(await vi.importActual<typeof ApiClientModule>("@/lib/api-client")),
   apiFetch,
 }));
+/* What the real sign-out clears and where it goes, for the test that runs it. */
+const { replaceWith } = vi.hoisted(() => ({ replaceWith: vi.fn() }));
+vi.mock("@/lib/session/navigate", () => ({ replaceWith }));
+vi.mock("@/lib/pwa/sw-client", () => ({ clearServiceWorkerCaches: () => Promise.resolve() }));
+vi.mock("@/lib/offline/local-copy-store", () => ({ clearLocalCopy: () => Promise.resolve() }));
+vi.mock("@/lib/sync/forget-sent", () => ({ forgetSentRecords: () => Promise.resolve() }));
+
+const { signOutAndForget: realSignOutAndForget } =
+  await vi.importActual<typeof SignOutModule>("@/lib/session/sign-out");
 
 const { ApiRequestError } = await import("@/lib/api-client");
 
@@ -324,6 +334,23 @@ describe("AccountScreen: signing out", () => {
     signOutAndForget.mockReturnValue(new Promise(() => undefined));
     await user.click(screen.getByRole("button", { name: "Sign out" }));
     expect(await screen.findByRole("button", { name: "Signing out…" })).toBeDisabled();
+  });
+
+  it("shows a sign-out the server could not complete, staying here signed in (#162)", async () => {
+    // The real sign-out, given the server's answer when the sign-in could
+    // not be ended: the cookie is kept, so the phone is still signed in.
+    signOutAndForget.mockImplementationOnce(realSignOutAndForget);
+    signOut.mockResolvedValueOnce({ url: "/sign-in?error=SignOutError" });
+    const user = userEvent.setup();
+    await loaded();
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not sign out. Check your connection and try again.",
+    );
+    expect(signOut).toHaveBeenCalledWith({ redirect: false });
+    expect(replaceWith).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
   });
 
   it("reports a failed sign-out and lets the member try again", async () => {

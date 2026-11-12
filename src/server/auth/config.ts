@@ -7,7 +7,8 @@ import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { applyUserToToken } from "@/server/auth/callbacks";
 import { authorizeFromRawCredentials } from "@/server/auth/credentials";
 import { SignInRefused, allowGoogleSignIn, googleProviders, linkByEmailOnly } from "@/auth/google";
-import { asUuid, checkSignIn, endSignIn, startSignIn } from "@/server/auth/sign-ins";
+import { asUuid, checkSignIn, startSignIn } from "@/server/auth/sign-ins";
+import { endThisSignIn } from "@/server/auth/sign-out";
 import { getConfig } from "@/server/config";
 
 /*
@@ -102,18 +103,10 @@ export function buildAuthConfig(
         return base.callbacks.jwt(params);
       },
     },
-    events: {
-      /*
-       * This sign-in only: the member's other devices stay signed in (#125).
-       * Auth.js logs and swallows an error here, and clears the cookie anyway.
-       */
-      async signOut(message) {
-        const token = "token" in message ? message.token : null;
-        const userId = asUuid(token?.sub);
-        if (userId !== null) {
-          await endSignIn(db, userId, token?.signInId);
-        }
-      },
-    },
+    /*
+     * Only Auth.js's own sign-out route signs anyone out, and the route needs
+     * its request to fail a sign-out whose sign-in could not be ended.
+     */
+    ...(request === undefined ? {} : { events: { signOut: endThisSignIn(db, request) } }),
   };
 }

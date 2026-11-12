@@ -61,6 +61,10 @@ describe("the Auth.js entrypoint", () => {
     expect(entry.handlers).toBe(instance.handlers);
     expect(entry.auth).toBe(instance.auth);
     expect(entry.signIn).toBe(instance.signIn);
-    expect(entry.signOut).toBe(instance.signOut);
+  });
+
+  it("does not export a server-side sign-out, which could clear the cookie of a sign-in it failed to end (#162)", async () => {
+    const entry = await import("@/auth");
+    expect(entry).not.toHaveProperty("signOut");
   });
 });

@@ -242,20 +242,18 @@ describe("jwt callback afterwards", () => {
 });
 
 describe("signing out", () => {
-  const signOut = (message: unknown) => config().events?.signOut?.(message as never);
+  const request = new Request("https://test.local/api/auth/signout", { method: "POST" });
+  const signOut = (message: unknown) =>
+    buildAuthConfig(request).events?.signOut?.(message as never);
 
+  it("is wired only where Auth.js answers its own sign-out route, never into the app's auth()", () => {
+    expect(config().events).toBeUndefined();
+  });
+
+  /* What it ends, and how a failure is answered, is sign-out.test.ts's. */
   it("ends the token's own sign-in, and no other", async () => {
     await signOut({ token: { sub: USER, signInId: SIGN_IN } });
     expect(endSignIn).toHaveBeenCalledWith(expect.anything(), USER, SIGN_IN);
-  });
-
-  it.each([
-    ["no token", { token: null }],
-    ["a token naming nobody", { token: { signInId: SIGN_IN } }],
-    ["a database session, which this app never has", { session: null }],
-  ])("ends nothing for %s", async (_name, message) => {
-    await signOut(message);
-    expect(endSignIn).not.toHaveBeenCalled();
   });
 });
 

@@ -11,5 +11,9 @@ import { buildAuthConfig } from "@/server/auth/config";
  * database and config.yaml - builds need neither. Auth.js passes the request
  * only to its own route handlers, which is how the config tells those apart
  * from the app's auth() calls (#125).
+ *
+ * Auth.js's server-side signOut is not exported: it builds the config with no
+ * request, so a sign-in it failed to end could not keep the cookie (#162).
+ * Signing out is the route's, through next-auth/react.
  */
-export const { handlers, auth, signIn, signOut } = NextAuth((request) => buildAuthConfig(request));
+export const { handlers, auth, signIn } = NextAuth((request) => buildAuthConfig(request));

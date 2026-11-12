@@ -194,6 +194,41 @@ describe("signOutAndForget", () => {
     expect(navigate).not.toHaveBeenCalled();
   });
 
+  it("fails, leaving no note, when the server could not end the sign-in (#162)", async () => {
+    // The server's answer then, which keeps the cookie (src/server/auth/sign-out.ts).
+    const navigate = vi.fn();
+    const storage = memoryStorage();
+    vi.stubGlobal("window", { sessionStorage: storage });
+
+    await expect(
+      signOutAndForget(
+        () => Promise.resolve({ url: "/sign-in?error=SignOutError" }),
+        ANN,
+        undefined,
+        navigate,
+      ),
+    ).rejects.toThrow("SignOutError");
+    expect(navigate).not.toHaveBeenCalled();
+    expect(fetchSignedIn).not.toHaveBeenCalled();
+    expect(storage.data.has(NOTE)).toBe(false);
+  });
+
+  it("fails on an answer with no URL, which ended nothing", async () => {
+    // Auth.js's answer to a sign-out when its configuration is wrong, which
+    // next-auth/react hands back as it came, whatever its type says.
+    const answer: unknown = { message: "There was a problem with the server configuration." };
+    const navigate = vi.fn();
+    await expect(
+      signOutAndForget(
+        () => Promise.resolve(answer as { url?: unknown }),
+        ANN,
+        undefined,
+        navigate,
+      ),
+    ).rejects.toThrow("no URL");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
   it("signs out again when an answer sent before the sign-out has put the session back", async () => {
     // A session check in flight at sign-out, landing just after it with a
     // refreshed cookie (#129).
