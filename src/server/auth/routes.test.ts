@@ -76,4 +76,35 @@ describe("signInRedirect", () => {
   it("handles an empty path", () => {
     expect(signInRedirect("", "")).toBe("/sign-in");
   });
+
+  /* A search term is a name or a phone number, and no screen keeps it in
+     its URL (D-129-7); an old link's must not reach the sign-in page (#163). */
+  it("drops a search term and keeps the filters", () => {
+    expect(signInRedirect("/admin/history", "?religion=hindu&q=Tan&from=2026-03-01")).toBe(
+      "/sign-in?callbackUrl=%2Fadmin%2Fhistory%3Freligion%3Dhindu%26from%3D2026-03-01",
+    );
+  });
+
+  it("drops a search term that was the whole query", () => {
+    expect(signInRedirect("/admin/records", "?q=9123%204567")).toBe(
+      "/sign-in?callbackUrl=%2Fadmin%2Frecords",
+    );
+  });
+
+  it("drops every copy of the search term", () => {
+    expect(signInRedirect("/admin/history", "?q=Tan&q=Lim")).toBe(
+      "/sign-in?callbackUrl=%2Fadmin%2Fhistory",
+    );
+  });
+
+  it("leaves a query without a search term exactly as it came", () => {
+    // Re-encoding it could change what the page reads back.
+    expect(signInRedirect("/history", "?scope=team&x=a%20b")).toBe(
+      "/sign-in?callbackUrl=%2Fhistory%3Fscope%3Dteam%26x%3Da%2520b",
+    );
+  });
+
+  it("sends a search on the home screen to a bare sign-in", () => {
+    expect(signInRedirect("/", "?q=Tan")).toBe("/sign-in");
+  });
 });

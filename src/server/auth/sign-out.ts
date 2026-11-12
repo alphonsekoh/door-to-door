@@ -7,7 +7,7 @@ import { asUuid, endSignIn } from "@/server/auth/sign-ins";
  * cookie while its sign-in is still live (#162).
  *
  * Auth.js logs and swallows an error from its signOut event (as an
- * EventError), and clears the cookie anyway (R-143). A sign-in left live
+ * EventError), and clears the cookie anyway (R-147). A sign-in left live
  * that way is brought back by a late answer from the worker, the queue or
  * the page, which sets the old cookie again. So a failure is noted against
  * the request, and the route answers with a failure in place of Auth.js's

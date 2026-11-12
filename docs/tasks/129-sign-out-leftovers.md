@@ -81,12 +81,13 @@ deleted, and the CSV guard missed a leading CR.
   during sign-out keeps its row until the 24 h purge or that member's next sign-out.
 - **D-129-7 · The history and records search term lives only in component state.**
   `history-filters` and `record-filters` never read or write `q`, the two screens hold it,
-  and `setFilter` cannot take it. Clear filters empties it, export applies it, and an old
-  `?q=` is ignored, not stripped. Not the hash either. Refines D-29-4 (the search term is
-  the exception); keeps D-29-5 and D-30-6. _Why:_ a query string reaches the server, its
-  logs, the phone's history and a sign-in's `callbackUrl` on every keystroke, and a hash
-  still sits in the phone's history; the search is client-side, so nothing needs it in the
-  URL. _Trade-off:_ the term is lost on reload or Back from a household and is not in a
+  and `setFilter` cannot take it. Clear filters empties it, export applies it, and ~~an
+  old `?q=` is ignored, not stripped~~ (_refined by D-163-5 to D-163-8:_ an old `?q=`
+  fills the search, leaves the address on load and never reaches `callbackUrl`). Not the
+  hash either. Refines D-29-4 (the search term is the exception); keeps D-29-5 and
+  D-30-6. _Why:_ a query string reaches the server, its logs, the phone's history and a
+  sign-in's `callbackUrl` on every keystroke, and a hash still sits in the phone's
+  history; the search is client-side, so nothing needs it in the URL. _Trade-off:_ the term is lost on reload or Back from a household and is not in a
   shared link. Typing no longer refetches. `session-records.tsx`, which #130 cites, holds
   only the Me / My team scope and is unchanged.
 - **D-129-8 · An expired local copy is deleted when it is read.** `loadLocalCopy(now)`
@@ -98,8 +99,9 @@ deleted, and the CSV guard missed a leading CR.
   first `= + - @` follows only whitespace, control (`Cc`) or format (`Cf`) characters.**
   Quoting is unchanged. Refines D-30-4. _Why:_ some spreadsheets take a leading CR as a
   formula start, others skip leading whitespace and invisible characters first, and member
-  text reaches the export as typed. _Known limit:_ a formula after a `;` mid-cell, in a
-  locale whose separator is `;` (#163). _Research:_ R-29, R-139.
+  text reaches the export as typed. ~~_Known limit:_ a formula after a `;` mid-cell, in a
+  locale whose separator is `;` (#163).~~ _Refined by D-163-1:_ that is defused, and a
+  leading CR or LF before a sign now gets a second `'`. _Research:_ R-29, R-139.
 
 ### Tests
 
@@ -148,12 +150,13 @@ deleted, and the CSV guard missed a leading CR.
   answered, or the Account screen after one when the queue never opened (no IndexedDB,
   so nothing is stored anyway).
 - The iOS swipe-back preview is a snapshot the system takes, which no script can blank.
-- An old `?q=` link stays in the address bar until a filter changes, so a session that
-  lapses on that page still carries it into `callbackUrl` (#163).
+- ~~An old `?q=` link stays in the address bar until a filter changes, so a session that
+  lapses on that page still carries it into `callbackUrl` (#163).~~ Fixed by D-163-5 and
+  D-163-8.
 - No E2E test guards `/sign-in`'s second look on its own; Vitest does.
 - Older than this PR, seen by its verifier: after a failed sign-out, Sign out sits under
-  the bottom nav on iPhone 13 (#164); `ApiRequestError` throws on a JSON error body
-  without the `{ error }` envelope (#165).
+  the bottom nav on iPhone 13 (#164); `ApiRequestError` threw on a JSON error body
+  without the `{ error }` envelope, fixed by #165 (D-165-2).
 
 ## Owner checks (real iPhone over HTTPS; not claimed by the PR)
 

@@ -155,7 +155,7 @@ describe("signing out", () => {
 });
 
 /*
- * #162 in the failure mode of R-143: Auth.js clears the cookie whatever its
+ * #162 in the failure mode of R-147: Auth.js clears the cookie whatever its
  * signOut event does, and a sign-in left live is brought back by a late
  * answer setting the old cookie again.
  */

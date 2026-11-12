@@ -40,14 +40,14 @@ and an address nobody added is refused. Sign-ins themselves are in
 
   The adapter's `createUser` is refused as well, and D-13-3 stays as a backstop. The
   issue's "new Google users default to `member`" and its first acceptance criterion are
-  dropped. _Research:_ R-144.
+  dropped. _Research:_ R-148.
 
 - **D-14-4 · The first verified sign-in links by email, never by cookie.**
   `allowDangerousEmailAccountLinking` is on. That is safe here, because D-14-3 admits only
   a Google-verified address an admin added. The adapter's `getUser` returns `null`, so
   Auth.js never links the Google account to whoever's cookie is already on the phone.
   _Why:_ on a shared phone, A's stale cookie plus B's Google sign-in would otherwise link
-  B's Google to A's account. _Research:_ R-144.
+  B's Google to A's account. _Research:_ R-148.
 - **D-14-5 · Every Google refusal gets one fixed message, `GOOGLE_REFUSED`:** "That Google
   account can't sign in here. Use the email address your admin added." It is the same
   for an unknown, an unverified or a deactivated address. That is how D-15-1 and the
@@ -111,7 +111,7 @@ and an address nobody added is refused. Sign-ins themselves are in
   - Vitest drives Auth.js through the provider's `customFetch`.
   - The Google E2E runs on `localhost`, not `127.0.0.1`.
 
-  _Research:_ R-140, R-145.
+  _Research:_ R-144, R-149.
 
 - **D-14-15 · The Google G is Google's own mark.** It is kept as `public/google-g.svg`,
   drawn by the `google-mark` utility on a chip in the button's text colour. The button

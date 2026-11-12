@@ -1540,12 +1540,61 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 
 - **Finding:** OWASP lists `=`, `+`, `-`, `@`, tab (0x09) and carriage return (0x0D) as
   the leading characters to defuse with a quote, and warns that a field separator such
-  as `;` inside the value can start a new cell with one of them mid-value. (Read by the
-  #129 planner; not fetched again by the docs step.)
+  as `;`, or a quote, inside the value can start a new cell with one of them mid-value.
+  (Read by the #129 planner, the quotes clause cited by the #163 reviewer; not fetched
+  again by either docs step.)
 - **Source:** [OWASP, CSV Injection](https://owasp.org/www-community/attacks/CSV_Injection)
-- **Used by:** D-129-9
+- **Used by:** D-129-9, D-163-1
 
-### R-140 · Next names a loopback host `localhost` in the URL a route reads
+### R-140 · `router.replace` moves the address only when the server answers, and loads the page if that fails (measured)
+
+- **Finding:** On `/admin/history?q=…`, `router.replace` to the address without `q` left
+  `q` in the address until the RSC fetch for it answered, and meanwhile every request of
+  the first load carried the old URL in `Referer` (`same-origin`): 23 on Chromium, 13 on
+  WebKit. An aborted or `500` RSC fetch gave a second document load, search empty; with
+  no signal, the Offline page. Next 16.4.3, production build, both phone projects.
+- **Source:** #163 verifier, round 0 (Playwright network logs)
+- **Used by:** D-163-6
+
+### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
+
+- **Finding:** The app router replaces `history.pushState` and `replaceState` in a
+  `useEffect`. A call whose state has `__NA` or `_N` goes straight to the native method
+  and tells the router nothing; any other gets Next's `__NA` and
+  `__PRIVATE_NEXTJS_INTERNALS_TREE` copied in, and the router is restored to the URL,
+  which is what moves `useSearchParams`. On `popstate`, an entry with no state is ignored
+  and one without `__NA` reloads the page. So a call before the patch must carry
+  `history.state` itself. The docs promise the sync, not when the patch is in place.
+- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3);
+  `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
+  "Native History API"
+- **Used by:** D-163-6
+
+### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
+
+- **Finding:** React hydrates a server-rendered Suspense boundary in a later pass, at
+  `OffscreenLane` (`react-dom-client.production.js` 7180-7182, Next 16.4.3's compiled
+  React), so the shell around it commits and runs its effects first. On
+  `/admin/history?q=…`, `/api/auth/session`, the bottom nav's RSC prefetches, the HTML's
+  static chunks and, on WebKit, the manifest carried `Referer: …?q=…`. The screen's own
+  API calls, and every request after the strip, carried nothing.
+- **Source:** React as above; #163 verifier, round 1 (header probe, both phone projects)
+- **Used by:** D-163-9
+
+### R-143 · How a spreadsheet reading with `;` splits the export (modelled, not run in one)
+
+- **Finding:** A `"` counts only where it opens a field. To a `;` reader our `,` is no
+  separator, so every `"` past a row's first cell is text, a `;` or line break inside a
+  value ends a field (a line break, the row), and a `"` that opens such a field is
+  unwrapped. Split that way, by Python's `csv` with `;`, and by a raw scan after every
+  `;` and line break, the real export from both engines left no field that starts a
+  formula, and Python's comma reader returned ordinary text as typed. Not checked in
+  Excel, LibreOffice or Sheets set to `;` (owner check on #163).
+- **Source:** `semicolonFields` in `src/lib/csv.test.ts`; #163 verifier, round 1
+  (`check_csv.py` on the exported files)
+- **Used by:** D-163-1, D-163-2
+
+### R-144 · Next names a loopback host `localhost` in the URL a route reads
 
 - **Finding:** Next's `NextURL` rewrites any `127.x.x.x`, `[::1]` or `localhost` host to
   `localhost`. Auth.js therefore builds Google's callback URL on `localhost` when the app
@@ -1557,7 +1606,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `REGEX_LOCALHOST_HOSTNAME`), Next 16.4.3; measured (#125 builder)
 - **Used by:** D-14-14
 
-### R-141 · next-auth passes a lazy config the request only on its own routes
+### R-145 · next-auth passes a lazy config the request only on its own routes
 
 - **Finding:** With a config function, next-auth 5.0.0-beta.32 calls it with the request
   from its route handlers (`handlers.GET`, `handlers.POST`), from the middleware form and
@@ -1568,7 +1617,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/next-auth/lib/index.js` (`initAuth`)
 - **Used by:** D-125-4
 
-### R-142 · A `jwt` callback that returns `null`, or throws, clears the session cookie
+### R-146 · A `jwt` callback that returns `null`, or throws, clears the session cookie
 
 - **Finding:** In `@auth/core` 0.41.3's session action with the JWT strategy, a `jwt`
   callback that returns `null` makes the answer name no session and clean the session
@@ -1577,7 +1626,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/session.js`
 - **Used by:** D-125-4, D-125-13
 
-### R-143 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
+### R-147 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
 
 - **Finding:** `@auth/core` 0.41.3's sign-out decodes the token and awaits
   `events.signOut`. An error from either is caught and logged as `SignOutError`. The
@@ -1585,7 +1634,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/signout.js`
 - **Used by:** D-125-9 (its known limit)
 
-### R-144 · How Auth.js links an OAuth account
+### R-148 · How Auth.js links an OAuth account
 
 - **Finding:** In `@auth/core` 0.41.3's OAuth callback with JWT sessions, a session
   cookie already present is decoded, and its user is read through the adapter's
@@ -1602,7 +1651,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
 - **Used by:** D-14-3, D-14-4, D-14-7
 
-### R-145 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
+### R-149 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
 
 - **Finding:** `@auth/core` 0.41.3 hands the provider's `[customFetch]` (exported by
   `next-auth`) to oauth4webapi for discovery, the token request and the JWKS. It also

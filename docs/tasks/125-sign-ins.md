@@ -43,7 +43,7 @@ fixes #162. The issue's password features are dropped (D-125-1).
   sign-in or a missing user, so `/api/auth/session` names nobody and clears the cookie.
   _Why:_ `useSession`, the queue's owner check (D-33-1) and D-129-4/5 all ask that
   endpoint. The app's own `auth()` calls carry no request and leave the check to
-  `resolveSession`, so an API request still costs one lookup. _Research:_ R-141, R-142.
+  `resolveSession`, so an API request still costs one lookup. _Research:_ R-145, R-146.
 - **D-125-5 · A claim that is not a UUID.** A `signInId` that is not a UUID is treated as
   ended (`asUuid`) and never reaches the uuid column. On Auth.js's routes, a `sub` that is
   not a UUID names nobody, and at sign-in such a user id is refused. `resolveSession`
@@ -100,7 +100,7 @@ fixes #162. The issue's password features are dropped (D-125-1).
   failed check there is logged, and the token answers as it did before #125. Every API
   request still answers `500`. D-83-5 holds for authorization, and this states its
   scope: the session endpoint authorizes nothing. _Why:_ without the catch, Auth.js
-  clears the cookie when the callback throws (R-142). An outage would then sign out
+  clears the cookie when the callback throws (R-146). An outage would then sign out
   every phone that asks: the queue's owner check and the sign-out check.
 - **D-125-14 · D-83-15(c) is partly closed.** An ended sign-in now names nobody on
   `/api/auth/session`. A live one still echoes role claims frozen at sign-in.
@@ -185,7 +185,7 @@ fixes #162. The issue's password features are dropped (D-125-1).
 ## Known limits
 
 - If `endSignIn` throws in `events.signOut` (a database error), Auth.js logs it and
-  clears the cookie anyway (R-143). The sign-in stays live, so a copied cookie still
+  clears the cookie anyway (R-147). The sign-in stays live, so a copied cookie still
   works. A late worker answer (#162) can still sign the member back in until D-129-4's
   loop signs out again. An admin can end the sign-in.
 - Every token issued before this release has no `signInId`, so on deploy every phone is

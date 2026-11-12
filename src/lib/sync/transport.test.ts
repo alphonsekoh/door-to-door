@@ -108,6 +108,15 @@ describe("sendBatch", () => {
     expect(await sendBatch([item])).toEqual({ kind: "http", status: 422, code: "clock_skew" });
   });
 
+  it("reports a refusal outside the envelope by its status, as one that is not JSON", async () => {
+    // A proxy's own JSON once threw while the error was built, and read as lost signal (#165).
+    const { sendBatch } = await load();
+    respond(413, () => Promise.resolve({ message: "Request Entity Too Large" }));
+    expect(await sendBatch([item])).toEqual({ kind: "http", status: 413, code: "internal_error" });
+    respond(413, () => Promise.reject(new SyntaxError("Unexpected token <")));
+    expect(await sendBatch([item])).toEqual({ kind: "http", status: 413, code: "internal_error" });
+  });
+
   it("raises the account message on a 401, and the records stay put", async () => {
     const { sendBatch, accountStore } = await load();
     respond(401, () => Promise.resolve({ error: { code: "unauthenticated", message: "x" } }));

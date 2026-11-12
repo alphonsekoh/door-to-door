@@ -22,6 +22,7 @@ import type {
 import { apiFetch } from "@/lib/api-client";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history/history";
+import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { loadAllUsers } from "@/lib/session/users";
 import { formatDay } from "@/lib/history/dates";
 import {
@@ -65,12 +66,11 @@ type State =
 export function ConsolidatedHistory() {
   const router = useRouter();
   const params = useSearchParams();
+  const inUrl = parseHistoryFilters(new URLSearchParams(params.toString()));
+  const search = toHistorySearch(inUrl);
   /* Held here, never in the URL (history-filters). */
-  const [q, setQ] = useState("");
-  const filters: HistoryFilters = {
-    ...parseHistoryFilters(new URLSearchParams(params.toString())),
-    q,
-  };
+  const [q, setQ] = useSearchTerm("/admin/history", search);
+  const filters: HistoryFilters = { ...inUrl, q };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [offset, setOffset] = useState(0);
@@ -85,8 +85,6 @@ export function ConsolidatedHistory() {
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-
-  const search = toHistorySearch(filters);
 
   const load = useCallback(async (current: HistoryFilters, at: number) => {
     try {

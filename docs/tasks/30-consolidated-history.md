@@ -20,7 +20,9 @@ never revisited.
   says so when capped.
 - **D-30-4 · CSV cells starting `= + - @` or tab are prefixed with a quote.** _Why:_
   free text would run as a spreadsheet formula. _Refined by D-129-9:_ also CR, and
-  `= + - @` behind leading whitespace, control or format characters.
+  `= + - @` behind leading whitespace, control or format characters. _Refined by
+  D-163-1 to D-163-3:_ a `;` or line break inside a value that leads to a sign or tab
+  gets its own `'`; a `,` gets none; no `sep=` line.
 - **D-30-5 · `to` dates extend to end of day.**
 - **D-30-6 · Search stays client-side** (D-29-5); export applies the same search.
 

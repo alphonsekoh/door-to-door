@@ -19,10 +19,22 @@ import { displayName } from "@/lib/teams/team-ui";
  */
 const FORMULA_START = [/^[\t\r]/, /^[\s\p{Cc}\p{Cf}]*[=+\-@]/u];
 
+/*
+ * A spreadsheet whose separator is `;` honours a `"` only where it opens one
+ * of its own fields, which none of ours past the first in a row does. So it
+ * starts a new field after every `;` and line break inside a value, and each
+ * one that leads to a sign gets a `'` of its own. A `"` is skipped like
+ * whitespace there, since that reader can unwrap it; a line break is not, as
+ * it starts a field of its own. A `,` needs nothing: a value holding one is
+ * quoted, and to that reader it is not a separator.
+ */
+const FIELD_INSIDE = /([;\r\n])(?=\t|(?:(?![\r\n])[\s\p{Cc}\p{Cf}"])*[=+\-@])/gu;
+
 export function escapeCell(value: string): string {
   const risky = /[",\n\r]/.test(value);
   const formula = FORMULA_START.some((start) => start.test(value));
-  const cell = formula ? `'${value}` : value;
+  const guarded = value.replace(FIELD_INSIDE, "$1'");
+  const cell = formula ? `'${guarded}` : guarded;
   return risky || formula ? `"${cell.replace(/"/g, '""')}"` : cell;
 }
 
