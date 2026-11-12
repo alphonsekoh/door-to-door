@@ -5,7 +5,7 @@ import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 import { firstOrThrow } from "@/server/db-utils";
 import { verifyPassword } from "@/server/password";
-import { allowGoogleSignIn } from "@/server/auth/google";
+import { allowGoogleSignIn } from "@/auth/google";
 import {
   GOOGLE_ONLY_NEEDS_GOOGLE,
   runCreateAdmin,

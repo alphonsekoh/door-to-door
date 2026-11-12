@@ -13,7 +13,7 @@ const { connection, googleSignInEnabled } = vi.hoisted(() => ({
   googleSignInEnabled: vi.fn(() => false),
 }));
 vi.mock("next/server", () => ({ connection }));
-vi.mock("@/server/auth/google", () => ({ googleSignInEnabled }));
+vi.mock("@/auth/google", () => ({ googleSignInEnabled }));
 
 beforeEach(() => {
   vi.clearAllMocks();

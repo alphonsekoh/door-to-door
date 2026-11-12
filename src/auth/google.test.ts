@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Credentials from "@/server/auth/credentials";
 import type { Database } from "@/db/client";
-import { allowGoogleSignIn, googleSignInEnabled } from "@/server/auth/google";
+import { allowGoogleSignIn, googleSignInEnabled } from "@/auth/google";
 
 const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }));
 vi.mock("@/server/config", () => ({ getConfig }));

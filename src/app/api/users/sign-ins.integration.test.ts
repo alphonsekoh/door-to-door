@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as Google from "@/server/auth/google";
+import type * as Google from "@/auth/google";
 import { getDatabase, resetDatabase } from "@/db/client";
 import { createTestPool, signedInAs, testSignInId, truncateAll } from "@/db/testing";
 import { SIGN_IN_FAILED_MESSAGE, authorizeCredentials } from "@/server/auth/credentials";
@@ -14,7 +14,7 @@ const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
 
 const { googleSignInEnabled } = vi.hoisted(() => ({ googleSignInEnabled: vi.fn(() => true) }));
-vi.mock("@/server/auth/google", async (importOriginal) => ({
+vi.mock("@/auth/google", async (importOriginal) => ({
   ...(await importOriginal<typeof Google>()),
   googleSignInEnabled,
 }));

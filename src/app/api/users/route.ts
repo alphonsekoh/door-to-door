@@ -6,7 +6,7 @@ import {
   zListUsersResponse,
 } from "@/generated/zod.gen";
 import { withContract } from "@/server/http/contract";
-import { googleSignInEnabled } from "@/server/auth/google";
+import { googleSignInEnabled } from "@/auth/google";
 import { currentUser } from "@/server/auth/session";
 import { toUser } from "@/server/users/serialise";
 import { createUser, listUsers } from "@/server/users/service";

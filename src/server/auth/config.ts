@@ -11,7 +11,7 @@ import {
   allowGoogleSignIn,
   googleProviders,
   linkByEmailOnly,
-} from "@/server/auth/google";
+} from "@/auth/google";
 import { asUuid, checkSignIn, endSignIn, startSignIn } from "@/server/auth/sign-ins";
 import { getConfig } from "@/server/config";
 

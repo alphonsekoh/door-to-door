@@ -11,7 +11,7 @@ import {
   createFakeGoogle,
   fakeGoogleCode,
   type FakeGoogleAccount,
-} from "../../../e2e/fake-google";
+} from "../../e2e/fake-google";
 
 /*
  * Google sign-in end to end through Auth.js (#14), with Google's servers

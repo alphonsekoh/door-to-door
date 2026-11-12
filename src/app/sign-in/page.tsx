@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
 import { SignInForm } from "@/components/account/sign-in-form";
-import { googleSignInEnabled } from "@/server/auth/google";
+import { googleSignInEnabled } from "@/auth/google";
 
 export const metadata = { title: "Sign in" };
 

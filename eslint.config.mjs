@@ -81,6 +81,10 @@ const eslintConfig = defineConfig([
               group: ["@/lib/config", "**/lib/config"],
               message: "Only server code may import the config schema.",
             },
+            {
+              group: ["@/auth", "@/auth/*"],
+              message: "Auth.js and Google sign-in are server-only; pass what UI needs as props.",
+            },
           ],
         },
       ],
