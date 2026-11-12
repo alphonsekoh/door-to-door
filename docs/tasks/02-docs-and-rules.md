@@ -18,3 +18,4 @@ rules describe reality.
 - **D-02-3 · CLAUDE.md is the guide; it imports AGENTS.md.** AGENTS.md keeps the block
   `next dev` regenerates. _Why:_ deleting that block only recreates an uncommitted change.
 - **D-02-4 · `.claude/settings.json` denies reading `.env*`, force-push and hard reset.**
+  Its allow list no longer covers `npm install` or `npx drizzle-kit` (D-131-8).
