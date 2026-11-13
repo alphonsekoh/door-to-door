@@ -138,9 +138,9 @@ file covers only some commands; see [Environment variables](#environment-variabl
 
 The sign-in cookies are always `Secure`. Chrome and Firefox keep them on `localhost`
 over plain http; Safari, or a phone opening the app on your LAN over http, drops them.
-Sign-in then says "Email or password is incorrect." even for the right password: the
-CSRF cookie never came back, so Auth.js refused the attempt (`MissingCSRF` in the
-server log). For such a run, set `auth.secureCookies: false` in `config.yaml`.
+Sign-in then says "This page expired. Reload it and try again." however often you
+reload: the CSRF cookie never came back, so Auth.js refused the attempt (`MissingCSRF` in
+the server log). For such a run, set `auth.secureCookies: false` in `config.yaml`.
 
 ### Record your first visit
 
@@ -665,7 +665,7 @@ docker run -p 3000:3000 \
 | `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.                                                                             |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                                                                                        |
 | "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.                                                                            |
-| "Email or password is incorrect." over http, right password     | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged). Set `auth.secureCookies: false`.                                                                       |
+| "This page expired." every time, over http                      | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged), so reloading does not help. Set `auth.secureCookies: false`.                                           |
 | "That Google account can't sign in here."                       | Not on **Admin → Team**, outside `auth.google.domains` or spelled unlike Google's; unverified; a personal Google account on a Workspace domain; or deactivated. Add, fix or restore it.              |
 | "Could not sign out."                                           | No signal, or the server could not end the sign-in (`EventError` logged). The phone is still signed in; try again.                                                                                   |
 | "Google sign-in didn't finish."                                 | The round trip failed. Check that the OAuth client's redirect URI is `<public origin>/api/auth/callback/google` and that `AUTH_GOOGLE_SECRET` is right; the server log names the Auth.js error type. |

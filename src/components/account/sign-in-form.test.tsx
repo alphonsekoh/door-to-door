@@ -38,6 +38,9 @@ const failed = { error: "CredentialsSignin", code: undefined, status: 401, ok: f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Clearing keeps queued once-answers: one a test left unread must not
+  // answer the next test's sign-in.
+  signIn.mockReset();
   get.mockReturnValue(null);
   finishSignOut.mockResolvedValue(undefined);
 });
@@ -242,6 +245,8 @@ describe("SignInForm", () => {
     expect(alert).toHaveTextContent("Email or password is incorrect.");
     expect(alert.textContent).not.toMatch(/unknown|no such|deactivated|exists/i);
     expect(goTo).not.toHaveBeenCalled();
+    // A refused password is never sent again by itself.
+    expect(signIn).toHaveBeenCalledOnce();
     // The member can correct the password and try again.
     expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });
@@ -270,6 +275,75 @@ describe("SignInForm", () => {
     // Otherwise a double tap on a slow connection sends two attempts.
     expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
     release(ok);
+  });
+
+  /* Auth.js checks the CSRF token before it reads the credentials, and names
+     that refusal MissingCSRF: a cookie swapped since the token was fetched,
+     or one the phone did not keep. */
+  describe("when the CSRF check refuses the attempt (#151)", () => {
+    const expired = { error: "MissingCSRF", code: undefined, status: 200, ok: true, url: null };
+
+    async function submit(password: string) {
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), password);
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    }
+
+    it("sends it once more, showing nothing, and signs in", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(ok);
+      await submit("password123");
+
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
+      expect(signIn).toHaveBeenCalledTimes(2);
+      expect(signIn.mock.calls[1]).toEqual(signIn.mock.calls[0]);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("stays on Signing in, with no message, while the second go is out", async () => {
+      let release: (value: typeof ok) => void = () => undefined;
+      signIn.mockResolvedValueOnce(expired).mockReturnValueOnce(
+        new Promise<typeof ok>((resolve) => {
+          release = resolve;
+        }),
+      );
+      await submit("password123");
+
+      await waitFor(() => {
+        expect(signIn).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      release(ok);
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
+    });
+
+    it("says the page expired when the second go is refused too, and stops there", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(expired);
+      await submit("password123");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "This page expired. Reload it and try again.",
+      );
+      expect(signIn).toHaveBeenCalledTimes(2);
+      expect(goTo).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+    });
+
+    it("keeps the one generic message when the second go is refused on the credentials", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(failed);
+      await submit("wrong-password");
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Email or password is incorrect.");
+      expect(alert).not.toHaveTextContent(/expired/i);
+      expect(signIn).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("after the app signed the member out", () => {

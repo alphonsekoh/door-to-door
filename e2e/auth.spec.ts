@@ -1,4 +1,4 @@
-import type { APIRequestContext, APIResponse, Page } from "@playwright/test";
+import type { APIRequestContext, APIResponse, Page, PlaywrightWorkerArgs } from "@playwright/test";
 import { securityHeaders } from "../src/server/http/security-headers";
 import { SEED_ADMIN, SEED_MEMBER, SEED_PASSWORD } from "./accounts";
 import { expect, test } from "./fixtures";
@@ -90,6 +90,120 @@ test.describe("signing in before the page is live (#125)", () => {
     await page.getByLabel("Password").press("Enter");
     await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
     expect(loaded.filter((url) => url.includes("password"))).toEqual([]);
+  });
+});
+
+test.describe("a sign-in refused by the CSRF check (#151)", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  type Playwright = PlaywrightWorkerArgs["playwright"];
+
+  /* A CSRF cookie the server issued someone else: genuine, but not the one
+     behind the token the page fetched. */
+  async function issuedElsewhere(playwright: Playwright, baseURL: string | undefined) {
+    const other = await playwright.request.newContext(baseURL === undefined ? {} : { baseURL });
+    try {
+      await other.get("/api/auth/csrf");
+      const issued = (await other.storageState()).cookies.find(({ name }) =>
+        name.endsWith("csrf-token"),
+      );
+      if (issued === undefined) throw new Error("The server issued no CSRF cookie");
+      return issued.value;
+    } finally {
+      await other.dispose();
+    }
+  }
+
+  /*
+   * As another tab, or WebKit's worker check, can do: once the page has its
+   * token, the cookie under it is swapped for a stale one before the sign-in
+   * goes, so Auth.js refuses that sign-in as MissingCSRF. Does so for the
+   * next `times` tokens the page fetches.
+   */
+  async function staleCookieUnderToken(
+    page: Page,
+    playwright: Playwright,
+    baseURL: string | undefined,
+    times: number,
+  ) {
+    let left = times;
+    await page.route("**/api/auth/csrf", async (route) => {
+      if (left === 0) {
+        await route.continue();
+        return;
+      }
+      left -= 1;
+      const answer = await route.fetch();
+      const body = await answer.text();
+      const context = page.context();
+      const held = (await context.cookies()).find(({ name }) => name.endsWith("csrf-token"));
+      if (held === undefined) throw new Error("The page holds no CSRF cookie");
+      await context.addCookies([{ ...held, value: await issuedElsewhere(playwright, baseURL) }]);
+      // The token alone: a cookie in the answer would put the right one back.
+      await route.fulfill({ status: answer.status(), contentType: "application/json", body });
+    });
+  }
+
+  function countSignIns(page: Page): () => number {
+    let sent = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "POST" &&
+        new URL(request.url()).pathname === "/api/auth/callback/credentials"
+      ) {
+        sent += 1;
+      }
+    });
+    return () => sent;
+  }
+
+  test("still signs in, by sending the sign-in once more", async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const sent = countSignIns(page);
+    await staleCookieUnderToken(page, playwright, baseURL, 1);
+    await signIn(page, SEED_MEMBER);
+
+    await expect(page.getByRole("heading", { level: 1, name: "Active session" })).toBeVisible();
+    expect(sent()).toBe(2);
+  });
+
+  test("says the page expired when the second go is refused too, and stops there", async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const sent = countSignIns(page);
+    await staleCookieUnderToken(page, playwright, baseURL, Number.POSITIVE_INFINITY);
+    await signIn(page, SEED_MEMBER);
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+      "This page expired. Reload it and try again.",
+    );
+    await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeEnabled();
+    expect(sent()).toBe(2);
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("keeps the one generic message for a wrong password", async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    const sent = countSignIns(page);
+    await staleCookieUnderToken(page, playwright, baseURL, 1);
+    await page.goto("/sign-in");
+    await page.getByLabel("Email").fill(SEED_ADMIN);
+    await page.getByLabel("Password").fill("not-the-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+      "Email or password is incorrect.",
+    );
+    expect(sent()).toBe(2);
   });
 });
 

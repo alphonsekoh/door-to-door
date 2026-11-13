@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
 import { finishSignOut } from "@/lib/session/sign-out";
 import { GOOGLE_UNFINISHED, googleSignInMessage } from "@/lib/session/sign-in-errors";
+import { PAGE_EXPIRED, signInWithPassword } from "@/lib/session/password-sign-in";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { useLive } from "@/lib/hooks/use-live";
@@ -102,12 +103,13 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
     setSubmitting(true);
     /* So that check's own sign-out cannot land after this sign-in. */
     await finishing.current;
-    const result = await signIn("credentials", { email, password, redirect: false });
+    const outcome = await signInWithPassword(signIn, email, password);
 
-    if (result.error !== undefined) {
+    if (outcome !== "signed-in") {
       setSubmitting(false);
-      // Never distinguish unknown email from wrong password.
-      setFailure(GENERIC_FAILURE);
+      // Never distinguish unknown email from wrong password. An expired page
+      // is the CSRF check alone, which reads no credentials.
+      setFailure(outcome === "expired" ? PAGE_EXPIRED : GENERIC_FAILURE);
       return;
     }
     /* A second member signing in on a shared phone must not read the first
