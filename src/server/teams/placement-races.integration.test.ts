@@ -140,7 +140,7 @@ const benDeactivated = async () =>
 
 beforeEach(async () => {
   await truncateAll(pool);
-  // Ben is stored before Admin, so only the ORDER BY makes a placement lock Admin first.
+  // Ben is stored before Admin, for the id-order test.
   await pool.query(
     `INSERT INTO users (id, email, name, role) VALUES
       ($3,'ben@t.local','Ben','member'), ($2,'alice@t.local','Alice','member'),
@@ -233,17 +233,32 @@ describe("placing someone while an admin deactivates them", () => {
      * target. Held at Admin here, it parks first; the placement of both then
      * queues at Admin holding nothing. Had it locked Ben first, the two would
      * each hold what the other needs once Admin is let go.
+     *
+     * A scan of the primary key returns Admin first with or without the
+     * ORDER BY, and the planner may choose one. So the placement runs on a
+     * connection with index scans off: it reads rows in the order they were
+     * stored, Ben before Admin, and only the ORDER BY locks Admin first.
      */
-    const [deactivating, placing] = await race(
-      (q) => q(`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, [ADMIN]),
-      deactivateBen,
-      `%from "users"%for no key update%`,
-      () => createTeam(db, admin, SESSION, { name: "Pair", memberIds: [BEN, ADMIN] }),
-      `%from "users"%for share%`,
-    );
+    const storageOrder = new Pool({
+      connectionString: requireTestDatabaseUrl(),
+      max: 1,
+      options: "-c enable_indexscan=off -c enable_indexonlyscan=off",
+    });
+    const unindexed = drizzle(storageOrder, { schema }) as unknown as Database;
+    try {
+      const [deactivating, placing] = await race(
+        (q) => q(`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, [ADMIN]),
+        deactivateBen,
+        `%from "users"%for no key update%`,
+        () => createTeam(unindexed, admin, SESSION, { name: "Pair", memberIds: [BEN, ADMIN] }),
+        `%from "users"%for share%`,
+      );
 
-    expect(deactivating).toMatchObject({ ok: { id: BEN } });
-    expect(placing).toMatchObject({ error: deactivated });
-    expect(await written()).toEqual({ teams: 1, benOnATeam: 0, benJoined: 0 });
+      expect(deactivating).toMatchObject({ ok: { id: BEN } });
+      expect(placing).toMatchObject({ error: deactivated });
+      expect(await written()).toEqual({ teams: 1, benOnATeam: 0, benJoined: 0 });
+    } finally {
+      await storageOrder.end();
+    }
   });
 });
