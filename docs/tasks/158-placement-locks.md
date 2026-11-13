@@ -37,7 +37,7 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   place its caller, so D-83-11's window stands there. _Why:_ one predicate, with no
   branch on whether the placed person is the caller.
 - **D-158-5 · Lock order: placement is a third `FOR SHARE` taker on users, and no wait
-  cycle forms.** Extends D-132-5 and D-125-11. Verified orders:
+  cycle forms with the writers below.** Extends D-132-5 and D-125-11. Verified orders:
   - Placement: users `FOR SHARE` in id order, then unlocked reads, then team, team-member
     and participant inserts, which take only foreign-key `KEY SHARE` locks and
     unique-index waits.
@@ -58,7 +58,8 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   Auth.js adapter's `updateUser` (called only by Auth.js's email provider, which is not
   configured). The first holds only lower-id user rows when it waits, and the other two
   are single statements. The inserts' `KEY SHARE` on users conflicts with none of them.
-  _Research:_ R-124, R-128, R-129.
+  Two placements that list each other can still deadlock on their inserts (D-158-8,
+  #180). _Research:_ R-124, R-128, R-129.
 
 - **D-158-6 · `compareUuids` (`src/lib/uuid.ts`) lower-cases before comparing.** _Why:_
   the request schema accepts upper-case uuids, and Postgres orders uuids by their bytes,
@@ -72,15 +73,32 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   - A deactivation waits for a placement that locked first, and both land. It fails if
     the lock is `KEY SHARE` or taken after the inserts.
   - A placement queued behind a deactivation at an admin's row does not deadlock. It
-    deadlocks without the `ORDER BY`.
+    deadlocks without the `ORDER BY`, every run, because of D-158-9.
 
   _Trade-off:_ the sort across chunks is held by `compareUuids`' unit test and the
   reasoning in D-158-2, not a race; one would need over 10,000 ids.
 
-- **D-158-8 · Known limits, left as they were.** `createTeam`'s session-status read and
-  `addTeamMember`'s `loadTeamFor` stay unlocked reads before the transaction. The same id
-  sent in two letter cases counts twice and is a `404` (pre-existing). _Why:_ outside
-  #158's scope; neither lets a deactivated person be placed.
+- **D-158-8 · Known limits, left to #180 (owner, 2026-11-13).** Three gaps predate #158;
+  the owner filed them as #180 (P2), not fixed here:
+  - Two placements that list each other can deadlock, and one gets a `500`, not a `409`:
+    `placeMembers` inserts in caller order, so each multi-row insert can wait on the
+    other's row in a unique index.
+  - `createTeam`'s session-status read and `addTeamMember`'s `loadTeamFor` stay unlocked
+    reads before the transaction.
+  - The same id sent in two letter cases counts as two people and is a `404`.
+
+  _Why:_ outside #158's scope; none lets a deactivated person be placed. The deadlock
+  was added to this list after review.
+
+- **D-158-9 · The id-order test's placement reads users in storage order (owner,
+  2026-11-13).** Refines D-158-7's third test. Its `createTeam` runs on its own
+  one-connection pool with `enable_indexscan` and `enable_indexonlyscan` off, ended in
+  a `finally`; bitmap scans stay on. _Why:_ the owner ruled the test must catch a missing
+  `ORDER BY` every time. An index scan of `users_pkey` returns Admin before Ben with or
+  without it, so the test passed without it whenever the planner chose one. A seq or
+  bitmap heap scan reads in storage order (Ben `(0,1)`, Admin `(0,3)`), so only the
+  `ORDER BY` locks Admin first; bitmap scans read that order too, so they are left on.
+  Its own pool keeps the settings off every other test's connection. _Research:_ R-162.
 
 ## Relies on
 
@@ -96,6 +114,7 @@ D-126-3, D-132-2, D-132-4, D-132-5, D-132-7, D-132-8.
 | D-83-11           | Refined: a member's own `createTeam` is refused once a deactivation lands   | D-158-4   |
 | D-126-3           | Corrected: the checks ran before the transaction; now they run inside it    | D-158-2   |
 | D-74-26, D-74-15  | Kept: the same `409`, now judged under the lock; `memberIds` stays uncapped | D-158-2/3 |
+| D-74-14           | Gap noted (owner): two placements listing each other can deadlock; #180     | D-158-8   |
 
 ## Open questions
 

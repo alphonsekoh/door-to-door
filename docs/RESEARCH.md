@@ -1819,3 +1819,24 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `uuid_internal_cmp` (`memcmp`) in PostgreSQL's `src/backend/utils/adt/uuid.c`;
   `node_modules/zod/v4/core/regexes.js` (`uuid`); measured with `psql` (#158 docs)
 - **Used by:** D-158-2, D-158-6
+
+### R-162 · Without an `ORDER BY`, a locking SELECT locks in its scan's order (measured)
+
+- **Finding:** `LockRows` locks rows as the plan below it returns them, so a
+  `SELECT … FOR SHARE` with no `ORDER BY` locks in scan order. A scan of the primary key
+  returns key order, which hides a missing `ORDER BY`; a seq scan, and a bitmap heap scan
+  (which sorts the row locations into physical order before fetching), return storage
+  order. With `enable_indexscan` and `enable_indexonlyscan` off, `EXPLAIN` of #158's
+  placement lock showed a seq scan, or a bitmap heap scan with seq scans off too; with
+  the `ORDER BY`, a `Sort` sits under `LockRows`. In #158's id-order test, on
+  PostgreSQL 17.11 (CI runs `postgres:17-alpine`): before the pin, the test passed
+  without the `ORDER BY` in 1 run of 8. With it, the test failed without the `ORDER BY`
+  10 of 10 (builder) and 8 of 8 (reviewer), each a `40P01` deadlock, and passed with it
+  10 of 10 and 6 of 6. With index scans forced on every other connection, it still
+  failed 3 of 3 without and passed 3 of 3 with.
+- **Source:** [PostgreSQL, Using EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)
+  (bitmap heap scan order); [PostgreSQL, planner method configuration](https://www.postgresql.org/docs/current/runtime-config-query.html#GUC-ENABLE-INDEXSCAN).
+  Cited, not fetched (the session's network guard refused them). Measured (#158 builder
+  and reviewer, `src/server/teams/placement-races.integration.test.ts`; `EXPLAIN` by
+  the #158 docs step).
+- **Used by:** D-158-7, D-158-9
