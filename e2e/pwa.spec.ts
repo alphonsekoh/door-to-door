@@ -164,11 +164,16 @@ test.describe("the worker in charge", () => {
   test("activates, and takes control of the next load", async ({ memberPage }) => {
     await memberPage.goto("/");
     await controlled(memberPage);
-    const state = await memberPage.evaluate(async () => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      return registration?.active?.state;
-    });
-    expect(state).toBe("activated");
+    // The page can be in the worker's charge before its copy of the worker
+    // hears that activation finished: WebKit has read "activating" here (#166).
+    await expect
+      .poll(() =>
+        memberPage.evaluate(async () => {
+          const registration = await navigator.serviceWorker.getRegistration();
+          return registration?.active?.state;
+        }),
+      )
+      .toBe("activated");
   });
 
   test("the offline page is precached, ready for a dead spot", async ({ memberPage }) => {
