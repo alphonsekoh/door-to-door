@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sameUuid, uuidv7 } from "@/lib/uuid";
+import { compareUuids, sameUuid, uuidv7 } from "@/lib/uuid";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -57,5 +57,22 @@ describe("sameUuid", () => {
     const id = "5191d000-0000-4000-8000-00000000000a";
     expect(sameUuid(id, id.toUpperCase())).toBe(true);
     expect(sameUuid(id, "5191d000-0000-4000-8000-00000000000b")).toBe(false);
+  });
+});
+
+describe("compareUuids", () => {
+  it("orders ids as Postgres does, whatever their case", () => {
+    // Plain string order puts "B" before "a"; Postgres compares the bytes, 0x0a < 0x0b.
+    const lower = "0a000000-0000-4000-8000-000000000000";
+    const upper = "0B000000-0000-4000-8000-000000000000";
+    expect([upper, lower].sort()).toEqual([upper, lower]);
+    expect([upper, lower].sort(compareUuids)).toEqual([lower, upper]);
+    expect(compareUuids(lower, upper)).toBe(-1);
+    expect(compareUuids(upper, lower)).toBe(1);
+  });
+
+  it("calls one id in either case equal", () => {
+    const id = "5191d000-0000-4000-8000-00000000000a";
+    expect(compareUuids(id, id.toUpperCase())).toBe(0);
   });
 });

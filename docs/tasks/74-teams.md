@@ -94,7 +94,9 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   PR #92 to match the server). Order of checks: `404` (no such team) then
   `403` (a member not on the team) then `409` (`session_not_active`). A member removes
   only themselves (`403` otherwise). _Why:_ the unique key is what makes two concurrent
-  "create a team" calls safe; a lost race is a `409 conflict`.
+  "create a team" calls safe; a lost race is a `409 conflict`. _Gap (owner, 2026-11-13):_
+  two placements that list each other can deadlock instead, and one gets a `500`
+  (D-158-8); fixing it is #180.
 - **D-74-15 · Who can be added.** A member may add any JOINED, active member not already
   on a team, WITHOUT that person's consent; an admin may add any active user.
   OWNER-APPROVED. _Consequence:_ someone can be put on a team they did not choose, and
