@@ -56,3 +56,15 @@ export function uuidv7(now: number = Date.now(), random: () => number = Math.ran
 export function sameUuid(a: string, b: string): boolean {
   return a.toLowerCase() === b.toLowerCase();
 }
+
+/*
+ * Postgres's order for uuids, so rows locked in chunks are locked in the order
+ * each chunk's ORDER BY takes them: it compares their bytes, which is the
+ * order of their lower-case text.
+ */
+export function compareUuids(a: string, b: string): number {
+  const x = a.toLowerCase();
+  const y = b.toLowerCase();
+  if (x === y) return 0;
+  return x < y ? -1 : 1;
+}

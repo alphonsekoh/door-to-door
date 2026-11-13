@@ -88,6 +88,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   - Touch, end-one, end-all and sign-out are single statements on `sign_ins`.
 
   This extends D-132-5's analysis, which now has two `FOR SHARE` takers on a user row.
+  _Extended by D-158-5:_ team placement is a third; it locks no `sign_ins` row.
   Parked-lock tests in `sign-ins.integration.test.ts` hold both orders. A sign-in that
   waited for a deactivation is refused and writes nothing. A deactivation that waited for
   a sign-in ends it. _Why:_ no sign-in may outlive a deactivation, or reactivation would
