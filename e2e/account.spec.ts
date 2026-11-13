@@ -96,6 +96,70 @@ test.describe("signing out", () => {
 });
 
 /*
+ * A sign-out the server refused, as one that could not end its sign-in does
+ * (D-125-20): the phone stays signed in, and Account says so just above Sign
+ * out. That alert is drawn at the end of a page with little room left above
+ * the nav, and on an iPhone 13 it pushed Sign out under it (#164). At the
+ * largest text it did so on both phones, out of sight below the screen.
+ */
+test.describe("a refused sign-out", () => {
+  // Routing sees what a service worker fetches for the page on some engines only.
+  test.use({ serviceWorkers: "block" });
+
+  test("leaves its alert and Sign out in view, above the bottom nav", async ({
+    ownMemberPage: page,
+  }) => {
+    await page.route("**/api/auth/signout", (route) =>
+      route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ url: "/sign-in?error=SignOutError" }),
+      }),
+    );
+    const nav = page.getByRole("navigation", { name: "Primary" });
+
+    /* As the phone opens it, then at the largest text (D-111-24), where the
+       page is taller than the screen: a full load starts again at the default. */
+    for (const size of [null, "32px"]) {
+      const at = size ?? "the default text size";
+      await page.goto("/account");
+      await expect(page.getByLabel("Your name")).not.toHaveValue("");
+      if (size !== null) {
+        await page.evaluate((root) => {
+          document.documentElement.style.fontSize = root;
+        }, size);
+      }
+
+      await page.getByRole("button", { name: "Sign out" }).click();
+      // In the page: Next's route announcer is an alert too.
+      const alert = page.getByRole("main").getByRole("alert");
+      await expect(alert).toHaveText("Could not sign out. Check your connection and try again.");
+      const signOut = page.getByRole("button", { name: "Sign out" });
+      await expect(signOut).toBeEnabled();
+      await expect(page).toHaveURL(/\/account$/);
+
+      const [alertBox, signOutBox, navBox] = await Promise.all([
+        alert.boundingBox(),
+        signOut.boundingBox(),
+        nav.boundingBox(),
+      ]);
+      if (alertBox === null || signOutBox === null || navBox === null) {
+        throw new Error(`the alert, Sign out or the nav is not drawn at ${at}`);
+      }
+      expect(alertBox.y, `the alert above the top of the screen at ${at}`).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(
+        signOutBox.y + signOutBox.height,
+        `Sign out under the nav at ${at}`,
+      ).toBeLessThanOrEqual(navBox.y + 0.5);
+      // Told, not moved to: focus stays off the alert.
+      await expect(alert).not.toBeFocused();
+    }
+  });
+});
+
+/*
  * Every answer to a signed-in request sets the session cookie again. One to
  * a request sent just before the sign-out and arriving just after it, such
  * as the queue's session check on weak signal, put the cookie back: the
