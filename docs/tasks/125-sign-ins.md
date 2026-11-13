@@ -206,7 +206,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   control reads "Sign out" again at once. With no answer it reads "Could not sign out.
   Check your connection and try again."; a refusal shows the server's message. When the
   read after a failed end fails too, the list is kept, and the row's alert still says
-  "Could not sign out. …".
+  "Could not sign out. …". _Applied to Account by D-164-1._
 - **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
   `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
   ids are lower case. Without this, your own current sign-in was not `409`, and "Sign
@@ -251,8 +251,9 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   answer puts back A's ended cookie, so B is signed out. B is never signed in as A.
 - During a database outage nobody can sign out: the phone stays signed in, and says so,
   until the database is back (D-125-20).
-- A sign-out can now fail on a server fault too (D-125-20), so #164, Sign out under the
-  bottom nav after a failed sign-out on iPhone 13, shows more often.
+- ~~A sign-out can now fail on a server fault too (D-125-20), so #164, Sign out under the
+  bottom nav after a failed sign-out on iPhone 13, shows more often.~~ Fixed by D-164-1
+  (#164).
 - Every token issued before this release has no `signInId`, so on deploy every phone is
   signed out once (D-125-12).
 - The session endpoint keeps the cookie during a database outage (D-125-13).

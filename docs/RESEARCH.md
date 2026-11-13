@@ -1534,7 +1534,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   Chromium.
 - **Source:** `playwright-core` 1.62.1 `types.d.ts` (`page.route`, `browserContext.route`,
   `serviceWorkers`); measured (#129 builder and verifier)
-- **Used by:** D-129-10
+- **Used by:** D-129-10, D-164-5
 
 ### R-139 · OWASP's CSV injection guidance names tab and CR, and the field separator
 
@@ -1804,3 +1804,17 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   way.
 - **Source:** `node_modules/next-auth/react.js` (`signOut`)
 - **Used by:** D-125-21
+
+### R-161 · `scrollIntoView` counts a box under a fixed nav as in view; a scroll margin keeps it clear (measured)
+
+- **Finding:** `scrollIntoView({ block: "nearest" })` measures against the whole
+  viewport, fixed bars included. Without a bottom `scroll-margin`, Sign out under the
+  nav on an iPhone 13 (ending at 630, the nav at 600) did not move, and at 32px on a
+  Pixel 5 it was brought only to the screen's bottom edge, behind the nav. The margin is
+  met only as far as the page can scroll, so at its end the box can sit flush on the
+  nav. `overflow: hidden`, D-90-8's lock, stops the member scrolling, not a script: the
+  scroll ran while "Sign out anyway" was still closing, on both engines.
+- **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin);
+  [CSS Overflow 3, `hidden`](https://drafts.csswg.org/css-overflow-3/#valdef-overflow-hidden);
+  measured (#164 builder and verifier, Pixel 5 and iPhone 13)
+- **Used by:** D-164-1, D-164-3
