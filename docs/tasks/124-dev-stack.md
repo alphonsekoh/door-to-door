@@ -18,7 +18,7 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
 - **D-124-1 · `db:seed` runs only with `--demo` typed; no npm script passes it.**
   `npm run db:seed -- --demo`, or `db:reset -- --demo`. _Why:_ on a new production
   database with no users yet, the flag is the only guard, so it is typed each time.
-  _Research:_ R-165.
+  _Research:_ R-168.
 - **D-124-2 · `seedDatabase()` refuses, before any write, a database whose `users` holds
   any id outside the seed's fixed ids.** A `SeedRefusedError`, exit 1, naming no
   account. Extends D-09-5. _Why:_ in `seedDatabase()` it guards every caller (CLI,
@@ -54,7 +54,7 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   zero-config, and the standalone server forces `production`, so the public value can
   never sign a deployed session. CI's E2E secret does not match. _Rejected:_
   `${AUTH_SECRET:?}`, which fails every Compose command, `up -d db-test` and
-  `run migrate` included. _Research:_ R-162, R-163.
+  `run migrate` included. _Research:_ R-165, R-166.
 
 ### Dev server
 
@@ -66,7 +66,7 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   authorization, so D-16-2 holds; it refines D-16-1's "redirect only". _Why:_ a
   DNS-rebound page sends its own name as `Host`, and a page can set
   `X-Forwarded-Host`. Binding to loopback does not stop rebinding. A production build
-  drops the branch. _Research:_ R-98, R-161, R-162.
+  drops the branch. _Research:_ R-98, R-164, R-165.
 - **D-124-9 · One `LOOPBACK_HOSTS` list in `src/server/http/dev-hosts.ts` feeds the
   proxy and `allowedDevOrigins`; there is no config key or env var.** _Why:_ the two dev
   guards agree. D-121-5 refused a host key, and D-75-7 allows no new variable.
@@ -77,7 +77,7 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   endpoints, which the proxy never sees, off the LAN. In a container, only `0.0.0.0`
   receives the published port, which D-124-6 puts on the host's loopback. _Rejected:_
   an opt-in dev host list, a new setting that `next.config.ts` would read at start.
-  _Research:_ R-164.
+  _Research:_ R-167.
 - **D-124-11 · No contract change.** _Why:_ a production build never serves the dev
   `403`, and the contract describes the deployed API (D-10-1).
 
@@ -112,7 +112,7 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   having no `command` (so the Dockerfile's `-H 0.0.0.0` runs), and the secret being a
   shell-overridable `${AUTH_SECRET:-…}`. It reads the file with YAML merge keys
   resolved, as Compose does. _Why:_ each is a way the file could drift that the plan's
-  checks would miss. _Research:_ R-166.
+  checks would miss. _Research:_ R-169.
 
 ### Reviewer nits (owner, 2026-11-13)
 
@@ -123,7 +123,7 @@ Nit 4 is D-124-3's wording; the others follow.
 - **D-124-19 · The Dockerfile dev stage runs `node_modules/.bin/next`, never `npx next`
   (nit 1).** _Why:_ with no TTY, `npx` installs a package missing from `node_modules`
   from the registry without asking, so a missing binary would run an unpinned `next`;
-  the installed path fails instead. _Research:_ R-167.
+  the installed path fails instead. _Research:_ R-170.
 - **D-124-20 · A changed Compose settings file is a copy named `config.demo.yaml`, never
   `config.yaml` (nit 2).** The README and `config.docker.yaml`'s header give
   `CONFIG_FILE=./config.demo.yaml docker compose up`; production's
@@ -147,7 +147,7 @@ Nit 4 is D-124-3's wording; the others follow.
   The matcher's excluded paths (`/_next/static`, `/_next/image`, `favicon.ico`, image
   files) skip it too. They serve compiled source and public files, not data or a
   session, and D-124-10 keeps them off the LAN. Closing the gap needs a custom dev
-  server (R-161).
+  server (R-164).
 - **`docker compose up` against a new, empty database seeds it** (D-124-5). Only the
   README and `--no-deps migrate` stand in the way.
 - **Not run here (no Docker):** `docker compose ps` showing every port on `127.0.0.1`;

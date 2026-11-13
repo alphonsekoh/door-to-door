@@ -1805,7 +1805,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/next-auth/react.js` (`signOut`)
 - **Used by:** D-125-21
 
-### R-161 · Next's dev-resource guard sees only its own paths, and passes no `Origin`
+### R-164 · Next's dev-resource guard sees only its own paths, and passes no `Origin`
 
 - **Finding:** In `next` 16.4.3, `blockCrossSiteDEV` runs in the router server, before
   the proxy, and only on paths containing `/_next` or `/__nextjs` (not `/_next/image` or
@@ -1820,7 +1820,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `node_modules/next/dist/server/lib/router-server.js`; measured (#124 verifier)
 - **Used by:** D-124-8, D-124-9, D-124-10
 
-### R-162 · A production build drops a dev-only proxy branch, and the standalone server forces `production`
+### R-165 · A production build drops a dev-only proxy branch, and the standalone server forces `production`
 
 - **Finding:** Next inlines `process.env.NODE_ENV` when it builds the proxy, so a
   `NODE_ENV === "development"` branch is not in the production output: the dev `403`
@@ -1831,7 +1831,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   measured (#124 verifier)
 - **Used by:** D-124-7, D-124-8
 
-### R-163 · Compose interpolates every service before any command
+### R-166 · Compose interpolates every service before any command
 
 - **Finding:** Docker Compose resolves `${VAR}` across the whole file before it runs
   anything. A required `${VAR:?message}` on one service fails every command, even one
@@ -1841,7 +1841,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 config`, parse only; #124 docs step, confirming the planner's check)
 - **Used by:** D-124-7
 
-### R-164 · Where a server bound to `127.0.0.1` can be reached
+### R-167 · Where a server bound to `127.0.0.1` can be reached
 
 - **Finding:** `next dev -H 127.0.0.1` listens on IPv4 loopback only: `[::1]` refuses the
   connection. Chromium and WebKit opening `http://localhost:<port>` fall back from `::1`
@@ -1853,7 +1853,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [Port publishing](https://docs.docker.com/engine/network/port-publishing/)
 - **Used by:** D-124-6, D-124-10
 
-### R-165 · `npm run <script> -- <args>` appends the args to the script's last command
+### R-168 · `npm run <script> -- <args>` appends the args to the script's last command
 
 - **Finding:** npm adds the arguments after `--` to the end of the script's command line.
   For `db:reset` (`tsx scripts/migrate.ts && tsx scripts/seed.ts`), `--demo` reaches
@@ -1863,7 +1863,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   measured (#124 verifier)
 - **Used by:** D-124-1
 
-### R-166 · The `yaml` package ignores `<<` merge keys unless asked
+### R-169 · The `yaml` package ignores `<<` merge keys unless asked
 
 - **Finding:** `yaml` 2.9.0 parses as YAML 1.2, where `<<` is an ordinary key: a service
   built from `<<: *script` reads as `{ "<<": {...} }`. With `{ merge: true }` the anchor's
@@ -1872,7 +1872,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [yaml options](https://eemeli.org/yaml/#options)
 - **Used by:** D-124-18
 
-### R-167 · `npx` installs a missing package without asking when there is no TTY
+### R-170 · `npx` installs a missing package without asking when there is no TTY
 
 - **Finding:** `npm exec` (`npx`) prompts before installing a package that is not in the
   project's dependencies, but assumes `--yes` when standard input is not a TTY or a CI
