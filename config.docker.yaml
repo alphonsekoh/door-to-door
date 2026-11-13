@@ -8,7 +8,8 @@ database:
 
 auth:
   trustHost: true
-  # Compose serves plain http, where a phone on the LAN drops a Secure cookie.
+  # Compose serves plain http, where Safari drops a Secure cookie even on
+  # localhost.
   secureCookies: false
 
 rateLimit:

@@ -89,25 +89,39 @@ docker compose up
 ```
 
 Open http://localhost:3000. Compose starts PostgreSQL, waits for it to be healthy,
-applies migrations, seeds demo data, then starts the dev server. Editing a source file
-hot-reloads in the container.
+applies migrations, then starts the dev server and seeds demo data. Editing a source
+file hot-reloads in the container.
 
-| Service   | Port | What it is                                     |
-| --------- | ---- | ---------------------------------------------- |
-| `web`     | 3000 | Next.js dev server                             |
-| `db`      | 5432 | PostgreSQL, persisted in a named volume        |
-| `db-test` | 5433 | Scratch database for integration and E2E tests |
-| `migrate` | -    | Runs migrations and the seed once, then exits  |
+| Service   | Port | What it is                                                       |
+| --------- | ---- | ---------------------------------------------------------------- |
+| `web`     | 3000 | Next.js dev server                                               |
+| `db`      | 5432 | PostgreSQL, persisted in a named volume                          |
+| `db-test` | 5433 | Scratch database for integration and E2E tests                   |
+| `migrate` | -    | Applies migrations once, then exits                              |
+| `seed`    | -    | Seeds the demo data once `migrate` is done (`db:seed -- --demo`) |
 
-`web` waits for `migrate` to complete successfully, so the app never starts against an
-unmigrated database. Compose mounts [`config.docker.yaml`](config.docker.yaml) and passes
-throwaway local credentials, including a public, development-only `AUTH_SECRET`. Point it
-at another settings file with `CONFIG_FILE=./config.yaml docker compose up`.
+Every port is published on `127.0.0.1` only, so nothing is reachable from your LAN: the
+credentials are public. `web` waits for `migrate` to complete successfully, so the app
+never starts against an unmigrated database; it never waits for `seed`. The seed refuses
+a database that has users of its own (see [Seeded logins](#seeded-logins)), so once you
+add someone in the app, `seed` exits with that refusal on the next `up` and the app runs
+as before. Compose mounts [`config.docker.yaml`](config.docker.yaml) and passes throwaway
+local credentials, including a public `AUTH_SECRET` that only `next dev` accepts. Point
+it at another settings file with `CONFIG_FILE=./config.yaml docker compose up`.
 
 ```bash
 docker compose down -v         # tear down, including data
 docker compose up              # back to a freshly seeded install
 docker compose up -d db-test   # only the scratch database, for tests
+```
+
+**Local demo, not production.** `docker compose up` is for this machine. To apply
+migrations to a production database, run only the `migrate` service, with the production
+settings file and credentials, and never `up` (see [Deployment](#deployment)):
+
+```bash
+CONFIG_FILE=./config.yaml DATABASE_USER=... DATABASE_PASSWORD=... \
+  docker compose run --rm --no-deps migrate
 ```
 
 ### Quick start without Docker
@@ -126,7 +140,7 @@ export DATABASE_USER=postgres DATABASE_PASSWORD=postgres
 export AUTH_SECRET="$(openssl rand -base64 32)"
 
 npm run db:migrate
-npm run db:seed
+npm run db:seed -- --demo
 npm run dev
 ```
 
@@ -135,6 +149,17 @@ Open http://localhost:3000. If your database is elsewhere, edit `database.url` i
 variables must be exported in every shell that runs the app or a `db:*` script (a `.env`
 file covers only some commands; see [Environment variables](#environment-variables)).
 [`.env.example`](.env.example) lists them all and shows one way to keep them in a file.
+
+`npm run dev` listens on `127.0.0.1` and answers only requests addressed to `localhost`,
+`127.0.0.1` or `[::1]`; under any other host name, every page and API route answers
+`403`. That keeps a page on another site, whose name it has pointed at your machine
+(DNS rebinding), from signing in to the dev server as the seed admin. To try the app on
+a phone over your LAN, use the production build instead, which is also the only one
+with the service worker:
+
+```bash
+npm run build && HOSTNAME=0.0.0.0 npm start   # with auth.secureCookies: false, see below
+```
 
 The sign-in cookies are always `Secure`. Chrome and Firefox keep them on `localhost`
 over plain http; Safari, or a phone opening the app on your LAN over http, drops them.
@@ -355,11 +380,11 @@ both is a startup error (D-75-2).
 
 **Secrets** (never commit them, never put them in `config.yaml`)
 
-| Variable                             | Required                                | Read by             | Meaning                                                                                             |
-| ------------------------------------ | --------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------- |
-| `DATABASE_USER`, `DATABASE_PASSWORD` | yes                                     | app, `db:*` scripts | Added to `database.url`, percent-encoded for you                                                    |
-| `AUTH_SECRET`                        | yes                                     | app                 | Signs session cookies. 32+ random characters, not a placeholder (D-75-6): `openssl rand -base64 32` |
-| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google OAuth client secret                                                                          |
+| Variable                             | Required                                | Read by             | Meaning                                                                                                                                                                        |
+| ------------------------------------ | --------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_USER`, `DATABASE_PASSWORD` | yes                                     | app, `db:*` scripts | Added to `database.url`, percent-encoded for you                                                                                                                               |
+| `AUTH_SECRET`                        | yes                                     | app                 | Signs session cookies. 32+ random characters, not a placeholder (D-75-6): `openssl rand -base64 32`. One marked `not-for-production`, as Compose's is, only `next dev` accepts |
+| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google OAuth client secret                                                                                                                                                     |
 
 **Not secret, all optional** (the test URLs carry credentials, but only for throwaway local databases)
 
@@ -401,6 +426,11 @@ test: its empty file is recorded before the SQL is written.
 ### Seeded logins
 
 Development only. The seed is deterministic and idempotent: re-running it changes nothing.
+It runs only as `npm run db:seed -- --demo` (or `npm run db:reset -- --demo`); no script
+passes the flag for you. It first prints the database it is about to write to, as
+`host:port/database`, and then refuses, writing nothing, without `--demo`, or when the
+database has any user other than the four below: a database where someone has an
+account is not a demo database.
 
 | Email               | Role   | Password      |
 | ------------------- | ------ | ------------- |
@@ -418,7 +448,7 @@ to `medium` between March and June.
 
 | Script                     | What it does                                                                 |
 | -------------------------- | ---------------------------------------------------------------------------- |
-| `npm run dev`              | Dev server on port 3000 (`npm run dev -- -p 4000` for another)               |
+| `npm run dev`              | Dev server on loopback, for `localhost` only (`-- -p 4000` for another port) |
 | `npm run build`            | Standalone build free of `.env`/`config.yaml`; needs no config or database   |
 | `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default  |
 | `npm start`                | Alias for `npm run start:standalone`                                         |
@@ -438,8 +468,8 @@ to `medium` between March and June.
 | `npm run test:e2e:ui`      | The same in Playwright's UI mode                                             |
 | `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)    |
 | `npm run db:migrate`       | Apply pending migrations                                                     |
-| `npm run db:seed`          | Seed deterministic demo data                                                 |
-| `npm run db:reset`         | Migrate, then seed. Does not delete anything                                 |
+| `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users |
+| `npm run db:reset`         | Migrate, then seed: `npm run db:reset -- --demo`. Deletes nothing            |
 | `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))  |
 | `npm run db:check-blank`   | List blank units, notes, block names and streets; changes nothing (exit 1)   |
 | `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)     |
@@ -559,14 +589,26 @@ docker run -p 3000:3000 \
   (or set `CONFIG_PATH`). It must be readable by uid 1001 (`chmod 644`). Change a value by
   editing the file and restarting.
 - **Secrets** come from the environment or their `_FILE` variants. Generate a fresh
-  `AUTH_SECRET`; never reuse the Compose development one.
-- **Startup is validated.** A bad file, a missing secret or a placeholder `AUTH_SECRET`
-  stops the server with `Cannot start: ...`, naming the file and key, never the value.
+  `AUTH_SECRET`; the Compose development one is refused outside `next dev`.
+- **Startup is validated.** A bad file, a missing secret, or a placeholder or development
+  `AUTH_SECRET` stops the server with `Cannot start: ...`, naming the file and key, never
+  the value.
 - **Migrations** must be applied before a new version starts. The runner image holds the
   `drizzle/` folder but not the migration runner, so run `npm run db:migrate` from a
-  checkout, or from a `dev`-stage container as the Compose `migrate` service does, with
-  the production `config.yaml` and credentials. Never run `db:seed` in production: it
-  creates the demo logins.
+  checkout, or the Compose `migrate` service on its own, with the production
+  `config.yaml` and credentials:
+
+  ```bash
+  CONFIG_FILE=./config.yaml DATABASE_USER=... DATABASE_PASSWORD=... \
+    docker compose run --rm --no-deps migrate
+  ```
+
+  `migrate` only migrates, and `--no-deps` keeps Compose from starting its own `db`. It
+  runs in a container, so the file's `database.url` must name a host the container can
+  reach, not `localhost`. Never `docker compose up` against production: that also starts the dev server and the
+  demo seed, which refuses a database with users but not a new, empty one. Never run
+  `db:seed` in production: it creates the demo logins.
+
 - **Before migration `0005_not_blank_text`**, run `npm run db:check-blank` the same way.
   Until #119 a unit number, follow-up note, block name or street of nothing but spaces
   was stored as an empty string, and the migration's `CHECK` constraints refuse those
@@ -660,6 +702,10 @@ docker run -p 3000:3000 \
 | `Set either X or X_FILE, not both.`                             | Unset one of them.                                                                                                                                                                                   |
 | `database.url: must not contain a username or password`         | Take the credentials out of the URL and export `DATABASE_USER` and `DATABASE_PASSWORD`.                                                                                                              |
 | `Found a .env file ... It is not used for app settings`         | Next loaded a `.env` from the directory the server runs in. Move settings to `config.yaml`, export secrets, delete it.                                                                               |
+| `Refusing to seed without --demo`                               | Type the flag: `npm run db:seed -- --demo`. Only ever on a development database.                                                                                                                     |
+| `Refusing to seed ...: it has users that are not demo users`    | That database has accounts of its own, so the seed wrote nothing. Seed a fresh database instead; for Compose's, `docker compose down -v`, which deletes its data.                                    |
+| `AUTH_SECRET is a public development value`                     | Compose's development secret reached a server outside `next dev`. Export your own: `openssl rand -base64 32`.                                                                                        |
+| `403` "This development server answers only on localhost."      | `npm run dev` was reached by another name, such as a LAN address or a tunnel. Open http://localhost:3000; for a phone, use the production build (see Quick start without Docker).                    |
 | `TEST_DATABASE_URL is not set` from the integration project     | Export it, e.g. `postgresql://postgres:postgres@localhost:5433/door_to_door_test`, with `docker compose up -d db-test` running.                                                                      |
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                                                                                                 |
 | `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.                                                                             |
