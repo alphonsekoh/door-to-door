@@ -10,6 +10,7 @@ import {
   endActiveSession,
   ensureActiveSession,
   expect,
+  offerInstall,
   startFollowUpSession,
   test,
 } from "./fixtures";
@@ -561,19 +562,6 @@ test.describe("phone layout", () => {
 });
 
 test.describe("the install banner", () => {
-  /* Chromium fires this itself when the app is installable; a fake keeps the
-     check deterministic, and WebKit shows its manual banner regardless. */
-  async function offerInstall(page: Page): Promise<void> {
-    await page.evaluate(() => {
-      const event = new Event("beforeinstallprompt", { cancelable: true });
-      Object.assign(event, {
-        prompt: () => Promise.resolve(),
-        userChoice: new Promise(() => undefined),
-      });
-      window.dispatchEvent(event);
-    });
-  }
-
   test("never covers the last item or a docked Save, and stays off the recording screen", async ({
     memberPage,
     adminApi,

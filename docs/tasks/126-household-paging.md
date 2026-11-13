@@ -44,6 +44,8 @@ from every member and from the offline copy. Both were found by a security audit
   nothing. _Why:_ this gets past Postgres's 65,535 bind parameters while `memberIds`
   stays uncapped (D-74-15). Household history passes every visit of a household to
   `attachTeams`. A service test places 22,000 members in one call. _Research:_ R-131.
+  _Corrected by D-158-2:_ until #158 the checks ran before the transaction; they now run
+  inside it, with the user chunks sorted and locked in id order.
 - **D-126-4 · `readJsonBody` refuses a body over its operation's cap with
   `413 content_too_large`.** An all-digits `Content-Length` over the cap is refused before
   reading. Otherwise it counts bytes as it reads, and cancels the stream once past the

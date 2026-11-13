@@ -396,6 +396,21 @@ export async function signInThroughForm(
 }
 
 /*
+ * Offers to install, as Chromium does once the app is installable: a fake
+ * keeps it deterministic. WebKit shows its manual banner regardless.
+ */
+export async function offerInstall(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const event = new Event("beforeinstallprompt", { cancelable: true });
+    Object.assign(event, {
+      prompt: () => Promise.resolve(),
+      userChoice: new Promise(() => undefined),
+    });
+    window.dispatchEvent(event);
+  });
+}
+
+/*
  * A block screen loaded by address is live once its docked Save is the
  * form's own: until then it is the stand-in in the server's HTML, a disabled
  * "Getting ready…" (#156), and a tap on it saves nothing. What is typed and

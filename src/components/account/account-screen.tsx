@@ -2,7 +2,7 @@
 
 import { DockedActions } from "@/components/ui/docked-actions";
 import { signOut, useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { accountStore } from "@/lib/session/account-state";
@@ -37,6 +37,8 @@ export function AccountScreen() {
   const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutFailure, setSignOutFailure] = useState<string | null>(null);
+  /* The failure and Sign out, scrolled into view together. */
+  const signOutBlock = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,6 +61,14 @@ export function AccountScreen() {
       cancelled = true;
     };
   }, []);
+
+  /* Drawn above Sign out at the end of the page, the failure pushed it under
+     the nav on an iPhone 13, and below the screen at large text (#164): the
+     two are brought into view, clear of the nav, before they are painted.
+     Not as a second try clears it: Sign out is under the member's thumb. */
+  useLayoutEffect(() => {
+    if (signOutFailure !== null) signOutBlock.current?.scrollIntoView({ block: "nearest" });
+  }, [signOutFailure]);
 
   async function save(): Promise<void> {
     setSaved(false);
@@ -114,7 +124,7 @@ export function AccountScreen() {
 
   const signOutControls = (
     <>
-      <div className="space-y-2">
+      <div ref={signOutBlock} className="scroll-clear-nav space-y-2">
         {signOutFailure === null ? null : (
           <p role="alert" className="notice-danger">
             {signOutFailure}

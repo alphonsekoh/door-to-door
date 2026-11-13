@@ -241,7 +241,10 @@ authoritative, and a change to any of them needs the owner.
    `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
    `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
    follow-up session's households, detaching a block and transitions lock the session
-   row `FOR UPDATE` (D-117-45, D-123-4). `PATCH /users/{id}` locks the target and every
+   row `FOR UPDATE` (D-117-45, D-123-4). Forming a team and adding to one first lock
+   the placed users' rows `FOR SHARE` in id order, refuse a missing (`404`) or
+   deactivated (`409 conflict`) one on those rows, then check teams and joins in the same
+   transaction (D-158-2, D-158-3). `PATCH /users/{id}` locks the target and every
    active admin `FOR NO KEY UPDATE` in id order, and refuses a change that would leave
    no active admin (`409 conflict`, D-132-1, D-132-2). A deactivation then deletes the
    user's sign-ins; a new sign-in takes the user `FOR SHARE` before writing its row, so

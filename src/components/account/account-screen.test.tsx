@@ -366,4 +366,53 @@ describe("AccountScreen: signing out", () => {
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
   });
+
+  /* Drawn above Sign out at the end of the page, the failure pushed it under
+     the nav on an iPhone 13 (#164). jsdom lays nothing out: the E2E measures. */
+  it("brings the failure into view with Sign out as it is drawn, leaving focus where it was", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      signOutAndForget.mockRejectedValueOnce(new Error("offline"));
+      const user = userEvent.setup();
+      await loaded();
+      // Account opens at its top, not scrolled down to Sign out.
+      expect(scrolled).not.toHaveBeenCalled();
+      const button = screen.getByRole("button", { name: "Sign out" });
+      await user.click(button);
+
+      const alert = await screen.findByRole("alert");
+      const both = alert.parentElement;
+      expect(both).toContainElement(button);
+      /* Clear of the nav, not flush with the bottom of the screen under it,
+         and no further: no Save bar is ever pinned over Sign out. */
+      expect(both).toHaveClass("scroll-clear-nav");
+      expect(both).not.toHaveClass("scroll-clear-chrome");
+      expect(scrolled.mock.contexts).toEqual([both]);
+      expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+      expect(button).toHaveFocus();
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
+
+  it("leaves the page where it is as a second try clears the failure", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      signOutAndForget.mockRejectedValueOnce(new Error("offline"));
+      const user = userEvent.setup();
+      await loaded();
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("alert");
+      expect(scrolled).toHaveBeenCalledOnce();
+
+      // Sign out is under the thumb that just pressed it again.
+      signOutAndForget.mockReturnValue(new Promise(() => undefined));
+      await user.click(screen.getByRole("button", { name: "Sign out" }));
+      await screen.findByRole("button", { name: "Signing out…" });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(scrolled).toHaveBeenCalledOnce();
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
 });

@@ -9,6 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { checkTeamName } from "@/lib/teams/team-name";
+import { compareUuids } from "@/lib/uuid";
 import {
   appendTo,
   chunked,
@@ -219,10 +220,9 @@ export async function createTeam(
   const listed = [...(input.memberIds ?? [])];
   const ids = [...new Set(actor.role === "admin" ? listed : [actor.id, ...listed])];
 
-  await assertPlaceable(db, actor, sessionId, ids);
-
   try {
     const teamId = await db.transaction(async (tx) => {
+      await assertPlaceable(tx, actor, sessionId, ids);
       const inserted = await tx
         .insert(sessionTeams)
         .values({ sessionId, name, createdBy: actor.id })
@@ -242,22 +242,32 @@ export async function createTeam(
  * in this outing, and - when a member is doing the adding - have joined it.
  * An admin may reach anyone, which also makes them a participant.
  *
+ * The placement's first lock: their rows, FOR SHARE in id order, so a
+ * deactivation waits for a placement that passed this check, or the placement
+ * reads what it committed. SHARE because a deactivation's UPDATE does not wait
+ * for the KEY SHARE the foreign keys take. First and in id order because
+ * updateUser locks only user rows, in id order, so the two never wait on each
+ * other in a cycle.
+ *
  * `memberIds` is uncapped (D-74-15), so each lookup, and each insert in
- * placeMembers, goes in chunks under Postgres's bind limit (#126).
+ * placeMembers, goes in chunks under Postgres's bind limit (#126). Sorted
+ * first, so the chunks lock in id order too.
  */
 async function assertPlaceable(
-  db: Database,
+  tx: Database,
   actor: Actor,
   sessionId: string,
   userIds: string[],
 ): Promise<void> {
   if (userIds.length === 0) return;
 
-  const found = await selectInChunks(userIds, (ids) =>
-    db
+  const found = await selectInChunks([...userIds].sort(compareUuids), (ids) =>
+    tx
       .select({ id: users.id, deactivatedAt: users.deactivatedAt })
       .from(users)
-      .where(inArray(users.id, ids)),
+      .where(inArray(users.id, ids))
+      .orderBy(asc(users.id))
+      .for("share"),
   );
   if (found.length !== userIds.length) {
     throw new NotFoundError("One or more of those people do not exist.");
@@ -267,7 +277,7 @@ async function assertPlaceable(
   }
 
   const taken = await selectInChunks(userIds, (ids) =>
-    db
+    tx
       .select({ userId: sessionTeamMembers.userId })
       .from(sessionTeamMembers)
       .where(
@@ -288,7 +298,7 @@ async function assertPlaceable(
     const others = userIds.filter((id) => id !== actor.id);
     if (others.length === 0) return;
     const joined = await selectInChunks(others, (ids) =>
-      db
+      tx
         .select({ userId: sessionParticipants.userId })
         .from(sessionParticipants)
         .where(
@@ -407,9 +417,11 @@ export async function addTeamMember(
   userId: string,
 ): Promise<TeamRow> {
   const team = await loadTeamFor(db, actor, teamId);
-  await assertPlaceable(db, actor, team.sessionId, [userId]);
   try {
-    await db.transaction((tx) => placeMembers(tx, teamId, team.sessionId, [userId]));
+    await db.transaction(async (tx) => {
+      await assertPlaceable(tx, actor, team.sessionId, [userId]);
+      await placeMembers(tx, teamId, team.sessionId, [userId]);
+    });
   } catch (error) {
     return rethrowTeamConflict(error);
   }
