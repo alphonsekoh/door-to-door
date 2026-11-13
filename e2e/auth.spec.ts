@@ -205,6 +205,71 @@ test.describe("a sign-in refused by the CSRF check (#151)", () => {
     );
     expect(sent()).toBe(2);
   });
+
+  /* Roughly the height the on-screen keyboard leaves, as in teams.spec.ts:
+     Playwright cannot raise the real one. */
+  const KEYBOARD_UP_HEIGHT = 340;
+
+  /*
+   * Told at the top of the form, the message was drawn above the screen on
+   * an iPhone at the largest text (D-111-24), once the member had scrolled
+   * down to Sign in: WebKit held what they were looking at still. A short
+   * screen, as with the keyboard up, hid it on both phones.
+   */
+  test("brings the message into view where Sign in was pressed, and moves the page no further", async ({
+    page,
+    playwright,
+    baseURL,
+  }) => {
+    await staleCookieUnderToken(page, playwright, baseURL, Number.POSITIVE_INFINITY);
+    const phone = page.viewportSize();
+    if (phone === null) throw new Error("The phone project sets no viewport");
+
+    for (const { size, height } of [
+      { size: null, height: phone.height },
+      { size: "32px", height: phone.height },
+      { size: null, height: KEYBOARD_UP_HEIGHT },
+    ]) {
+      const at = `${size ?? "the default text size"} on a screen ${String(height)}px tall`;
+      await page.setViewportSize({ width: phone.width, height });
+      // A full load starts again at the default text size.
+      await page.goto("/sign-in");
+      if (size !== null) {
+        await page.evaluate((root) => {
+          document.documentElement.style.fontSize = root;
+        }, size);
+      }
+      await page.getByLabel("Email").fill(SEED_MEMBER);
+      await page.getByLabel("Password").fill(SEED_PASSWORD);
+      // Pressed where the member's own scroll leaves it, at the end of the page.
+      await page.evaluate(() => {
+        window.scrollTo(0, document.documentElement.scrollHeight);
+      });
+      const before = await page.evaluate(() => window.scrollY);
+      await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      // In the page: Next's route announcer is an alert too.
+      const alert = page.getByRole("main").getByRole("alert");
+      await expect(alert).toHaveText("This page expired. Reload it and try again.");
+
+      const [box, after] = await Promise.all([
+        alert.boundingBox(),
+        page.evaluate(() => window.scrollY),
+      ]);
+      if (box === null) throw new Error(`the message is not drawn at ${at}`);
+      expect(box.y, `the message above the top of the screen at ${at}`).toBeGreaterThanOrEqual(0);
+      expect(box.y + box.height, `the message below the screen at ${at}`).toBeLessThanOrEqual(
+        height,
+      );
+      /* No further than it was hidden: onto the top of the screen, or
+         nowhere. Nothing is pinned over this screen for it to clear. */
+      expect(
+        Math.min(Math.abs(after - before), box.y),
+        `the page moved, leaving the message below the top of the screen, at ${at}`,
+      ).toBeLessThanOrEqual(1);
+      // Told, not moved to: focus stays off the message.
+      await expect(alert).not.toBeFocused();
+    }
+  });
 });
 
 test.describe("response headers", () => {

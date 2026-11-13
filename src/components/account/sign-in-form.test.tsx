@@ -251,6 +251,83 @@ describe("SignInForm", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
   });
 
+  /* Told at the top of the form, it landed above the screen on an iPhone at
+     large text (#151). jsdom lays nothing out: the E2E measures. */
+  describe("bringing a refusal into view", () => {
+    async function submit(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    }
+
+    it("scrolls to it as it is drawn, no further than it is hidden, leaving focus where it was", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        signIn.mockResolvedValue(failed);
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        // The page opens at its top.
+        expect(scrolled).not.toHaveBeenCalled();
+        await submit(user);
+
+        const alert = await screen.findByRole("alert");
+        expect(scrolled.mock.contexts).toEqual([alert]);
+        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+        expect(alert).not.toHaveFocus();
+        expect(screen.getByRole("button", { name: "Sign in" })).toHaveFocus();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("scrolls to the page-expired message too", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const expired = { error: "MissingCSRF", code: undefined, status: 200, ok: true, url: null };
+        signIn.mockResolvedValue(expired);
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        await submit(user);
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This page expired.");
+        expect(scrolled.mock.contexts).toEqual([alert]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("leaves the page where it is as a second try clears it, and scrolls again when that one is refused", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        let release: (value: typeof failed) => void = () => undefined;
+        signIn.mockResolvedValueOnce(failed).mockReturnValueOnce(
+          new Promise<typeof failed>((resolve) => {
+            release = resolve;
+          }),
+        );
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        await submit(user);
+        await screen.findByRole("alert");
+        expect(scrolled).toHaveBeenCalledOnce();
+
+        // Sign in is under the thumb that just pressed it again.
+        await user.click(screen.getByRole("button", { name: "Sign in" }));
+        await screen.findByRole("button", { name: "Signing in…" });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(scrolled).toHaveBeenCalledOnce();
+
+        release(failed);
+        const alert = await screen.findByRole("alert");
+        expect(scrolled).toHaveBeenCalledTimes(2);
+        expect(scrolled.mock.contexts[1]).toBe(alert);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+  });
+
   it("never puts the password in the DOM as readable text", async () => {
     const user = userEvent.setup();
     render(<SignInForm />);
@@ -583,6 +660,18 @@ describe("SignInForm with Google (#14)", () => {
         "That Google account can't sign in here. Google sign-in is for " +
           "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
       );
+    });
+
+    it("does not scroll to it: the page opens at its top", () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        withError("AccessDenied");
+        render(<SignInForm googleDomains={DOMAINS} />);
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        expect(scrolled).not.toHaveBeenCalled();
+      } finally {
+        scrolled.mockRestore();
+      }
     });
 
     it("gives anything else a message to act on, never the raw value", () => {

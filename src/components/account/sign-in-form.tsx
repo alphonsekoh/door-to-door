@@ -2,7 +2,7 @@
 
 import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
 import { finishSignOut } from "@/lib/session/sign-out";
 import { GOOGLE_UNFINISHED, googleSignInMessage } from "@/lib/session/sign-in-errors";
@@ -54,6 +54,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
   const [freshVisit, setFreshVisit] = useState(true);
   const [stillSignedIn, setStillSignedIn] = useState(false);
   const finishing = useRef<Promise<void>>(Promise.resolve());
+  const failureNotice = useRef<HTMLParagraphElement>(null);
 
   /* A sign-out that just brought the member here is checked once more, as the
      answer to a request the page before sent can have signed them back in. */
@@ -70,6 +71,15 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
       ? googleSignInMessage(params.get("error"), googleDomains)
       : null;
   const shownFailure = failure ?? googleFailure;
+
+  /* Told at the top of the form, a refusal landed above the screen once the
+     member had scrolled down to Sign in: on an iPhone at large text, where
+     WebKit held what was in view still, and on a short screen (#151). It is
+     brought into view as it is drawn, before paint, no further than it was
+     hidden. Not Google's message from ?error=: the page opens at its top. */
+  useLayoutEffect(() => {
+    if (failure !== null) failureNotice.current?.scrollIntoView({ block: "nearest" });
+  }, [failure]);
 
   /*
    * Everything the email form does before it leaves happens before leaving
@@ -144,7 +154,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
         </p>
       ) : null}
       {shownFailure === null ? null : (
-        <p role="alert" className="notice-danger">
+        <p ref={failureNotice} role="alert" className="notice-danger">
           {shownFailure}
         </p>
       )}
