@@ -124,7 +124,7 @@ export function AccountScreen() {
 
   const signOutControls = (
     <>
-      <div ref={signOutBlock} className="scroll-clear-chrome space-y-2">
+      <div ref={signOutBlock} className="scroll-clear-nav space-y-2">
         {signOutFailure === null ? null : (
           <p role="alert" className="notice-danger">
             {signOutFailure}

@@ -383,8 +383,10 @@ describe("AccountScreen: signing out", () => {
       const alert = await screen.findByRole("alert");
       const both = alert.parentElement;
       expect(both).toContainElement(button);
-      // Clear of the nav, not flush with the bottom of the screen under it.
-      expect(both).toHaveClass("scroll-clear-chrome");
+      /* Clear of the nav, not flush with the bottom of the screen under it,
+         and no further: no Save bar is ever pinned over Sign out. */
+      expect(both).toHaveClass("scroll-clear-nav");
+      expect(both).not.toHaveClass("scroll-clear-chrome");
       expect(scrolled.mock.contexts).toEqual([both]);
       expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
       expect(button).toHaveFocus();

@@ -1,5 +1,5 @@
 import { MEMBER_STATE, SEED_MEMBER } from "./accounts";
-import { expect, test } from "./fixtures";
+import { expect, offerInstall, test } from "./fixtures";
 
 /*
  * A member renames themselves. Reloading is the point: the name has to come
@@ -106,53 +106,81 @@ test.describe("a refused sign-out", () => {
   // Routing sees what a service worker fetches for the page on some engines only.
   test.use({ serviceWorkers: "block" });
 
-  test("leaves its alert and Sign out in view, above the bottom nav", async ({
+  test("brings its alert and Sign out into view above the bottom nav, and moves the page no further", async ({
     ownMemberPage: page,
   }) => {
+    /* As the server answers a sign-out it could not end (failUnendedSignOut,
+       withAuthRouteHeaders). Its proxy may set the same sign-in's cookie
+       again, which changes nothing here. */
     await page.route("**/api/auth/signout", (route) =>
       route.fulfill({
         status: 500,
-        contentType: "application/json",
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+          "clear-site-data": '"cache"',
+        },
         body: JSON.stringify({ url: "/sign-in?error=SignOutError" }),
       }),
     );
     const nav = page.getByRole("navigation", { name: "Primary" });
 
-    /* As the phone opens it, then at the largest text (D-111-24), where the
-       page is taller than the screen: a full load starts again at the default. */
-    for (const size of [null, "32px"]) {
+    /* As the phone opens it, with the install banner at the end of the page
+       (an iPhone shows its own regardless), which leaves room for the page to
+       move further than it needs to. Then at the largest text (D-111-24), at
+       the end of a page taller than the screen. A full load starts again at
+       the default. */
+    for (const { size, offer } of [
+      { size: null, offer: true },
+      { size: "32px", offer: false },
+    ]) {
       const at = size ?? "the default text size";
       await page.goto("/account");
       await expect(page.getByLabel("Your name")).not.toHaveValue("");
+      if (offer) {
+        await offerInstall(page);
+        await expect(page.getByRole("region", { name: "Install the app" })).toBeVisible();
+      }
       if (size !== null) {
         await page.evaluate((root) => {
           document.documentElement.style.fontSize = root;
         }, size);
       }
 
-      await page.getByRole("button", { name: "Sign out" }).click();
+      const signOut = page.getByRole("button", { name: "Sign out" });
+      // Where it is pressed, so what moves after is the failure's doing.
+      await signOut.scrollIntoViewIfNeeded();
+      const before = await page.evaluate(() => window.scrollY);
+      await signOut.click();
       // In the page: Next's route announcer is an alert too.
       const alert = page.getByRole("main").getByRole("alert");
       await expect(alert).toHaveText("Could not sign out. Check your connection and try again.");
-      const signOut = page.getByRole("button", { name: "Sign out" });
       await expect(signOut).toBeEnabled();
       await expect(page).toHaveURL(/\/account$/);
 
-      const [alertBox, signOutBox, navBox] = await Promise.all([
+      const [alertBox, signOutBox, navBox, after] = await Promise.all([
         alert.boundingBox(),
         signOut.boundingBox(),
         nav.boundingBox(),
+        page.evaluate(() => window.scrollY),
       ]);
       if (alertBox === null || signOutBox === null || navBox === null) {
         throw new Error(`the alert, Sign out or the nav is not drawn at ${at}`);
       }
+      const bottom = signOutBox.y + signOutBox.height;
       expect(alertBox.y, `the alert above the top of the screen at ${at}`).toBeGreaterThanOrEqual(
         0,
       );
-      expect(
-        signOutBox.y + signOutBox.height,
-        `Sign out under the nav at ${at}`,
-      ).toBeLessThanOrEqual(navBox.y + 0.5);
+      expect(bottom, `Sign out under the nav at ${at}`).toBeLessThanOrEqual(navBox.y + 0.5);
+      /* No further than the alert pushed Sign out under the nav: onto the
+         nav, or nowhere where nothing was hidden. Kept clear of a docked
+         Save that is never there, it moved 110px for 30 on an iPhone 13, and
+         47 for none on a Pixel 5. */
+      const moved = after - before;
+      const hidden = Math.max(0, bottom + moved - navBox.y);
+      expect(moved, `the page moved further than Sign out was hidden at ${at}`).toBeLessThanOrEqual(
+        hidden + 1,
+      );
       // Told, not moved to: focus stays off the alert.
       await expect(alert).not.toBeFocused();
     }
