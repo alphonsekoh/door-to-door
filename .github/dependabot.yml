@@ -10,6 +10,16 @@ updates:
     # usually caught and pulled by then. Security updates are not held back.
     cooldown:
       default-days: 7
+    ignore:
+      # typescript-eslint 8 takes TypeScript below 6.1, so npm ci refuses 7
+      # with ERESOLVE. Lift this once typescript-eslint supports 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # The types of the Node the app runs on (the Dockerfile's node:24-alpine,
+      # CI's NODE_VERSION): they follow the runtime, never ahead of it, and
+      # this bound moves with it.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       npm-security:
         applies-to: security-updates
