@@ -1871,3 +1871,16 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (`node`, `yaml` 2.9.0, #124 docs step);
   [yaml options](https://eemeli.org/yaml/#options)
 - **Used by:** D-124-18
+
+### R-167 · `npx` installs a missing package without asking when there is no TTY
+
+- **Finding:** `npm exec` (`npx`) prompts before installing a package that is not in the
+  project's dependencies, but assumes `--yes` when standard input is not a TTY or a CI
+  environment is detected. It then installs the package into npm's cache and runs it;
+  a package named without a version gets the `tag` config's version, `latest` by
+  default, not the lockfile's. Compose's `web` sets no `tty`, so `npx next` with no
+  `node_modules/.bin/next` fetches the latest `next` from the registry.
+- **Source:** npm 11.17.0's bundled docs, `commands/npm-exec.md` and `using-npm/config.md`
+  (`tag`), read offline (#124 docs step); npm,
+  [`npm exec`](https://docs.npmjs.com/cli/commands/npm-exec)
+- **Used by:** D-124-19

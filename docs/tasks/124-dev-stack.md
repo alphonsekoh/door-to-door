@@ -24,8 +24,11 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   account. Extends D-09-5. _Why:_ in `seedDatabase()` it guards every caller (CLI,
   `db:reset`, Compose `seed`, E2E). The seed's own users still pass, so a re-run
   changes nothing, and E2E passes because global setup truncates first.
-- **D-124-3 · The CLI prints `host:port/database` first, before the flag check, never
-  the credentials.** _Why:_ a refusal says which database it was about (D-75-5).
+- **D-124-3 · The CLI's first line is `Demo seed target: host:port/database`, before the
+  flag check, never the credentials.** _Why:_ a refusal says which database it was about
+  (D-75-5). _Wording refined (owner, 2026-11-13, nit 4):_ it read
+  `Seeding demo data into …`, claiming a seed the next check could refuse. The README's
+  Seeded logins paragraph quotes the new line.
 - **D-124-4 · The guard is `src/db/seed-guard.ts`; `scripts/seed.ts` stays glue.**
   _Why:_ 100% coverage there; keeps D-09-4.
 
@@ -67,21 +70,27 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
 - **D-124-9 · One `LOOPBACK_HOSTS` list in `src/server/http/dev-hosts.ts` feeds the
   proxy and `allowedDevOrigins`; there is no config key or env var.** _Why:_ the two dev
   guards agree. D-121-5 refused a host key, and D-75-7 allows no new variable.
-- **D-124-10 · `npm run dev` binds `127.0.0.1`; the Dockerfile dev stage runs
-  `next dev -H 0.0.0.0` (owner, 2026-11-13, Q2 (a)).** To try the app on a phone over
-  the LAN, use the production build. _Why:_ the bind address is the only thing that
-  keeps Next's own dev endpoints, which the proxy never sees, off the LAN. In a
-  container, only `0.0.0.0` receives the published port, which D-124-6 puts on the
-  host's loopback. _Rejected:_ an opt-in dev host list, a new setting that
-  `next.config.ts` would read at start. _Research:_ R-164.
+- **D-124-10 · `npm run dev` binds `127.0.0.1`; the Dockerfile dev stage runs the
+  installed `next dev -H 0.0.0.0` (D-124-19) (owner, 2026-11-13, Q2 (a)).** To try the
+  app on a phone over the LAN, use the production build, on a network you trust
+  (D-124-21). _Why:_ the bind address is the only thing that keeps Next's own dev
+  endpoints, which the proxy never sees, off the LAN. In a container, only `0.0.0.0`
+  receives the published port, which D-124-6 puts on the host's loopback. _Rejected:_
+  an opt-in dev host list, a new setting that `next.config.ts` would read at start.
+  _Research:_ R-164.
 - **D-124-11 · No contract change.** _Why:_ a production build never serves the dev
   `403`, and the contract describes the deployed API (D-10-1).
 
 ### Tests and docs
 
-- **D-124-12 · `src/dev-stack.test.ts` holds `docker-compose.yml`, `package.json` and the
-  Dockerfile's dev stage to D-124-1, D-124-5, D-124-6, D-124-7 and D-124-10.** _Why:_
-  Compose cannot run in CI's unit job (D-131-6 precedent).
+- **D-124-12 · `src/dev-stack.test.ts` holds `docker-compose.yml`, `package.json`, the
+  Dockerfile's dev stage, `README.md` and `config.docker.yaml` to D-124-1, D-124-5,
+  D-124-6, D-124-7, D-124-10, D-124-19, D-124-20 and D-124-21.** Every `CONFIG_FILE=`
+  before `docker compose run --rm --no-deps migrate` names exactly `./config.yaml`,
+  before `docker compose up` exactly `./config.demo.yaml`, and every README section with
+  `HOSTNAME=0.0.0.0` carries the seeded-logins warning. _Why:_ Compose cannot run in
+  CI's unit job (D-131-6 precedent), and the README is where an operator copies the
+  command from.
 - **D-124-13 · `isLoopbackHost` takes only a bare `host[:port]`.** Parsed as
   `http://<Host>`, the header must serialise back to exactly its origin, so userinfo
   (`evil.test@localhost`), a path, a query or a fragment is refused.
@@ -105,6 +114,31 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   resolved, as Compose does. _Why:_ each is a way the file could drift that the plan's
   checks would miss. _Research:_ R-166.
 
+### Reviewer nits (owner, 2026-11-13)
+
+The owner ruled that the four nits left open on PR #179 are fixed on this PR, and that
+Q1 (a), Q2 (a) and Q3 (a) stand as recorded (D-124-7; D-124-8, D-124-10; D-124-5).
+Nit 4 is D-124-3's wording; the others follow.
+
+- **D-124-19 · The Dockerfile dev stage runs `node_modules/.bin/next`, never `npx next`
+  (nit 1).** _Why:_ with no TTY, `npx` installs a package missing from `node_modules`
+  from the registry without asking, so a missing binary would run an unpinned `next`;
+  the installed path fails instead. _Research:_ R-167.
+- **D-124-20 · A changed Compose settings file is a copy named `config.demo.yaml`, never
+  `config.yaml` (nit 2).** The README and `config.docker.yaml`'s header give
+  `CONFIG_FILE=./config.demo.yaml docker compose up`; production's
+  `docker compose run --rm --no-deps migrate` keeps `./config.yaml`. The existing
+  `/config.*.yaml` (`.gitignore`) and `config.*.yaml` (`.dockerignore`) rules already
+  keep the copy out of git and every image (D-75-1, D-106-3). _Why:_ under one name, an
+  operator following the demo line with their production file runs `next dev` and the
+  seed against production, and the seed refuses only once users exist (D-124-2).
+- **D-124-21 · Every README section that runs the app with `HOSTNAME=0.0.0.0` warns that
+  anyone on that network can sign in with the seeded logins, so run it only on a network
+  you trust, or against a database without the seed users (nit 3).** _Why:_ D-124-10
+  sends LAN phone testing to the production build, which nothing keeps on loopback, and
+  the seed's password is public (D-09-5). _Trade-off:_ a warning, not a guard; the
+  production build serves whatever logins its database holds.
+
 ## Known limits
 
 - **Next's own dev endpoints skip the Host check.** `/_next/*` and `/__nextjs*` are
@@ -118,12 +152,13 @@ DNS-rebound page could sign in as the seed admin. No contract, schema or UI chan
   README and `--no-deps migrate` stand in the way.
 - **Not run here (no Docker):** `docker compose ps` showing every port on `127.0.0.1`;
   `compose run migrate` and `run seed` on a database with real users; a fresh `up` that
-  seeds and signs in, with `web` still up when `seed` refuses. The owner runs these.
+  seeds, starts `web` through `node_modules/.bin/next` (D-124-19) and signs in, with
+  `web` still up when `seed` refuses. The owner runs these.
 
 ## Relies on
 
-D-05-1, D-09-2, D-09-4, D-10-1, D-13-4, D-16-2, D-32-19, D-75-5, D-75-7, D-75-9,
-D-75-10, D-121-5, D-122-1, D-122-12, D-131-6.
+D-05-1, D-05-3, D-09-2, D-09-4, D-09-5, D-10-1, D-13-4, D-16-2, D-32-19, D-75-1,
+D-75-5, D-75-7, D-75-9, D-75-10, D-106-3, D-121-5, D-122-1, D-122-12, D-131-6.
 
 ## Open questions
 
