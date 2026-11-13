@@ -154,8 +154,9 @@ file covers only some commands; see [Environment variables](#environment-variabl
 `127.0.0.1` or `[::1]`; under any other host name, every page and API route answers
 `403`. That keeps a page on another site, whose name it has pointed at your machine
 (DNS rebinding), from signing in to the dev server as the seed admin. To try the app on
-a phone over your LAN, use the production build instead, which is also the only one
-with the service worker:
+a phone over your LAN, use the production build instead. It is also the only one with
+the service worker, though over plain http off `localhost` the phone registers none
+(see [Deployment](#deployment)):
 
 ```bash
 npm run build && HOSTNAME=0.0.0.0 npm start   # with auth.secureCookies: false, see below
@@ -388,21 +389,21 @@ both is a startup error (D-75-2).
 
 **Not secret, all optional** (the test URLs carry credentials, but only for throwaway local databases)
 
-| Variable                                   | Default                                                          | Meaning                                                                                                                                                     |
-| ------------------------------------------ | ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `CONFIG_PATH`                              | `./config.yaml`; `/app/config.yaml` in the image                 | Where the settings file is                                                                                                                                  |
-| `AUTH_URL`                                 | unset                                                            | Public URL, read by Auth.js itself; only needed with `auth.trustHost: false`                                                                                |
-| `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                         |
-| `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw                                                       |
-| `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                               |
-| `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                  |
-| `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | `true` in Compose                                                | Compose only: watch files by polling, for bind mounts on macOS and Windows                                                                                  |
-| `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8) |
-| `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                 |
-| `E2E_PORT`                                 | `3210`                                                           | E2E only: the port the suite serves the build on                                                                                                            |
-| `E2E_GOOGLE_PORT`                          | `E2E_PORT` + 1000                                                | E2E only: the port of the stand-in Google provider (`e2e/fake-google.ts`)                                                                                   |
-| `FC_SEED`, `FC_RUNS`                       | `34`, `150`                                                      | Offline sync fuzz test: replay or extend it                                                                                                                 |
-| `CI`                                       | unset                                                            | Playwright: forbids `test.only`, never reuses a running server, GitHub reporter                                                                             |
+| Variable                                   | Default                                                          | Meaning                                                                                                                                                                          |
+| ------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CONFIG_PATH`                              | `./config.yaml`; `/app/config.yaml` in the image                 | Where the settings file is                                                                                                                                                       |
+| `AUTH_URL`                                 | unset                                                            | Public URL, read by Auth.js itself; only needed with `auth.trustHost: false`                                                                                                     |
+| `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                                              |
+| `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
+| `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
+| `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                                       |
+| `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | `true` in Compose                                                | Compose only: watch files by polling, for bind mounts on macOS and Windows                                                                                                       |
+| `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8)                      |
+| `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                                      |
+| `E2E_PORT`                                 | `3210`                                                           | E2E only: the port the suite serves the build on                                                                                                                                 |
+| `E2E_GOOGLE_PORT`                          | `E2E_PORT` + 1000                                                | E2E only: the port of the stand-in Google provider (`e2e/fake-google.ts`)                                                                                                        |
+| `FC_SEED`, `FC_RUNS`                       | `34`, `150`                                                      | Offline sync fuzz test: replay or extend it                                                                                                                                      |
+| `CI`                                       | unset                                                            | Playwright: forbids `test.only`, never reuses a running server, GitHub reporter                                                                                                  |
 
 ## Database
 
@@ -734,9 +735,10 @@ src/
                 (local copy)
   auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
   server/       server-only services, auth (sign-ins, sign-out, guards), withContract
-  db/           Drizzle schema, client and seed data
+  db/           Drizzle schema, client, seed data and the seed's guard
   generated/    generated from openapi.yaml - never edit by hand
-  proxy.ts      optimistic sign-in redirect (Next 16's name for middleware)
+  proxy.ts      optimistic sign-in redirect (Next 16's name for middleware); under
+                next dev, also refuses a Host that is not localhost
 drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
