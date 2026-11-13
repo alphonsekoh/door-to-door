@@ -59,7 +59,7 @@ describe("runSeedCli", () => {
       runSeedCli({ argv: [], databaseUrl: URL_WITH_CREDENTIALS, seed, log }),
     ).rejects.toThrow(SeedRefusedError);
 
-    expect(order).toEqual(["log: Seeding demo data into db.internal:6543/door_to_door"]);
+    expect(order).toEqual(["log: Demo seed target: db.internal:6543/door_to_door"]);
     expect(seed).not.toHaveBeenCalled();
   });
 
@@ -74,7 +74,7 @@ describe("runSeedCli", () => {
     await runSeedCli({ argv: ["--demo"], databaseUrl: URL_WITH_CREDENTIALS, seed, log });
 
     expect(order).toEqual([
-      "log: Seeding demo data into db.internal:6543/door_to_door",
+      "log: Demo seed target: db.internal:6543/door_to_door",
       `seed: ${URL_WITH_CREDENTIALS}`,
     ]);
   });

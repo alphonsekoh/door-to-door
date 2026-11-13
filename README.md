@@ -106,8 +106,9 @@ never starts against an unmigrated database; it never waits for `seed`. The seed
 a database that has users of its own (see [Seeded logins](#seeded-logins)), so once you
 add someone in the app, `seed` exits with that refusal on the next `up` and the app runs
 as before. Compose mounts [`config.docker.yaml`](config.docker.yaml) and passes throwaway
-local credentials, including a public `AUTH_SECRET` that only `next dev` accepts. Point
-it at another settings file with `CONFIG_FILE=./config.yaml docker compose up`.
+local credentials, including a public `AUTH_SECRET` that only `next dev` accepts. To
+change a setting, copy it to `config.demo.yaml` (git-ignored) and run
+`CONFIG_FILE=./config.demo.yaml docker compose up`.
 
 ```bash
 docker compose down -v         # tear down, including data
@@ -156,7 +157,11 @@ file covers only some commands; see [Environment variables](#environment-variabl
 (DNS rebinding), from signing in to the dev server as the seed admin. To try the app on
 a phone over your LAN, use the production build instead. It is also the only one with
 the service worker, though over plain http off `localhost` the phone registers none
-(see [Deployment](#deployment)):
+(see [Deployment](#deployment)).
+
+**Only on a network you trust.** While it runs, anyone on the same network can reach the
+app and sign in with the [seeded logins](#seeded-logins), whose password is public. On any
+other network, run it against a database without the seed users.
 
 ```bash
 npm run build && HOSTNAME=0.0.0.0 npm start   # with auth.secureCookies: false, see below
@@ -428,10 +433,10 @@ test: its empty file is recorded before the SQL is written.
 
 Development only. The seed is deterministic and idempotent: re-running it changes nothing.
 It runs only as `npm run db:seed -- --demo` (or `npm run db:reset -- --demo`); no script
-passes the flag for you. It first prints the database it is about to write to, as
-`host:port/database`, and then refuses, writing nothing, without `--demo`, or when the
-database has any user other than the four below: a database where someone has an
-account is not a demo database.
+passes the flag for you. It first prints the database it targets, as
+`Demo seed target: host:port/database`, and then refuses, writing nothing, without
+`--demo`, or when the database has any user other than the four below: a database where
+someone has an account is not a demo database.
 
 | Email               | Role   | Password      |
 | ------------------- | ------ | ------------- |

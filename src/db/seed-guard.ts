@@ -67,9 +67,12 @@ export type SeedCli = {
   log: (message: string) => void;
 };
 
-/* The target first, so even a refusal says which database it was about. */
+/*
+ * The target first, so even a refusal says which database it was about, in
+ * words that do not claim the seed has started.
+ */
 export async function runSeedCli({ argv, databaseUrl, seed, log }: SeedCli): Promise<void> {
-  log(`Seeding demo data into ${seedTarget(databaseUrl)}`);
+  log(`Demo seed target: ${seedTarget(databaseUrl)}`);
   requireDemoFlag(argv);
   await seed(databaseUrl);
 }

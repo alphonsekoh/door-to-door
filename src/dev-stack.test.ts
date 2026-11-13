@@ -112,11 +112,45 @@ describe("npm scripts", () => {
 });
 
 describe("the Dockerfile's dev stage", () => {
-  it("listens on every interface of its container, which only Compose's loopback port reaches", () => {
+  it("runs the installed next, never one from the registry, on every interface of its container", () => {
     const stage = /^FROM \S+ AS dev$(?<body>[\s\S]*?)(?=^FROM )/m.exec(read("Dockerfile"))
       ?.groups?.["body"];
     const cmd = /^CMD (?<args>\[.*\])$/m.exec(stage ?? "")?.groups?.["args"];
 
-    expect(JSON.parse(cmd ?? "null")).toEqual(["npx", "next", "dev", "-H", "0.0.0.0"]);
+    expect(JSON.parse(cmd ?? "null")).toEqual(["node_modules/.bin/next", "dev", "-H", "0.0.0.0"]);
+  });
+});
+
+describe("README.md", () => {
+  const readme = read("README.md");
+
+  it("never gives the demo's docker compose up the settings file production migrates with", () => {
+    const filesFor = (command: RegExp): string[] => {
+      const files = new Set<string>();
+      for (const text of [readme, read("config.docker.yaml"), read("docker-compose.yml")]) {
+        // A shell line continuation is still the same command.
+        const joined = text.replace(/\\\n\s*/g, " ");
+        for (const { groups } of joined.matchAll(/CONFIG_FILE=(?<file>\S+)(?<rest>[^\n`]*)/g)) {
+          const file = groups?.["file"];
+          if (file !== undefined && command.test(groups?.["rest"] ?? "")) files.add(file);
+        }
+      }
+      return [...files];
+    };
+
+    expect(filesFor(/docker compose run --rm --no-deps migrate/)).toEqual(["./config.yaml"]);
+    expect(filesFor(/docker compose up/)).toEqual(["./config.demo.yaml"]);
+  });
+
+  it("warns, wherever it serves the app to the LAN, that the seeded logins can be reached there", () => {
+    const sections = readme.split(/^(?=#{2,3} )/m);
+    const exposing = sections.filter((section) => section.includes("HOSTNAME=0.0.0.0"));
+
+    expect(exposing).not.toEqual([]);
+    for (const section of exposing) {
+      expect(section).toContain("(#seeded-logins)");
+      expect(section).toContain("network you trust");
+      expect(section).toContain("database without the seed users");
+    }
   });
 });

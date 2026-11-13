@@ -21,7 +21,9 @@ EXPOSE 3000
 # Not npm run dev, which binds 127.0.0.1: inside a container that is the
 # container's own loopback, which a published port never reaches. Compose
 # publishes 3000 on the host's 127.0.0.1 only, so this stays off the LAN.
-CMD ["npx", "next", "dev", "-H", "0.0.0.0"]
+# The installed binary, not npx, which fetches a missing package from the
+# registry: without node_modules this fails instead of running unpinned code.
+CMD ["node_modules/.bin/next", "dev", "-H", "0.0.0.0"]
 
 # ------------------------------------------------------------- builder
 FROM base AS builder
