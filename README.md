@@ -107,7 +107,7 @@ a database that has users of its own (see [Seeded logins](#seeded-logins)), so o
 add someone in the app, `seed` exits with that refusal on the next `up` and the app runs
 as before. Compose mounts [`config.docker.yaml`](config.docker.yaml) and passes throwaway
 local credentials, including a public `AUTH_SECRET` that only `next dev` accepts. To
-change a setting, copy it to `config.demo.yaml` (git-ignored) and run
+change a setting, copy `config.docker.yaml` to `config.demo.yaml` (git-ignored) and run
 `CONFIG_FILE=./config.demo.yaml docker compose up`.
 
 ```bash
