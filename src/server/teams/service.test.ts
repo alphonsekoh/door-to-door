@@ -61,11 +61,10 @@ describe("creating a team when the database refuses the placement", () => {
 
 describe("adding a member when the database refuses the placement", () => {
   const teamRow = [{ id: "t1", sessionId: "s1", status: "active" }];
-  const person = [{ id: "u2", deactivatedAt: null }];
 
   it("reports a lost race as a conflict", async () => {
     const db = stubDb({
-      select: [teamRow, person, []],
+      select: [teamRow],
       transaction: raised("session_team_members_session_user_unique"),
     });
     await expect(addTeamMember(db, ADMIN, "t1", "u2")).rejects.toBeInstanceOf(ConflictError);
