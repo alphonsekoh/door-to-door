@@ -54,7 +54,9 @@ injected a session object.
 - **D-83-11 · A batch that began before a deactivation may complete.** Check-then-act
   window of milliseconds. _Why:_ closing it needs a lock per write; not worth it.
   _Refined by D-132-7:_ `POST /visits` now locks its author (D-132-4), so a single
-  record is refused once a deactivation lands; a sync batch keeps this window.
+  record is refused once a deactivation lands; a sync batch keeps this window. _Refined
+  by D-158-4:_ so is a member's own `createTeam`, which locks their row with the others
+  it places.
 - **D-83-12 · A repo-wide test (`src/server/auth/auth-imports.test.ts`) enforces the
   path.** Only `session.ts` and the Auth.js route may import the root auth module, and
   every API route must import `@/server/auth/session`. _Why:_ the original bug was a

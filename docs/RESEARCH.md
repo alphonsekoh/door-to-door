@@ -1399,8 +1399,9 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   `KEY SHARE`, or the lock taken after the session, the deactivation did not wait and
   the test failed.
 - **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS);
-  measured (#132 builder, `src/server/follow-ups/races.integration.test.ts`)
-- **Used by:** D-132-4, D-132-5, D-132-8
+  measured (#132 builder, `src/server/follow-ups/races.integration.test.ts`). Measured
+  again in #158 for team placement (`src/server/teams/placement-races.integration.test.ts`).
+- **Used by:** D-132-4, D-132-5, D-132-8, D-158-2, D-158-5, D-158-7
 
 ### R-129 · A locking SELECT locks in its `ORDER BY` order and re-checks its filter on a row it waited for
 
@@ -1414,8 +1415,9 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   promoted meanwhile is not counted.
 - **Source:** [PostgreSQL, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED);
   [PostgreSQL, SELECT, the locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE);
-  `EXPLAIN` measured (#132 reviewer)
-- **Used by:** D-132-2, D-132-5
+  `EXPLAIN` measured (#132 reviewer). In #158 a placement without the `ORDER BY`, queued
+  behind a deactivation, deadlocked with it (`placement-races.integration.test.ts`).
+- **Used by:** D-132-2, D-132-5, D-158-2, D-158-5, D-158-7
 
 ### R-130 · Next's proxy cut drops the chunk that crosses it (measured)
 
@@ -1804,3 +1806,16 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   way.
 - **Source:** `node_modules/next-auth/react.js` (`signOut`)
 - **Used by:** D-125-21
+
+### R-161 · Postgres orders uuids by their bytes, and the contract takes either case
+
+- **Finding:** Postgres compares two `uuid` values byte by byte, which is the order of
+  their lower-case text, and prints them in lower case whatever case they were written
+  in. Plain string order differs once the case does: `"0B…" < "0a…"` as strings, but
+  `'0B…'::uuid > '0a…'::uuid`. Zod 4's `z.uuid()`, which the generated request schemas
+  use for `memberIds` and `userId`, accepts upper- and lower-case hex. Measured on
+  PostgreSQL 17.11 in #158.
+- **Source:** [PostgreSQL, UUID type](https://www.postgresql.org/docs/current/datatype-uuid.html);
+  `uuid_internal_cmp` (`memcmp`) in PostgreSQL's `src/backend/utils/adt/uuid.c`;
+  `node_modules/zod/v4/core/regexes.js` (`uuid`); measured with `psql` (#158 docs)
+- **Used by:** D-158-2, D-158-6

@@ -50,14 +50,19 @@ made them a participant. Found by a security audit.
   key's `KEY SHARE`, which conflicts with neither. So no wait cycle forms. _Research:_
   R-128, R-129. _Extended by D-125-11:_ `startSignIn` also takes the user `FOR SHARE`,
   then only `sign_ins` rows, and deactivation deletes `sign_ins` after its user locks;
-  nothing locks a user after a `sign_ins` row, so still no cycle.
-- **D-132-6 · Sync, `autoJoin` and team placement are unchanged.** Sync's author is
+  nothing locks a user after a `sign_ins` row, so still no cycle. _Extended by
+  D-158-5:_ team placement is a third `FOR SHARE` taker, users first in id order. The
+  Auth.js adapter's `updateUser`, unused here, would be a third `NO KEY UPDATE` taker,
+  as a single statement; still no cycle.
+- **D-132-6 · Sync, `autoJoin` ~~and team placement~~ are unchanged.** Sync's author is
   always the caller, judged per request, so D-83-11 stands for a batch; `autoJoin`'s
-  callers vouch for the author; placement already refuses a deactivated user (D-74-26).
-  _Why:_ none of them names another member, and a per-item refusal in sync would fall to
-  the queue's default branch and be held until tapped. _Gap (owner, 2026-11-04):_
-  placement judges `deactivatedAt` on an unlocked read, so a member deactivated in the
-  same moment can still be placed on a team; locking it is #158.
+  callers vouch for the author; ~~placement already refuses a deactivated user
+  (D-74-26).~~ _Why:_ none of them names another member, and a per-item refusal in sync
+  would fall to the queue's default branch and be held until tapped. ~~_Gap (owner,
+  2026-11-04):_ placement judges `deactivatedAt` on an unlocked read, so a member
+  deactivated in the same moment can still be placed on a team; locking it is #158.~~
+  _Partly superseded by D-158-1 (owner, #158):_ placement locks the placed users' rows
+  first and judges them there (D-158-2); sync and `autoJoin` are unchanged.
 - **D-132-7 · Refines D-83-11 for `POST /visits`.** A member deactivated while their own
   single record is in flight gets the same `409 conflict` instead of a completed write.
   _Why:_ one predicate, with no branch on whether the author is the caller; it is a
@@ -85,4 +90,5 @@ task, since two admins could deactivate each other at once; D-132-1 makes it tru
 
 ## Open questions
 
-None. The owner confirmed D-132-9 and D-132-3, and moved D-132-6's gap to #158.
+None. The owner confirmed D-132-9 and D-132-3, and moved D-132-6's gap to #158, which
+closed it (D-158-1).
