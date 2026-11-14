@@ -1,7 +1,7 @@
 # #136 · Largest text: the Saved line, the next unit and a sheet's Send
 
-- **Status:** In progress (no PR yet), on `fix/136-181-largest-text` with #181's
-  large-text part. D-136-1 extends an owner decision and waits on the owner.
+- **Status:** In progress (PR #191), on `fix/136-181-largest-text` with #181's
+  large-text part. The owner approved D-136-1 on 2026-11-15.
 - **Phase:** 7 - Hardening
 - **Depends on:** #111, #117, #119
 
@@ -16,8 +16,8 @@ only: no contract or schema change.
 
 ## Decisions
 
-- **D-136-1 · Every sheet's `SheetActions` bar is drawn at the 16px base (pending the
-  owner).** It is `chrome-size` and `bleed-x`, as the page's docked Save is: 80px with
+- **D-136-1 · Every sheet's `SheetActions` bar is drawn at the 16px base (owner,
+  2026-11-15).** It is `chrome-size` and `bleed-x`, as the page's docked Save is: 80px with
   Send at the base, in all ten sheets that use it. Extends D-111-60, which names only the
   nav, the docked Save and the sync row. _Why:_ at 32px on an iPhone 13 the bar was
   160px of a sheet whose header took 284px, so the note OK brought back started under
@@ -111,21 +111,21 @@ only: no contract or schema change.
 
 ### How existing decisions are handled
 
-| Decision | Effect                                                                           | By                |
-| -------- | -------------------------------------------------------------------------------- | ----------------- |
-| D-111-60 | Extended to every sheet's `SheetActions`; its note keeps the text size (pending) | D-136-1, D-136-2  |
-| D-111-31 | Refined: `scroll-clear-sheet-actions` replaces `scroll-pb-24`                    | D-136-3           |
-| D-111-36 | Refined: U+2011 only in hidden generated text; `WholeWords` beside `UnitNumber`  | D-136-5, D-136-7  |
-| D-111-53 | Kept; its reason for not reserving height no longer holds (Open questions)       | D-136-4           |
-| D-111-40 | Kept: its marker is not measured; this measured height is kept current           | D-136-3           |
-| D-111-48 | Extended: `target-compact` is a short-screen switch                              | D-136-8           |
-| D-111-65 | Extended: a 12-door save at 32px and 320×568, and Sending to Saved on the phone  | D-136-12          |
-| D-117-71 | Refined: Undo inline after its words, still 44×44 and its own row                | D-136-6           |
-| D-117-59 | Kept: the line keeps its height as the words change                              | D-136-4           |
-| D-119-22 | Known limit closed: the note's top is above Send after OK                        | D-136-1, D-136-11 |
-| D-119-33 | Resolved: the mark is gone, all four follow-up sheets checked                    | D-136-11          |
-| D-30-8   | Kept: targets at least 44px                                                      | D-136-8           |
-| D-181-5  | Kept: `:376` unchanged and open; the `:613` reading corrected                    | D-136-13          |
+| Decision | Effect                                                                          | By                |
+| -------- | ------------------------------------------------------------------------------- | ----------------- |
+| D-111-60 | Extended to every sheet's `SheetActions`; its note keeps the text size (owner)  | D-136-1, D-136-2  |
+| D-111-31 | Refined: `scroll-clear-sheet-actions` replaces `scroll-pb-24`                   | D-136-3           |
+| D-111-36 | Refined: U+2011 only in hidden generated text; `WholeWords` beside `UnitNumber` | D-136-5, D-136-7  |
+| D-111-53 | Kept; its line stays unheld for now (owner), though its reason no longer holds  | D-136-4           |
+| D-111-40 | Kept: its marker is not measured; this measured height is kept current          | D-136-3           |
+| D-111-48 | Extended: `target-compact` is a short-screen switch                             | D-136-8           |
+| D-111-65 | Extended: a 12-door save at 32px and 320×568, and Sending to Saved on the phone | D-136-12          |
+| D-117-71 | Refined: Undo inline after its words, still 44×44 and its own row               | D-136-6           |
+| D-117-59 | Kept: the line keeps its height as the words change                             | D-136-4           |
+| D-119-22 | Known limit closed: the note's top is above Send after OK                       | D-136-1, D-136-11 |
+| D-119-33 | Resolved: the mark is gone, all four follow-up sheets checked                   | D-136-11          |
+| D-30-8   | Kept: targets at least 44px                                                     | D-136-8           |
+| D-181-5  | Kept: `:376` unchanged and open; the `:613` reading corrected                   | D-136-13          |
 
 ## Known limits
 
@@ -135,7 +135,7 @@ only: no contract or schema change.
   edge. With a 34px inset, `--sheet-actions` plus 16px leaves the field 18px short.
   `scroll-clear-chrome` adds `env(safe-area-inset-bottom)` for the page. On main the
   shortfall was about 2px at 32px. Playwright draws no inset, so no E2E sees it.
-  _Research:_ R-182.
+  _Research:_ R-182. Accepted as a known limit (owner, 2026-11-15).
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
   sent." or a note's suffix can still grow the line.
@@ -164,12 +164,13 @@ D-126-8, D-181-5.
 
 ## Open questions
 
-- **D-136-1: may sheets join D-111-60's chrome?** Every sheet's Send bar is now 80px
-  with Send at the base size, at every text size. Its note still follows the text. The
-  docked Save on the page is the precedent, but D-111-60 named only the nav, the docked
-  Save and the sync row.
-- **The held blank line (D-136-4).** At 32px it costs 48px above the unit after every
-  direct save, to keep the unit still when a save is queued instead. Keep it?
-- **D-111-53's offline status line.** It was not held, because a hidden second copy of
-  the text broke tests that find the row by its text. `hold-text` has no such copy. Should
-  the offline shell's status line be held the same way? It is unchanged here.
+None. The owner answered all four on 2026-11-15, taking each as this branch built it:
+
+- **D-136-1:** every sheet's Send bar joins D-111-60's base-size chrome; its note still
+  follows the text.
+- **The held blank line (D-136-4):** kept. At 32px it costs 48px above the unit after a
+  direct save, and keeps the unit still when a save is queued instead.
+- **D-111-53's offline status line:** left unheld here. `hold-text` could hold it now,
+  but that is for a later change.
+- **Reviewer r2's should-fix** (a low field in a sheet ending about 18px under the
+  docked Send on an installed iPhone): accepted as a known limit (Known limits).
