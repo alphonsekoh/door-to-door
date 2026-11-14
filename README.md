@@ -511,13 +511,13 @@ own `door_to_door_e2e` database, so it never disturbs the integration suite. The
 (never the real Google), an admin ending a member's sign-ins, recording a visit (with and
 without signal), a session's lifecycle, a follow-up session, teams, the account screen
 and sign-out, and the PWA (the worker, offline fallback, caching and phone layout).
-Four offline tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit offline
-emulation bypasses the service worker (D-32-18), and two in `sign-ins.spec` because it
-cannot hold or stop the worker's requests (R-138). The browser runs at UTC+14 and the
-server at UTC−12, so their dates always differ, and a spec fails on any hydration
-mismatch on a page it loads, attributes included (D-117-64). It fails on any Content
-Security Policy violation too: the policy only reports for now (#146), so nothing else
-would notice one.
+Four tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit fails a
+request before the service worker can answer it, offline or routed (D-32-18, D-166-5),
+and two in `sign-ins.spec` because it cannot hold or stop the worker's requests (R-138).
+The browser runs at UTC+14 and the server at UTC−12, so their dates always differ, and a
+spec fails on any hydration mismatch on a page it loads, attributes included (D-117-64).
+It fails on any Content Security Policy violation too: the policy only reports for now
+(#146), so nothing else would notice one.
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.

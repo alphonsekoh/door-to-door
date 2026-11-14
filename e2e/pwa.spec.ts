@@ -164,11 +164,16 @@ test.describe("the worker in charge", () => {
   test("activates, and takes control of the next load", async ({ memberPage }) => {
     await memberPage.goto("/");
     await controlled(memberPage);
-    const state = await memberPage.evaluate(async () => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      return registration?.active?.state;
-    });
-    expect(state).toBe("activated");
+    // The page can be in the worker's charge before its copy of the worker
+    // hears that activation finished: WebKit has read "activating" here (#166).
+    await expect
+      .poll(() =>
+        memberPage.evaluate(async () => {
+          const registration = await navigator.serviceWorker.getRegistration();
+          return registration?.active?.state;
+        }),
+      )
+      .toBe("activated");
   });
 
   test("the offline page is precached, ready for a dead spot", async ({ memberPage }) => {
@@ -196,21 +201,28 @@ test.describe("the worker in charge", () => {
     memberPage,
     browserName,
   }) => {
-    // Playwright's WebKit blocks every request at the network layer once
-    // "offline", before the worker can answer - even for a precached URL - so
-    // the fallback cannot be exercised there. The precache test above covers
-    // what WebKit can; the rest is a manual check on a real iPhone.
-    test.skip(browserName === "webkit", "Playwright WebKit offline emulation bypasses the worker");
+    // Playwright's WebKit fails every request at the network layer, offline or
+    // routed, before the worker can answer - even for a precached URL - so the
+    // fallback cannot be exercised there. The precache test above covers what
+    // WebKit can; the rest is a manual check on a real iPhone.
+    test.skip(browserName === "webkit", "Playwright WebKit fails requests before the worker");
     await memberPage.goto("/");
     await controlled(memberPage);
 
-    await memberPage.context().setOffline(true);
+    // A dead spot the phone does not know about, as with one bar: every
+    // request fails, yet the browser stays online, so no `online` event comes
+    // and Try again is the only way back. Going offline instead would race
+    // the tap against the page's own reload on `online` (D-33-22), which
+    // Playwright 1.64 fires there and 1.62 never did.
+    const context = memberPage.context();
+    await context.route("**/*", (route) => route.abort("internetdisconnected"));
     await memberPage.goto("/history").catch(() => undefined);
     await expect(memberPage.getByRole("heading", { level: 1, name: "Offline" })).toBeVisible();
     // Nothing opened yet to record with, so the shell says so.
     await expect(memberPage.getByText(/Nothing is saved on this phone/)).toBeVisible();
+    expect(await memberPage.evaluate(() => navigator.onLine)).toBe(true);
 
-    await memberPage.context().setOffline(false);
+    await context.unroute("**/*");
     await memberPage.getByRole("button", { name: "Try again" }).click();
     await expect(
       memberPage.getByRole("heading", { level: 1, name: "Active session" }),
@@ -306,10 +318,10 @@ test.describe("the worker in charge", () => {
       Reflect.set(window, "__stillHere", true);
     });
     await page.context().setOffline(false);
-    // A document loaded offline keeps navigator.onLine true in Playwright, so
-    // setOffline(false) fires no `online` there; a phone does. Without this the
-    // queue's own retry timer sends, and neither the wake nor the no-reload is
-    // tested.
+    // Playwright 1.62 keeps navigator.onLine true in a document loaded offline,
+    // so setOffline(false) fires no `online` there; a phone, and Playwright
+    // 1.64, do. Without this the queue's own retry timer sends, and neither the
+    // wake nor the no-reload is tested. A second `online` changes nothing.
     await page.evaluate(() => window.dispatchEvent(new Event("online")));
     await expect(page.getByText("All visits sent")).toBeVisible();
     // No reload happened: the page's own state survived.
