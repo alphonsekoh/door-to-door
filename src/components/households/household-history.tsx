@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useState } from "react";
+import { startTransition, useLayoutEffect, useRef, useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
@@ -75,6 +75,7 @@ export function HouseholdHistoryPanel({
   const [earlier, setEarlier] = useState<EarlierVisits | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierFailed, setEarlierFailed] = useState(false);
+  const earlierFailure = useRef<HTMLParagraphElement>(null);
   /* The first page shown last. When the parent reads it again, its visits
      join the older ones, so a visit stored in between leaves no gap. */
   const [shownFirst, setShownFirst] = useState(history);
@@ -99,6 +100,15 @@ export function HouseholdHistoryPanel({
   const action = householdAction(followUps, { userId, isAdmin });
   const anchorLabel =
     action.kind === "add_to_list" ? ADD_TO_LIST : action.kind === "suggest" ? SUGGEST : null;
+
+  /* Drawn under the control, the failure landed under the docked Save at the
+     door on an iPhone 13, and under a floating banner elsewhere, so the tap
+     seemed to do nothing. It is brought into view clear of them before it is
+     painted, as the Saved line is (#113). Only the line: at large text the
+     control alone can fill the room left. */
+  useLayoutEffect(() => {
+    if (earlierFailed) earlierFailure.current?.scrollIntoView({ block: "nearest" });
+  }, [earlierFailed]);
 
   const edit = (note: FollowUp) => {
     setSheet({ kind: "edit", note });
@@ -206,8 +216,13 @@ export function HouseholdHistoryPanel({
           >
             {loadingEarlier ? "Loading…" : "Show earlier visits"}
           </button>
+          {/* Only the door has a Save pinned over the page. */}
           {earlierFailed ? (
-            <p role="status" className="mt-1 text-caption text-foreground-muted">
+            <p
+              ref={earlierFailure}
+              role="status"
+              className={`mt-1 text-caption text-foreground-muted ${atDoor ? "scroll-clear-chrome" : "scroll-clear-nav"}`}
+            >
               Could not load earlier visits.
             </p>
           ) : null}

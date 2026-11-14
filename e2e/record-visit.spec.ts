@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import { uuidv7 } from "../src/lib/uuid";
 import { MEMBER_STATE, SEED_BLOCK } from "./accounts";
 import {
   adminRequest,
@@ -987,5 +988,114 @@ test.describe("without signal", () => {
     const row = memberPage.getByRole("button", { name: new RegExp(OFFLINE_UNIT) });
     await expect(row).toBeVisible();
     await expect(row).not.toContainText("Not sent");
+  });
+
+  /*
+   * Drawn under "Show earlier visits", the line saying an older page could
+   * not be read landed under the docked Save on an iPhone 13: the tap seemed
+   * to do nothing (#160). Tapped where a thumb leaves it, just above the bar.
+   */
+  test("older visits that cannot be read say so above the docked Save, and come with signal", async ({
+    memberPage,
+    adminApi,
+  }, testInfo) => {
+    /* One door per browser, so each has exactly one visit past the page. In
+       one batch: one save at a time would meet the per-member limit. Each
+       item lands in a transaction of its own, so the first is the oldest. */
+    const unit = testInfo.project.name.includes("webkit") ? "#61-02" : "#61-01";
+    const now = new Date().toISOString();
+    const synced = await adminApi.post("/api/visits/sync", {
+      data: {
+        sentAt: now,
+        items: Array.from({ length: 21 }, (_, knock) => ({
+          id: uuidv7(),
+          blockId: SEED_BLOCK,
+          unitNumber: unit,
+          interestLevel: "low",
+          description: knock === 0 ? "The first knock." : "",
+          clientCreatedAt: now,
+          updatedAt: now,
+        })),
+      },
+    });
+    expect(synced.status()).toBe(200);
+    const { results } = (await synced.json()) as {
+      results: { status: string; visit: { householdId: string } | null }[];
+    };
+    expect(results.map((result) => result.status)).toEqual(
+      Array.from({ length: 21 }, () => "applied"),
+    );
+    const householdId = results[0]?.visit?.householdId;
+    if (householdId === undefined) throw new Error("the first visit has no household");
+    /* Owed, and long enough that its card leaves room above the control, on
+       either phone, to bring the control down to the bar. */
+    const listed = await adminApi.post("/api/follow-ups", {
+      data: {
+        householdId,
+        note:
+          "Bring the pamphlet in Mandarin and in English. The daughter asked us to come back " +
+          "on a weekday evening after seven, when her mother is home from the market, and to " +
+          "ring twice, as the bell is faint.",
+      },
+    });
+    expect(listed.status()).toBe(201);
+    const { id: noteId } = (await listed.json()) as { id: string };
+
+    try {
+      await memberPage.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(unit)}`);
+      await untilLive(memberPage);
+      const timeline = memberPage.getByRole("list", { name: "Timeline" }).getByRole("listitem");
+      await expect(timeline).toHaveCount(20);
+      const control = memberPage.getByRole("button", { name: "Show earlier visits" });
+      await expect(memberPage.locator('[data-dock="nav"]')).toHaveAttribute("data-docked", "");
+      const gap = await control.evaluate((element) => {
+        const bar = document.querySelector('[data-dock="nav"]');
+        if (bar === null) throw new Error("no docked Save");
+        const above = () =>
+          bar.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+        window.scrollBy(0, 4 - above());
+        return above();
+      });
+      expect(gap, "the control just above the docked Save").toBeGreaterThanOrEqual(0);
+      expect(gap, "the control just above the docked Save").toBeLessThanOrEqual(8);
+
+      const older = (url: URL) =>
+        url.pathname === `/api/households/${householdId}` && url.searchParams.get("offset") !== "0";
+      await memberPage.route(older, (route) => route.abort("internetdisconnected"));
+      await control.click();
+      const failure = memberPage
+        .getByRole("status")
+        .filter({ hasText: "Could not load earlier visits." });
+      await expect(failure).toBeVisible();
+      await expect
+        .poll(
+          () =>
+            failure.evaluate((element) => {
+              const box = element.getBoundingClientRect();
+              const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+              return (
+                box.top >= 0 &&
+                box.bottom <= window.innerHeight &&
+                top !== null &&
+                element.contains(top)
+              );
+            }),
+          { message: "something covers the line" },
+        )
+        .toBe(true);
+      await expect(control).toBeEnabled();
+      await expect(timeline).toHaveCount(20);
+
+      await memberPage.unroute(older);
+      await control.click();
+      await expect(timeline).toHaveCount(21);
+      await expect(timeline.first()).toContainText("The first knock.");
+      await expect(control).toBeHidden();
+    } finally {
+      const removed = await adminApi.post(`/api/follow-ups/${noteId}/remove`, {
+        data: { reason: "Test done" },
+      });
+      expect(removed.status()).toBe(204);
+    }
   });
 });

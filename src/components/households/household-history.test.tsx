@@ -838,6 +838,47 @@ describe("older visits (#160)", () => {
     expect(screen.queryByText("Could not load earlier visits.")).not.toBeInTheDocument();
   });
 
+  /* Drawn under the control, the line landed under the docked Save at the
+     door on an iPhone 13, and a tap there seemed to do nothing. */
+  it("brings a failure into view, clear of the docked Save at the door, and only a failure", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    fireEvent.click(showEarlier());
+
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).toHaveBeenCalledOnce();
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+    /* The line itself: at large text the control can fill the room left,
+       and the two together would then be aligned by the control's top. */
+    expect(scrolled.mock.contexts[0]).toBe(failure);
+    expect(failure).toHaveClass("scroll-clear-chrome");
+
+    // A second failure is brought into view again; a page that lands is not.
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.click(showEarlier());
+    await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).toHaveBeenCalledTimes(2);
+    apiFetch.mockResolvedValueOnce(olderPage);
+    fireEvent.click(showEarlier());
+    await waitFor(() => {
+      expect(shown()).toHaveLength(30);
+    });
+    expect(scrolled).toHaveBeenCalledTimes(2);
+  });
+
+  it("brings a failure clear of the nav and any floating banner away from the door", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    fireEvent.click(showEarlier());
+
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled.mock.contexts).toEqual([failure]);
+    expect(failure).toHaveClass("scroll-clear-nav");
+    expect(failure).not.toHaveClass("scroll-clear-chrome");
+  });
+
   it("keeps the older visits when the parent reads the first page again", async () => {
     apiFetch.mockResolvedValueOnce(olderPage);
     const view = render(
