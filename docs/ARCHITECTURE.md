@@ -361,10 +361,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   subscribes to that role, not the account store, so an answer that changes nothing
   draws nothing (D-155-7).
 - An answer that can land while a field is taking text is set in `startTransition`: the
-  block screen's reads, the form's history, Undo and Mark done, and the sync queue's
-  state. Set urgently inside the field's `input` event, it was drawn at once and wrote
-  the old value back (D-155-1, D-155-2). A store's change is drawn at once whatever the
-  lane, so the session kind is told to `knownSessionKind` from an effect (D-155-3).
+  block screen's reads, the form's history, the history panel's older pages (D-160-9),
+  Undo and Mark done, and the sync queue's state. Set urgently inside the field's
+  `input` event, it was drawn at once and wrote the old value back (D-155-1, D-155-2).
+  A store's change is drawn at once whatever the lane, so the session kind is told to
+  `knownSessionKind` from an effect (D-155-3).
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
@@ -405,7 +406,7 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   - `chrome-size` holds the nav, the docked Save bar and the sync row at the 16px base
     (`--chrome-rem`) at every text size; `--nav-height` is 64px. `bleed-x` lines them up
     with the page's margin (`--page-gutter`), and `scroll-clear-chrome` scrolls clear of
-    them.
+    them. `scroll-clear-nav` clears only the nav and a floating banner (D-164-7).
   - Control utilities: `btn-*`, `field`, `notice-*`.
   - Press feedback: `press`, `press-row` and the base layer. `PressFeedback` in
     `AppShell` makes iOS honour `:active`. No `filter` is ever transitioned
@@ -475,6 +476,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/households/pages.ts`), keeping each household once by id. A failed page ends
   the read with the pages before it: those are shown, but only a whole read is written
   to the local copy, and each read lands unless a newer one already has (D-126-10).
+- A unit's history (`GET /households/{id}`) comes 20 visits a page, newest first. Both
+  screens read the first page; `HouseholdHistoryPanel` reads older ones on "Show earlier
+  visits" and holds them across re-reads of the first, each visit once by id
+  (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
