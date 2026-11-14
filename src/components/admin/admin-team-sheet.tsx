@@ -161,12 +161,7 @@ export function AdminTeamSheet({
         )
       ) : null}
 
-      <SheetActions>
-        {canChange ? null : (
-          <p className="mb-2 text-center text-caption text-foreground-muted">
-            {ADMIN_OFFLINE_NOTE}
-          </p>
-        )}
+      <SheetActions note={canChange ? null : ADMIN_OFFLINE_NOTE}>
         <button
           type="button"
           disabled={busy || !canChange || needsPeople}

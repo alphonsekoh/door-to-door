@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MotionGlobalConfig } from "motion/react";
 import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { Sheet, SheetPresence } from "@/components/ui/sheet";
+import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 
 /*
  * jsdom lays nothing out and has no pointer capture: give the panel a height
@@ -598,5 +598,82 @@ describe("Sheet leaving", () => {
     // with the draft it had.
     const fresh = screen.getByRole("dialog", { name: "Edit" });
     expect(within(fresh).getByLabelText("Note")).toHaveValue("");
+  });
+});
+
+describe("SheetActions", () => {
+  function Held({ note, docked = true }: { note: string | null; docked?: boolean }) {
+    return (
+      <Sheet label="Suggest" onClose={vi.fn()}>
+        <textarea aria-label="Note" />
+        {docked ? (
+          <SheetActions note={note} noteId="send-note">
+            <button type="button" disabled={note !== null} aria-describedby="send-note">
+              Send
+            </button>
+          </SheetActions>
+        ) : null}
+      </Sheet>
+    );
+  }
+
+  it("says why its action is held back, for the action to be described by", () => {
+    const { rerender } = render(<Held note="Connect to change follow-ups" />);
+    const send = screen.getByRole("button", { name: "Send" });
+    expect(send).toBeDisabled();
+    expect(send).toHaveAccessibleDescription("Connect to change follow-ups");
+
+    rerender(<Held note={null} />);
+    expect(send).toBeEnabled();
+    expect(screen.queryByText("Connect to change follow-ups")).toBeNull();
+  });
+
+  /* jsdom lays nothing out: the bar is as tall as `bar` says, and the
+     browser's resize callbacks are made by hand. */
+  it("tells its sheet's body how tall it is drawn, as its note comes and goes", () => {
+    let bar = 80;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains("sticky") ? bar : 600;
+    });
+    const observers: { measure: () => void; watched: Element[]; disconnect: () => void }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        watched: Element[] = [];
+        disconnect = vi.fn();
+        constructor(measure: () => void) {
+          observers.push({ measure, watched: this.watched, disconnect: this.disconnect });
+        }
+        observe(target: Element) {
+          this.watched.push(target);
+        }
+      },
+    );
+    onTestFinished(() => {
+      vi.unstubAllGlobals();
+    });
+    const { rerender } = render(<Held note={null} />);
+    const body = screen.getByLabelText("Note").parentElement;
+    if (body === null) throw new Error("no sheet body");
+    const room = () => body.style.getPropertyValue("--sheet-actions");
+    expect(room()).toBe("80px");
+
+    // Offline, the note takes a line or two above Send.
+    bar = 136;
+    rerender(<Held note="Connect to change follow-ups" />);
+    const send = screen.getByRole("button", { name: "Send" }).parentElement;
+    act(() => {
+      for (const observer of observers) {
+        if (send !== null && observer.watched.includes(send)) observer.measure();
+      }
+    });
+    expect(room()).toBe("136px");
+
+    // With no bar docked, there is nothing to clear.
+    rerender(<Held note={null} docked={false} />);
+    expect(room()).toBe("");
+    expect(observers[0]?.disconnect).toHaveBeenCalled();
   });
 });

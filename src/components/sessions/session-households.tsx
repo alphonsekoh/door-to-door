@@ -412,15 +412,7 @@ function AddHouseholdsSheet({
         )}
       </div>
 
-      <SheetActions>
-        {blocker === null ? null : (
-          <p
-            id="add-households-note"
-            className="mb-2 text-center text-caption text-foreground-muted"
-          >
-            {blocker}
-          </p>
-        )}
+      <SheetActions note={blocker} noteId="add-households-note">
         <button
           type="button"
           disabled={busy || blocker !== null}

@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import type { VisitSyncRequest, VisitSyncResponse } from "../src/generated/types.gen";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK, SEED_PASSWORD } from "./accounts";
 import {
@@ -366,6 +367,12 @@ const WIDE_UNIT = "#12-1234A";
 /* #05-125 in the seed: its one note is resolved, so a member may suggest it. */
 const RESOLVED_HOUSEHOLD = "00000000-0000-4000-8003-000000000002";
 
+/* #05-123 in the seed: on the follow-up list since the June visit. */
+const LISTED_UNIT = "#05-123";
+
+/* #06-201 in the seed: never answered, and nothing asked for. */
+const QUIET_HOUSEHOLD = "00000000-0000-4000-8003-000000000003";
+
 test("a member's screens fit at the largest text", async ({ memberPage: page, adminApi }) => {
   const running = await ensureActiveSession(adminApi);
   const recorded = await page.request.post("/api/visits", {
@@ -547,15 +554,36 @@ test("a member's page fits at the largest text, whatever the length of their ema
   await expectFits(page, "signing a member out everywhere", page.getByRole("alertdialog"));
 });
 
-/* A blank suggestion refused at the cap, and its Not saved answered with OK. */
-async function refuseBlankNote(page: Page): Promise<{ sheet: Locator; note: Locator }> {
-  await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+/* A follow-up sheet at the cap: how it is opened, at which door, and what
+   its note and its Send are called. */
+type NoteSheet = {
+  door: string;
+  open: string;
+  title: RegExp;
+  note: string;
+  send: string;
+};
+
+const SUGGESTING: NoteSheet = {
+  door: RESOLVED_HOUSEHOLD,
+  open: "Suggest a return visit",
+  title: /^Suggest a return visit/,
+  note: "Why should we go back?",
+  send: "Send suggestion",
+};
+
+/* Its note left blank and refused, and Not saved answered with OK. */
+async function refuseBlankNote(
+  page: Page,
+  { door, open, title, note: field, send }: NoteSheet = SUGGESTING,
+): Promise<{ sheet: Locator; note: Locator }> {
+  await page.goto(`/households/${door}`);
   await atCap(page);
-  await page.getByRole("button", { name: "Suggest a return visit" }).first().click();
-  const sheet = page.getByRole("dialog", { name: /^Suggest a return visit/ });
-  const note = sheet.getByRole("textbox", { name: "Why should we go back?" });
+  await page.getByRole("button", { name: open, exact: true }).first().click();
+  const sheet = page.getByRole("dialog", { name: title });
+  const note = sheet.getByRole("textbox", { name: field });
   await note.fill("   ");
-  await sheet.getByRole("button", { name: "Send suggestion" }).click();
+  await sheet.getByRole("button", { name: send }).click();
   const blank = page.getByRole("alertdialog", { name: "Not saved" });
   await blank.getByRole("button", { name: "OK" }).click();
   await expect(blank).toBeHidden();
@@ -603,20 +631,111 @@ test("Not saved opens at its top, and OK brings the field back below its label",
 });
 
 /*
- * Under its label, the note's own top edge. On an iPhone 13 at the cap the
- * room between the sheet's header and the docked Send is shorter than the
- * label and the count, so the note starts under Send (D-119-22's known
- * limit). Deferred by the owner to #136, the largest-text layout under the
- * docked action: a known failure there until #136 lands, when Playwright
- * reports it passing and this mark must go.
+ * Under its label, the note's own top edge, on every follow-up sheet. On an
+ * iPhone 13 at the cap the room between the sheet's header and its docked
+ * Send was shorter than the label and the count, so the note started under
+ * Send (D-119-22's known limit, deferred to #136). Send is now drawn at the
+ * base size, as the page's docked Save is.
  */
-test("OK brings the note back with its top edge in view", async ({ memberPage, browserName }) => {
-  test.fail(
-    browserName === "webkit",
-    "#136: on an iPhone 13 at 32px the note starts under the docked Send",
-  );
-  const { note } = await refuseBlankNote(memberPage);
-  await expectInView(note, "the note's top edge after OK", "top edge");
+test("OK brings the note back with its top edge in view, on every follow-up sheet", async ({
+  memberPage,
+  adminPage,
+  adminApi,
+}) => {
+  const listed = await listSeededHousehold(adminApi);
+  /* A suggestion of the member's own, for them to edit. */
+  const suggested = await memberPage.request.post("/api/follow-ups", {
+    data: { householdId: QUIET_HOUSEHOLD, note: "Ask about the lift upgrading" },
+  });
+  expect(suggested.status()).toBe(201);
+  const { id } = (await suggested.json()) as { id: string };
+  const sheets: [Page, NoteSheet][] = [
+    [memberPage, SUGGESTING],
+    [
+      memberPage,
+      {
+        door: QUIET_HOUSEHOLD,
+        open: "Edit",
+        title: /^Edit suggestion/,
+        note: "Why should we go back?",
+        send: "Save changes",
+      },
+    ],
+    [
+      adminPage,
+      {
+        door: RESOLVED_HOUSEHOLD,
+        open: "Add to follow-up list",
+        title: /^Add to the follow-up list/,
+        note: "What should the next visit do?",
+        send: "Add to list",
+      },
+    ],
+    [
+      adminPage,
+      {
+        door: listed,
+        open: "Edit",
+        title: /^Edit follow-up/,
+        note: "What should the next visit do?",
+        send: "Save changes",
+      },
+    ],
+  ];
+  try {
+    for (const [page, sheet] of sheets) {
+      const { note } = await refuseBlankNote(page, sheet);
+      await expectInView(note, `the note's top edge after OK, ${sheet.open}`, "top edge");
+    }
+  } finally {
+    /* Left as it found the door: nothing asked for. */
+    const removed = await adminApi.post(`/api/follow-ups/${id}/remove`, {
+      data: { reason: "Test done" },
+    });
+    expect(removed.status()).toBe(204);
+  }
+});
+
+/*
+ * Without signal a follow-up sheet's Send is grey, and the line above it
+ * says why. The bar is chrome, at the base size as the page's docked Save
+ * is, but that line is content: drawn at the base it was 12px at every text
+ * size. A field taking focus is kept clear of the bar as it is drawn, the
+ * line and all: kept clear of the bar without it, it could end under it.
+ */
+test("without signal, a follow-up sheet says why Send is grey at the text size, and keeps a field clear of all of it", async ({
+  memberPage: page,
+}) => {
+  await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+  await atCap(page);
+  /* Once the door has loaded: its history is fetched from the page. */
+  const suggest = page.getByRole("button", { name: SUGGESTING.open, exact: true }).first();
+  await expect(suggest).toBeVisible();
+  await page.context().setOffline(true);
+  try {
+    await suggest.click();
+    const sheet = page.getByRole("dialog", { name: SUGGESTING.title });
+    const send = sheet.getByRole("button", { name: SUGGESTING.send });
+    await expect(send).toBeDisabled();
+    /* A caption, three quarters of the 32px text. */
+    await expect(sheet.getByText("Connect to change follow-ups")).toHaveCSS("font-size", "24px");
+    /* The room the sheet's body keeps under a field taking focus, less the
+       bar Send sits in: the 16px margin. */
+    await expect
+      .poll(
+        () =>
+          send.evaluate((button) => {
+            const bar = button.parentElement;
+            const body = bar?.closest("[data-sheet-body]");
+            if (!bar || !body) return null;
+            return parseFloat(getComputedStyle(body).scrollPaddingBottom) - bar.offsetHeight;
+          }),
+        { message: "the room kept under a field taking focus, less the bar" },
+      )
+      .toBe(16);
+  } finally {
+    await page.context().setOffline(false);
+  }
 });
 
 /* From the default to the cap: the iOS sizes past Large (21px, 23px), and
@@ -902,6 +1021,18 @@ test.describe("a follow-up session", () => {
     await endActiveSession(adminApi);
   });
 
+  /* As a thumb does: once the door's history has loaded, down to the
+     interest level. A tap made as it lands meets what it pushed down. */
+  async function pickMedium(page: Page): Promise<void> {
+    await expect(page.getByRole("region", { name: "What we know about this unit" })).toBeVisible();
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight);
+    });
+    const medium = page.getByRole("radio", { name: "Medium" });
+    await medium.click();
+    await expect(medium).toBeChecked();
+  }
+
   test("its screens fit at the largest text", async ({ memberPage, adminPage, adminApi }) => {
     await memberPage.goto("/");
     await atCap(memberPage);
@@ -947,5 +1078,157 @@ test.describe("a follow-up session", () => {
     await expect(adding.getByRole("button", { name: /^Add \d+ household/ })).toBeVisible();
     await expectFits(adminPage, "adding households", adding);
     await adminPage.keyboard.press("Escape");
+  });
+
+  /*
+   * After a save among a dozen listed doors, the line says what the save
+   * marked, with Undo and Back to the list, above the next unit. On an
+   * iPhone 13 at the cap the follow-up row beside Undo was set a word a
+   * line, about 330px tall, "Follow-up" broke at its hyphen, and the unit
+   * field went half under the docked Save; on a 320x568 screen Back to the
+   * list did too (#136).
+   */
+  test("after a save among a dozen listed doors, the next unit and the way back are clear of Save", async ({
+    memberPage: page,
+    adminApi,
+  }, testInfo) => {
+    const { session } = (await (await adminApi.get("/api/sessions/active")).json()) as {
+      session: { id: string };
+    };
+    /* Eleven doors of this test's own besides the seeded one, so the chips
+       run to several rows and the form scrolls. */
+    const stamp = String(Date.now()).slice(-2);
+    const floor = `#7${String(testInfo.project.name.length % 10)}`;
+    const unitOf = (door: number) => `${floor}-${String(door).padStart(2, "0")}${stamp}`;
+    const notes: string[] = [];
+    try {
+      /* One batch, not eleven direct saves: those spent over a third of the
+         admin's per-minute budget, so a repeat of this test was refused 429. */
+      const now = new Date().toISOString();
+      const batch: VisitSyncRequest = {
+        sentAt: now,
+        items: Array.from({ length: 11 }, (_, index) => ({
+          id: uuidv7(),
+          blockId: SEED_BLOCK,
+          unitNumber: unitOf(index + 1),
+          sessionId: session.id,
+          interestLevel: "medium",
+          clientCreatedAt: now,
+          updatedAt: now,
+        })),
+      };
+      const synced = await adminApi.post("/api/visits/sync", { data: batch });
+      expect(synced.status()).toBe(200);
+      const { results } = (await synced.json()) as VisitSyncResponse;
+      expect(results.map((result) => result.status)).toEqual(batch.items.map(() => "applied"));
+      const doors = results.flatMap((result) => (result.visit ? [result.visit.householdId] : []));
+      for (const householdId of doors) {
+        const listed = await adminApi.post("/api/follow-ups", {
+          data: { householdId, note: "Bring the pamphlet" },
+        });
+        expect(listed.status()).toBe(201);
+        notes.push(((await listed.json()) as { id: string }).id);
+      }
+      const picked = await adminApi.post(`/api/sessions/${session.id}/households`, {
+        data: { householdIds: doors },
+      });
+      expect(picked.status()).toBe(200);
+
+      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+      await untilLive(page);
+      const chips = page.getByRole("list", { name: "On the list in this block" });
+      await expect(chips.getByRole("listitem")).toHaveCount(12);
+      const unit = page.getByLabel("Unit number");
+      const back = page.getByRole("main").getByRole("link", { name: "Back to the list" });
+
+      /* Then Save, with signal. */
+      const saveAt = async (size: string, door: string) => {
+        await atSize(page, size);
+        if (door !== LISTED_UNIT) await chips.getByRole("button", { name: door }).click();
+        await expect(unit).toHaveValue(door);
+        await pickMedium(page);
+        await page.getByRole("button", { name: "Save", exact: true }).click();
+        const status = page.getByRole("status").filter({ hasText: `Saved ${door}.` });
+        await expect(status).toContainText("Follow-up marked done.");
+        return status;
+      };
+
+      const status = await saveAt(CAP, LISTED_UNIT);
+      await expectInView(status.getByRole("button", { name: /^Undo/ }), "Undo after a save");
+      await expectInView(back, "Back to the list after a save");
+      await expectInView(unit, "the next unit after a save");
+      await expect.poll(() => screenFaults(page), { message: "the Saved line" }).toEqual([]);
+      expect(
+        await status
+          .getByText("Follow-up", { exact: true })
+          .evaluate((word) => new Set([...word.getClientRects()].map((line) => line.top)).size),
+        "the lines Follow-up is drawn on",
+      ).toBe(1);
+
+      /* The smallest phone screen: there the line and the next unit cannot
+         both fit at the cap, but the way back to the list always does. */
+      await page.setViewportSize({ width: 320, height: 568 });
+      for (const [size, door] of [
+        [CAP, unitOf(1)],
+        ["16px", unitOf(2)],
+      ] as const) {
+        await saveAt(size, door);
+        await expectInView(back, `Back to the list at 320x568 and ${size}`);
+      }
+      await expectInView(unit, "the next unit at 320x568 and 16px");
+    } finally {
+      /* Left as it found the list. */
+      for (const id of notes) {
+        const removed = await adminApi.post(`/api/follow-ups/${id}/remove`, {
+          data: { reason: "Test done" },
+        });
+        expect(removed.status()).toBe(204);
+      }
+    }
+  });
+
+  test.describe("without signal", () => {
+    /* page.route cannot reach a request the service worker makes. */
+    test.use({ serviceWorkers: "block" });
+
+    /*
+     * "Saved … on this phone." is longer than "Sending …", and at the cap it
+     * wrapped a row taller just after Save, so the unit field dropped 48px
+     * under a thumb about to type the next door (#136).
+     */
+    test("the next unit holds still from Sending to Saved on this phone", async ({
+      memberPage: page,
+    }) => {
+      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+      await untilLive(page);
+      await atCap(page);
+      /* Weak signal: the first send hangs until the test lets it go, then
+         every one fails. */
+      const held = Promise.withResolvers<undefined>();
+      let attempts = 0;
+      await page.route("**/api/visits/sync", async (route) => {
+        attempts += 1;
+        if (attempts === 1) await held.promise;
+        await route.abort("internetdisconnected");
+      });
+      await pickMedium(page);
+      await page.getByRole("button", { name: "Save", exact: true }).click();
+      const unit = page.getByLabel("Unit number");
+      const sendingLine = page.getByRole("status").filter({ hasText: `Sending ${LISTED_UNIT}` });
+      await expect(sendingLine).toBeVisible();
+      const sending = await unit.boundingBox();
+      expect(sending, "the next unit while sending").not.toBeNull();
+      /* Measured while sending: the line cannot move on before the release,
+         short of the client's own 20s give-up. */
+      await expect(sendingLine).toBeVisible();
+      held.resolve(undefined);
+      await expect(
+        page.getByRole("status").filter({ hasText: `Saved ${LISTED_UNIT} on this phone.` }),
+      ).toBeVisible();
+      const saved = await unit.boundingBox();
+      expect(saved, "the next unit, once saved on the phone").not.toBeNull();
+      expect(saved?.y, "the next unit, once saved on the phone").toBe(sending?.y);
+      await expectInView(unit, "the next unit, once saved on the phone");
+    });
   });
 });

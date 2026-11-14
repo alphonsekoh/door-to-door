@@ -151,10 +151,7 @@ export function TeamSheet({
         )
       ) : null}
 
-      <SheetActions>
-        {canChange ? null : (
-          <p className="mb-2 text-center text-caption text-foreground-muted">{OFFLINE_NOTE}</p>
-        )}
+      <SheetActions note={canChange ? null : OFFLINE_NOTE}>
         <button
           type="button"
           disabled={busy || !canChange || needsPartner}

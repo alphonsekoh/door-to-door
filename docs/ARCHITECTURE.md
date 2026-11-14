@@ -410,10 +410,13 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
     `prefers-contrast: more`.
   - `--reader-rem`, the text size: 16 to 32px, following iOS Dynamic Type. Spacing and
     the type scale are multiples of it.
-  - `chrome-size` holds the nav, the docked Save bar and the sync row at the 16px base
-    (`--chrome-rem`) at every text size; `--nav-height` is 64px. `bleed-x` lines them up
-    with the page's margin (`--page-gutter`), and `scroll-clear-chrome` scrolls clear of
-    them.
+  - `chrome-size` holds the nav, the docked Save bar, the sync row and a sheet's
+    `SheetActions` at the 16px base (`--chrome-rem`) at every text size; `--nav-height`
+    is 64px. `reader-size` gives content inside them the reader's size back, such as a
+    sheet's note on why Send is grey. `bleed-x` lines them up with the page's margin
+    (`--page-gutter`). `scroll-clear-chrome` scrolls clear of the page's chrome, and
+    `scroll-clear-sheet-actions` clears a sheet's bar by the height `SheetActions`
+    measures onto its body (`--sheet-actions`).
   - Control utilities: `btn-*`, `field`, `notice-*`.
   - Press feedback: `press`, `press-row` and the base layer. `PressFeedback` in
     `AppShell` makes iOS honour `:active`. No `filter` is ever transitioned
@@ -421,11 +424,13 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   - `material-chrome`, the grainy glass, solid under reduced transparency or more
     contrast.
   - `scroll-edge`.
-  - The short-screen switch: `--short-by`, read through `clamp()` by `control-compact`
-    and `space-under-tabs`, so it holds on the first paint.
+  - The short-screen switch: `--short-by`, read through `clamp()` by `control-compact`,
+    `target-compact` and `space-under-tabs`, so it holds on the first paint.
+  - `hold-text` keeps an element as tall as the words in its `data-hold`, drawn by a
+    hidden `::after`, so the words changing to them moves nothing below.
 
-  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60 and
-  D-111-67.
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60, D-111-67
+  and D-136-1 to D-136-9.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
@@ -435,7 +440,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   the level typed into the server's HTML are adopted as the form mounts
   (`useEarlyInput`), and until then `useLive` keeps Enter from submitting the form
   natively (D-113-1 to D-113-4). Unit numbers are shown through `UnitNumber`, which
-  never splits them (D-111-36).
+  never splits them (D-111-36). `WholeWords`, beside it, does the same for each
+  hyphenated word in a follow-up's marked-done text (D-136-7).
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).

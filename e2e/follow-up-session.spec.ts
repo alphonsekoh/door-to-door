@@ -49,6 +49,61 @@ async function expectInViewOnArrival(target: Locator): Promise<void> {
     .toBe(true);
 }
 
+/* Where the page says what it holds, in its tab as the fixtures keep theirs. */
+const HELD = "e2e:held-answers";
+
+/*
+ * Runs in the page. WebKit can run an answer's code inside the input event
+ * of text landing in the unit field, after the field has changed and before
+ * React has read it, and an answer set then put the old unit back (#155).
+ * This makes it happen every time rather than now and then: on a block
+ * screen the answers about the session and the block's units are held once
+ * they arrive, and the first input to the unit field lets them go from a
+ * window capture listener, which runs before React's. Each is read in full
+ * first, so all of its code runs inside that event.
+ */
+function holdFirstAnswers(key: string): void {
+  const held: (() => void)[] = [];
+  const names = new Set<string>();
+  const say = (state: "held" | "released"): void => {
+    sessionStorage.setItem(key, `${state} ${[...names].sort().join(", ")}`);
+  };
+  const released = (): boolean => sessionStorage.getItem(key)?.startsWith("released") === true;
+  const send = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const onBlock = location.pathname.startsWith("/blocks/");
+    const response = await send(input, init);
+    const { pathname } = new URL(input instanceof Request ? input.url : input, location.href);
+    const name =
+      pathname === "/api/sessions/active"
+        ? "session"
+        : pathname === "/api/households"
+          ? "units"
+          : null;
+    if (!onBlock || name === null || !response.ok) return response;
+    const body: unknown = await response.clone().json();
+    if (released()) return response;
+    Object.defineProperty(response, "json", { value: () => Promise.resolve(body) });
+    names.add(name);
+    say("held");
+    return new Promise<Response>((resolve) => {
+      held.push(() => {
+        resolve(response);
+      });
+    });
+  };
+  addEventListener(
+    "input",
+    (event) => {
+      if (!(event.target instanceof HTMLInputElement) || event.target.id !== "unitNumber") return;
+      if (released()) return;
+      say("released");
+      for (const answer of held.splice(0)) answer();
+    },
+    true,
+  );
+}
+
 test.afterEach(async ({ adminApi }) => {
   await endActiveSession(adminApi);
 });
@@ -58,6 +113,7 @@ test("a member records only the households on a follow-up session's list", async
   adminApi,
 }) => {
   await startFollowUpSession(adminApi);
+  await memberPage.addInitScript(holdFirstAnswers, HELD);
 
   await memberPage.goto("/");
   await expect(
@@ -77,8 +133,15 @@ test("a member records only the households on a follow-up session's list", async
   const unit = memberPage.getByLabel("Unit number");
   await expect(unit).toHaveValue(LISTED_UNIT);
 
-  /* A unit off the list is explained, and Save refuses it beside the button. */
+  /* Typed as the screen's first answers land, inside the same input event,
+     the new unit is kept (#155). */
+  const held = () => memberPage.evaluate((key) => sessionStorage.getItem(key), HELD);
+  await expect.poll(held).toBe("held session, units");
   await unit.fill("#09-999");
+  expect(await held(), "the answers landed inside the fill").toBe("released session, units");
+  await expect(unit).toHaveValue("#09-999");
+
+  /* A unit off the list is explained, and Save refuses it beside the button. */
   await expect(
     memberPage.getByText("#09-999 is not on this session's list", { exact: false }),
   ).toBeVisible();
