@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, startTransition, useCallback, useEffect, useState } from "react";
 import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
@@ -40,16 +40,22 @@ const STATUS_STYLE: Record<SessionStatus, string> = {
 export function AdminSessions({ notices }: { notices?: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
 
+  /* A transition: it draws New session's form again, and set urgently inside
+     the input event of a name being typed it put the name back (#171). */
   const load = useCallback(async () => {
+    let next: State;
     try {
       const page = await apiFetch<SessionList>(`/sessions?limit=${String(PAGE_SIZE)}`);
-      setState({ status: "ready", sessions: page.data });
+      next = { status: "ready", sessions: page.data };
     } catch (error) {
-      setState({
+      next = {
         status: "error",
         message: error instanceof Error ? error.message : "Could not load the sessions.",
-      });
+      };
     }
+    startTransition(() => {
+      setState(next);
+    });
   }, []);
 
   useEffect(() => {

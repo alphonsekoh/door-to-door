@@ -1,6 +1,6 @@
 # #164 · Sign out above the nav after a failed sign-out
 
-- **Status:** In progress (PR #178); the owner chose (b) on D-164-3 and D-164-4 on 2026-11-13 (D-164-7)
+- **Status:** Done (PR #178); the owner chose (b) on D-164-3 and D-164-4 on 2026-11-13 (D-164-7)
 - **Phase:** 7 - Hardening
 - **Depends on:** #111, #125, #129
 

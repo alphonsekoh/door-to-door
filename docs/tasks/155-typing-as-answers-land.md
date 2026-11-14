@@ -26,7 +26,8 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   `SyncProvider`'s `setLive`. _Why:_ a transition is drawn after the event, so the typed
   unit is read first. _Rejected:_ an uncontrolled field (D-113-1 kept it controlled);
   reading the field in `onInputCapture`, which guards one field and keeps the urgent
-  redraw; waits in the spec.
+  redraw; waits in the spec. _Extended by D-171-2:_ New session's follow-up list and
+  the sessions list.
 - **D-155-3 · The session kind is told to `knownSessionKind` from an effect, once this
   screen has drawn it.** _Why:_ a store's change is drawn at once whatever the lane
   (R-151), so telling it as the answer lands could put the unit back. _Trade-off:_
@@ -37,7 +38,8 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   under React's own scheduling rather than `act`'s, then dispatches the event. Eight
   tests use it, covering every update in D-155-2 and D-155-7. _Why:_ `:56` cannot tell
   fixed from broken (Evidence). The in-engine probe is not in `e2e/` yet: the owner
-  moved it to its own issue, #176 (2026-11-12).
+  moved it to its own issue, #176 (2026-11-12). _Extended by D-171-5:_ two more, for
+  New session, so ten in all.
 - **D-155-5 · The follow-up and promote sheets' answers stay urgent.** _Why:_ they land
   while their sheet is open, and the page behind an open sheet is inert (D-90-7), so the
   unit field cannot be taking text. The other paths left urgent are under Known limits.
