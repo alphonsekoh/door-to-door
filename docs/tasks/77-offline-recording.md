@@ -91,7 +91,9 @@ Owner decisions are marked **(owner)**.
 - **D-77-16 · The offline E2E dispatches `online` by hand, and the second member signs
   in to `/account`.** _Why:_ Playwright fires no `online` for a document loaded offline
   (R-47); the outing screen would write the second member's own copy over the first's
-  and hide a failed clear.
+  and hide a failed clear. _Reason amended by D-166-6:_ that holds for Playwright 1.62
+  only. 1.64 fires `online` itself (R-164), and the hand-fired event is then a harmless
+  second.
 
 ## Relies on
 

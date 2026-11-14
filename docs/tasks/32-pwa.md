@@ -68,7 +68,9 @@ Make the app installable and the shell load with no network.
   recording is #33. _Why:_ owner-accepted scope cut.~~ Superseded by D-77-1.
 - **D-32-18 · WebKit (iPhone 13) joins the Playwright projects and CI. Supersedes
   D-37-2.** Safari is covered by E2E except the offline-fallback navigation, which
-  Playwright WebKit cannot exercise (owner-approved). _Research:_ R-22.
+  Playwright WebKit cannot exercise (owner-approved). _Research:_ R-22. _Extended by
+  D-166-5:_ WebKit fails a routed request before the worker too, so the retry test, which
+  now routes rather than goes offline, still skips it (R-165).
 
 ### Decisions from PR #93 (CI flake fix, no issue)
 
