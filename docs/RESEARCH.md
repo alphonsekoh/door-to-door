@@ -1404,7 +1404,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [PostgreSQL, explicit locking, row-level locks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-ROWS);
   measured (#132 builder, `src/server/follow-ups/races.integration.test.ts`). Measured
   again in #158 for team placement (`src/server/teams/placement-races.integration.test.ts`).
-- **Used by:** D-132-4, D-132-5, D-132-8, D-158-2, D-158-5, D-158-7
+- **Used by:** D-132-4, D-132-5, D-132-8, D-158-2, D-158-5, D-158-7, D-180-6
 
 ### R-129 · A locking SELECT locks in its `ORDER BY` order and re-checks its filter on a row it waited for
 
@@ -1420,7 +1420,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   [PostgreSQL, SELECT, the locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE);
   `EXPLAIN` measured (#132 reviewer). In #158 a placement without the `ORDER BY`, queued
   behind a deactivation, deadlocked with it (`placement-races.integration.test.ts`).
-- **Used by:** D-132-2, D-132-5, D-158-2, D-158-5, D-158-7
+- **Used by:** D-132-2, D-132-5, D-158-2, D-158-5, D-158-7, D-180-3, D-180-6
 
 ### R-130 · Next's proxy cut drops the chunk that crosses it (measured)
 
@@ -1821,7 +1821,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [PostgreSQL, UUID type](https://www.postgresql.org/docs/current/datatype-uuid.html);
   `uuid_internal_cmp` (`memcmp`) in PostgreSQL's `src/backend/utils/adt/uuid.c`;
   `node_modules/zod/v4/core/regexes.js` (`uuid`); measured with `psql` (#158 docs)
-- **Used by:** D-158-2, D-158-6
+- **Used by:** D-158-2, D-158-6, D-180-1, D-180-2
 
 ### R-162 · Without an `ORDER BY`, a locking SELECT locks in its scan's order (measured)
 
@@ -1913,3 +1913,36 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   (`ignore`, `cooldown`), read by the #166 reviewer; not re-read by the docs step (no
   network)
 - **Used by:** D-166-9, D-166-10, D-166-11
+
+### R-179 · A multi-row INSERT waits mid-statement on an uncommitted unique key, so opposite orders deadlock (measured)
+
+- **Finding:** an INSERT checks each row against a unique index as it inserts it. On a
+  key another transaction has inserted but not committed, it waits for that
+  transaction, still holding the rows it has already inserted. So two multi-row INSERTs
+  with the same keys in opposite orders can each hold a key the other waits on, and
+  Postgres fails one with `40P01 deadlock detected`. In the same order the second waits
+  at the first key they share and, once the first commits, fails there with `23505`.
+  Measured on PostgreSQL 17.11 in #180: with a third member's key held so both mutual
+  placements parked, inserting in caller order gave `40P01`; in id order, one team and
+  one `23505`.
+- **Source:** [PostgreSQL, index uniqueness checks](https://www.postgresql.org/docs/current/index-unique-checks.html);
+  [PostgreSQL, explicit locking, deadlocks](https://www.postgresql.org/docs/current/explicit-locking.html#LOCKING-DEADLOCKS).
+  Cited, not fetched. Measured (#180 builder and reviewer,
+  `src/server/teams/placement-races.integration.test.ts`).
+- **Used by:** D-180-1, D-180-8
+
+### R-180 · A locking clause with no `OF` list locks every joined row, and a waiting read sees the holder's change (measured)
+
+- **Finding:** `SELECT … FROM a JOIN b … FOR KEY SHARE` with no `OF` list locks the
+  returned row of each table, so an add's one statement holds its team and its session.
+  Under READ COMMITTED, once the row it waited on commits, it returns the new version
+  (an ended status) or, if the row was deleted, nothing (R-129). Measured in #180:
+  holding either the team or the session `FOR UPDATE` parked the add in that statement,
+  and it then read the ended session, or no team. Which of the two rows the statement
+  locks first (the team, by the #180 reviewer's reading of range-table order) is not
+  measured.
+- **Source:** [PostgreSQL, SELECT, the locking clause](https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE);
+  [PostgreSQL, Read Committed](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-READ-COMMITTED).
+  Cited, not fetched. Measured (#180 builder and reviewer,
+  `src/server/teams/placement-races.integration.test.ts`).
+- **Used by:** D-180-3, D-180-5, D-180-6
