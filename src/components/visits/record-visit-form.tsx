@@ -49,6 +49,7 @@ import {
   SUGGEST,
   householdAction,
 } from "@/lib/follow-ups/rights";
+import { historyPath } from "@/lib/households/history-pages";
 import { useOnline } from "@/lib/hooks/use-online";
 import {
   type NotSaved,
@@ -314,7 +315,7 @@ export function RecordVisitForm({
     let cancelled = false;
     /* As a transition, as the block screen's answers are: one landing as a
        unit is typed must not put the unit back (#155). */
-    void apiFetch<HouseholdHistory>(`/households/${matchId}`)
+    void apiFetch<HouseholdHistory>(historyPath(matchId))
       .then((data) => {
         if (cancelled) return;
         startTransition(() => {
@@ -821,6 +822,7 @@ export function RecordVisitForm({
 
       {history === null ? null : (
         <HouseholdHistoryPanel
+          key={history.household.id}
           history={history}
           active={active}
           atDoor

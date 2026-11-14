@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { startTransition, useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
+import { apiFetch } from "@/lib/api-client";
 import { ADD_TO_LIST, SUGGEST, householdAction, marksDoneOnSave } from "@/lib/follow-ups/rights";
 import { buildTimeline, sortOutstanding } from "@/lib/history/follow-ups";
+import {
+  type EarlierVisits,
+  addEarlier,
+  historyPath,
+  holdVisits,
+  keepFirstPage,
+  timelineNotes,
+} from "@/lib/households/history-pages";
 import { formatDay } from "@/lib/history/dates";
 import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -38,6 +47,10 @@ const INTEREST_LABEL: Record<string, string> = {
  *
  * After any change the parent re-reads the unit from the server rather than
  * patching it here: the server stamps who resolved a note and when.
+ *
+ * The parent reads only the newest page of visits (#160). Older pages are
+ * read here, on request, and held across the parent's re-reads of that first
+ * page; parents key the panel by unit, so they never cross to another door.
  */
 export function HouseholdHistoryPanel({
   history,
@@ -54,17 +67,32 @@ export function HouseholdHistoryPanel({
   anchorVisits?: boolean;
   atDoor?: boolean;
 }) {
-  const { household, visits, followUps } = history;
+  const { household, followUps } = history;
   const { userId, isAdmin } = useRole();
   const [now] = useState(() => new Date());
   const [sheet, setSheet] = useState<FollowUpSheetMode | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  const [earlier, setEarlier] = useState<EarlierVisits | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const [earlierFailed, setEarlierFailed] = useState(false);
+  /* The first page shown last. When the parent reads it again, its visits
+     join the older ones, so a visit stored in between leaves no gap. */
+  const [shownFirst, setShownFirst] = useState(history);
+  if (shownFirst !== history) {
+    setShownFirst(history);
+    setEarlier((current) => keepFirstPage(current, shownFirst));
+  }
   const owed = sortOutstanding(followUps.filter((note) => note.status === "listed"));
   const markedOnSave = atDoor ? owed.filter((note) => marksDoneOnSave(note, active)).length : 0;
   const waiting = followUps.filter((note) => note.status === "suggested");
+  const held = holdVisits(history, earlier);
+  /* Still oldest first, so the trajectory reads down to the newest knock. */
   const timeline = buildTimeline(
-    visits,
-    followUps.filter((note) => note.status === "listed" && note.doneAt !== null),
+    [...held.visits].reverse(),
+    timelineNotes(
+      followUps.filter((note) => note.status === "listed" && note.doneAt !== null),
+      held,
+    ),
   );
   /* Only when the member could act on it: a door already on the list, or
      waiting for review, says so in the sections above instead. */
@@ -74,6 +102,28 @@ export function HouseholdHistoryPanel({
 
   const edit = (note: FollowUp) => {
     setSheet({ kind: "edit", note });
+  };
+  /* Lands in a transition, as the recording form's answers do: at the door,
+     one landing as the next unit is typed must not put the unit back (#155).
+     A failure keeps what is shown and never stands between the member and
+     Save. */
+  const showEarlier = () => {
+    setLoadingEarlier(true);
+    setEarlierFailed(false);
+    apiFetch<HouseholdHistory>(historyPath(household.id, held.next)).then(
+      (page) => {
+        startTransition(() => {
+          setEarlier((current) => addEarlier(current, page));
+          setLoadingEarlier(false);
+        });
+      },
+      () => {
+        startTransition(() => {
+          setEarlierFailed(true);
+          setLoadingEarlier(false);
+        });
+      },
+    );
   };
   const anchor = (visit: Visit) => {
     setSheet({
@@ -102,10 +152,7 @@ export function HouseholdHistoryPanel({
     >
       {/* A door that has answered without giving a name is not one nobody answered. */}
       <p className="text-body font-semibold">
-        {household.name ??
-          (visits.some((visit) => visit.interestLevel !== "no_response")
-            ? "Name not known"
-            : "Nobody has answered here yet")}
+        {household.name ?? (history.answered ? "Name not known" : "Nobody has answered here yet")}
       </p>
       {household.contact === null ? null : (
         <p className="text-caption text-foreground-muted">{household.contact}</p>
@@ -145,6 +192,25 @@ export function HouseholdHistoryPanel({
               <li key={note.id}>{item(note)}</li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {/* Above the oldest visit shown, where the older ones will go. */}
+      {held.more ? (
+        <div className="mt-3">
+          <button
+            type="button"
+            disabled={loadingEarlier}
+            onClick={showEarlier}
+            className="min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
+          >
+            {loadingEarlier ? "Loading…" : "Show earlier visits"}
+          </button>
+          {earlierFailed ? (
+            <p role="status" className="mt-1 text-caption text-foreground-muted">
+              Could not load earlier visits.
+            </p>
+          ) : null}
         </div>
       ) : null}
 

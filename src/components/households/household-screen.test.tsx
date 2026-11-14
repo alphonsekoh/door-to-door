@@ -69,7 +69,17 @@ const history: HouseholdHistory = {
       updatedAt: AT,
     },
   ],
+  answered: true,
+  pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
   followUps: [],
+};
+
+/* Nobody has knocked yet. */
+const unvisited: HouseholdHistory = {
+  ...history,
+  visits: [],
+  answered: false,
+  pagination: { ...history.pagination, total: 0 },
 };
 
 const owed: FollowUp = {
@@ -139,10 +149,10 @@ describe("HouseholdScreen", () => {
   it("says in the header who made the latest visit, and with whom", async () => {
     const earlier = history.visits[0];
     if (earlier === undefined) throw new Error("fixture has a visit");
+    // Newest first (#160): the first visit is the latest knock.
     apiFetch.mockResolvedValue({
       ...history,
       visits: [
-        earlier,
         {
           ...earlier,
           id: "v2",
@@ -153,7 +163,9 @@ describe("HouseholdScreen", () => {
             members: [{ id: "u2", name: "Ben Lim", image: null }],
           },
         },
+        earlier,
       ],
+      pagination: { ...history.pagination, total: 2 },
     });
     render(<HouseholdScreen householdId="h1" />);
 
@@ -161,19 +173,19 @@ describe("HouseholdScreen", () => {
   });
 
   it("has no last-visit line for a unit nobody has visited", async () => {
-    apiFetch.mockResolvedValue({ ...history, visits: [] });
+    apiFetch.mockResolvedValue(unvisited);
     render(<HouseholdScreen householdId="h1" />);
 
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
     expect(screen.queryByText(/Last visit by/)).not.toBeInTheDocument();
   });
 
-  it("asks for the unit it was given", async () => {
+  it("asks for the newest page of the unit it was given", async () => {
     apiFetch.mockResolvedValue(history);
     render(<HouseholdScreen householdId="h1" />);
 
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/households/h1");
+      expect(apiFetch).toHaveBeenCalledWith("/households/h1?limit=20&offset=0");
     });
   });
 
@@ -213,7 +225,9 @@ describe("HouseholdScreen", () => {
       });
     });
     await waitFor(() => {
-      expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
+      expect(
+        apiFetch.mock.calls.filter(([path]) => path === "/households/h1?limit=20&offset=0"),
+      ).toHaveLength(2);
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent(
@@ -376,7 +390,8 @@ describe("HouseholdScreen", () => {
           releaseFirst = resolve;
         });
       }
-      return { ...history, followUps: [], visits: [] };
+      // Visits are never removed, so the newer read tells itself apart by a name learned since.
+      return { ...history, household: { ...history.household, name: "Mrs Lee" }, followUps: [] };
     });
     render(<HouseholdScreen householdId="h1" />);
     fireEvent.click(await screen.findByRole("button", { name: "Mark done" }));
@@ -384,11 +399,10 @@ describe("HouseholdScreen", () => {
       expect(apiFetch).toHaveBeenCalledTimes(3);
     });
     fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
-    await waitFor(() => {
-      expect(screen.queryByText("Asked us to come back")).not.toBeInTheDocument();
-    });
+    expect(await screen.findByText("Mrs Lee")).toBeInTheDocument();
     releaseFirst({ ...history, followUps: [owed] });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByText("Asked us to come back")).not.toBeInTheDocument();
+    expect(screen.getByText("Mrs Lee")).toBeInTheDocument();
+    expect(screen.queryByText("Mr Tan")).not.toBeInTheDocument();
   });
 });

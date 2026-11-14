@@ -85,6 +85,8 @@ const history = (over: Record<string, unknown> = {}) => ({
       updatedAt: "2026-03-14T10:00:00.000Z",
     },
   ],
+  answered: true,
+  pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
   followUps: [],
   ...over,
 });
@@ -599,7 +601,9 @@ describe("history before knocking", () => {
     const timeline = within(await screen.findByRole("list", { name: "Timeline" }));
     expect(await timeline.findByText("Follow-up done")).toBeInTheDocument();
     expect(screen.queryByRole("list", { name: "On the follow-up list" })).not.toBeInTheDocument();
-    expect(apiFetch.mock.calls.filter(([path]) => path === "/households/h1")).toHaveLength(2);
+    expect(
+      apiFetch.mock.calls.filter(([path]) => path === "/households/h1?limit=20&offset=0"),
+    ).toHaveLength(2);
   });
 
   it("keeps a resolved note to one line with no controls, so the picker stays near", async () => {
@@ -767,7 +771,7 @@ describe("history before knocking", () => {
 
   it("drops the last unit's history when a different unit's lookup fails", async () => {
     apiFetch.mockImplementation((path: string) =>
-      path === "/households/h1"
+      path === "/households/h1?limit=20&offset=0"
         ? Promise.resolve(history())
         : Promise.reject(new TypeError("Failed to fetch")),
     );
@@ -813,7 +817,7 @@ describe("history before knocking", () => {
       const late: Late = { resolve: () => undefined, reject: () => undefined };
       const lee = { ...summary("#05-125", "h2").household, name: "Mdm Lee" };
       apiFetch.mockImplementation((path: string) =>
-        path === "/households/h1"
+        path === "/households/h1?limit=20&offset=0"
           ? new Promise((resolve, reject) => {
               late.resolve = resolve;
               late.reject = reject;
@@ -832,7 +836,7 @@ describe("history before knocking", () => {
       const unit = screen.getByLabelText("Unit number");
       fireEvent.change(unit, { target: { value: "#05-123" } });
       await waitFor(() => {
-        expect(apiFetch).toHaveBeenCalledWith("/households/h1");
+        expect(apiFetch).toHaveBeenCalledWith("/households/h1?limit=20&offset=0");
       });
       fireEvent.change(unit, { target: { value: "#05-125" } });
       expect(await screen.findByText("Mdm Lee")).toBeInTheDocument();
@@ -884,7 +888,7 @@ describe("history before knocking", () => {
     );
     const field = screen.getByLabelText<HTMLInputElement>("Unit number");
     await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/households/h1");
+      expect(apiFetch).toHaveBeenCalledWith("/households/h1?limit=20&offset=0");
     });
 
     await landWhileTyping(field, "#05-1234", () => {
