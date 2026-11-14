@@ -838,12 +838,21 @@ describe("older visits (#160)", () => {
     expect(screen.queryByText("Could not load earlier visits.")).not.toBeInTheDocument();
   });
 
+  /* jsdom lays nothing out, so the control is put where the member left it:
+     by default just above the docked Save of a 768px screen. */
+  const placeControl = (top = 640) => {
+    const rect = vi.spyOn(showEarlier(), "getBoundingClientRect");
+    rect.mockReturnValue(DOMRect.fromRect({ y: top, width: 320, height: 44 }));
+    return rect;
+  };
+
   /* Drawn under the control, the line landed under the docked Save at the
      door on an iPhone 13, and a tap there seemed to do nothing. */
   it("brings a failure into view, clear of the docked Save at the door, and only a failure", async () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    placeControl();
     fireEvent.click(showEarlier());
 
     const failure = await screen.findByText("Could not load earlier visits.");
@@ -871,12 +880,59 @@ describe("older visits (#160)", () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    placeControl();
     fireEvent.click(showEarlier());
 
     const failure = await screen.findByText("Could not load earlier visits.");
     expect(scrolled.mock.contexts).toEqual([failure]);
     expect(failure).toHaveClass("scroll-clear-nav");
     expect(failure).not.toHaveClass("scroll-clear-chrome");
+  });
+
+  /* On poor signal the failure can land long after the tap, once the member
+     is at the interest picker or typing a note: bringing the line into view
+     then pulled the page 1,500px up, away from the note, on both phones. */
+  it("leaves the page where it is when a failure lands after the member moved on to a note", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const answer = later();
+    render(
+      <>
+        <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />
+        <textarea aria-label="Notes" />
+      </>,
+    );
+    placeControl();
+    fireEvent.click(showEarlier());
+    const notes = screen.getByRole("textbox", { name: "Notes" });
+    act(() => {
+      notes.focus();
+    });
+
+    answer.reject(new TypeError("Failed to fetch"));
+    expect(await screen.findByText("Could not load earlier visits.")).toBeInTheDocument();
+    expect(scrolled).not.toHaveBeenCalled();
+    expect(notes).toHaveFocus();
+  });
+
+  it("leaves the page where it is when a failure lands after the member scrolled away, and moves it once they are back", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const answer = later();
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    const rect = placeControl();
+    fireEvent.click(showEarlier());
+    // Down at the interest picker, the control far above the screen.
+    rect.mockReturnValue(DOMRect.fromRect({ y: -1500, width: 320, height: 44 }));
+
+    answer.reject(new TypeError("Failed to fetch"));
+    await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).not.toHaveBeenCalled();
+
+    // Back at the control, a failure is brought into view again.
+    rect.mockReturnValue(DOMRect.fromRect({ y: 640, width: 320, height: 44 }));
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.click(showEarlier());
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled.mock.contexts).toEqual([failure]);
   });
 
   it("keeps the older visits when the parent reads the first page again", async () => {

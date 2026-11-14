@@ -995,7 +995,7 @@ test.describe("without signal", () => {
    * not be read landed under the docked Save on an iPhone 13: the tap seemed
    * to do nothing (#160). Tapped where a thumb leaves it, just above the bar.
    */
-  test("older visits that cannot be read say so above the docked Save, and come with signal", async ({
+  test("older visits that cannot be read say so above the docked Save, never pull the page from a note, and come with signal", async ({
     memberPage,
     adminApi,
   }, testInfo) => {
@@ -1085,6 +1085,34 @@ test.describe("without signal", () => {
         .toBe(true);
       await expect(control).toBeEnabled();
       await expect(timeline).toHaveCount(20);
+
+      /* On poor signal the failure lands late, once the member has moved on
+         to the note, and it pulled the page 1,500px up to the line. */
+      await memberPage.unroute(older);
+      let cut: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => {
+        cut = resolve;
+      });
+      await memberPage.route(older, async (route) => {
+        await held;
+        await route.abort("internetdisconnected");
+      });
+      await control.click();
+      const loading = memberPage.getByRole("button", { name: "Loading…" });
+      await expect(loading).toBeDisabled();
+      await memberPage.getByRole("radio", { name: "Low" }).click();
+      await memberPage.getByRole("button", { name: "Add details" }).click();
+      const notes = memberPage.getByLabel("Notes");
+      await notes.click();
+      await notes.fill("Came to the door, asked us back.");
+      await expect(loading).not.toBeInViewport();
+      await expect(notes).toBeInViewport();
+      cut();
+      await expect(control).toBeEnabled();
+      await expect(failure).toBeAttached();
+      await expect(notes).toBeFocused();
+      await expect(notes).toBeInViewport();
+      await expect(failure).not.toBeInViewport();
 
       await memberPage.unroute(older);
       await control.click();

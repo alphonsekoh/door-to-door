@@ -18,6 +18,7 @@ import {
 } from "@/lib/households/history-pages";
 import { formatDay } from "@/lib/history/dates";
 import { useRole } from "@/lib/hooks/use-role";
+import { stillAt } from "@/lib/still-at";
 import { SheetPresence } from "@/components/ui/sheet";
 
 const INTEREST_LABEL: Record<string, string> = {
@@ -75,6 +76,7 @@ export function HouseholdHistoryPanel({
   const [earlier, setEarlier] = useState<EarlierVisits | null>(null);
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierFailed, setEarlierFailed] = useState(false);
+  const earlierControl = useRef<HTMLButtonElement>(null);
   const earlierFailure = useRef<HTMLParagraphElement>(null);
   /* The first page shown last. When the parent reads it again, its visits
      join the older ones, so a visit stored in between leaves no gap. */
@@ -104,10 +106,16 @@ export function HouseholdHistoryPanel({
   /* Drawn under the control, the failure landed under the docked Save at the
      door on an iPhone 13, and under a floating banner elsewhere, so the tap
      seemed to do nothing. It is brought into view clear of them before it is
-     painted, as the Saved line is (#113). Only the line: at large text the
-     control alone can fill the room left. */
+     painted, as the Saved line is (#113), but only while the member is still
+     at the control: one landing late, on poor signal, pulled the page 1,500px
+     up from the note being typed. Only the line: at large text the control
+     alone can fill the room left. */
   useLayoutEffect(() => {
-    if (earlierFailed) earlierFailure.current?.scrollIntoView({ block: "nearest" });
+    const line = earlierFailure.current;
+    const control = earlierControl.current;
+    if (line !== null && control !== null && stillAt(control)) {
+      line.scrollIntoView({ block: "nearest" });
+    }
   }, [earlierFailed]);
 
   const edit = (note: FollowUp) => {
@@ -209,6 +217,7 @@ export function HouseholdHistoryPanel({
       {held.more ? (
         <div className="mt-3">
           <button
+            ref={earlierControl}
             type="button"
             disabled={loadingEarlier}
             onClick={showEarlier}
