@@ -4,11 +4,30 @@ name: door-to-door
 # (default config.docker.yaml, which reaches the database as host `db`). It is
 # mounted outside /app so the source bind-mount cannot shadow it. The
 # credentials below are throwaway local defaults; override them in the shell.
+# Being public, they and next dev are published on this machine's loopback
+# only, never the LAN.
 x-credentials: &credentials
   DATABASE_USER: ${DATABASE_USER:-postgres}
   DATABASE_PASSWORD: ${DATABASE_PASSWORD:-postgres}
 
 x-settings: &settings ${CONFIG_FILE:-./config.docker.yaml}:/config/config.yaml:ro
+
+# migrate and seed: one-shot runs of a script from the dev image, against the
+# database CONFIG_FILE names.
+x-script: &script
+  build:
+    context: .
+    target: dev
+  environment:
+    <<: *credentials
+    CONFIG_PATH: /config/config.yaml
+  depends_on:
+    db:
+      condition: service_healthy
+  volumes:
+    - .:/app
+    - node_modules:/app/node_modules
+    - *settings
 
 services:
   db:
@@ -18,7 +37,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-postgres}
       POSTGRES_DB: door_to_door
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -37,7 +56,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: door_to_door_test
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     tmpfs:
       - /var/lib/postgresql/data
     healthcheck:
@@ -46,23 +65,22 @@ services:
       timeout: 3s
       retries: 20
 
-  # Runs once and exits. web waits for it to complete successfully, so the app
-  # never starts against an unmigrated database.
+  # Migrations only, run once. web waits for it to complete successfully, so
+  # the app never starts against an unmigrated database. It is safe to point
+  # at production: docker compose run --rm --no-deps migrate (see README).
   migrate:
-    build:
-      context: .
-      target: dev
-    environment:
-      <<: *credentials
-      CONFIG_PATH: /config/config.yaml
-    command: sh -c "npm run db:migrate && npm run db:seed"
+    <<: *script
+    command: ["npm", "run", "db:migrate"]
+
+  # The demo data, once migrate is done. The seed refuses a database with
+  # users of its own, and web never waits on it, so a refusal here leaves the
+  # dev server running.
+  seed:
+    <<: *script
+    command: ["npm", "run", "db:seed", "--", "--demo"]
     depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - .:/app
-      - node_modules:/app/node_modules
-      - *settings
+      migrate:
+        condition: service_completed_successfully
 
   web:
     build:
@@ -70,8 +88,8 @@ services:
       target: dev
     environment:
       <<: *credentials
-      # A public, local-development-only value. Never use it on a host that is
-      # reachable by anyone else; set AUTH_SECRET in the environment instead.
+      # A public value, so the app refuses it outside next dev. Set AUTH_SECRET
+      # in the environment for anything else.
       AUTH_SECRET: ${AUTH_SECRET:-compose-local-dev-secret-0f3a9c71d2b84e56-not-for-production}
       CONFIG_PATH: /config/config.yaml
       # Bind-mounted source on macOS and Windows does not deliver inotify
@@ -79,7 +97,7 @@ services:
       WATCHPACK_POLLING: "true"
       CHOKIDAR_USEPOLLING: "true"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully

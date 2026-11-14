@@ -118,7 +118,8 @@ HSTS `includeSubDomains` wait for the first deployment (#146).
   says ~~"Email or password is incorrect."~~ "This page expired. Reload it and try
   again." (`MissingCSRF` in the log). The README says to set the key `false` there.
   _Research:_ R-113. _Trade-off refined by D-151-12:_ it says so on every try, and a
-  reload does not help.
+  reload does not help. _Noted by D-124-6:_ Compose is now published on loopback only,
+  so its `false` serves Safari on `localhost`; a LAN phone uses the production build.
 - **D-122-13 · The contract names the cookie `__Secure-authjs.session-token`, and a new
   `info` section, Caching, states the no-store rule.** _Why:_ D-10-1. `withContract`
   does not validate headers, and D-121-8 set the precedent of stating cross-cutting
