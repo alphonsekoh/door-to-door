@@ -39,13 +39,11 @@ function stubDb(handlers: { select: unknown[]; transaction?: Error; delete?: Err
   } as unknown as Database;
 }
 
-const activeSession = [{ id: "s1", status: "active" }];
-
 describe("creating a team when the database refuses the placement", () => {
   it.each(["session_team_members_session_user_unique", "session_team_members_team_id_user_id_pk"])(
     "reports %s as a conflict",
     async (constraint) => {
-      const db = stubDb({ select: [activeSession], transaction: raised(constraint) });
+      const db = stubDb({ select: [], transaction: raised(constraint) });
       await expect(createTeam(db, ADMIN, "s1", { name: "Pair" })).rejects.toBeInstanceOf(
         ConflictError,
       );
@@ -54,17 +52,15 @@ describe("creating a team when the database refuses the placement", () => {
 
   it("does not disguise an unrelated failure as a conflict", async () => {
     const failure = raised("something_else");
-    const db = stubDb({ select: [activeSession], transaction: failure });
+    const db = stubDb({ select: [], transaction: failure });
     await expect(createTeam(db, ADMIN, "s1", { name: "Pair" })).rejects.toBe(failure);
   });
 });
 
 describe("adding a member when the database refuses the placement", () => {
-  const teamRow = [{ id: "t1", sessionId: "s1", status: "active" }];
-
   it("reports a lost race as a conflict", async () => {
     const db = stubDb({
-      select: [teamRow],
+      select: [],
       transaction: raised("session_team_members_session_user_unique"),
     });
     await expect(addTeamMember(db, ADMIN, "t1", "u2")).rejects.toBeInstanceOf(ConflictError);
