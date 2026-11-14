@@ -6,9 +6,10 @@
 
 ## Task
 
-On WebKit, `e2e/follow-up-session.spec.ts:56` sometimes lost a fill: the unit field went
-back to the linked `#05-123` (2 of 40 at e0ea12f). #113 left the cause unfound
-(D-113-10). Find what writes the old unit back and fix it in the app, with no waits.
+On WebKit, `e2e/follow-up-session.spec.ts:56` (now `:111`) sometimes lost a fill: the
+unit field went back to the linked `#05-123` (2 of 40 at e0ea12f). #113 left the cause
+unfound (D-113-10). Find what writes the old unit back and fix it in the app, with no
+waits.
 Built on one branch with #156, on the same screen: 33ed33a (the block screen and the
 history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 
@@ -37,9 +38,10 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   helper sets the field, makes `window.event` that `input` event, releases the answer
   under React's own scheduling rather than `act`'s, then dispatches the event. Eight
   tests use it, covering every update in D-155-2 and D-155-7. _Why:_ `:56` cannot tell
-  fixed from broken (Evidence). The in-engine probe is not in `e2e/` yet: the owner
+  fixed from broken (Evidence). The in-engine probe was left out of `e2e/`: the owner
   moved it to its own issue, #176 (2026-11-12). _Extended by D-171-5:_ two more, for
-  New session, so ten in all.
+  New session, so ten in all. _Extended by D-176-1:_ #176 put the probe in that test,
+  now `follow-up-session.spec.ts:111`, on both engines.
 - **D-155-5 · The follow-up and promote sheets' answers stay urgent.** _Why:_ they land
   while their sheet is open, and the page behind an open sheet is inert (D-90-7), so the
   unit field cannot be taking text. The other paths left urgent are under Known limits.
@@ -58,13 +60,14 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 
 ## Evidence
 
-- **In-engine probe** (verifier round 1, `probe155.mjs`, not in the repo). The screen
-  is reached by client navigation. Its first `/api/sessions/active` and `/api/households`
-  answers are held in the page and released from a window capture `input` listener
-  during `fill("#09-999")`. At the branch head the unit was kept 10 of 10 on both
-  engines. In a production build with every transition undone it was kept 0 of 10: the
-  field went back to `#05-123`, its chip pressed. Round 0 showed the same for the
-  revisit list and the team alone, and round 2 for `/users/me` with the old `useRole`.
+- **In-engine probe** (verifier round 1, `probe155.mjs`; in the repo since #176,
+  D-176-1). The screen is reached by client navigation. Its first `/api/sessions/active`
+  and `/api/households` answers are held in the page and released from a window capture
+  `input` listener during `fill("#09-999")`. At the branch head the unit was kept 10 of
+  10 on both engines. In a production build with every transition undone it was kept 0
+  of 10: the field went back to `#05-123`, its chip pressed. Round 0 showed the same for
+  the revisit list and the team alone, and round 2 for `/users/me` with the old
+  `useRole`.
 - **jsdom.** Each guarded update was made urgent again in turn, and its D-155-4 test
   failed (verifier rounds 1 and 2).
 - **Not evidence:** `:56` passed 40 of 40 on WebKit and 20 of 20 on Chromium at the
@@ -94,7 +97,7 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
 | D-113-7  | Kept: the session still reaches the app as a transition; now answers do | D-155-2          |
 | D-117-19 | Kept: the kind is still told to the next screen, once drawn here        | D-155-3          |
 | D-85-8   | Kept: the latest `/users/me` still wins for the same account            | D-155-7          |
-| D-37-6   | Kept here: the probe spec is #176 (owner)                               | D-155-4          |
+| D-37-6   | Kept here: the probe spec is #176 (owner); done there (D-176-1)         | D-155-4          |
 
 ## Relies on
 
@@ -104,3 +107,4 @@ D-25-5, D-37-6, D-85-8, D-90-7, D-113-1, D-113-7, D-117-19, D-117-59, D-117-71.
 
 None. The owner ruled on 2026-11-12: the paths under Known limits' first item stay
 urgent, as recorded limits, and the deterministic probe becomes an E2E spec in #176.
+#176 added it to the follow-up spec (D-176-1).
