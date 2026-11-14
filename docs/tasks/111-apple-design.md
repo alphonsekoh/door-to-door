@@ -269,6 +269,8 @@ round 8, and they are in the PR #112 body too.
   this per sheet. _Why:_ three sheets used `85vh`, which on iOS can be taller than the
   visible area and push Cancel off the screen. _Research:_ R-63. _Refined by D-119-21:_
   a sheet opens at its top, even when the control focused on open is below the view.
+  _Refined by D-136-3:_ the body clears the bar as drawn (`scroll-clear-sheet-actions`),
+  not `scroll-pb-24`.
 - **D-111-32 · The E2E adds one describe block, "the phone's display settings",** in
   `record-visit.spec.ts`. It covers:
   - press on touch-down;
@@ -307,7 +309,9 @@ round 8, and they are in the PR #112 body too.
   (`src/components/unit-number.tsx`), a no-wrap wrapper, is the one place this is done,
   wherever a unit number shows; `FollowUpDoor` replaces `unitLabel`. Non-breaking hyphens
   were rejected: they change the text, which breaks copying and search. _Why:_ "#06-"
-  over "203" reads as two doors.
+  over "203" reads as two doors. _Refined by D-136-5 and D-136-7:_ U+2011 only in
+  hidden generated text, and `WholeWords` keeps the marked-done text's hyphenated words
+  whole. `UnitNumber` is now in `src/components/ui/unit-number.tsx` (D-115-1).
 - **D-111-37 · `e2e/large-text.spec.ts` sweeps every member and admin screen at the
   32px cap.** A spec file of its own, outside D-111-32's describe block. It flags
   sideways scroll, a control past the edge or into the page margin, text spilling or
@@ -404,6 +408,7 @@ and D-111-21; the owner rejected both (D-111-61).
   the reader's, and a script answers only after the first paint. _Research:_ R-70.
   _Refined by D-111-61:_ `--crowded-by`, `held-row` and `sync-pinned`'s switch are gone.
   _Refined by D-111-63:_ `--short-by` also compacts the offline shell's reconnect row.
+  _Extended by D-136-8:_ `target-compact`, which `control-compact` now applies.
 - **D-111-49 · On a short screen the block's tabs give their height to the form.** They
   take caption text in a control at least 44px tall, so "All units (N)" stays one line,
   with `mb-2` under them instead of `mb-5`. Save is not moved. _Why:_ at 28 to 32px the
@@ -435,7 +440,8 @@ and D-111-21; the owner rejected both (D-111-61).
   phone." tells a member in a dead stairwell their records are safe. Reserving the
   wrapped height was rejected: it needs a hidden second copy of the text, which breaks
   the tests that find the row by its text. _Refined by D-111-63:_ compact on a short
-  screen, with a ring edge.
+  screen, with a ring edge. _See D-136-4:_ `hold-text`'s copy is in no text a test
+  reads; whether to hold this line is an open question in #136.
 - **D-111-54 · The way back is 44px or the chevron's width, whichever is more.** The
   back link is at least 44×44, and the inline header's first column is no longer held at
   2.75 reader-rems. Refines D-111-25 and D-111-28. _Why:_ at 32px that column was 88px
@@ -479,6 +485,8 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   D-111-24's `--nav-height` clause; refines D-111-25 and D-111-20. Answers round 6's
   second open question. _Why:_ at 32px the nav and Save bar alone took 43% of an iPhone
   13's screen and put the unit field under Save. _Research:_ R-74, R-75, R-76.
+  _Extended by D-136-1 (pending the owner):_ every sheet's `SheetActions`, whose note
+  keeps the text size (D-136-2).
 - **D-111-61 · D-33-12 stands as it is (owner).** The sync row is held from the first
   paint on every signed-in page at every size, and the waiting bar stays pinned while
   anything is unsent. D-111-50 and D-111-52 are rejected, and `held-row` and
@@ -513,7 +521,9 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   is whole. After a save at 16, 28 and 32px, the Saved line and next unit are in view,
   and at 16px the page does not move. The jsdom tests asserting no `truncate` class were
   dropped. Refines D-111-59. _Why:_ the owner's requirement for D-111-60 and D-111-61 is
-  measured layout, which jsdom cannot see (D-37-6).
+  measured layout, which jsdom cannot see (D-37-6). _Extended by D-136-12:_ a save among
+  a dozen listed doors at 32px and 320×568, and the unit still from Sending to Saved on
+  this phone.
 - **D-111-66 · E2E tests wait for `untilLive` before typing into a block screen loaded by
   address.** It is the hydration marker in `e2e/fixtures.ts`: the docked Save is the
   form's own `type="submit"`, not the stand-in. _Why:_ text typed before hydration is

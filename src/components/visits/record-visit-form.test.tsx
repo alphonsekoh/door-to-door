@@ -960,7 +960,11 @@ describe("a follow-up after saving", () => {
 
   it("offers a member a suggestion, anchored to the visit just saved", async () => {
     const user = await saveVisit();
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved #06-201.");
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent("Saved #06-201.");
+    // Held words would widen the line's own and push the offer off its row.
+    expect(status.firstElementChild).not.toHaveAttribute("data-hold");
+    expect(status.firstElementChild).not.toHaveClass("hold-text");
     await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
 
     const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
@@ -1633,6 +1637,25 @@ describe("saving into the offline queue", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Sending #06-201…");
   });
 
+  /* At large text "Saved … on this phone." wrapped a row taller than
+     "Sending…", and the unit field dropped 48px just after Save. */
+  it("keeps room from Sending on for the words it says once on the phone", async () => {
+    const queue = withQueue();
+    const { view } = await fill();
+    const status = await screen.findByRole("status");
+    const words = status.firstElementChild;
+    // Held from CSS, so in no text a reader or a test reads, with the unit's
+    // hyphen as unbreakable as it is on screen.
+    expect(words).toHaveClass("hold-text");
+    expect(words?.getAttribute("data-hold")?.replaceAll("\u2011", "-")).toBe(status.textContent);
+    expect(status).toHaveTextContent(/^Saved #06-201 on this phone\.$/);
+
+    queue.inFlight = new Set(["v-queued"]);
+    rerenderForm(view);
+    expect(status).toHaveTextContent(/^Sending #06-201…$/);
+    expect(words).toHaveAttribute("data-hold", "Saved #06\u2011201 on this phone.");
+  });
+
   it("says plainly when the server would not take it", async () => {
     const queue = withQueue();
     const { view } = await fill();
@@ -2227,6 +2250,13 @@ describe("in a follow-up session", () => {
     const recheck = vi.fn(() => Promise.resolve(LIST));
     const onRecorded = vi.fn();
 
+    /* The follow-up row once it says exactly `words`: each hyphenated word
+       in it is an element of its own, kept whole (WholeWords). */
+    const rowSaying = (scope: HTMLElement, words: string) =>
+      within(scope).findByText(
+        (_, element) => element?.tagName === "P" && element.textContent === words,
+      );
+
     /* The server marks what it marks; a reopen answers as `reopen` says. */
     function server(marked: string[], reopen: () => Promise<unknown> = () => Promise.resolve({})) {
       apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
@@ -2274,7 +2304,7 @@ describe("in a follow-up session", () => {
       expect(onRecorded).toHaveBeenCalledTimes(1);
 
       await user.click(within(status).getByRole("button", { name: UNDO }));
-      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(await rowSaying(status, "Undone. Follow-up reopened.")).toBeInTheDocument();
       expect(within(status).queryByRole("button", { name: /^Undo/ })).toBeNull();
       expect(patches()).toEqual([
         [
@@ -2298,7 +2328,7 @@ describe("in a follow-up session", () => {
       await user.click(
         within(status).getByRole("button", { name: "Undo marking the follow-ups done" }),
       );
-      expect(await within(status).findByText("Undone. 2 follow-ups reopened.")).toBeInTheDocument();
+      expect(await rowSaying(status, "Undone. 2 follow-ups reopened.")).toBeInTheDocument();
       expect(patches().map(([path]) => String(path))).toEqual(["/follow-ups/a", "/follow-ups/b"]);
     });
 
@@ -2329,7 +2359,7 @@ describe("in a follow-up session", () => {
         await within(status).findByText("Not undone. Check your signal and try again."),
       ).toBeInTheDocument();
       await user.click(within(status).getByRole("button", { name: UNDO }));
-      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(await rowSaying(status, "Undone. Follow-up reopened.")).toBeInTheDocument();
       expect(attempts).toBe(2);
     });
 
@@ -2347,7 +2377,7 @@ describe("in a follow-up session", () => {
         finish({});
         await Promise.resolve();
       });
-      expect(await within(status).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(await rowSaying(status, "Undone. Follow-up reopened.")).toBeInTheDocument();
       expect(patches()).toHaveLength(1);
     });
 
@@ -2483,7 +2513,7 @@ describe("in a follow-up session", () => {
         answers[1]?.({});
         await Promise.resolve();
       });
-      expect(await within(next).findByText("Undone. Follow-up reopened.")).toBeInTheDocument();
+      expect(await rowSaying(next, "Undone. Follow-up reopened.")).toBeInTheDocument();
     });
 
     describe("through the queue", () => {
@@ -2544,6 +2574,22 @@ describe("in a follow-up session", () => {
         view.rerender(form());
         expect(status).toHaveTextContent("Saved #05-123.Follow-up marked done.");
         expect(within(status).getByRole("button", { name: UNDO })).toBeEnabled();
+        // Still held once sent, so the line does not shrink under the thumb.
+        expect(status.firstElementChild).toHaveAttribute(
+          "data-hold",
+          "Saved #05\u2011123 on this phone.",
+        );
+      });
+
+      /* Beside Undo, at large text the words were squeezed to one a line
+         and "Follow-up" broke at its hyphen (#136). */
+      it("sets Undo after the words it undoes, with Follow-up kept whole", async () => {
+        const { view, status } = await saveAt();
+        queue.records = [sent(["n#05-123"])];
+        view.rerender(form());
+        const undo = within(status).getByRole("button", { name: UNDO });
+        expect(undo.closest("p")).toHaveTextContent(/^Follow-up marked done\. Undo/);
+        expect(within(status).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
       });
 
       it("drops the line once sent if the server marked nothing", async () => {

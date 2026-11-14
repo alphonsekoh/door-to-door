@@ -139,12 +139,7 @@ export function PromoteSheet({
         </p>
       )}
 
-      <SheetActions>
-        {online ? null : (
-          <p className="mb-2 text-center text-caption text-foreground-muted">
-            {FOLLOW_UP_OFFLINE_NOTE}
-          </p>
-        )}
+      <SheetActions note={online ? null : FOLLOW_UP_OFFLINE_NOTE}>
         {partial === null ? (
           <button
             type="button"

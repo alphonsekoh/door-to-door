@@ -517,6 +517,7 @@ well." (D-117-62 onwards).
   signal and try again." with Undo kept. Undo is at least 44 by 44px and disabled
   without signal; a save that marked nothing says nothing. Refines D-117-19, D-117-59.
   _Why:_ the owner asked for Undo; a row there from the start keeps the line one height.
+  _Refined by D-136-6:_ Undo follows the words in their line.
 - **D-117-72 · Undo lasts as long as its Saved line.** Until another unit is typed or
   picked, the next save, or leaving. A late answer for a save no longer shown is
   dropped, and the double-tap guard is per save. Each Undo re-reads the list and the

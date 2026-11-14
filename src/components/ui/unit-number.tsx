@@ -9,6 +9,18 @@ export function UnitNumber({ value }: { value: string }) {
   return <span className="whitespace-nowrap">{value}</span>;
 }
 
+/*
+ * Words, each one holding a hyphen kept on one line as a unit number is: at
+ * large text "Follow-" over "up" beside Undo read as two words. For text
+ * built elsewhere, a server's reason among it, that may name a unit.
+ */
+export function WholeWords({ text }: { text: string }) {
+  /* Split on a capturing group, so the hyphenated words are the odd parts. */
+  return text
+    .split(/(\S+-\S+)/)
+    .map((part, index) => (index % 2 === 1 ? <UnitNumber key={index} value={part} /> : part));
+}
+
 /* The door a follow-up is for: "Blk 123 · #05-123". */
 export function FollowUpDoor({ note }: { note: Pick<FollowUp, "blockName" | "unitNumber"> }) {
   /* One element, so a flex parent cannot make the text and the unit two

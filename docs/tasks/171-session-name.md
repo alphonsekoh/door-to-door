@@ -1,6 +1,6 @@
 # #171 · A session name typed as New session's answers land
 
-- **Status:** In progress, with #181 on one branch (`fix/171-181-e2e-flakes`)
+- **Status:** Done (PR #185), with #181's first part
 - **Phase:** 7 - Hardening
 - **Depends on:** #155
 
@@ -35,7 +35,7 @@ and fix it in the app, with no waits. Built with #181 in commit 7315667.
 - **D-171-5 · The guards are two more `landWhileTyping` jsdom tests, one per answer.**
   Ten tests now use the helper (D-155-4 counted eight). _Why:_ as in #155, a pass count
   on `:25` cannot tell fixed from broken. The in-engine probe stays outside `e2e/`, as
-  D-155-4's does.
+  D-155-4's did until #176 put that one in (D-176-1).
 
 ## Evidence
 
@@ -55,8 +55,8 @@ and fix it in the app, with no waits. Built with #181 in commit 7315667.
 - As D-155-6 says for the unit field, a real keystroke or paste has not been tried on a
   device. Still to try on a real iPhone: type or paste a name the moment New session
   opens, on slow signal.
-- No E2E spec holds an answer inside `input`. #176 owns that probe for the block screen,
-  and could cover New session too.
+- No E2E spec holds New session's answers inside `input`. #176 added that probe for the
+  block screen only (D-176-1).
 
 ### How existing decisions are handled
 

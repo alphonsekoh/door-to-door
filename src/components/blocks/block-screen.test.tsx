@@ -96,6 +96,15 @@ function serve(households: unknown, session: unknown = active, teams: unknown = 
   });
 }
 
+/* A test's own answers. The screen asks for the viewer's team once it knows
+   the session and the viewer, which on a slow runner can be after a test has
+   swapped its answers in (#186), so that path always gets a team list. */
+function answerWith(answer: (path: string) => Promise<unknown>) {
+  apiFetch.mockImplementation((path: string) =>
+    path.endsWith("/teams") ? Promise.resolve({ data: [] }) : answer(path),
+  );
+}
+
 const teamOf = (id: string, memberIds: string[]) => ({
   data: [
     {
@@ -168,7 +177,7 @@ describe("BlockScreen", () => {
   );
 
   it("offers the form while no session is known, as a save asks again", async () => {
-    apiFetch.mockImplementation((path: string) =>
+    answerWith((path) =>
       path.startsWith("/sessions/active")
         ? Promise.reject(new ApiRequestError(404, undefined))
         : Promise.resolve(list([])),
@@ -721,7 +730,7 @@ describe("BlockScreen", () => {
     });
 
     it("tells the next screen no session is running", async () => {
-      apiFetch.mockImplementation((path: string) =>
+      answerWith((path) =>
         path.startsWith("/sessions/active")
           ? Promise.reject(new ApiRequestError(404, undefined))
           : Promise.resolve(list([])),
@@ -741,7 +750,7 @@ describe("BlockScreen", () => {
 
   it("still lists units when the running session cannot be identified", async () => {
     const user = userEvent.setup();
-    apiFetch.mockImplementation((path: string) =>
+    answerWith((path) =>
       path.startsWith("/sessions/active")
         ? Promise.reject(new Error("No session is active."))
         : Promise.resolve(list(["#05-123"])),
@@ -760,7 +769,7 @@ describe("BlockScreen", () => {
     render(<BlockScreen blockId="b1" />);
     await screen.findByRole("tab", { name: "All units (1)" });
 
-    apiFetch.mockImplementation((path: string) => {
+    answerWith((path) => {
       if (path.startsWith("/sessions/active")) return Promise.resolve(active);
       if (path === "/visits") return Promise.resolve({});
       return Promise.resolve(list(["#05-123", "#05-124"]));
@@ -785,7 +794,7 @@ describe("BlockScreen", () => {
     await user.click(screen.getByRole("button", { name: /#05-123/ }));
     await user.click(screen.getByRole("radio", { name: "High" }));
 
-    apiFetch.mockImplementation((path: string) => {
+    answerWith((path) => {
       if (path.startsWith("/sessions/active")) return Promise.resolve(active);
       if (path === "/visits/v0") return Promise.resolve({});
       return Promise.resolve(list(["#05-123", "#05-124"]));
@@ -983,7 +992,7 @@ describe("BlockScreen", () => {
     ])("refuses to queue a save when %s", async (_, outing, message, label) => {
       const enqueue = vi.fn();
       useSyncQueue.mockReturnValue({ ...NO_QUEUE, enqueue });
-      apiFetch.mockImplementation((path: string) =>
+      answerWith((path) =>
         path.startsWith("/sessions/active") ? outing() : Promise.resolve(list([])),
       );
       const user = userEvent.setup();
@@ -1056,7 +1065,7 @@ describe("the offline copy", () => {
   });
 
   it("is not written when the outing cannot be learnt", async () => {
-    apiFetch.mockImplementation((path: string) =>
+    answerWith((path) =>
       path.startsWith("/sessions/active")
         ? Promise.reject(new ApiRequestError(500, undefined))
         : Promise.resolve(list(["#05-123"])),
