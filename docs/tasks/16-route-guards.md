@@ -13,7 +13,9 @@ Keep signed-out visitors out of pages, and enforce roles in handlers.
 - **D-16-1 · `src/proxy.ts` is an optimistic redirect only**, built from
   `baseAuthConfig` without the adapter. API paths get `401` JSON; pages redirect with
   `callbackUrl`. _Research:_ R-4. _Refined by D-163-8:_ `callbackUrl` never carries a
-  `q`; a query without one passes byte for byte.
+  `q`; a query without one passes byte for byte. _Refined by D-124-8 (owner):_ under
+  `next dev` only, the proxy first answers `403` to a `Host` that is not loopback. That
+  is a network guard for the dev server, not authorization, so D-16-2 holds.
 - **D-16-2 · `requireUser` / `requireRole` in every handler are the real guard.** Client
   role checks (`useRole`) are affordance only. **Invariant.** _Amended by D-83-2, D-83-12:_
   the session passed to the guards must come from `currentSession`.

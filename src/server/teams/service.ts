@@ -9,7 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { checkTeamName } from "@/lib/teams/team-name";
-import { compareUuids } from "@/lib/uuid";
+import { distinctUuidsInOrder } from "@/lib/uuid";
 import {
   appendTo,
   chunked,
@@ -51,13 +51,14 @@ const TEAM_MEMBER_PK = "session_team_members_team_id_user_id_pk";
 
 type SessionInfo = { id: string; status: SessionStatus };
 
-async function loadSession(db: Database, id: string): Promise<SessionInfo> {
-  const found = await db
+/* A placement passes `lock`; see createTeam. */
+async function loadSession(db: Database, id: string, lock?: "key share"): Promise<SessionInfo> {
+  const query = db
     .select({ id: outingSessions.id, status: outingSessions.status })
     .from(outingSessions)
     .where(eq(outingSessions.id, id))
     .limit(1);
-  const session = found[0];
+  const session = (await (lock === undefined ? query : query.for(lock)))[0];
   if (!session) {
     throw new NotFoundError("No such session.");
   }
@@ -201,28 +202,50 @@ function validName(raw: string): string {
   return checked.name;
 }
 
+/*
+ * Forming a team and adding to one are placements. Each locks, in its
+ * transaction and in this order, what it is judged on:
+ *
+ * 1. The placed people's rows, FOR SHARE: a deactivation waits for a
+ *    placement that judged them, or the placement reads what it committed.
+ *    SHARE because a deactivation's UPDATE does not wait for the KEY SHARE
+ *    the foreign keys take. First, because updateUser locks only user rows,
+ *    so the two never wait on each other in a cycle.
+ * 2. The session's row FOR KEY SHARE, as recording takes it after its author,
+ *    and for an add the team's row with it: an end or a disband then waits
+ *    for the placement, or the placement reads what it committed. Nothing
+ *    that locks either row FOR UPDATE locks a user, so no cycle forms.
+ * 3. For a member's add, their own membership FOR KEY SHARE, so their
+ *    removal waits too. A disband locks the team before its members, as here.
+ *
+ * People are locked and inserted in distinctUuidsInOrder's order, so two
+ * placements listing the same people queue at the first one they share
+ * rather than each holding a row the other needs. `memberIds` is uncapped
+ * (D-74-15), so lookups and inserts go in chunks under Postgres's bind limit
+ * (#126), still in that order.
+ */
 export async function createTeam(
   db: Database,
   actor: Actor,
   sessionId: string,
   input: { name: string; memberIds?: string[] | undefined },
 ): Promise<TeamRow> {
-  const session = await loadSession(db, sessionId);
-  if (session.status === "ended") {
-    throw notActive("That session has ended.");
-  }
-  if (session.status === "draft" && actor.role !== "admin") {
-    throw notActive("That session has not started yet.");
-  }
-  const name = validName(input.name);
-
   // A member is always on the team they form; an admin only if they list themselves.
-  const listed = [...(input.memberIds ?? [])];
-  const ids = [...new Set(actor.role === "admin" ? listed : [actor.id, ...listed])];
+  const listed = input.memberIds ?? [];
+  const ids = distinctUuidsInOrder(actor.role === "admin" ? listed : [actor.id, ...listed]);
 
   try {
     const teamId = await db.transaction(async (tx) => {
-      await assertPlaceable(tx, actor, sessionId, ids);
+      const people = await lockPeople(tx, ids);
+      const session = await loadSession(tx, sessionId, "key share");
+      if (session.status === "ended") {
+        throw notActive("That session has ended.");
+      }
+      if (session.status === "draft" && actor.role !== "admin") {
+        throw notActive("That session has not started yet.");
+      }
+      const name = validName(input.name);
+      await assertPlaceable(tx, actor, sessionId, ids, people);
       const inserted = await tx
         .insert(sessionTeams)
         .values({ sessionId, name, createdBy: actor.id })
@@ -237,42 +260,37 @@ export async function createTeam(
   }
 }
 
+type Person = { id: string; deactivatedAt: Date | null };
+
+/* A placement's first lock; see createTeam. `ids` are distinctUuidsInOrder's. */
+function lockPeople(tx: Database, ids: string[]): Promise<Person[]> {
+  return selectInChunks(ids, (chunk) =>
+    tx
+      .select({ id: users.id, deactivatedAt: users.deactivatedAt })
+      .from(users)
+      .where(inArray(users.id, chunk))
+      .orderBy(asc(users.id))
+      .for("share"),
+  );
+}
+
 /*
- * Checks everyone about to join a team: they exist, are active, are on no team
- * in this outing, and - when a member is doing the adding - have joined it.
- * An admin may reach anyone, which also makes them a participant.
- *
- * The placement's first lock: their rows, FOR SHARE in id order, so a
- * deactivation waits for a placement that passed this check, or the placement
- * reads what it committed. SHARE because a deactivation's UPDATE does not wait
- * for the KEY SHARE the foreign keys take. First and in id order because
- * updateUser locks only user rows, in id order, so the two never wait on each
- * other in a cycle.
- *
- * `memberIds` is uncapped (D-74-15), so each lookup, and each insert in
- * placeMembers, goes in chunks under Postgres's bind limit (#126). Sorted
- * first, so the chunks lock in id order too.
+ * Judges everyone about to join a team, on their locked rows: they exist,
+ * are active, are on no team in this outing, and - when a member is doing
+ * the adding - have joined it. An admin may reach anyone, which also makes
+ * them a participant.
  */
 async function assertPlaceable(
   tx: Database,
   actor: Actor,
   sessionId: string,
   userIds: string[],
+  people: Person[],
 ): Promise<void> {
-  if (userIds.length === 0) return;
-
-  const found = await selectInChunks([...userIds].sort(compareUuids), (ids) =>
-    tx
-      .select({ id: users.id, deactivatedAt: users.deactivatedAt })
-      .from(users)
-      .where(inArray(users.id, ids))
-      .orderBy(asc(users.id))
-      .for("share"),
-  );
-  if (found.length !== userIds.length) {
+  if (people.length !== userIds.length) {
     throw new NotFoundError("One or more of those people do not exist.");
   }
-  if (found.some((user) => user.deactivatedAt !== null)) {
+  if (people.some((user) => user.deactivatedAt !== null)) {
     throw new ConflictError("conflict", "One or more of those people are deactivated.");
   }
 
@@ -350,10 +368,16 @@ type LoadedTeam = { id: string; sessionId: string; status: SessionStatus };
 /*
  * Every team operation starts here: the team exists, a member is on it, and a
  * member's outing is still active. Admins skip both - they fix teams after the
- * fact, including on an ended outing.
+ * fact, including on an ended outing. A placement passes `lock`; see
+ * createTeam.
  */
-async function loadTeamFor(db: Database, actor: Actor, teamId: string): Promise<LoadedTeam> {
-  const found = await db
+async function loadTeamFor(
+  db: Database,
+  actor: Actor,
+  teamId: string,
+  lock?: "key share",
+): Promise<LoadedTeam> {
+  const query = db
     .select({
       id: sessionTeams.id,
       sessionId: sessionTeams.sessionId,
@@ -363,13 +387,13 @@ async function loadTeamFor(db: Database, actor: Actor, teamId: string): Promise<
     .innerJoin(outingSessions, eq(outingSessions.id, sessionTeams.sessionId))
     .where(eq(sessionTeams.id, teamId))
     .limit(1);
-  const team = found[0];
+  const team = (await (lock === undefined ? query : query.for(lock)))[0];
   if (!team) {
     throw new NotFoundError("No such team.");
   }
 
   if (actor.role !== "admin") {
-    if (!(await isCurrentMember(db, actor.id, teamId))) {
+    if (!(await isCurrentMember(db, actor.id, teamId, lock))) {
       throw new ForbiddenError("You are not on that team.");
     }
     if (team.status !== "active") {
@@ -416,11 +440,13 @@ export async function addTeamMember(
   teamId: string,
   userId: string,
 ): Promise<TeamRow> {
-  const team = await loadTeamFor(db, actor, teamId);
+  const ids = distinctUuidsInOrder([userId]);
   try {
     await db.transaction(async (tx) => {
-      await assertPlaceable(tx, actor, team.sessionId, [userId]);
-      await placeMembers(tx, teamId, team.sessionId, [userId]);
+      const people = await lockPeople(tx, ids);
+      const team = await loadTeamFor(tx, actor, teamId, "key share");
+      await assertPlaceable(tx, actor, team.sessionId, ids, people);
+      await placeMembers(tx, teamId, team.sessionId, ids);
     });
   } catch (error) {
     return rethrowTeamConflict(error);

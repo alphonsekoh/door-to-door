@@ -3,6 +3,7 @@ import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server
 import { buildBaseAuthConfig } from "@/server/auth/base-config";
 import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
 import { getConfig } from "@/server/config";
+import { isLoopbackHost } from "@/server/http/dev-hosts";
 
 /*
  * An optimistic guard, and only that.
@@ -67,6 +68,23 @@ const guard = auth((request) => {
 type AuthWrapped = (request: NextRequest, event: NextFetchEvent) => Promise<Response>;
 
 export default async function proxy(request: NextRequest, event: NextFetchEvent) {
+  /*
+   * next dev answers only to its own machine's names (#124). A DNS-rebound
+   * page reaches it under the attacker's name, which the browser sends as
+   * Host; X-Forwarded-Host is never read, since such a page can set it. Next
+   * inlines NODE_ENV, so a production build drops this branch.
+   */
+  if (process.env.NODE_ENV === "development" && !isLoopbackHost(request.headers.get("host"))) {
+    return NextResponse.json(
+      {
+        error: {
+          code: "forbidden",
+          message: "This development server answers only on localhost.",
+        },
+      },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   /*
    * The PWA files never reach auth(): its session check mints a CSRF cookie on
    * any request that arrives without one, and these are fetched cookieless.
