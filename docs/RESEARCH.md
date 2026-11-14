@@ -1695,7 +1695,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/react-dom/cjs/react-dom-client.development.js` (19.2.8),
   `resolveUpdatePriority`, `getEventPriority`, `forceStoreRerender`, `track`,
   `getInstIfValueChanged`; measured in #155 (builder probe; verifier rounds 0 to 2)
-- **Used by:** D-155-1, D-155-2, D-155-3, D-155-6, D-155-7
+- **Used by:** D-155-1, D-155-2, D-155-3, D-155-6, D-155-7, D-171-1, D-171-2
 
 ### R-152 · Next names a loopback host `localhost` in the URL a route reads
 
@@ -1728,7 +1728,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   cookies. One that throws is logged as `JWTSessionError`, and the cookies are cleaned
   too.
 - **Source:** `node_modules/@auth/core/lib/actions/session.js`
-- **Used by:** D-125-4, D-125-13
+- **Used by:** D-125-4, D-125-13, D-181-1
 
 ### R-155 · Auth.js swallows an `events.signOut` error and clears the cookie anyway
 
