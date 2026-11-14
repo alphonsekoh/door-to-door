@@ -1,6 +1,6 @@
 # #158 · Team placement locks the people it places
 
-- **Status:** In progress
+- **Status:** Done (PR #177)
 - **Phase:** 7 - Hardening
 - **Depends on:** #74, #126, #132
 

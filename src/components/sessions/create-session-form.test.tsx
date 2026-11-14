@@ -5,6 +5,7 @@ import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -155,6 +156,35 @@ describe("CreateSessionForm", () => {
     apiFetch.mockRejectedValueOnce("boom");
     await user.click(create());
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not create the session.");
+  });
+
+  /* WebKit can run the list's answer inside the input event of the name
+     being typed, and Create draft then found it empty (#171). */
+  it("keeps a name typed as the follow-up list lands", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    server({
+      list: () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    });
+    const user = await open();
+    const field = screen.getByLabelText<HTMLInputElement>("Name this session");
+
+    await landWhileTyping(field, "Saturday morning", () => {
+      answer(page(LIST));
+    });
+
+    expect(field).toHaveValue("Saturday morning");
+    // The list landed all the same.
+    await user.click(screen.getByRole("radio", { name: /Follow-up/ }));
+    expect(picker().getByRole("status")).toHaveTextContent("3 of 3 households ticked");
+    await user.click(create());
+    await waitFor(() => {
+      expect(creates()).toEqual([
+        { title: "Saturday morning", kind: "follow_up", householdIds: ["h3", "h1", "h2"] },
+      ]);
+    });
   });
 
   it("folds away again on cancel", async () => {

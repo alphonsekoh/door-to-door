@@ -159,17 +159,30 @@ test.describe("with the service worker", () => {
       expect((await adminApi.delete(`/api/users/${member.id}/sign-ins`)).status()).toBe(204);
       await page.context().unroute("**/api/visits/sync");
 
+      /* The phone learns of the end from whichever asks the server first.
+         Mostly it is the reload's first API call, refused, and "Signed out"
+         says so. But the queue asks who is signed in before every send, and
+         an answer given after the end clears the cookie (D-125-4): the
+         reload then goes straight to sign-in (#181). */
       await page.reload();
-      await expect(signedOut(page)).toBeVisible();
+      const toldSignedOut = signedOut(page);
+      await expect(
+        toldSignedOut.or(page.getByRole("heading", { level: 1, name: "Sign in" })),
+      ).toBeVisible();
       expect((await queuedRecords(page)).find((r) => r.unit === "#41-01")?.state).not.toBe(
         "synced",
       );
 
-      await page.getByRole("button", { name: "Sign in again" }).click();
-      await expect(page).toHaveURL(/\/sign-in\?reason=signed-out$/);
+      if (await toldSignedOut.isVisible()) {
+        await page.getByRole("button", { name: "Sign in again" }).click();
+        await expect(page).toHaveURL(/\/sign-in\?reason=signed-out$/);
+      }
       await page.getByLabel("Email").fill(member.email);
       await page.getByLabel("Password").fill(PASSWORD);
       await page.getByRole("button", { name: "Sign in", exact: true }).click();
+      /* Signing in loads the next page in full: read the queue there, not
+         from the sign-in page as it is left (#181). */
+      await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
 
       await expect
         .poll(async () => (await queuedRecords(page)).find((r) => r.unit === "#41-01")?.state)
