@@ -18,7 +18,12 @@ ENV NODE_ENV=development
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 EXPOSE 3000
-CMD ["npm", "run", "dev"]
+# Not npm run dev, which binds 127.0.0.1: inside a container that is the
+# container's own loopback, which a published port never reaches. Compose
+# publishes 3000 on the host's 127.0.0.1 only, so this stays off the LAN.
+# The installed binary, not npx, which fetches a missing package from the
+# registry: without node_modules this fails instead of running unpinned code.
+CMD ["node_modules/.bin/next", "dev", "-H", "0.0.0.0"]
 
 # ------------------------------------------------------------- builder
 FROM base AS builder

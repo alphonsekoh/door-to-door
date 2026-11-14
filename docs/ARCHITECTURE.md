@@ -44,7 +44,7 @@ flowchart LR
 | `src/server/auth/`    | Auth.js config, sign-ins and sign-out, headers, guards, limits  | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | Auth.js entrypoint (`@/auth`); Google sign-in (`google.ts`)     | 100%     | Server-only (D-14-18); `@/auth` only in `session.ts` and the auth route (D-83-12).    |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
-| `src/db/`             | Drizzle schema, client, test env, seed data                     | 100%     | Constraints carry the invariants the API cannot race.                                 |
+| `src/db/`             | Drizzle schema, client, test env, seed data and its guard       | 100%     | Constraints carry the invariants the API cannot race.                                 |
 | `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
@@ -195,13 +195,15 @@ authoritative, and a change to any of them needs the owner.
 
 1. `src/proxy.ts` redirects page requests with no session to `/sign-in`, the page as
    `callbackUrl` less any `q` (D-163-8), and returns `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
-   It is an affordance, not a guard. The PWA files (`/serwist/*`, manifest, `/offline`)
-   return before `auth()` runs (D-32-19). On every path it matches (all but static
-   files), Next buffers at most 2 MiB of the body and hands the handler that much: a
-   longer body is cut short, not refused (`experimental.proxyClientMaxBodySize`, set
-   from `PROXY_BODY_LIMIT_BYTES`, D-120-7). On Auth.js's routes that cut is the only
-   bound; the contract's caps in step 2 sit at least 512 KiB below it, so a cut body
-   still gets `413` there (D-126-6).
+   It is an affordance, not a guard. Under `next dev` only, it first answers `403` to a
+   `Host` that is not `localhost`, `127.0.0.1` or `[::1]`, a network guard against DNS
+   rebinding that a production build drops (D-124-8). The PWA files (`/serwist/*`,
+   manifest, `/offline`) return before `auth()` runs (D-32-19). On every path it matches
+   (all but static files), Next buffers at most 2 MiB of the body and hands the handler
+   that much: a longer body is cut short, not refused
+   (`experimental.proxyClientMaxBodySize`, set from `PROXY_BODY_LIMIT_BYTES`, D-120-7).
+   On Auth.js's routes that cut is the only bound; the contract's caps in step 2 sit at
+   least 512 KiB below it, so a cut body still gets `413` there (D-126-6).
 2. The route handler is wrapped in `withContract(operation, handler)`. First, a write
    (not `GET`, `HEAD` or `OPTIONS`) another origin sent is `403 forbidden`: decided by
    `Sec-Fetch-Site`, else by `Origin` against `X-Forwarded-Host` or `Host`
@@ -289,7 +291,9 @@ per 5 s burst. The sync catch uses the same helpers.
   `AUTH_GOOGLE_SECRET` are env vars with optional `_FILE` variants. `database.url` with
   credentials is refused.
 - Loading is lazy (config, rate limiter, proxy, db client), so `next build` needs neither
-  file nor database. `src/instrumentation.ts` validates at start and exits 1 on bad config.
+  file nor database. `src/instrumentation.ts` validates at start and exits 1 on bad config,
+  which includes a placeholder `AUTH_SECRET` and, outside `next dev`, one marked
+  `not-for-production` (D-75-6, D-124-7).
 - Tests use `TEST_DATABASE_URL`, the one place a full URL is allowed.
 
 ## Auth
@@ -361,10 +365,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   subscribes to that role, not the account store, so an answer that changes nothing
   draws nothing (D-155-7).
 - An answer that can land while a field is taking text is set in `startTransition`: the
-  block screen's reads, the form's history, Undo and Mark done, and the sync queue's
-  state. Set urgently inside the field's `input` event, it was drawn at once and wrote
-  the old value back (D-155-1, D-155-2). A store's change is drawn at once whatever the
-  lane, so the session kind is told to `knownSessionKind` from an effect (D-155-3).
+  block screen's reads, the form's history, Undo and Mark done, the sync queue's state,
+  and New session's follow-up list and sessions list (D-171-2). Set urgently inside the
+  field's `input` event, it was drawn at once and wrote the old value back (D-155-1,
+  D-155-2). A store's change is drawn at once whatever the lane, so the session kind is
+  told to `knownSessionKind` from an effect (D-155-3).
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
@@ -658,7 +663,10 @@ CSP violation (D-122-8).
 
 ## Runtime
 
-- **Dev:** `docker compose up` → `db`, one-shot `migrate` (migrate + seed), `web`.
+- **Dev:** `docker compose up` → `db`, one-shot `migrate` (migrations only), one-shot
+  `seed` (`--demo`, after `migrate`), `web` (waits on `migrate` only), every port on
+  `127.0.0.1` (D-124-5, D-124-6). `npm run dev` binds `127.0.0.1` (D-124-10). The seed
+  refuses without `--demo` or on a database with users of its own (D-124-1, D-124-2).
 - **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
   `node .next/standalone/server.js`.
   The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
