@@ -176,9 +176,10 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 ### R-22 · Playwright WebKit offline emulation
 
 - **Finding:** `context.setOffline(true)` in WebKit bypasses the service worker, so the
-  offline-fallback navigation cannot be tested there.
+  offline-fallback navigation cannot be tested there. _Extended by R-165 (#166):_ a
+  request failed by `context.route` is failed before the worker too.
 - **Source:** Observed in #32
-- **Used by:** D-32-18
+- **Used by:** D-32-18, D-166-5
 
 ### R-23 · Lighthouse 12 and the PWA category
 
@@ -404,10 +405,12 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 
 - **Finding:** after `context.setOffline(true)` and a reload, `navigator.onLine` stays
   true in the page, and `setOffline(false)` dispatches no `online` event to it. A phone
-  does fire one. Tests that depend on `online` must dispatch it themselves.
+  does fire one. Tests that depend on `online` must dispatch it themselves. _Amended by
+  R-164 (#166):_ true of Playwright 1.62 only; 1.64 reads `navigator.onLine` false there
+  and fires one `online`, as a phone does.
 - **Source:** observed in PR #100 (`e2e/pwa.spec.ts`, Chromium); unverified on Linux CI
   WebKit, which skips the test (D-32-18)
-- **Used by:** D-77-16
+- **Used by:** D-77-16, D-166-6
 
 ### R-48 · Pull-to-refresh follows the root scroller's `overscroll-behavior`
 
@@ -1854,6 +1857,62 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   [CSS Overflow 3, `hidden`](https://drafts.csswg.org/css-overflow-3/#valdef-overflow-hidden);
   measured (#164 builder and verifier, Pixel 5 and iPhone 13)
 - **Used by:** D-164-1, D-164-3, D-164-7, D-164-8
+
+### R-164 · Playwright 1.64 fires `online` for a document loaded offline; 1.62 does not (measured)
+
+- **Finding:** in Chromium, after `context.setOffline(true)` and a reload, 1.62.1 leaves
+  `navigator.onLine` true and `setOffline(false)` fires no `online`. 1.64.1 reads false
+  and fires exactly one, as a phone does, so `/offline` reloads itself (D-33-22) in any
+  test that goes offline and back. 1.64.1 alone, on Next 16.4.3 and React 19.2.8, fails
+  the old retry test as #175 did. A context route that aborts every request leaves
+  `navigator.onLine` true on both. Amends R-47.
+- **Source:** #175's CI (run 43238677792); measured (#166 builder's bisect, #166 verifier,
+  1.62.1 and 1.64.1 on Chromium). WebKit not measured: it skips these tests (D-32-18)
+- **Used by:** D-166-3, D-166-4, D-166-6, D-166-7
+
+### R-165 · Playwright's WebKit fails a routed request before the service worker (measured)
+
+- **Finding:** with `context.route("**/*", (route) => route.abort(...))`, a navigation in
+  a page the worker controls never reaches the worker in WebKit: the page stays where it
+  was, with "Load failed". In Chromium the worker takes the navigation, the route fails
+  the worker's own fetch, and the worker's fallback answers: with the fallback removed,
+  the test fails at the Offline heading. Extends R-22 to routed requests; agrees with
+  R-138.
+- **Source:** measured (#166 builder's WebKit probe; #166 verifier, retry test with the
+  skip lifted and with the fallback removed)
+- **Used by:** D-166-4, D-166-5
+
+### R-166 · A page can be in the worker's charge before its copy reads `"activated"`
+
+- **Finding:** once, on WebKit in CI, a page whose `navigator.serviceWorker.controller`
+  was already set read `registration.active.state` as `"activating"`. `clientsClaim` is
+  off (D-32-6), and a navigation to a worker still activating waits for activation: with
+  `activate` blocked, `controlled()`'s reload never finished on either engine. So the
+  page's copy of the state trails the worker. Forty single reads on macOS WebKit all
+  read `"activated"`, so the lag has been seen only in CI.
+- **Source:** CI run 41825880661 (#159, WebKit); measured (#166 verifier: 40 single
+  reads, activation blocked on both engines). Why WebKit's copy trails is not measured
+- **Used by:** D-166-1, D-166-2
+
+### R-167 · typescript-eslint 8 takes TypeScript below 6.1
+
+- **Finding:** typescript-eslint 8.68.0 (main) and 8.72.1 (#175) declare the peer
+  `typescript: >=4.8.4 <6.1.0`, as does its eslint plugin, so `npm ci` refuses TypeScript
+  7.0.2 with `ERESOLVE` (#174). 6.0 is inside the range.
+- **Source:** `node_modules/typescript-eslint/package.json` and
+  `@typescript-eslint/eslint-plugin`'s (8.68.0); #174's failed install; #166 verifier
+- **Used by:** D-166-9
+
+### R-168 · Dependabot's `ignore` holds back security updates too
+
+- **Finding:** an `ignore` entry applies to security updates as well as version updates,
+  unlike `cooldown`, which holds back version updates only (R-95).
+  `update-types: ["version-update:semver-major"]` drops majors, and `versions` takes a
+  range in the package manager's own syntax (`">=25"`).
+- **Source:** [GitHub Docs, Dependabot options reference](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference)
+  (`ignore`, `cooldown`), read by the #166 reviewer; not re-read by the docs step (no
+  network)
+- **Used by:** D-166-9, D-166-10, D-166-11
 
 ### R-169 · Next's dev-resource guard sees only its own paths, and passes no `Origin`
 
