@@ -11,6 +11,7 @@ import {
   users,
   visits,
 } from "../src/db/schema";
+import { assertOnlySeedUsers, runSeedCli, seedTarget } from "../src/db/seed-guard";
 import { loadDatabaseUrl } from "../src/server/config";
 import {
   SEED_PASSWORD,
@@ -33,6 +34,9 @@ const sqlExcluded = (column: string) => sql.raw(`excluded."${column}"`);
 /*
  * Exported so the e2e suite can seed a database it names itself, rather than
  * shelling out and losing the stack trace when something goes wrong.
+ *
+ * Refuses, writing nothing, a database with users other than the seed's own
+ * (#124). Every caller goes through here; e2e passes because it truncates first.
  */
 export async function seedDatabase(connectionString: string): Promise<void> {
   const pool = new Pool({ connectionString, max: 1 });
@@ -40,6 +44,7 @@ export async function seedDatabase(connectionString: string): Promise<void> {
   const db = drizzle(pool);
 
   try {
+    await assertOnlySeedUsers(db, seedTarget(connectionString));
     const passwordHash = await hashPassword(SEED_PASSWORD);
 
     await db
@@ -170,7 +175,14 @@ export async function seedDatabase(connectionString: string): Promise<void> {
 /* Only when run as a script: importing this module must not touch a database. */
 if (process.argv[1]?.endsWith("seed.ts") === true) {
   Promise.resolve()
-    .then(() => seedDatabase(loadDatabaseUrl()))
+    .then(() =>
+      runSeedCli({
+        argv: process.argv.slice(2),
+        databaseUrl: loadDatabaseUrl(),
+        seed: seedDatabase,
+        log: console.log,
+      }),
+    )
     .catch((error: unknown) => {
       console.error(error instanceof Error ? error.message : error);
       process.exit(1);

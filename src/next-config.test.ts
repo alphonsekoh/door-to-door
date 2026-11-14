@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { LOOPBACK_HOSTS } from "@/server/http/dev-hosts";
 import { securityHeaders } from "@/server/http/security-headers";
 
 /* The worker plugin only adds its own build steps; what is under test is ours. */
@@ -14,6 +15,10 @@ async function rules() {
 describe("next.config", () => {
   it("does not announce the framework in X-Powered-By", () => {
     expect(nextConfig.poweredByHeader).toBe(false);
+  });
+
+  it("lets Next's dev endpoints answer the same hosts the proxy does under next dev", () => {
+    expect(nextConfig.allowedDevOrigins).toEqual([...LOOPBACK_HOSTS]);
   });
 
   it("sends the security headers on every path, built for production outside next dev", async () => {

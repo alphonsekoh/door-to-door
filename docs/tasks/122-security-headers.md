@@ -116,7 +116,9 @@ HSTS `includeSubDomains` wait for the first deployment (#146).
   `src/server/auth/config.test.ts` asserts that the value is passed. _Trade-off:_ over
   plain http, Safari and phones on the LAN drop the `Secure` CSRF cookie, so sign-in
   says "Email or password is incorrect." (`MissingCSRF` in the log). The README says to
-  set the key `false` there. _Research:_ R-113.
+  set the key `false` there. _Research:_ R-113. _Noted by D-124-6:_ Compose is now
+  published on loopback only, so its `false` serves Safari on `localhost`; a LAN phone
+  uses the production build.
 - **D-122-13 · The contract names the cookie `__Secure-authjs.session-token`, and a new
   `info` section, Caching, states the no-store rule.** _Why:_ D-10-1. `withContract`
   does not validate headers, and D-121-8 set the precedent of stating cross-cutting

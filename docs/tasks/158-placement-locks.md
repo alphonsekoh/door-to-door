@@ -24,6 +24,9 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   waits for `FOR SHARE` but not for the foreign keys' `KEY SHARE` (R-128); id order
   across chunks because `memberIds` is uncapped (D-74-15), so the multi-chunk path stays
   reachable (D-126-3, its 22,000-member test). _Research:_ R-128, R-129, R-161.
+  _Refined by D-180-1:_ the ids are sorted once, before the locks and the inserts
+  (`distinctUuidsInOrder`); `lockPeople` takes the lock and `assertPlaceable` judges
+  the locked rows.
 - **D-158-3 · Existence and deactivation are judged on the locked rows; the rest follows
   in the same transaction.** A missing person is `404`, a deactivated one `409 conflict`
   "One or more of those people are deactivated." (D-74-26), and nothing is written. The
@@ -38,9 +41,13 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   branch on whether the placed person is the caller.
 - **D-158-5 · Lock order: placement is a third `FOR SHARE` taker on users, and no wait
   cycle forms with the writers below.** Extends D-132-5 and D-125-11. Verified orders:
-  - Placement: users `FOR SHARE` in id order, then unlocked reads, then team, team-member
-    and participant inserts, which take only foreign-key `KEY SHARE` locks and
-    unique-index waits.
+  - Placement: ~~users `FOR SHARE` in id order, then unlocked reads, then team,
+    team-member and participant inserts, which take only foreign-key `KEY SHARE` locks
+    and unique-index waits.~~ _Refined by D-180-6:_ users `FOR SHARE` in id order, then
+    the session `FOR KEY SHARE` (an add's statement locks its team, then the session),
+    then, for a member's add, their membership `FOR KEY SHARE`; then plain reads, then
+    the team, team-member and participant inserts in id order, which take only
+    foreign-key `KEY SHARE` locks and unique-index waits.
   - Recording: author `FOR SHARE`, session `FOR KEY SHARE`, household, the visit insert
     (foreign-key `KEY SHARE`), `visit_teammates`, participants, notes.
   - Sync: session `FOR KEY SHARE`, household, visit `FOR NO KEY UPDATE`, team membership
@@ -58,8 +65,9 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   Auth.js adapter's `updateUser` (called only by Auth.js's email provider, which is not
   configured). The first holds only lower-id user rows when it waits, and the other two
   are single statements. The inserts' `KEY SHARE` on users conflicts with none of them.
-  Two placements that list each other can still deadlock on their inserts (D-158-8,
-  #180). _Research:_ R-124, R-128, R-129.
+  ~~Two placements that list each other can still deadlock on their inserts (D-158-8,
+  #180).~~ _Closed by D-180-1;_ the session and team locks add no cycle (D-180-6).
+  _Research:_ R-124, R-128, R-129.
 
 - **D-158-6 · `compareUuids` (`src/lib/uuid.ts`) lower-cases before comparing.** _Why:_
   the request schema accepts upper-case uuids, and Postgres orders uuids by their bytes,
@@ -71,7 +79,9 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   - A placement that waited on a deactivation is `409` and writes no team, team member
     or participant. It fails if the read is unlocked.
   - A deactivation waits for a placement that locked first, and both land. It fails if
-    the lock is `KEY SHARE` or taken after the inserts.
+    the lock is `KEY SHARE` or taken after the inserts. _Refined by D-180-8:_ it now
+    parks at the session lock on both paths, so it fails if the user lock comes after
+    the session's.
   - A placement queued behind a deactivation at an admin's row does not deadlock. It
     deadlocks without the `ORDER BY`, every run, because of D-158-9.
 
@@ -79,13 +89,14 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   reasoning in D-158-2, not a race; one would need over 10,000 ids.
 
 - **D-158-8 · Known limits, left to #180 (owner, 2026-11-13).** Three gaps predate #158;
-  the owner filed them as #180 (P2), not fixed here:
-  - Two placements that list each other can deadlock, and one gets a `500`, not a `409`:
-    `placeMembers` inserts in caller order, so each multi-row insert can wait on the
-    other's row in a unique index.
-  - `createTeam`'s session-status read and `addTeamMember`'s `loadTeamFor` stay unlocked
-    reads before the transaction.
-  - The same id sent in two letter cases counts as two people and is a `404`.
+  the owner filed them as #180 (P2), not fixed here. _All three closed by #180:_
+  - ~~Two placements that list each other can deadlock, and one gets a `500`, not a
+    `409`: `placeMembers` inserts in caller order, so each multi-row insert can wait on
+    the other's row in a unique index.~~ _Closed by D-180-1._
+  - ~~`createTeam`'s session-status read and `addTeamMember`'s `loadTeamFor` stay
+    unlocked reads before the transaction.~~ _Closed by D-180-3, D-180-4._
+  - ~~The same id sent in two letter cases counts as two people and is a `404`.~~
+    _Closed by D-180-2._
 
   _Why:_ outside #158's scope; none lets a deactivated person be placed. The deadlock
   was added to this list after review.
@@ -115,6 +126,9 @@ D-126-3, D-132-2, D-132-4, D-132-5, D-132-7, D-132-8.
 | D-126-3           | Corrected: the checks ran before the transaction; now they run inside it    | D-158-2   |
 | D-74-26, D-74-15  | Kept: the same `409`, now judged under the lock; `memberIds` stays uncapped | D-158-2/3 |
 | D-74-14           | Gap noted (owner): two placements listing each other can deadlock; #180     | D-158-8   |
+
+D-158-2, D-158-5 and D-158-7 are refined, and D-158-8's limits closed, by #180
+(D-180-1 to D-180-8).
 
 ## Open questions
 

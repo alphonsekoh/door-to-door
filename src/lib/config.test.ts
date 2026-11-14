@@ -483,6 +483,82 @@ describe("resolveAuthSecrets", () => {
     ).toBe(good);
   });
 
+  describe("a value marked not for production (#124)", () => {
+    const COMPOSE = "compose-local-dev-secret-0f3a9c71d2b84e56-not-for-production";
+    const marked = [
+      COMPOSE,
+      "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A_not_for_production",
+      "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6ANotForProduction",
+      "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A not for production",
+    ];
+    const REFUSAL =
+      "AUTH_SECRET is a public development value, accepted only by next dev. " +
+      "Generate one with: openssl rand -base64 32";
+
+    describe.each([
+      ["production", "production"],
+      ["test", "test"],
+      ["unset", undefined],
+    ])("when NODE_ENV is %s", (_label, nodeEnv) => {
+      it.each(marked)("refuses %s", (value) => {
+        expect(() =>
+          resolveAuthSecrets(config, { AUTH_SECRET: value, NODE_ENV: nodeEnv }, noFile),
+        ).toThrow(new SecretError(REFUSAL));
+      });
+    });
+
+    it.each(marked)("is accepted by next dev: %s", (value) => {
+      expect(
+        resolveAuthSecrets(config, { AUTH_SECRET: value, NODE_ENV: "development" }, noFile)
+          .authSecret,
+      ).toBe(value);
+    });
+
+    it("is refused through AUTH_SECRET_FILE too", () => {
+      expect(() =>
+        resolveAuthSecrets(
+          config,
+          { AUTH_SECRET_FILE: "/s", NODE_ENV: "production" },
+          () => `${COMPOSE}\n`,
+        ),
+      ).toThrow(REFUSAL);
+    });
+
+    it("names AUTH_SECRET in the refusal, never the value", () => {
+      const refusal = (() => {
+        try {
+          resolveAuthSecrets(config, { AUTH_SECRET: COMPOSE, NODE_ENV: "production" }, noFile);
+        } catch (error) {
+          return error;
+        }
+        throw new Error("expected a refusal");
+      })();
+      expect(refusal).toBeInstanceOf(SecretError);
+      expect((refusal as Error).message).toMatch(/^AUTH_SECRET /);
+      expect((refusal as Error).message).not.toContain("0f3a9c71d2b84e56");
+    });
+
+    it("still refuses a placeholder under next dev", () => {
+      expect(() =>
+        resolveAuthSecrets(
+          config,
+          {
+            AUTH_SECRET: "change-me-change-me-change-me-not-for-production",
+            NODE_ENV: "development",
+          },
+          noFile,
+        ),
+      ).toThrow(/not a placeholder/);
+    });
+
+    it("leaves CI's end-to-end secret alone in production", () => {
+      const ci = "e2e-secret-not-used-anywhere-else";
+      expect(
+        resolveAuthSecrets(config, { AUTH_SECRET: ci, NODE_ENV: "production" }, noFile).authSecret,
+      ).toBe(ci);
+    });
+  });
+
   it("requires AUTH_GOOGLE_SECRET once a clientId is configured", () => {
     expect(() => resolveAuthSecrets(withGoogle, { AUTH_SECRET: good }, noFile)).toThrow(
       /^AUTH_GOOGLE_SECRET is not set/,
