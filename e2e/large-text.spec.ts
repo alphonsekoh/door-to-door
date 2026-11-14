@@ -1,4 +1,5 @@
 import type { Locator, Page } from "@playwright/test";
+import type { VisitSyncRequest, VisitSyncResponse } from "../src/generated/types.gen";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK, SEED_PASSWORD } from "./accounts";
 import {
@@ -1059,24 +1060,32 @@ test.describe("a follow-up session", () => {
     const unitOf = (door: number) => `${floor}-${String(door).padStart(2, "0")}${stamp}`;
     const notes: string[] = [];
     try {
-      const doors: string[] = [];
-      for (let door = 1; door <= 11; door += 1) {
-        const visited = await adminApi.post("/api/visits", {
-          data: {
-            id: uuidv7(),
-            blockId: SEED_BLOCK,
-            unitNumber: unitOf(door),
-            interestLevel: "medium",
-          },
-        });
-        expect(visited.status()).toBe(201);
-        const { householdId } = (await visited.json()) as { householdId: string };
+      /* One batch, not eleven direct saves: those spent over a third of the
+         admin's per-minute budget, so a repeat of this test was refused 429. */
+      const now = new Date().toISOString();
+      const batch: VisitSyncRequest = {
+        sentAt: now,
+        items: Array.from({ length: 11 }, (_, index) => ({
+          id: uuidv7(),
+          blockId: SEED_BLOCK,
+          unitNumber: unitOf(index + 1),
+          sessionId: session.id,
+          interestLevel: "medium",
+          clientCreatedAt: now,
+          updatedAt: now,
+        })),
+      };
+      const synced = await adminApi.post("/api/visits/sync", { data: batch });
+      expect(synced.status()).toBe(200);
+      const { results } = (await synced.json()) as VisitSyncResponse;
+      expect(results.map((result) => result.status)).toEqual(batch.items.map(() => "applied"));
+      const doors = results.flatMap((result) => (result.visit ? [result.visit.householdId] : []));
+      for (const householdId of doors) {
         const listed = await adminApi.post("/api/follow-ups", {
           data: { householdId, note: "Bring the pamphlet" },
         });
         expect(listed.status()).toBe(201);
         notes.push(((await listed.json()) as { id: string }).id);
-        doors.push(householdId);
       }
       const picked = await adminApi.post(`/api/sessions/${session.id}/households`, {
         data: { householdIds: doors },
@@ -1151,24 +1160,32 @@ test.describe("a follow-up session", () => {
       await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
       await untilLive(page);
       await atCap(page);
-      /* Weak signal: the first send hangs a moment, then every one fails. */
+      /* Weak signal: the first send hangs until the test lets it go, then
+         every one fails. */
+      const held = Promise.withResolvers<undefined>();
       let attempts = 0;
       await page.route("**/api/visits/sync", async (route) => {
         attempts += 1;
-        if (attempts === 1) await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (attempts === 1) await held.promise;
         await route.abort("internetdisconnected");
       });
       await pickMedium(page);
       await page.getByRole("button", { name: "Save", exact: true }).click();
       const unit = page.getByLabel("Unit number");
-      await expect(
-        page.getByRole("status").filter({ hasText: `Sending ${LISTED_UNIT}` }),
-      ).toBeVisible();
-      const sending = (await unit.boundingBox())?.y;
+      const sendingLine = page.getByRole("status").filter({ hasText: `Sending ${LISTED_UNIT}` });
+      await expect(sendingLine).toBeVisible();
+      const sending = await unit.boundingBox();
+      expect(sending, "the next unit while sending").not.toBeNull();
+      /* Measured while sending: the line cannot move on before the release,
+         short of the client's own 20s give-up. */
+      await expect(sendingLine).toBeVisible();
+      held.resolve(undefined);
       await expect(
         page.getByRole("status").filter({ hasText: `Saved ${LISTED_UNIT} on this phone.` }),
       ).toBeVisible();
-      expect((await unit.boundingBox())?.y, "the next unit, once saved on the phone").toBe(sending);
+      const saved = await unit.boundingBox();
+      expect(saved, "the next unit, once saved on the phone").not.toBeNull();
+      expect(saved?.y, "the next unit, once saved on the phone").toBe(sending?.y);
       await expectInView(unit, "the next unit, once saved on the phone");
     });
   });
