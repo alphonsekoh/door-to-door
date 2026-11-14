@@ -1,14 +1,16 @@
 # Settings for `docker compose up`: the same keys as config.example.yaml, with
 # the database reached by its Compose service name. No secrets: Compose passes
 # DATABASE_USER, DATABASE_PASSWORD and AUTH_SECRET through the environment.
-# Select another file with CONFIG_FILE=./config.yaml docker compose up.
+# To change a setting, copy this file to config.demo.yaml (git-ignored) and run
+# CONFIG_FILE=./config.demo.yaml docker compose up. Never production's config.yaml.
 
 database:
   url: postgresql://db:5432/door_to_door
 
 auth:
   trustHost: true
-  # Compose serves plain http, where a phone on the LAN drops a Secure cookie.
+  # Compose serves plain http, where Safari drops a Secure cookie even on
+  # localhost.
   secureCookies: false
 
 rateLimit:
