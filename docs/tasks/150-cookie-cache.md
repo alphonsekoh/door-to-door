@@ -53,7 +53,9 @@ reverted D-150-1 and D-150-2, rebuilt, and ran that check, which failed on
 - A request to `/api/auth/*` that carries no cookies gets two `authjs.csrf-token`
   cookies, one from the proxy and one from the route. This predates the PR (D-32-19). A
   browser keeps the last one, which matches the JSON token. A script that sends both back
-  gets `MissingCSRF`.
+  gets `MissingCSRF`. _Since #151:_ should a browser keep the wrong one, the email form's
+  one resend (D-151-1) fetches a token for the cookie it kept, and should recover. This
+  is reasoned from the code. No test runs it.
 
 ## Relies on
 

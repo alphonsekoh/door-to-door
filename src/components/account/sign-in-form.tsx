@@ -2,10 +2,11 @@
 
 import { signIn, signOut } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentProps } from "react";
 import { destinationAfterSignIn, goTo } from "@/lib/session/navigate";
 import { finishSignOut } from "@/lib/session/sign-out";
 import { GOOGLE_UNFINISHED, googleSignInMessage } from "@/lib/session/sign-in-errors";
+import { PAGE_EXPIRED, signInWithPassword } from "@/lib/session/password-sign-in";
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { useLive } from "@/lib/hooks/use-live";
@@ -53,6 +54,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
   const [freshVisit, setFreshVisit] = useState(true);
   const [stillSignedIn, setStillSignedIn] = useState(false);
   const finishing = useRef<Promise<void>>(Promise.resolve());
+  const failureNotice = useRef<HTMLParagraphElement>(null);
 
   /* A sign-out that just brought the member here is checked once more, as the
      answer to a request the page before sent can have signed them back in. */
@@ -69,6 +71,15 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
       ? googleSignInMessage(params.get("error"), googleDomains)
       : null;
   const shownFailure = failure ?? googleFailure;
+
+  /* Told at the top of the form, a refusal landed above the screen once the
+     member had scrolled down to Sign in: on an iPhone at large text, where
+     WebKit held what was in view still, and on a short screen (#151). It is
+     brought into view as it is drawn, before paint, no further than it was
+     hidden. Not Google's message from ?error=: the page opens at its top. */
+  useLayoutEffect(() => {
+    if (failure !== null) failureNotice.current?.scrollIntoView({ block: "nearest" });
+  }, [failure]);
 
   /*
    * Everything the email form does before it leaves happens before leaving
@@ -102,12 +113,13 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
     setSubmitting(true);
     /* So that check's own sign-out cannot land after this sign-in. */
     await finishing.current;
-    const result = await signIn("credentials", { email, password, redirect: false });
+    const outcome = await signInWithPassword(signIn, email, password);
 
-    if (result.error !== undefined) {
+    if (outcome !== "signed-in") {
       setSubmitting(false);
-      // Never distinguish unknown email from wrong password.
-      setFailure(GENERIC_FAILURE);
+      // Never distinguish unknown email from wrong password. An expired page
+      // is the CSRF check alone, which reads no credentials.
+      setFailure(outcome === "expired" ? PAGE_EXPIRED : GENERIC_FAILURE);
       return;
     }
     /* A second member signing in on a shared phone must not read the first
@@ -142,7 +154,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
         </p>
       ) : null}
       {shownFailure === null ? null : (
-        <p role="alert" className="notice-danger">
+        <p ref={failureNotice} role="alert" className="notice-danger">
           {shownFailure}
         </p>
       )}

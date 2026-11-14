@@ -349,7 +349,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   proxy; `src/proxy-cookies.test.ts` covers the server half through the real wrapper.
 - **Source:** observed in PR #93 (CI run 38529456993, `e2e/pwa.spec.ts:185`, mobile-webkit);
   next-auth 5.0.0-beta.32, @auth/core 0.41.3
-- **Used by:** D-32-19
+- **Used by:** D-32-19, D-151-1, D-151-8
 
 ### R-41 · Auth.js reports a refused sign-out as 200 with an error URL
 
@@ -1539,7 +1539,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   Chromium.
 - **Source:** `playwright-core` 1.62.1 `types.d.ts` (`page.route`, `browserContext.route`,
   `serviceWorkers`); measured (#129 builder and verifier)
-- **Used by:** D-129-10, D-164-5
+- **Used by:** D-129-10, D-164-5, D-151-8
 
 ### R-139 · OWASP's CSV injection guidance names tab and CR, and the field separator
 
@@ -1856,7 +1856,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin);
   [CSS Overflow 3, `hidden`](https://drafts.csswg.org/css-overflow-3/#valdef-overflow-hidden);
   measured (#164 builder and verifier, Pixel 5 and iPhone 13)
-- **Used by:** D-164-1, D-164-3, D-164-7, D-164-8
+- **Used by:** D-164-1, D-164-3, D-164-7, D-164-8, D-151-7
 
 ### R-164 · Playwright 1.64 fires `online` for a document loaded offline; 1.62 does not (measured)
 
@@ -1993,6 +1993,38 @@ config`, parse only; #124 docs step, confirming the planner's check)
   (`tag`), read offline (#124 docs step); npm,
   [`npm exec`](https://docs.npmjs.com/cli/commands/npm-exec)
 - **Used by:** D-124-19
+
+### R-176 · Auth.js checks a credentials sign-in's CSRF token before `authorize`, and tells the page `MissingCSRF`
+
+- **Finding:** for the credentials provider, `@auth/core` runs `validateCSRF` before the
+  `callback` action, so a refused token never reaches `authorize`. With
+  `X-Auth-Return-Redirect`, which next-auth/react's `signIn` sends, the refusal is a `200`
+  `{ url: "<sign-in page>?error=MissingCSRF" }`. Only client-safe types reach that URL;
+  any other error reads `Configuration`. `signIn({ redirect: false })` returns the URL's
+  `error`. It fetches a new token from `/api/auth/csrf` on every call, and sends an empty
+  one when that fetch fails. Extends R-41, sign-out's `200` refusal, to sign-in.
+- **Source:** `@auth/core` 0.41.3 `lib/index.js` (the `callback` case) and `index.js`
+  (its `catch`); `next-auth` 5.0.0-beta.32 `react.js` (`signIn`, `getCsrfToken`) and
+  `lib/client.js` (`fetchData`); pinned by `src/app/api/auth/[...nextauth]/route.test.ts`
+- **Used by:** D-151-1, D-151-3, D-151-4
+
+### R-177 · Next's route announcer has `role="alert"`
+
+- **Finding:** the App Router appends a `next-route-announcer` element to `body`, with an
+  open shadow root holding a `div` with `role="alert"` and `aria-live="assertive"`.
+  Playwright's `getByRole("alert")` pierces open shadow roots, so a page-wide lookup can
+  find it beside the app's own alert. It sits outside `main`.
+- **Source:** `next` 16.4.3 `dist/client/components/app-router-announcer.js`
+- **Used by:** D-151-9
+
+### R-178 · `vi.clearAllMocks` keeps queued once-answers; `mockReset` drops them
+
+- **Finding:** `mockClear`, which `vi.clearAllMocks` calls, clears a mock's calls and
+  results but keeps its implementations, including any queued with
+  `mockResolvedValueOnce`. `mockReset` also resets "all 'once' implementations".
+- **Source:** `@vitest/spy` (Vitest 4.1.11) `dist/index.d.ts`, the `mockReset` doc
+  comment
+- **Used by:** D-151-11
 
 ### R-179 · A multi-row INSERT waits mid-statement on an uncommitted unique key, so opposite orders deadlock (measured)
 

@@ -38,6 +38,9 @@ const failed = { error: "CredentialsSignin", code: undefined, status: 401, ok: f
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Clearing keeps queued once-answers: one a test left unread must not
+  // answer the next test's sign-in.
+  signIn.mockReset();
   get.mockReturnValue(null);
   finishSignOut.mockResolvedValue(undefined);
 });
@@ -242,8 +245,87 @@ describe("SignInForm", () => {
     expect(alert).toHaveTextContent("Email or password is incorrect.");
     expect(alert.textContent).not.toMatch(/unknown|no such|deactivated|exists/i);
     expect(goTo).not.toHaveBeenCalled();
+    // A refused password is never sent again by itself.
+    expect(signIn).toHaveBeenCalledOnce();
     // The member can correct the password and try again.
     expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+  });
+
+  /* Told at the top of the form, it landed above the screen on an iPhone at
+     large text (#151). jsdom lays nothing out: the E2E measures. */
+  describe("bringing a refusal into view", () => {
+    async function submit(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    }
+
+    it("scrolls to it as it is drawn, no further than it is hidden, leaving focus where it was", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        signIn.mockResolvedValue(failed);
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        // The page opens at its top.
+        expect(scrolled).not.toHaveBeenCalled();
+        await submit(user);
+
+        const alert = await screen.findByRole("alert");
+        expect(scrolled.mock.contexts).toEqual([alert]);
+        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+        expect(alert).not.toHaveFocus();
+        expect(screen.getByRole("button", { name: "Sign in" })).toHaveFocus();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("scrolls to the page-expired message too", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const expired = { error: "MissingCSRF", code: undefined, status: 200, ok: true, url: null };
+        signIn.mockResolvedValue(expired);
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        await submit(user);
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("This page expired.");
+        expect(scrolled.mock.contexts).toEqual([alert]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("leaves the page where it is as a second try clears it, and scrolls again when that one is refused", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        let release: (value: typeof failed) => void = () => undefined;
+        signIn.mockResolvedValueOnce(failed).mockReturnValueOnce(
+          new Promise<typeof failed>((resolve) => {
+            release = resolve;
+          }),
+        );
+        const user = userEvent.setup();
+        render(<SignInForm />);
+        await submit(user);
+        await screen.findByRole("alert");
+        expect(scrolled).toHaveBeenCalledOnce();
+
+        // Sign in is under the thumb that just pressed it again.
+        await user.click(screen.getByRole("button", { name: "Sign in" }));
+        await screen.findByRole("button", { name: "Signing in…" });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(scrolled).toHaveBeenCalledOnce();
+
+        release(failed);
+        const alert = await screen.findByRole("alert");
+        expect(scrolled).toHaveBeenCalledTimes(2);
+        expect(scrolled.mock.contexts[1]).toBe(alert);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
   });
 
   it("never puts the password in the DOM as readable text", async () => {
@@ -270,6 +352,75 @@ describe("SignInForm", () => {
     // Otherwise a double tap on a slow connection sends two attempts.
     expect(await screen.findByRole("button", { name: "Signing in…" })).toBeDisabled();
     release(ok);
+  });
+
+  /* Auth.js checks the CSRF token before it reads the credentials, and names
+     that refusal MissingCSRF: a cookie swapped since the token was fetched,
+     or one the phone did not keep. */
+  describe("when the CSRF check refuses the attempt (#151)", () => {
+    const expired = { error: "MissingCSRF", code: undefined, status: 200, ok: true, url: null };
+
+    async function submit(password: string) {
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), password);
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+    }
+
+    it("sends it once more, showing nothing, and signs in", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(ok);
+      await submit("password123");
+
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
+      expect(signIn).toHaveBeenCalledTimes(2);
+      expect(signIn.mock.calls[1]).toEqual(signIn.mock.calls[0]);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("stays on Signing in, with no message, while the second go is out", async () => {
+      let release: (value: typeof ok) => void = () => undefined;
+      signIn.mockResolvedValueOnce(expired).mockReturnValueOnce(
+        new Promise<typeof ok>((resolve) => {
+          release = resolve;
+        }),
+      );
+      await submit("password123");
+
+      await waitFor(() => {
+        expect(signIn).toHaveBeenCalledTimes(2);
+      });
+      expect(screen.getByRole("button", { name: "Signing in…" })).toBeDisabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      release(ok);
+      await waitFor(() => {
+        expect(goTo).toHaveBeenCalledWith("/");
+      });
+    });
+
+    it("says the page expired when the second go is refused too, and stops there", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(expired);
+      await submit("password123");
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "This page expired. Reload it and try again.",
+      );
+      expect(signIn).toHaveBeenCalledTimes(2);
+      expect(goTo).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled();
+    });
+
+    it("keeps the one generic message when the second go is refused on the credentials", async () => {
+      signIn.mockResolvedValueOnce(expired).mockResolvedValueOnce(failed);
+      await submit("wrong-password");
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Email or password is incorrect.");
+      expect(alert).not.toHaveTextContent(/expired/i);
+      expect(signIn).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe("after the app signed the member out", () => {
@@ -509,6 +660,18 @@ describe("SignInForm with Google (#14)", () => {
         "That Google account can't sign in here. Google sign-in is for " +
           "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
       );
+    });
+
+    it("does not scroll to it: the page opens at its top", () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        withError("AccessDenied");
+        render(<SignInForm googleDomains={DOMAINS} />);
+        expect(screen.getByRole("alert")).toBeInTheDocument();
+        expect(scrolled).not.toHaveBeenCalled();
+      } finally {
+        scrolled.mockRestore();
+      }
     });
 
     it("gives anything else a message to act on, never the raw value", () => {
