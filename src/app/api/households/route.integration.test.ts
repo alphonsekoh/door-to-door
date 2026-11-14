@@ -3,8 +3,13 @@ import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { resetDatabase, type Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
-import { zError, zHouseholdHistory, zListHouseholdsResponse } from "@/generated/zod.gen";
-import { listHouseholds } from "@/server/visits/queries";
+import {
+  zError,
+  zGetHouseholdHistoryResponse,
+  zHouseholdHistory,
+  zListHouseholdsResponse,
+} from "@/generated/zod.gen";
+import { getHouseholdHistory, listHouseholds } from "@/server/visits/queries";
 
 const { auth } = vi.hoisted(() => ({ auth: vi.fn() }));
 vi.mock("@/auth", () => ({ auth }));
@@ -14,7 +19,8 @@ const { GET: historyRoute } = await import("./[id]/route");
 
 /*
  * The block's unit list, however many visits a household holds and however
- * many units a block holds (#126, #127).
+ * many units a block holds (#126, #127), and a unit's history a page at a
+ * time (#160).
  */
 
 const pool = createTestPool();
@@ -73,6 +79,18 @@ async function list(query: string) {
   return zListHouseholdsResponse.parse(await response.json());
 }
 
+function history(id: string, query = "") {
+  return historyRoute(new Request(`https://test.local/api/households/${id}?${query}`), {
+    params: Promise.resolve({ id }),
+  });
+}
+
+async function read(id: string, query = "") {
+  const response = await history(id, query);
+  expect(response.status).toBe(200);
+  return zGetHouseholdHistoryResponse.parse(await response.json());
+}
+
 async function visit(
   id: string,
   options: { sessionId?: string; at?: Date; description?: string; household?: string } = {},
@@ -127,12 +145,31 @@ describe("a household with a great many visits", () => {
     queryCount = 0;
     await listHouseholds(db, { blockId: BLOCK, limit: 100, offset: 0 });
     expect(queryCount).toBe(8);
+
+    // Its history is one page, newest first (#160), in as many queries as a
+    // unit of one visit: household, page, team names, teammates, tally, notes.
+    const history = await read(HOUSEHOLD, "limit=100");
+    expect(history.visits).toHaveLength(100);
+    expect(history.visits[0]).toMatchObject({
+      id: visitId(1),
+      team: { id: TEAM, members: [{ id: BEN, name: "Ben" }] },
+    });
+    expect(history.pagination).toEqual({ limit: 100, offset: 0, total: 70_000, hasMore: true });
+    expect(history.answered).toBe(true);
+
+    queryCount = 0;
+    await getHouseholdHistory(db, HOUSEHOLD, { limit: 100, offset: 0 });
+    expect(queryCount).toBe(6);
   });
 
   it("costs two queries fewer when no latest visit is on a team", async () => {
     await visit(visitId(1));
     await listHouseholds(db, { blockId: BLOCK, limit: 100, offset: 0 });
     expect(queryCount).toBe(6);
+
+    queryCount = 0;
+    await getHouseholdHistory(db, HOUSEHOLD, { limit: 100, offset: 0 });
+    expect(queryCount).toBe(4);
   });
 });
 
@@ -153,9 +190,9 @@ describe("the count and the latest visit", () => {
     expect(ever.data[0]).toMatchObject({ visitCount: 3, latestVisit: { id: visitId(3) } });
   });
 
-  it("breaks a tie on createdAt by id, as the household's history ends", async () => {
-    await visit(visitId(2), { description: "Second by id" });
+  it("breaks a tie on createdAt by id, as the household's history begins", async () => {
     await visit(visitId(1), { description: "First by id" });
+    await visit(visitId(2), { description: "Second by id" });
 
     const page = await list(`blockId=${BLOCK}`);
     expect(page.data[0]?.latestVisit?.id).toBe(visitId(2));
@@ -165,7 +202,7 @@ describe("the count and the latest visit", () => {
       { params: Promise.resolve({ id: HOUSEHOLD }) },
     );
     const history = zHouseholdHistory.parse(await response.json());
-    expect(history.visits.map((v) => v.id)).toEqual([visitId(1), visitId(2)]);
+    expect(history.visits.map((v) => v.id)).toEqual([visitId(2), visitId(1)]);
   });
 
   it("are none for a household no visit is left at", async () => {
@@ -212,5 +249,69 @@ describe("a block of more units than one page (#127)", () => {
     );
     expect(response.status).toBe(400);
     expect(zError.parse(await response.json()).error.code).toBe("validation_failed");
+  });
+});
+
+describe("a unit's history, a page at a time (#160)", () => {
+  async function visits(count: number) {
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       SELECT gen_random_uuid(), $1, $2, $3, 'no_response', $4::timestamptz - make_interval(secs => i)
+       FROM generate_series(1, $5::int) AS i`,
+      [HOUSEHOLD, SESSION, ALICE, NOON, count],
+    );
+  }
+
+  it("answers 50 visits by default, newest first, with what follows", async () => {
+    await visits(120);
+    const first = await read(HOUSEHOLD);
+    expect(first.visits).toHaveLength(50);
+    expect(first.visits[0]?.createdAt).toBe("2026-03-14T11:59:59.000Z");
+    expect(first.pagination).toEqual({ limit: 50, offset: 0, total: 120, hasMore: true });
+    expect(first.answered).toBe(false);
+
+    const last = await read(HOUSEHOLD, "offset=100");
+    expect(last.visits).toHaveLength(20);
+    expect(last.pagination).toEqual({ limit: 50, offset: 100, total: 120, hasMore: false });
+  });
+
+  it("answers an offset past the last visit with no visits and the unit as on any page", async () => {
+    await visit(visitId(1));
+    const past = await read(HOUSEHOLD, "limit=20&offset=10000");
+    expect(past).toMatchObject({
+      household: { id: HOUSEHOLD, unitNumber: "#05-123" },
+      block: { id: BLOCK },
+      visits: [],
+      answered: true,
+      followUps: [],
+      pagination: { limit: 20, offset: 10_000, total: 1, hasMore: false },
+    });
+  });
+
+  it.each([
+    ["limit=0", "a limit of none"],
+    ["limit=101", "a limit past 100"],
+    ["offset=-1", "a negative offset"],
+    ["offset=10001", "an offset past 10,000"],
+  ])("refuses %s, %s", async (query) => {
+    const response = await history(HOUSEHOLD, query);
+    expect(response.status).toBe(400);
+    expect(zError.parse(await response.json()).error.code).toBe("validation_failed");
+  });
+
+  it("refuses an id that is not one", async () => {
+    const response = await history("not-a-uuid");
+    expect(response.status).toBe(400);
+    expect(zError.parse(await response.json()).error.code).toBe("validation_failed");
+  });
+
+  it("answers 404 for a unit that does not exist", async () => {
+    const response = await history("12612612-0000-4000-8004-00000000ffff");
+    expect(response.status).toBe(404);
+  });
+
+  it("refuses a caller with no session", async () => {
+    auth.mockResolvedValue(null);
+    expect((await history(HOUSEHOLD)).status).toBe(401);
   });
 });

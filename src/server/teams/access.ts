@@ -120,8 +120,8 @@ export async function stampVisit(
  * Adds `team` to visit rows: the stamped teams' names, then their snapshots
  * joined to current user names. Two queries for up to 10,000 visits, so a
  * page of a hundred costs no more than one (D-20-3); past that, one more per
- * 10,000, since a household's history passes every visit (#126). Each visit's
- * teammates come from one query, in name order.
+ * 10,000 (#126), although a household's history now passes one page (#160).
+ * Each visit's teammates come from one query, in name order.
  */
 export async function attachTeams<T extends { id: string; teamId: string | null }>(
   db: Database,

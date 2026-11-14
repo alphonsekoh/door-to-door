@@ -318,7 +318,8 @@ test("a visit to a unit taken off the list waits on the phone, and is sent once 
   const door = (await (await adminApi.get(`/api/households/${householdId}`)).json()) as {
     visits: { member: { name: string | null } }[];
   };
-  expect(door.visits.map((visit) => visit.member.name)).toEqual(["Admin User", "Alice Tan"]);
+  /* Newest first (#160). */
+  expect(door.visits.map((visit) => visit.member.name)).toEqual(["Alice Tan", "Admin User"]);
 
   /* Left as it found the list. */
   expect(await removeNote(second)).toBe(204);
