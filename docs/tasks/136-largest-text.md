@@ -43,7 +43,7 @@ only: no contract or schema change.
   `::after` in the same grid cell, so they are in no text a test locator or screen reader
   reads. They are held only while nothing sits beside the words. Suggest, Add or Promote
   would be pushed onto a row of their own. _Why:_ at 32px the longer words wrapped one
-  row taller just after Save, which dropped the unit field 48px. _Research:_ R-179.
+  row taller just after Save, which dropped the unit field 48px. _Research:_ R-181.
 - **D-136-5 · Non-breaking hyphens (U+2011) are used only in the held words.** The held
   copy is never drawn, copied or searched, so D-111-36's reason for rejecting them does
   not apply. The unit on screen stays in `UnitNumber`. Refines D-111-36. _Why:_ generated
@@ -74,7 +74,7 @@ only: no contract or schema change.
   now. _Trade-off:_ at 16px, Undo's 44px target now touches Back to the list's directly
   below it, where there was 8px between them. A tap meant for one can land on the other,
   and Undo reopens a follow-up. _Not taken_ (reviewer, optional): a row gap held behind
-  the `--short-by` clamp, as `space-under-tabs` does. _Research:_ R-180.
+  the `--short-by` clamp, as `space-under-tabs` does. _Research:_ R-182.
 - **D-136-10 · At 320×568 and 32px, only Back to the list must be in view after a
   save.** When the line is taller than the room, it is aligned by its foot (R-89). The
   unit field, and with it the "Saved …" words and Undo, can then be out of view. At 16px
@@ -107,7 +107,7 @@ only: no contract or schema change.
   "may mean its body passed". The test is now `:640`, with no mark. `:369`, now `:376`,
   passed 40 of 40 on macOS WebKit at `dff2daf`. #136 changes nothing it opens, so it
   exposes no cause. The PR says `Refs #181`. _Why:_ with no cause found, any change
-  would be a guess or a wait (D-181-5). _Research:_ R-181.
+  would be a guess or a wait (D-181-5). _Research:_ R-183.
 
 ### How existing decisions are handled
 
@@ -135,7 +135,7 @@ only: no contract or schema change.
   edge. With a 34px inset, `--sheet-actions` plus 16px leaves the field 18px short.
   `scroll-clear-chrome` adds `env(safe-area-inset-bottom)` for the page. On main the
   shortfall was about 2px at 32px. Playwright draws no inset, so no E2E sees it.
-  _Research:_ R-182. Accepted as a known limit (owner, 2026-11-15).
+  _Research:_ R-184. Accepted as a known limit (owner, 2026-11-15).
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
   sent." or a note's suffix can still grow the line.

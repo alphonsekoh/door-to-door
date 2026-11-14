@@ -1994,7 +1994,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [`npm exec`](https://docs.npmjs.com/cli/commands/npm-exec)
 - **Used by:** D-124-19
 
-### R-179 · A `visibility: hidden` `::after` holds layout, but no test or screen reader reads it
+### R-181 · A `visibility: hidden` `::after` holds layout, but no test or screen reader reads it
 
 - **Finding:** `content: attr(data-hold)` on a `visibility: hidden` `::after` is laid out,
   so it holds its grid cell's height, but it is never painted. Generated content is in
@@ -2007,7 +2007,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   content reader); measured (#136 verifier r2, aria snapshot on both projects)
 - **Used by:** D-136-4, D-136-5
 
-### R-180 · CI's Linux WebKit draws text in DejaVu Sans, which measures only from the same origin
+### R-182 · CI's Linux WebKit draws text in DejaVu Sans, which measures only from the same origin
 
 - **Finding:** the app's `system-ui` stack falls back to DejaVu Sans on CI's Ubuntu
   runner. That face is wider than macOS's. At 32px with `px-3`, it set "Follow-up
@@ -2019,7 +2019,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   measured (#136 builder and verifier r0, with DejaVu Sans served from the app's origin)
 - **Used by:** D-136-9
 
-### R-181 · A `test.fail` test that fails as declared is `expected`, yet keeps its error
+### R-183 · A `test.fail` test that fails as declared is `expected`, yet keeps its error
 
 - **Finding:** in Playwright 1.62.1's HTML report, a `test.fail` test whose body fails has
   outcome `expected` and counts as passing. Its result is still `failed` with its error,
@@ -2032,7 +2032,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   `test-results`; `playwright.config.ts`
 - **Used by:** D-136-13
 
-### R-182 · A sticky `bottom: 0` bar sits above its scroller's padding; `scroll-padding` counts from the scrollport
+### R-184 · A sticky `bottom: 0` bar sits above its scroller's padding; `scroll-padding` counts from the scrollport
 
 - **Finding:** in both engines, a `position: sticky; bottom: 0` child sticks inside the
   scroll container's padding. A sheet's bar therefore rests above the body's
