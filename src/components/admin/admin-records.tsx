@@ -37,7 +37,7 @@ import {
   type RecordFilters,
 } from "@/lib/history/record-filters";
 import { SheetPresence } from "@/components/ui/sheet";
-import { UnitNumber } from "@/components/ui/unit-number";
+import { UnitNumber, WholeWords } from "@/components/ui/unit-number";
 
 const PAGE_SIZE = 100;
 const POLL_INTERVAL_MS = 30_000;
@@ -262,7 +262,8 @@ export function AdminRecords() {
         >
           <span className="min-w-0 flex-[1_1_16ch] break-words">
             Saved <UnitNumber value={marked.unitNumber} />
-            {marked.memberName === null ? "" : ` for ${marked.memberName}`}. {markedLine.text}
+            {marked.memberName === null ? "" : ` for ${marked.memberName}`}.{" "}
+            <WholeWords text={markedLine.text} />
           </span>
           {undoIds === null ? null : (
             <UndoMarkedButton

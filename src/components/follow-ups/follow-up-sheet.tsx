@@ -325,12 +325,7 @@ export function FollowUpSheet({
 
         {partial === null ? <AlsoAddRow also={also} /> : null}
 
-        <SheetActions>
-          {online ? null : (
-            <p className="mb-2 text-center text-caption text-foreground-muted">
-              {FOLLOW_UP_OFFLINE_NOTE}
-            </p>
-          )}
+        <SheetActions note={online ? null : FOLLOW_UP_OFFLINE_NOTE}>
           {partial === null ? null : partial.refused === null ? (
             <button
               type="button"

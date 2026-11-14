@@ -936,7 +936,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   and the line ended above the screen; the E2E failed on both browsers before the fix.
 - **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
   #117, `e2e/follow-up-session.spec.ts`
-- **Used by:** D-117-77, D-119-22
+- **Used by:** D-117-77, D-119-22, D-136-10
 
 ### R-90 · `additionalProperties` does not see through `allOf`
 
@@ -1139,7 +1139,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   docs; not run here.
 - **Source:** [Playwright, `test.fail`](https://playwright.dev/docs/api/class-test#test-fail);
   `node_modules/playwright/types/test.d.ts`
-- **Used by:** D-119-33
+- **Used by:** D-119-33, D-136-11
 
 ### R-108 · Next's proxy body cap truncates a body; it never refuses one
 
@@ -2026,3 +2026,53 @@ config`, parse only; #124 docs step, confirming the planner's check)
   Cited, not fetched. Measured (#180 builder and reviewer,
   `src/server/teams/placement-races.integration.test.ts`).
 - **Used by:** D-180-3, D-180-5, D-180-6
+
+### R-181 · A `visibility: hidden` `::after` holds layout, but no test or screen reader reads it
+
+- **Finding:** `content: attr(data-hold)` on a `visibility: hidden` `::after` is laid out,
+  so it holds its grid cell's height, but it is never painted. Generated content is in
+  no `textContent`. Playwright 1.62.1's `getByText` and `hasText` read child nodes only,
+  and its accessible names read `::before` and `::after` but skip `display: none` and
+  `visibility: hidden`. On both engines the Saved line's aria snapshot listed only the
+  visible words. Not checked with VoiceOver.
+- **Source:** [CSS 2.1, `visibility`](https://www.w3.org/TR/CSS21/visufx.html#visibility);
+  `node_modules/playwright-core/lib/coreBundle.js` (1.62.1: `elementText`, the pseudo
+  content reader); measured (#136 verifier r2, aria snapshot on both projects)
+- **Used by:** D-136-4, D-136-5
+
+### R-182 · CI's Linux WebKit draws text in DejaVu Sans, which measures only from the same origin
+
+- **Finding:** the app's `system-ui` stack falls back to DejaVu Sans on CI's Ubuntu
+  runner. That face is wider than macOS's. At 32px with `px-3`, it set "Follow-up
+  marked" a few px past one line. With `px-2` there is about 8px to spare. To measure in
+  it locally, serve the font from the app's own origin. The CSP has `default-src 'self'`
+  and no `font-src`, so a `data:` font is reported as a violation (Report-Only, D-122),
+  and the E2E fails on any violation.
+- **Source:** CI run 43375997037's screenshots; `src/server/http/security-headers.ts`;
+  measured (#136 builder and verifier r0, with DejaVu Sans served from the app's origin)
+- **Used by:** D-136-9
+
+### R-183 · A `test.fail` test that fails as declared is `expected`, yet keeps its error
+
+- **Finding:** in Playwright 1.62.1's HTML report, a `test.fail` test whose body fails has
+  outcome `expected` and counts as passing. Its result is still `failed` with its error,
+  and `test-results` keeps an `error-context.md`. With `trace: "retain-on-failure"` and
+  `screenshot: "only-on-failure"`, nothing else is kept. So the error is listed beside
+  the real failures and reads like one. In CI run 43375997037 the stats read 2
+  unexpected, and `large-text.spec.ts:613` on mobile-webkit was `expected` ("covered").
+  Extends R-107.
+- **Source:** CI run 43375997037's HTML report (`report.json`, the test's JSON) and
+  `test-results`; `playwright.config.ts`
+- **Used by:** D-136-13
+
+### R-184 · A sticky `bottom: 0` bar sits above its scroller's padding; `scroll-padding` counts from the scrollport
+
+- **Finding:** in both engines, a `position: sticky; bottom: 0` child sticks inside the
+  scroll container's padding. A sheet's bar therefore rests above the body's
+  `env(safe-area-inset-bottom)` padding. `scroll-padding-bottom` is an inset from the
+  scrollport's edge, so it must add that padding to clear the bar. Leaving it out, a
+  field brought into view ends `inset - 16px` under the bar: 18px with a 34px home
+  indicator.
+- **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
+  #136 reviewer r2, not re-measured by the docs step
+- **Used by:** D-136-3 (known limit)
