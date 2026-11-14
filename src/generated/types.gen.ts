@@ -461,17 +461,33 @@ export type FollowUp = {
 };
 
 /**
- * A unit's full timeline. This is what a member sees before knocking, and
- * the reason the household/visit split exists.
+ * A unit's timeline, a page of its visits at a time. This is what a
+ * member sees before knocking, and the reason the household/visit split
+ * exists. Only `visits` is paged: `household`, `block`, `answered` and
+ * `followUps` are whole on every page.
  *
  */
 export type HouseholdHistory = {
     household: Household;
     block: Block;
     /**
-     * Oldest first, so the interest trajectory reads left to right.
+     * One page of the unit's visits, newest first: by `createdAt`, then
+     * `id`, both descending, so visits stored at the same instant keep
+     * one order across pages. `pagination.total` counts every visit
+     * here. Visits are never removed, so one stored between two reads
+     * can make the next page repeat a visit, never skip one: keep each
+     * once, by `id`.
+     *
      */
     visits: Array<Visit>;
+    /**
+     * Some visit here, on any page, recorded an answer: an interest
+     * level other than `no_response`. A client showing one page can
+     * still tell a door nobody has opened from one that gave no name.
+     *
+     */
+    answered: boolean;
+    pagination: PaginationMeta;
     /**
      * Listed notes and pending suggestions, anyone's, oldest first.
      * Removed notes are left out.
@@ -2510,11 +2526,24 @@ export type GetHouseholdHistoryData = {
     path: {
         id: string;
     };
-    query?: never;
+    query?: {
+        /**
+         * Rows per page.
+         */
+        limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
+        offset?: number;
+    };
     url: '/households/{id}';
 };
 
 export type GetHouseholdHistoryErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
     /**
      * No valid session. Also returned for a valid token whose account no
      * longer exists, or whose sign-in has ended (signed out, ended by an
@@ -2534,7 +2563,7 @@ export type GetHouseholdHistoryError = GetHouseholdHistoryErrors[keyof GetHouseh
 
 export type GetHouseholdHistoryResponses = {
     /**
-     * The unit's timeline.
+     * The unit, its notes, and a page of its visits.
      */
     200: HouseholdHistory;
 };
