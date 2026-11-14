@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import { HouseholdPicker } from "@/components/sessions/household-picker";
 import type { FollowUp, OutingSession, SessionKind } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
@@ -45,15 +45,23 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
   /* A retry and a reload after a refusal can overlap; the newest answer wins. */
   const generation = useRef(0);
 
+  /* The answer lands as a transition, as the block screen's do (#155): WebKit
+     can run it inside the input event of text landing in the name, and set
+     urgently it drew the form again with the name still empty, over what was
+     typed (#171). A transition is drawn after the event. */
   async function loadList(): Promise<void> {
     const mine = ++generation.current;
     setListed({ load: "loading" });
+    let answer: Listed;
     try {
-      const notes = await loadAllListed();
-      if (mine === generation.current) setListed({ load: "ready", notes });
+      answer = { load: "ready", notes: await loadAllListed() };
     } catch {
-      if (mine === generation.current) setListed({ load: "error" });
+      answer = { load: "error" };
     }
+    if (mine !== generation.current) return;
+    startTransition(() => {
+      setListed(answer);
+    });
   }
 
   const groups = listed.load === "ready" ? groupForPicking(listed.notes) : [];
