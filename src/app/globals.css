@@ -200,6 +200,13 @@
   );
 }
 
+/* A sheet's scrolling body: what takes focus is brought clear of the
+   SheetActions docked at its foot, 80px at the base size whatever the text
+   size, as the page's Save bar is. */
+@utility scroll-clear-sheet-actions {
+  scroll-padding-bottom: calc(var(--chrome-rem) * 6);
+}
+
 /* Pushed down by the same distance, so something placed just after a bar
    held above the nav sits on the bottom of the screen when that bar is
    pinned (docked-actions.tsx). */
@@ -285,11 +292,39 @@
     calc(var(--reader-rem) * 1.5 - var(--short-by)),
     calc(var(--reader-rem) * 1.5)
   );
+  @apply target-compact;
+}
+
+/*
+ * control-compact's target alone, for a text action whose words keep the
+ * reader's size: min-h-11, or on a short screen 44px or one line of body
+ * text, whichever is more. At 32px that is 48px, not 88px, so a row of
+ * such actions under a status line leaves the field below it in view.
+ */
+@utility target-compact {
   min-height: clamp(
     max(44px, calc(var(--reader-rem) * 1.5)),
     calc(var(--reader-rem) * 2.75 - var(--short-by)),
     calc(var(--reader-rem) * 2.75)
   );
+}
+
+/*
+ * As tall as its words would be if they read data-hold instead, as well as
+ * its own: the held words are laid out invisibly in the same cell, so the
+ * words changing to them moves nothing below. They come from CSS, so they
+ * are in no text a test or a screen reader reads. Its words go in one child.
+ */
+@utility hold-text {
+  display: grid;
+  & > *,
+  &::after {
+    grid-area: 1 / 1;
+  }
+  &::after {
+    content: attr(data-hold);
+    visibility: hidden;
+  }
 }
 
 /* The space under the block's tabs: mb-5, or mb-2 on a short screen. */

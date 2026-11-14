@@ -33,7 +33,7 @@ describe("AdminTeamSheet", () => {
     // The scrolling body keeps a focused field clear of the sticky footer.
     expect(
       screen.getByRole("dialog", { name: "New team" }).querySelector(".overflow-y-auto")?.className,
-    ).toContain("scroll-pb-24");
+    ).toContain("scroll-clear-sheet-actions");
     expect(
       screen.getByRole("button", { name: "Choose who is on it" }).parentElement?.className,
     ).toContain("sticky");

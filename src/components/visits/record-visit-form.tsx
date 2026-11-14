@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import Link from "next/link";
-import { UnitNumber } from "@/components/ui/unit-number";
+import { UnitNumber, WholeWords } from "@/components/ui/unit-number";
 import { DockedActions } from "@/components/ui/docked-actions";
 import { FollowUpSheet, SUGGESTION_SENT } from "@/components/follow-ups/follow-up-sheet";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
@@ -204,6 +204,17 @@ function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sendi
     return <>Saved {unit} on this phone. Not sent.</>;
   }
   return <>Saved {unit} on this phone.</>;
+}
+
+/*
+ * The words the line keeps room for from the save on (hold-text): "Saved …
+ * on this phone." is longer than "Sending …" or "Saved …", and at large
+ * text it wrapped a row taller just after Save, dropping the unit field
+ * 48px. Its hyphens hold as the unit's on screen do (UnitNumber); never
+ * drawn, copied or searched, only these may be non-breaking (D-111-36).
+ */
+function heldWords(unitNumber: string): string {
+  return `Saved ${unitNumber.replaceAll("-", "\u2011")} on this phone.`;
 }
 
 const OUTING_UNKNOWN =
@@ -605,6 +616,32 @@ export function RecordVisitForm({
       : offer === "suggest" && followUp === null
         ? SUGGEST
         : null;
+  const besideLine =
+    saved === null || householdId === null || saved.noted !== null ? null : noteLabel !== null ? (
+      <button
+        type="button"
+        onClick={() => {
+          setNoting(true);
+        }}
+        className="target-compact font-medium btn-text"
+      >
+        {noteLabel}
+      </button>
+    ) : saved.action.kind === "promote" ? (
+      <PromoteButton
+        suggestion={saved.action.suggestion}
+        onPromoted={(message) => {
+          setSaved({ ...saved, noted: message });
+          setReloadKey((key) => key + 1);
+        }}
+        className="target-compact font-medium btn-text"
+      />
+    ) : null;
+  /* Only with nothing beside the words: the held words would widen them,
+     and push what is beside them onto a row of its own. That is offered
+     once the server has the visit, after which they never grow by
+     themselves. */
+  const held = saved === null || besideLine !== null ? null : heldWords(saved.unitNumber);
 
   return (
     <form
@@ -621,45 +658,43 @@ export function RecordVisitForm({
           whose first submit button is disabled is not submitted by Enter. */}
       {live ? null : <button type="submit" disabled hidden />}
       {status === null ? null : (
+        /* Kept short enough at 32px on an iPhone 13 to leave the unit field
+           under it in view. Its rows touch: each action holds its own
+           target's height, so a gap between them was height the field gave
+           up. Its sides are px-2: with px-3, Linux's wider face set
+           "Follow-up marked" a few px past one line. */
         <div
           ref={savedLine}
           role="status"
-          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-surface-muted px-2 py-1 text-body"
         >
-          <span className="break-words">{status}</span>
-          {householdId === null || saved?.noted !== null ? null : noteLabel !== null ? (
-            <button
-              type="button"
-              onClick={() => {
-                setNoting(true);
-              }}
-              className="min-h-11 font-medium btn-text"
-            >
-              {noteLabel}
-            </button>
-          ) : saved.action.kind === "promote" ? (
-            <PromoteButton
-              suggestion={saved.action.suggestion}
-              onPromoted={(message) => {
-                setSaved({ ...saved, noted: message });
-                setReloadKey((key) => key + 1);
-              }}
-              className="min-h-11 font-medium btn-text"
-            />
-          ) : null}
+          <span
+            data-hold={held ?? undefined}
+            className={held === null ? "break-words" : "hold-text break-words"}
+          >
+            <span>{status}</span>
+          </span>
+          {besideLine}
           {/* A row of its own from "Sending…" on, so the line keeps its
-                height as the words change, as Back to the list's does. */}
+                height as the words change, as Back to the list's does.
+                Undo follows the words in their line: beside them, at large
+                text it squeezed them to a word a line. */}
           {saved === null || markedLine === null ? null : (
-            <div className="flex min-h-11 basis-full items-center justify-between gap-x-3">
-              <span className="min-w-0 break-words">{markedLine.text}</span>
-              {undoIds === null ? null : (
-                <UndoMarkedButton
-                  count={undoIds.length}
-                  undoing={saved.undo.kind === "undoing"}
-                  disabled={!online}
-                  onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
-                />
-              )}
+            <div className="flex target-compact basis-full items-center">
+              <p className="min-w-0 break-words">
+                <WholeWords text={markedLine.text} />
+                {undoIds === null ? null : (
+                  <>
+                    {" "}
+                    <UndoMarkedButton
+                      count={undoIds.length}
+                      undoing={saved.undo.kind === "undoing"}
+                      disabled={!online}
+                      onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                    />
+                  </>
+                )}
+              </p>
             </div>
           )}
           {/* On a row of its own: beside the line, it fitted "Sending…"
@@ -668,7 +703,10 @@ export function RecordVisitForm({
                 field still, pushed it up under the pinned count. */}
           {followUp === null ? null : (
             <div className="basis-full">
-              <Link href="/" className="inline-flex min-h-11 items-center font-medium btn-text">
+              <Link
+                href="/"
+                className="inline-flex target-compact items-center font-medium btn-text"
+              >
                 Back to the list
               </Link>
             </div>

@@ -323,7 +323,7 @@ export function Sheet({
             onFocus={(event) => {
               event.target.scrollIntoView({ block: "nearest" });
             }}
-            className={`min-h-0 flex-1 scroll-pt-2 scroll-pb-24 overflow-y-auto overscroll-contain px-4 inset-safe-bottom ${bodyClassName}`}
+            className={`min-h-0 flex-1 scroll-pt-2 scroll-clear-sheet-actions overflow-y-auto overscroll-contain px-4 inset-safe-bottom ${bodyClassName}`}
           >
             {children}
           </div>
@@ -430,10 +430,15 @@ export function ConfirmDialog({
 /*
  * A sheet's primary action, pinned to the bottom of its scrolling body so
  * Save never needs a scroll to find. Glass over the sheet's own content.
+ *
+ * At the 16px base whatever the text size, as the page's docked Save is,
+ * with its edges in line with the body's. Grown with the text, at 32px on an
+ * iPhone 13 it was 160px of a sheet whose header took 284px, and a field
+ * OK on Not saved brought back started under Send.
  */
 export function SheetActions({ children }: { children: ReactNode }) {
   return (
-    <div className="material-chrome sticky bottom-0 -mx-4 mt-4 px-4 py-3 [--material-tint:var(--app-bg)]">
+    <div className="material-chrome sticky bottom-0 bleed-x mt-4 py-3 chrome-size [--material-tint:var(--app-bg)]">
       {children}
     </div>
   );
