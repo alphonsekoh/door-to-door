@@ -377,6 +377,36 @@ describe("forming a team", () => {
     expect((await call(createTeam, "POST", { id: ACTIVE }, { name: "Now" })).status).toBe(201);
   });
 
+  it("counts one id sent in two letter cases as one person", async () => {
+    // Letters in the id, so its two cases differ.
+    const fay = "74747474-0000-4000-8000-0000000000fa";
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES ($1,'fay@t.local','Fay','member')`,
+      [fay],
+    );
+    asAdmin();
+    const listed = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Pair", memberIds: [fay, fay.toUpperCase()] },
+    );
+    expect(listed.status).toBe(201);
+    expect(memberIds((await listed.json()) as TeamBody)).toEqual([fay]);
+
+    // A member is placed whether or not they list themselves, in either case.
+    await pool.query(`DELETE FROM session_teams`);
+    as(fay);
+    const self = await call(
+      createTeam,
+      "POST",
+      { id: ACTIVE },
+      { name: "Solo", memberIds: [fay.toUpperCase()] },
+    );
+    expect(self.status).toBe(201);
+    expect(memberIds((await self.json()) as TeamBody)).toEqual([fay]);
+  });
+
   it("is 404 for an unknown person or outing", async () => {
     asAdmin();
     expect(
