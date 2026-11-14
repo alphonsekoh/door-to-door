@@ -269,6 +269,10 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
 - The `/sign-in?reason=signed-out` redirect from admin pages drops `callbackUrl`.
 - The proxy cannot see an ended sign-in (D-16-1). The page loads, then the first `401`
   raises "Signed out". `/offline` makes no API call and shows the normal Offline page.
+  _Amended by D-181-1:_ if the queue's owner check (D-33-1) asks first, it clears the
+  cookie (D-125-4). The next page then goes to plain `/sign-in`, with no "Signed out"
+  and no signed-out note. Unsent records still send after signing in (#181, open
+  question).
 - Two sign-ins at the same moment can briefly leave 51 rows.
 - iPadOS reads as "Safari on Mac", and an installed app reads as its browser.
 - A malformed or unknown member id on `/admin/team/[id]` shows "Invalid path parameters."
