@@ -1,6 +1,6 @@
 # #160 · Page a unit's history (`GET /households/{id}`)
 
-- **Status:** In progress (no PR yet)
+- **Status:** In progress (PR #190)
 - **Phase:** 7 - Hardening
 - **Depends on:** #126, #155, #164
 
@@ -149,7 +149,9 @@ here from #126 by the owner (D-126-13).
   focused Notes off the screen (408 to 1,768px on a 664px screen); the next keystroke
   scrolls back and nothing is lost. A late failure moves it 20px, or 130px at 32px on
   320px, under the docked Save. The Pixel 5 holds through scroll anchoring. Whether a
-  real iPhone anchors at all is unconfirmed (verifier r2). See Open questions.
+  real iPhone anchors at all is unconfirmed (verifier r2). Accepted as a known limit
+  (owner, 2026-11-15); the verifier's suggested fix, a measured `scrollBy` when
+  `stillAt` is false, is not built.
 - No route test pins `hasMore` on an exactly full last page; the UI reads `next < total`
   instead (verifier).
 
@@ -161,9 +163,6 @@ D-164-7, D-164-8.
 
 ## Open questions
 
-- **Verifier r2's should-fix is open at 10df2ff:** on an iPhone 13 a late older page
-  pushes the note being typed off the screen (Known limits). Fix it on this branch (the
-  verifier suggests holding the member's view with a measured `scrollBy` when
-  `stillAt` is false, pinned by an E2E), or accept it as a known limit?
-
-The owner answered the planner's two questions on 2026-11-14 (D-160-14, D-160-15).
+None. The owner answered the planner's two questions on 2026-11-14 (D-160-14, D-160-15),
+and on 2026-11-15 accepted verifier r2's should-fix (a late older page pushing the note
+being typed off an iPhone's screen) as a known limit (Known limits).
