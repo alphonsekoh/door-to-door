@@ -68,3 +68,12 @@ export function compareUuids(a: string, b: string): number {
   if (x === y) return 0;
   return x < y ? -1 : 1;
 }
+
+/*
+ * Each id once, lower case as Postgres writes it back, in Postgres's order:
+ * one id sent in two cases is one id, and work done in this order locks rows
+ * in the same order whoever does it.
+ */
+export function distinctUuidsInOrder(ids: readonly string[]): string[] {
+  return [...new Set(ids.map((id) => id.toLowerCase()))].sort(compareUuids);
+}

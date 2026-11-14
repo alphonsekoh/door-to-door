@@ -58,8 +58,10 @@ export async function isCurrentMember(
   db: Database,
   userId: string,
   teamId: string,
+  lock?: "key share",
 ): Promise<boolean> {
-  return (await membership(db, userId, teamId)).length > 0;
+  const query = membership(db, userId, teamId);
+  return (await (lock === undefined ? query : query.for(lock))).length > 0;
 }
 
 /*
