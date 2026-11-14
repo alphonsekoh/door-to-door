@@ -50,6 +50,10 @@
      chrome element that resets --reader-rem still lines up with the page. */
   --page-gutter: var(--reader-rem);
 
+  /* The reader's text size, substituted here for the same reason: for
+     reader-size, inside chrome that has reset --reader-rem. */
+  --reader-size: var(--reader-rem);
+
   /* The bottom nav's height. The offline shell, which has no nav, sets it to
      0 on <html>, so the Save bar sits on the bottom edge there. */
   --nav-height: calc(var(--chrome-rem) * 4);
@@ -200,11 +204,13 @@
   );
 }
 
-/* A sheet's scrolling body: what takes focus is brought clear of the
-   SheetActions docked at its foot, 80px at the base size whatever the text
-   size, as the page's Save bar is. */
+/* A sheet's scrolling body: what takes focus is brought 16px clear of the
+   SheetActions docked at its foot, as tall as the bar is drawn
+   (--sheet-actions, measured in sheet.tsx). That is 80px at the base size
+   whatever the text size, as the page's Save bar is, and more with a note
+   above its button, which follows the text. */
 @utility scroll-clear-sheet-actions {
-  scroll-padding-bottom: calc(var(--chrome-rem) * 6);
+  scroll-padding-bottom: calc(var(--sheet-actions, 0px) + var(--chrome-rem));
 }
 
 /* Pushed down by the same distance, so something placed just after a bar
@@ -264,6 +270,15 @@
 @utility chrome-size {
   --reader-rem: var(--chrome-rem);
   font-size: var(--reader-rem);
+}
+
+/*
+ * Back at the reader's size inside chrome-size, for what chrome says about
+ * its action: that is content, and follows the text (D-111-60). Only the
+ * variable, so the element's own type token sets its size.
+ */
+@utility reader-size {
+  --reader-rem: var(--reader-size);
 }
 
 /* Edge to edge across the page's side margin, with its content in line with

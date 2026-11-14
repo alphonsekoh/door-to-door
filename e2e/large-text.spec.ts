@@ -696,6 +696,48 @@ test("OK brings the note back with its top edge in view, on every follow-up shee
   }
 });
 
+/*
+ * Without signal a follow-up sheet's Send is grey, and the line above it
+ * says why. The bar is chrome, at the base size as the page's docked Save
+ * is, but that line is content: drawn at the base it was 12px at every text
+ * size. A field taking focus is kept clear of the bar as it is drawn, the
+ * line and all: kept clear of the bar without it, it could end under it.
+ */
+test("without signal, a follow-up sheet says why Send is grey at the text size, and keeps a field clear of all of it", async ({
+  memberPage: page,
+}) => {
+  await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+  await atCap(page);
+  /* Once the door has loaded: its history is fetched from the page. */
+  const suggest = page.getByRole("button", { name: SUGGESTING.open, exact: true }).first();
+  await expect(suggest).toBeVisible();
+  await page.context().setOffline(true);
+  try {
+    await suggest.click();
+    const sheet = page.getByRole("dialog", { name: SUGGESTING.title });
+    const send = sheet.getByRole("button", { name: SUGGESTING.send });
+    await expect(send).toBeDisabled();
+    /* A caption, three quarters of the 32px text. */
+    await expect(sheet.getByText("Connect to change follow-ups")).toHaveCSS("font-size", "24px");
+    /* The room the sheet's body keeps under a field taking focus, less the
+       bar Send sits in: the 16px margin. */
+    await expect
+      .poll(
+        () =>
+          send.evaluate((button) => {
+            const bar = button.parentElement;
+            const body = bar?.closest("[data-sheet-body]");
+            if (!bar || !body) return null;
+            return parseFloat(getComputedStyle(body).scrollPaddingBottom) - bar.offsetHeight;
+          }),
+        { message: "the room kept under a field taking focus, less the bar" },
+      )
+      .toBe(16);
+  } finally {
+    await page.context().setOffline(false);
+  }
+});
+
 /* From the default to the cap: the iOS sizes past Large (21px, 23px), and
    either side of where each phone turns compact (about 25px on an iPhone
    13, 27px on a Pixel 5). */
