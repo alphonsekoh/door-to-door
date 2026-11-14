@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareUuids, sameUuid, uuidv7 } from "@/lib/uuid";
+import { compareUuids, distinctUuidsInOrder, sameUuid, uuidv7 } from "@/lib/uuid";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -74,5 +74,23 @@ describe("compareUuids", () => {
   it("calls one id in either case equal", () => {
     const id = "5191d000-0000-4000-8000-00000000000a";
     expect(compareUuids(id, id.toUpperCase())).toBe(0);
+  });
+});
+
+describe("distinctUuidsInOrder", () => {
+  it("keeps one id sent in two cases once, lower case", () => {
+    const id = "5191d000-0000-4000-8000-00000000000a";
+    expect(distinctUuidsInOrder([id.toUpperCase(), id])).toEqual([id]);
+  });
+
+  it("returns them in Postgres's order, whatever order or case they came in", () => {
+    const first = "0a000000-0000-4000-8000-000000000000";
+    const second = "0b000000-0000-4000-8000-000000000000";
+    const third = "1a000000-0000-4000-8000-000000000000";
+    expect(distinctUuidsInOrder([third, second.toUpperCase(), first, third])).toEqual([
+      first,
+      second,
+      third,
+    ]);
   });
 });

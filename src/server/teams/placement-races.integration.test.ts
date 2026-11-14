@@ -9,10 +9,12 @@ import { addTeamMember, createTeam } from "@/server/teams/service";
 import { updateUser } from "@/server/users/service";
 
 /*
- * Placing someone on a team and deactivating them at the same moment (#158).
- * These hold a row from a second connection so a request is provably parked
- * while the other side acts, then released: no sleeps deciding the outcome.
- * The harness is the one in src/server/follow-ups/races.integration.test.ts.
+ * Placing someone on a team while they are deactivated (#158), while the
+ * session or the team changes, or while another placement lists the same
+ * people (#180). These hold a row from a second connection so a request is
+ * provably parked while the other side acts, then released: no sleeps
+ * deciding the outcome. The harness is the one in
+ * src/server/follow-ups/races.integration.test.ts.
  */
 
 const pool = createTestPool();
@@ -22,17 +24,20 @@ const db = drizzle(pool, { schema }) as unknown as Database;
 const ADMIN = "7b7b7b7b-0000-4000-8000-000000000001";
 const ALICE = "7b7b7b7b-0000-4000-8000-000000000002";
 const BEN = "7b7b7b7b-0000-4000-8000-000000000003";
+const CARL = "7b7b7b7b-0000-4000-8000-000000000004";
+const DAN = "7b7b7b7b-0000-4000-8000-000000000005";
 const SESSION = "7b7b7b7b-0000-4000-8002-000000000001";
 const TEAM = "7b7b7b7b-0000-4000-8004-000000000001";
 const admin = { id: ADMIN, role: "admin" as const };
+const member = (id: string) => ({ id, role: "member" as const });
 
 type Query = (sql: string, params?: unknown[]) => Promise<unknown>;
 
 const POLL_BUDGET_MS = 4_000;
 vi.setConfig({ testTimeout: 15_000 });
 
-/* Until a request is blocked on a lock in a statement like `pattern`. */
-async function waitingOn(pattern: string): Promise<void> {
+/* Until `count` requests are blocked on a lock in a statement like `pattern`. */
+async function waitingOn(pattern: string, count = 1): Promise<void> {
   const startedAt = Date.now();
   for (;;) {
     const { rows } = await controller.query(
@@ -41,7 +46,7 @@ async function waitingOn(pattern: string): Promise<void> {
          AND pid <> pg_backend_pid() AND query ILIKE $1`,
       [pattern],
     );
-    if (rows.length > 0) return;
+    if (rows.length >= count) return;
     if (Date.now() - startedAt > POLL_BUDGET_MS) {
       throw new Error(`no request waited on ${pattern}`);
     }
@@ -56,22 +61,25 @@ const settle = (request: Promise<unknown>) =>
   );
 
 /*
- * Locks Ben's row on a second connection, starts the request, waits until it
- * is blocked on that row, lets `whileHeld` change things, then commits. A
- * request that never waits fails the test. It is awaited before returning
- * whatever fails, so it can never write into the next test.
+ * Takes a row on a second connection with `hold`, starts the request, waits
+ * until it is blocked in a statement like `waitsOn`, lets `whileHeld` change
+ * things, then commits. A request that never waits fails the test. It is
+ * awaited before returning whatever fails, so it can never write into the
+ * next test.
  */
-async function parkedOnBen(
+async function parked(
+  hold: (query: Query) => Promise<unknown>,
   start: () => Promise<unknown>,
-  whileHeld: (query: Query) => Promise<void>,
+  waitsOn: string,
+  whileHeld: (query: Query) => Promise<unknown>,
 ): Promise<unknown> {
   const client = await controller.connect();
   let pending: Promise<unknown> | undefined;
   try {
     await client.query("BEGIN");
-    await client.query(`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, [BEN]);
+    await hold((sql, params) => client.query(sql, params));
     pending = settle(start());
-    await waitingOn(`%from "users"%for share%`);
+    await waitingOn(waitsOn);
     await whileHeld((sql, params) => client.query(sql, params));
     await client.query("COMMIT");
     return await pending;
@@ -83,6 +91,18 @@ async function parkedOnBen(
     client.release();
   }
 }
+
+/* Parked on Ben's row, where every placement of Ben starts. */
+const parkedOnBen = (
+  start: () => Promise<unknown>,
+  whileHeld: (query: Query) => Promise<unknown>,
+) =>
+  parked(
+    (q) => q(`SELECT 1 FROM users WHERE id = $1 FOR UPDATE`, [BEN]),
+    start,
+    `%from "users"%for share%`,
+    whileHeld,
+  );
 
 /*
  * Two requests in a fixed order: `hold` takes a row on a second connection,
@@ -116,6 +136,42 @@ async function race(
   }
   return [await one, await two];
 }
+
+/*
+ * Puts `person` on Alice's team from a second connection, uncommitted, so a
+ * placement listing them parks in the one-team-per-session index. Starts each
+ * request in turn until it waits on a team-member insert, then rolls the row
+ * back. All are settled before returning, whatever fails.
+ */
+async function heldInTheIndex(person: string, starts: (() => Promise<unknown>)[]) {
+  const client = await controller.connect();
+  const pending: Promise<unknown>[] = [];
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO session_team_members (team_id, session_id, user_id) VALUES ($1,$2,$3)`,
+      [TEAM, SESSION, person],
+    );
+    for (const start of starts) {
+      pending.push(settle(start()));
+      await waitingOn(`%insert into "session_team_members"%`, pending.length);
+    }
+    await client.query("ROLLBACK");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+    await Promise.all(pending);
+  }
+  return Promise.all(pending);
+}
+
+const join = (...people: string[]) =>
+  pool.query(
+    `INSERT INTO session_participants (session_id, user_id) SELECT $1, unnest($2::uuid[])`,
+    [SESSION, people],
+  );
 
 const deactivateBen = () => updateUser(db, BEN, { deactivated: true }, ADMIN);
 const deactivated = {
@@ -171,22 +227,19 @@ afterAll(async () => {
   await pool.end();
 });
 
-/*
- * Every path that places someone. `parksOn` is the placement's first write
- * that waits for a held session row: the new team's foreign key for a create,
- * the new participant's for an add, since the member's key is to the team.
- */
+/* A placement's lock on the session, which an add takes with the team's. */
+const AT_THE_SESSION = `%"outing_sessions"%for key share%`;
+
+/* Every path that places someone. */
 const placements = [
   {
     path: "forming a team",
     place: () => createTeam(db, admin, SESSION, { name: "Pair", memberIds: [BEN] }),
-    parksOn: `%insert into "session_teams"%`,
     teams: 2,
   },
   {
     path: "adding to a team",
     place: () => addTeamMember(db, admin, TEAM, BEN),
-    parksOn: `%insert into "session_participants"%`,
     teams: 1,
   },
 ];
@@ -196,7 +249,7 @@ describe("placing someone while an admin deactivates them", () => {
     "refuses $path once the deactivation it waited for lands, and writes nothing",
     async ({ place }) => {
       const outcome = await parkedOnBen(place, (q) =>
-        q(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [BEN]).then(() => undefined),
+        q(`UPDATE users SET deactivated_at = now() WHERE id = $1`, [BEN]),
       );
 
       expect(outcome).toMatchObject({ error: deactivated });
@@ -206,7 +259,7 @@ describe("placing someone while an admin deactivates them", () => {
 
   it.each(placements)(
     "holds the deactivation until $path that took the person first lands",
-    async ({ place, parksOn, teams }) => {
+    async ({ place, teams }) => {
       /*
        * The placement takes Ben's row, then parks on the session held here;
        * the deactivation then parks on Ben. Taken after the inserts, or as
@@ -215,7 +268,7 @@ describe("placing someone while an admin deactivates them", () => {
       const [placing, deactivating] = await race(
         (q) => q(`SELECT 1 FROM outing_sessions WHERE id = $1 FOR UPDATE`, [SESSION]),
         place,
-        parksOn,
+        AT_THE_SESSION,
         deactivateBen,
         `%from "users"%for no key update%`,
       );
@@ -260,5 +313,99 @@ describe("placing someone while an admin deactivates them", () => {
     } finally {
       await storageOrder.end();
     }
+  });
+});
+
+describe("two members forming teams that list each other at the same moment", () => {
+  beforeEach(async () => {
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES
+        ($1,'carl@t.local','Carl','member'), ($2,'dan@t.local','Dan','member')`,
+      [CARL, DAN],
+    );
+    await join(BEN, CARL, DAN);
+  });
+
+  it("places one team and refuses the other 409, never a deadlock", async () => {
+    /*
+     * Both list Dan, whose place in the index is held here, so each parks on
+     * him. Inserted in the order each caller gave, Ben's would already hold
+     * Ben and Carl's Carl; once Dan is let go each waits on the other's row,
+     * and Postgres ends that deadlock by failing one with 40P01, a 500. In id
+     * order Carl's queues behind Ben's first row and loses to the index.
+     */
+    const [ben, carl] = await heldInTheIndex(DAN, [
+      () => createTeam(db, member(BEN), SESSION, { name: "Ben", memberIds: [DAN, CARL] }),
+      () => createTeam(db, member(CARL), SESSION, { name: "Carl", memberIds: [DAN, BEN] }),
+    ]);
+
+    expect(ben).toMatchObject({ ok: { name: "Ben" } });
+    expect(carl).toMatchObject({ error: { status: 409, code: "conflict" } });
+    const { rows } = await pool.query<{ user_id: string }>(
+      `SELECT user_id FROM session_team_members m JOIN session_teams t ON t.id = m.team_id
+       WHERE t.name = 'Ben' ORDER BY user_id`,
+    );
+    expect(rows.map((row) => row.user_id)).toEqual([BEN, CARL, DAN]);
+    expect(await written()).toMatchObject({ teams: 2 });
+  });
+});
+
+describe("placing someone while the session or the team changes", () => {
+  beforeEach(() => join(BEN));
+
+  it.each([
+    {
+      path: "forming a team",
+      place: () => createTeam(db, member(BEN), SESSION, { name: "Ben" }),
+    },
+    {
+      path: "adding to a team",
+      place: () => addTeamMember(db, member(ALICE), TEAM, BEN),
+    },
+  ])("refuses $path once the end it waited for lands, and writes nothing", async ({ place }) => {
+    // What ending a session holds while it lands.
+    const outcome = await parked(
+      (q) => q(`SELECT 1 FROM outing_sessions WHERE id = $1 FOR UPDATE`, [SESSION]),
+      place,
+      AT_THE_SESSION,
+      (q) =>
+        q(`UPDATE outing_sessions SET status = 'ended', ended_at = now() WHERE id = $1`, [SESSION]),
+    );
+
+    expect(outcome).toMatchObject({ error: { status: 409, code: "session_not_active" } });
+    expect(await written()).toEqual({ teams: 1, benOnATeam: 0, benJoined: 1 });
+  });
+
+  it("refuses an add once the disband it waited for lands, and writes nothing", async () => {
+    // What disbanding a team holds while it lands.
+    const outcome = await parked(
+      (q) => q(`SELECT 1 FROM session_teams WHERE id = $1 FOR UPDATE`, [TEAM]),
+      () => addTeamMember(db, admin, TEAM, BEN),
+      AT_THE_SESSION,
+      (q) => q(`DELETE FROM session_teams WHERE id = $1`, [TEAM]),
+    );
+
+    expect(outcome).toMatchObject({ error: { status: 404, message: "No such team." } });
+    expect(await written()).toEqual({ teams: 0, benOnATeam: 0, benJoined: 1 });
+  });
+
+  it("refuses a member's add once their own removal it waited for lands, and writes nothing", async () => {
+    // What removing a member holds while it lands.
+    const outcome = await parked(
+      (q) =>
+        q(`SELECT 1 FROM session_team_members WHERE team_id = $1 AND user_id = $2 FOR UPDATE`, [
+          TEAM,
+          ALICE,
+        ]),
+      () => addTeamMember(db, member(ALICE), TEAM, BEN),
+      `%from "session_team_members"%for key share%`,
+      (q) =>
+        q(`DELETE FROM session_team_members WHERE team_id = $1 AND user_id = $2`, [TEAM, ALICE]),
+    );
+
+    expect(outcome).toMatchObject({
+      error: { status: 403, message: "You are not on that team." },
+    });
+    expect(await written()).toEqual({ teams: 1, benOnATeam: 0, benJoined: 1 });
   });
 });
