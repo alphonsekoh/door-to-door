@@ -27,7 +27,8 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
 - **D-75-5 · Error messages name the file, key or env var, never a value.** _Why:_ logs
   must not leak secrets.
 - **D-75-6 · Placeholder and short (under 32 chars) `AUTH_SECRET` are rejected.** _Why:_
-  the example value must not reach production.
+  the example value must not reach production. _Extended by D-124-7 (owner):_ a value
+  matching `/not.?for.?production/i` is refused too, unless `NODE_ENV` is `development`.
 - **D-75-7 · The only extra env vars are `CONFIG_PATH`** (default `./config.yaml`), plus
   `PORT`, `HOSTNAME`, `NODE_ENV` and `NEXT_*`; `CONFIG_FILE` selects the file for Compose.
 - **D-75-8 · `TEST_DATABASE_URL` is the only place a full URL is allowed, and never falls
@@ -63,7 +64,9 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
 - **D-75-18 · `yaml` is a runtime dependency.** _Why:_ the production image reads the file.
 - **D-75-19 · Compose mounts the file at `/config/config.yaml` with a public, local-only
   dev `AUTH_SECRET`; the Docker runner never copies the file.** _Why:_ the image holds no
-  settings; the dev secret is not sensitive.
+  settings; the dev secret is not sensitive. _Refined by D-124-7 (owner, 2026-11-13):_
+  the dev secret is public, so it is "not sensitive" only under `next dev`; anywhere
+  else the app refuses to start with it.
 
 ## Relies on
 

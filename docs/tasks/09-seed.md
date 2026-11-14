@@ -19,4 +19,6 @@ Idempotent seed with realistic history so every screen has something to render.
 - **D-09-4 · Seed data is a pure module (`src/db/seed-data.ts`)** with unit-tested
   invariants; `scripts/seed.ts` is glue. `seedDatabase()` is exported for E2E.
 - **D-09-5 · Seed logins:** `admin@`, `alice@`, `ben@`, `cara@example.com`, password
-  `password123`. Dev only.
+  `password123`. Dev only. _Extended by D-124-1, D-124-2:_ the seed runs only with
+  `--demo` typed, and refuses a database with any user of its own. D-09-4's glue split
+  is kept (D-124-4).

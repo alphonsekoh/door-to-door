@@ -226,6 +226,12 @@ const MIN_AUTH_SECRET_LENGTH = 32;
 const PLACEHOLDER_PATTERN = /change.?me|replace.?me|placeholder|your.?secret|example|todo|xxxx/i;
 
 /*
+ * A value published for local development, as docker-compose.yml's is. Anyone
+ * can sign a session with it, so only next dev may use it (#124).
+ */
+const DEVELOPMENT_ONLY_PATTERN = /not.?for.?production/i;
+
+/*
  * NAME, or NAME_FILE naming a file to read it from. Both set is an error
  * rather than a precedence rule: which one wins is exactly the question an
  * operator should not have to remember when a login stops working.
@@ -291,6 +297,13 @@ export function resolveAuthSecrets(
     throw new SecretError(
       `AUTH_SECRET must be a random value of at least ${String(MIN_AUTH_SECRET_LENGTH)} characters, ` +
         "not a placeholder. Generate one with: openssl rand -base64 32",
+    );
+  }
+  /* Fails closed: an unset NODE_ENV is not development. */
+  if (DEVELOPMENT_ONLY_PATTERN.test(authSecret) && env["NODE_ENV"] !== "development") {
+    throw new SecretError(
+      "AUTH_SECRET is a public development value, accepted only by next dev. " +
+        "Generate one with: openssl rand -base64 32",
     );
   }
 
