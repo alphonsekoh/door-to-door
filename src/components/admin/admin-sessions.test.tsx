@@ -1,9 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminSessions } from "@/components/admin/admin-sessions";
 import type { OutingSession, SessionStatus } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -112,6 +113,38 @@ describe("AdminSessions", () => {
     await user.click(screen.getByRole("button", { name: "Create draft" }));
 
     expect(await screen.findByText("Saturday morning")).toBeInTheDocument();
+  });
+
+  /* The list draws New session's form again: landing inside the input event
+     of a name being typed, it must not put back the empty name (#171). */
+  it("keeps a name typed in New session as the list lands", async () => {
+    const user = userEvent.setup();
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) =>
+      path.startsWith("/sessions?")
+        ? new Promise((resolve) => {
+            answer = resolve;
+          })
+        : Promise.resolve({
+            data: [],
+            pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
+          }),
+    );
+    render(<AdminSessions />);
+    await user.click(screen.getByRole("button", { name: "New session" }));
+    await screen.findByText("Add households to the follow-up list first.");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/sessions?limit=25");
+    });
+    const field = screen.getByLabelText<HTMLInputElement>("Name this session");
+
+    await landWhileTyping(field, "Saturday morning", () => {
+      answer(page([session("s1", "June outing", "draft")]));
+    });
+
+    expect(field).toHaveValue("Saturday morning");
+    expect(await screen.findByText("June outing")).toBeInTheDocument();
+    expect(field).toHaveValue("Saturday morning");
   });
 
   it("offers a retry when the list fails to load", async () => {

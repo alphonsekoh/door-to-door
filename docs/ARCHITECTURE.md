@@ -362,10 +362,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   draws nothing (D-155-7).
 - An answer that can land while a field is taking text is set in `startTransition`: the
   block screen's reads, the form's history, the history panel's older pages (D-160-9),
-  Undo and Mark done, and the sync queue's state. Set urgently inside the field's
-  `input` event, it was drawn at once and wrote the old value back (D-155-1, D-155-2).
-  A store's change is drawn at once whatever the lane, so the session kind is told to
-  `knownSessionKind` from an effect (D-155-3).
+  Undo and Mark done, the sync queue's state, and New session's follow-up list and
+  sessions list (D-171-2). Set urgently inside the field's `input` event, it was drawn
+  at once and wrote the old value back (D-155-1, D-155-2). A store's change is drawn at
+  once whatever the lane, so the session kind is told to `knownSessionKind` from an
+  effect (D-155-3).
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
