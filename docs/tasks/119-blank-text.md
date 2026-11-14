@@ -156,7 +156,7 @@ and a pop-up that tells a member or admin why a Save was refused.
   count fill the room above Send, so the field's top starts under Send. _Research:_
   R-89. _Refined by D-119-33 (owner):_ that limit is deferred to #136. _Refined by
   D-113-2:_ a level's radio now has its tile as its `<label>`, which `labelOf` finds. It
-  wraps the radio, so nothing more moves.
+  wraps the radio, so nothing more moves. _Known limit closed by D-136-1 and D-136-11._
 - ~~**D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.**
   The recording form and Record for a member set `maxLength` from
   `MAX_UNIT_NUMBER_LENGTH` (`src/lib/units/unit-number.ts`). _Why:_ a unit the server
@@ -209,7 +209,8 @@ and a pop-up that tells a member or admin why a Save was refused.
   Refines D-119-22. _Why:_ #136 owns the largest-text layout under the docked action.
   Playwright fails a marked test that passes, so the mark cannot outlive a fix. The
   owner added the case to #136 on 2026-11-03, for the add and the edit sheets, so #136
-  is not done until the mark comes off. _Research:_ R-107.
+  is not done until the mark comes off. _Research:_ R-107. _Resolved by D-136-11:_ the
+  mark is gone, and all four follow-up sheets are checked.
 
 ### How existing decisions are handled
 
