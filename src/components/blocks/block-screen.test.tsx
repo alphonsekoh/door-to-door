@@ -226,11 +226,16 @@ describe("BlockScreen", () => {
           updatedAt: "2026-03-14T10:00:00.000Z",
         },
       ],
+      answered: true,
+      pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
       followUps: [],
     });
     const histories: Record<string, unknown> = {
-      "/households/h5": historyOf(first.data[5], "Came to the door in May."),
-      "/households/h100": historyOf(second.data[0], "Asked us to come back in June."),
+      "/households/h5?limit=20&offset=0": historyOf(first.data[5], "Came to the door in May."),
+      "/households/h100?limit=20&offset=0": historyOf(
+        second.data[0],
+        "Asked us to come back in June.",
+      ),
     };
 
     function servePages(

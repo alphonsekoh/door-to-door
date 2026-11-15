@@ -352,7 +352,7 @@ describe("households over HTTP", () => {
     ).toBe(400);
   });
 
-  it("returns a unit's whole timeline", async () => {
+  it("returns a unit's timeline, newest first", async () => {
     asAlice();
     const created = (await (await record("#05-123", { name: "Mr Tan" })).json()) as {
       householdId: string;
@@ -372,7 +372,7 @@ describe("households over HTTP", () => {
     };
     expect(body.household.name).toBe("Mr Tan");
     expect(body.block.name).toBe("123");
-    expect(body.visits.map((v) => v.interestLevel)).toEqual(["low", "high"]);
+    expect(body.visits.map((v) => v.interestLevel)).toEqual(["high", "low"]);
   });
 
   it("names the door on each follow-up in a unit's timeline", async () => {

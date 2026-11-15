@@ -1,3 +1,4 @@
+import type { NextAuthConfig } from "next-auth";
 import { describe, expect, it, vi } from "vitest";
 
 /*
@@ -9,7 +10,7 @@ const { NextAuth, getConfig } = vi.hoisted(() => ({
     authSecret: "s".repeat(40),
     auth: { trustHost: false, secureCookies: true },
   })),
-  NextAuth: vi.fn((_config: unknown) => ({
+  NextAuth: vi.fn((_config: NextAuthConfig | (() => NextAuthConfig)) => ({
     // The lazy form of NextAuth hands back a promise of the wrapped handler.
     auth: (handler: (request: unknown) => unknown) =>
       Promise.resolve((request: unknown) => handler(request)),
@@ -22,7 +23,20 @@ const proxy = (await import("@/proxy")).default as unknown as (
   request: unknown,
 ) => Promise<Response>;
 
+/*
+ * Vitest 5 clears every mock's calls before each test (clearMocks), so what
+ * the proxy did as it loaded is read here, before any test runs.
+ */
 const getConfigCallsAtImport = getConfig.mock.calls.length;
+const authConfigAtImport = NextAuth.mock.calls[0]?.[0];
+
+/* Builds the config from the factory the proxy gave NextAuth, as a request would. */
+function buildAuthConfig(): NextAuthConfig {
+  if (typeof authConfigAtImport !== "function") {
+    throw new Error("the proxy gave NextAuth no config factory as it loaded");
+  }
+  return authConfigAtImport();
+}
 
 const request = (pathname: string, auth: unknown = null, search = "") => ({
   nextUrl: Object.assign(new URL(`https://test.local${pathname}${search}`), {
@@ -109,8 +123,7 @@ describe("authenticated visitors", () => {
 describe("configuration", () => {
   it("builds without the database adapter", () => {
     // Verifying a JWT needs no database, so the proxy opens no pool.
-    const factory = NextAuth.mock.calls[0]?.[0] as () => { adapter?: unknown };
-    expect(factory().adapter).toBeUndefined();
+    expect(buildAuthConfig().adapter).toBeUndefined();
   });
 });
 
@@ -121,8 +134,7 @@ describe("Auth.js configuration", () => {
   });
 
   it("takes its secret and trustHost from the loaded config", () => {
-    const factory = NextAuth.mock.calls[0]?.[0] as () => unknown;
-    expect(factory()).toMatchObject({ secret: "s".repeat(40), trustHost: false });
+    expect(buildAuthConfig()).toMatchObject({ secret: "s".repeat(40), trustHost: false });
   });
 
   it.each([true, false])(
@@ -132,8 +144,7 @@ describe("Auth.js configuration", () => {
         authSecret: "s".repeat(40),
         auth: { trustHost: false, secureCookies },
       });
-      const factory = NextAuth.mock.calls[0]?.[0] as () => unknown;
-      expect(factory()).toMatchObject({ useSecureCookies: secureCookies });
+      expect(buildAuthConfig()).toMatchObject({ useSecureCookies: secureCookies });
     },
   );
 });

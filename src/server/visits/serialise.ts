@@ -4,6 +4,7 @@ import type {
   HouseholdAttention,
   HouseholdHistory,
   HouseholdSummary,
+  PaginationMeta,
   RecordedVisit,
   Visit,
 } from "@/generated/types.gen";
@@ -95,11 +96,16 @@ export function toHouseholdSummary(row: HouseholdSummaryRow): HouseholdSummary {
   };
 }
 
-export function toHouseholdHistory(rows: HouseholdHistoryRows): HouseholdHistory {
+export function toHouseholdHistory(
+  rows: HouseholdHistoryRows,
+  pagination: PaginationMeta,
+): HouseholdHistory {
   return {
     household: toHousehold(rows.household),
     block: toBlock(rows.block),
     visits: rows.visits.map(toVisit),
+    answered: rows.answered,
+    pagination,
     followUps: rows.followUps.map(toFollowUp),
   };
 }

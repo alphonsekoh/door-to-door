@@ -59,7 +59,7 @@ change; no app code.
   runs on Node 24 (the Dockerfile's `node:24-alpine`, CI's `NODE_VERSION`). #174 offered
   26, whose types admit APIs Node 24 lacks. Not bumped here: 20 to 24 comes in the next
   npm-major group PR, with eslint 10, vitest 5 and jsdom 31. It lands only when that
-  whole group passes. _Research:_ R-168.
+  whole group passes. _Research:_ R-168. _Taken in #187 (D-187-3, D-187-6)._
 - **D-166-11 · These two ignores hold back security updates too. Extends D-118-7.** The
   file's "Security updates are not held back" is true of the cooldown only. _Why:_
   acceptable for a dev-only compiler and a types-only package. _Research:_ R-168, R-95.

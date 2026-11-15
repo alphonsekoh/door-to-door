@@ -31,8 +31,9 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 **Members**
 
 - Pick a block from the running session and record units: unit number, interest level,
-  and optionally name, contact, religion and notes. The unit's earlier visits and
-  outstanding follow-ups show as soon as its number is typed.
+  and optionally name, contact, religion and notes. The unit's latest 20 visits and
+  outstanding follow-ups show as soon as its number is typed, and older visits are a tap
+  away.
 - Join the session and pair up in a team; teammates see and amend each other's records.
 - Amend their own (and their team's) records while the session runs.
 - Review their own history, or their team's, with the blocks and sessions they worked.
@@ -76,7 +77,8 @@ offline (D-33-13).
 
 ### Requirements
 
-- Node.js 20+ (CI and the Docker image use 24) and npm 10+
+- Node.js 24.15+ or 22.22.2+, which the test tools need (CI and the Docker image use 24),
+  and npm 10+
 - PostgreSQL 17, either through Docker Desktop (`docker compose`) or installed natively
 - `psql`, to create databases when not using Docker (it ships with PostgreSQL)
 

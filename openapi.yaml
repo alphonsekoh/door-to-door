@@ -85,9 +85,9 @@ info:
 
     ## Paging
 
-    List operations take `limit` (at most 100) and `offset` (at most 10,000).
-    To read a whole list, ask again from `offset` plus the rows received until
-    `hasMore` is false.
+    List operations, and the visits of `GET /households/{id}`, take `limit`
+    (at most 100) and `offset` (at most 10,000). To read a whole list, ask
+    again from `offset` plus the rows received until `hasMore` is false.
 
     ## Caching
 
@@ -659,18 +659,34 @@ components:
 
     HouseholdHistory:
       description: |
-        A unit's full timeline. This is what a member sees before knocking, and
-        the reason the household/visit split exists.
+        A unit's timeline, a page of its visits at a time. This is what a
+        member sees before knocking, and the reason the household/visit split
+        exists. Only `visits` is paged: `household`, `block`, `answered` and
+        `followUps` are whole on every page.
       type: object
       additionalProperties: false
-      required: [household, block, visits, followUps]
+      required: [household, block, visits, answered, followUps, pagination]
       properties:
         household: { $ref: "#/components/schemas/Household" }
         block: { $ref: "#/components/schemas/Block" }
         visits:
           type: array
-          description: Oldest first, so the interest trajectory reads left to right.
+          maxItems: 100
+          description: |
+            One page of the unit's visits, newest first: by `createdAt`, then
+            `id`, both descending, so visits stored at the same instant keep
+            one order across pages. `pagination.total` counts every visit
+            here. Visits are never removed, so one stored between two reads
+            can make the next page repeat a visit, never skip one: keep each
+            once, by `id`.
           items: { $ref: "#/components/schemas/Visit" }
+        answered:
+          type: boolean
+          description: |
+            Some visit here, on any page, recorded an answer: an interest
+            level other than `no_response`. A client showing one page can
+            still tell a door nobody has opened from one that gave no name.
+        pagination: { $ref: "#/components/schemas/PaginationMeta" }
         followUps:
           type: array
           description: |
@@ -2320,19 +2336,27 @@ paths:
     get:
       tags: [Households]
       operationId: getHouseholdHistory
-      summary: Get a unit's full history
+      summary: Get a unit's history, a page of visits at a time
       description: |
-        Every visit and follow-up for this unit, across all sessions and
-        members. Shown before a member knocks — the whole point of the app.
-        Includes pending suggestions, so the next member sees one is waiting;
-        removed notes are left out.
-      parameters: [{ $ref: "#/components/parameters/PathId" }]
+        Every follow-up for this unit, and a page of its visits, newest first,
+        across all sessions and members. Shown before a member knocks — the
+        whole point of the app. Includes pending suggestions, so the next
+        member sees one is waiting; removed notes are left out.
+
+        For older visits, ask again from `offset` plus the visits received
+        (see "Paging"). An `offset` past the last visit answers with no
+        visits, and with the unit and its notes as on any page.
+      parameters:
+        - $ref: "#/components/parameters/PathId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
       responses:
         "200":
-          description: The unit's timeline.
+          description: The unit, its notes, and a page of its visits.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HouseholdHistory" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "404": { $ref: "#/components/responses/NotFound" }
 

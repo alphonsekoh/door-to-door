@@ -15,6 +15,7 @@ import {
   householdAction,
   waitingLabel,
 } from "@/lib/follow-ups/rights";
+import { historyPath } from "@/lib/households/history-pages";
 import { useActiveSession } from "@/lib/hooks/use-active-session";
 import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -26,7 +27,8 @@ type State =
   | { status: "error"; message: string };
 
 /*
- * A unit's full timeline, reached from a history record or a follow-up note.
+ * A unit's timeline, reached from a history record or a follow-up note: the
+ * newest page of visits, and older ones a tap away in the panel (#160).
  *
  * Deliberately not scoped to the caller: the whole point of the household/visit
  * split is that you arrive knowing what everyone before you learned. A member's
@@ -44,7 +46,7 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
   const load = useCallback(async () => {
     const mine = ++generation.current;
     try {
-      const history = await apiFetch<HouseholdHistory>(`/households/${householdId}`);
+      const history = await apiFetch<HouseholdHistory>(historyPath(householdId));
       if (mine === generation.current) setState({ status: "ready", history });
     } catch (error) {
       /* A failed re-read after a change keeps the unit on screen, so a late
@@ -99,8 +101,8 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
   }
 
   const { household, block, visits, followUps } = state.history;
-  /* Oldest first, so the last one is the latest knock. */
-  const latest = visits.at(-1);
+  /* Newest first, so the first is the latest knock. */
+  const latest = visits[0];
   const action = householdAction(followUps, { userId, isAdmin });
 
   return (
@@ -159,6 +161,7 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
       )}
 
       <HouseholdHistoryPanel
+        key={household.id}
         history={state.history}
         active={active}
         onChanged={reload}
