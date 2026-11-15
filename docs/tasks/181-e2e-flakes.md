@@ -54,11 +54,11 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   (`active === null`), and so does its loading screen. Once the session has answered, a
   generic title (a block outside the session) is the screen's own and wraps as before.
   The heading's accessible name stays whole. Refines D-111-25, D-111-35 and D-111-54.
-  Cutting it under 12ch is an exception to D-111-37 that waits on the owner (Open
-  questions). _Why:_ at the 32px root, "Record a visit" set on two lines wherever it was
+  Cutting it under 12ch is an exception to D-111-37, which the owner accepted on
+  2026-11-15. _Why:_ at the 32px root, "Record a visit" set on two lines wherever it was
   wider than the title column. It gave a line back as "Blk 123" arrived, and the form
-  moved 48px up under a press (D-181-7). _Not taken:_ shorter copy, which is the owner's
-  call. _Research:_ R-192.
+  moved 48px up under a press (D-181-7). _Not taken:_ shorter copy; the owner accepted
+  the cut instead. _Research:_ R-192.
 - **D-181-7 · Cause of `large-text:369`: the session answered during the press on Add
   details, and the button moved out from under it.** In CI's trace the press began with
   the title on two lines and the page at scrollTop 664. The session answered about 1ms
@@ -91,7 +91,7 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   320px screen, and "Record a…" in the system font at 320px or in DejaVu at 390px. It
   stays cut until the session answers, and for good when no session runs (404) or the
   request fails. The sweep misses this because `expectFits` keeps polling until
-  "Blk 123" arrives (Open questions).
+  "Blk 123" arrives. The owner accepted it on 2026-11-15 (D-181-6).
 - **A block name too wide for one line still moves the form as it arrives**, now the
   other way. `openapi.yaml` allows names of 16 characters. At 32px on a 320px screen,
   "Blk 268C" takes about 166px of bold DejaVu in a column about 160px wide (reviewer's
@@ -115,7 +115,7 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   - In a follow-up session at 32px, the unit field drops 170px as the session answers
     and ends half under the docked Save. The "Follow-up session" notice arrives with no
     room kept for it. This is D-181-7's mechanism with a bigger shift, older than #181
-    and not in #196. It needs an issue (verifier).
+    and not in #196. Filed as #200 (verifier).
   - A block tapped before its route's prefetch lands can show an empty main instead of
     "Loading the block…" (Chromium, 2 of 11 probe runs; verifier).
 
@@ -130,9 +130,9 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
 | D-125-18 | Followed: read after signing in through the form, as `signInThroughForm`   | D-181-4 |
 | D-37-4   | Kept: no waits or retries; a held answer is released by the test           | D-181-8 |
 | D-181-5  | Refined: a cause found and fixed; `:376` unchanged, #181 open              | D-181-7 |
-| D-111-25 | Refined: the stand-in title is one line, cut if need be (owner to confirm) | D-181-6 |
+| D-111-25 | Refined: the stand-in title is one line, cut if need be (owner)            | D-181-6 |
 | D-111-35 | Refined: the stand-in does not break a long word                           | D-181-6 |
-| D-111-37 | Exception pending the owner: the stand-in cut under 12ch                   | D-181-6 |
+| D-111-37 | Exception, accepted by the owner: the stand-in cut under 12ch              | D-181-6 |
 | D-111-54 | Its reason now holds in CI's font too: the stand-in no longer wraps        | D-181-6 |
 | D-111-65 | Extended: the form holds still as the block's name arrives                 | D-181-8 |
 | D-136-13 | Applied: the `:613` reading corrected above                                | —       |
@@ -147,10 +147,3 @@ D-111-66, D-119-33, D-125-4, D-125-12, D-125-18, D-136-13.
 - **The signed-out landing.** If the queue's check is answered first, a member whose
   sign-in was ended reaches the sign-in page without being told why. Is that acceptable,
   or should that path show the signed-out note too?
-- **D-181-6's cut stand-in (reviewer).** D-111-25 says "Title rows and sheet headers
-  wrap", D-111-35 says "Page titles break a long word", and D-111-37 counts "a column
-  under 12ch cut short" as a fault. The stand-in now reads "Recor…" at 32px on a 320px
-  screen in DejaVu Sans, and stays cut while no session answers. Accept it as an
-  exception to the 12ch rule for a title that stands in for one not yet known, or
-  reject it? Shorter copy is the other way out. Not blocking: every alternative found
-  costs more.
