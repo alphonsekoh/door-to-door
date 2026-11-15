@@ -11,9 +11,9 @@ type PageHeaderProps = {
      high, like the recording form above the pinned Save. */
   inline?: boolean;
   /* The title stands in for one the screen has yet to learn, as the block
-     screen's does until the session answers. Held to one line, as the
-     title that replaces it is: two lines tall at large text, it gave one
-     back as the block's name arrived, and the form jumped under a tap. */
+     screen's does until the session answers. Held to one line, as a short
+     block name is: two lines tall at large text, it gave one back as the
+     block's name arrived, and the form jumped under a tap. */
   standIn?: boolean;
 };
 

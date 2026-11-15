@@ -190,9 +190,8 @@ describe("BlockScreen", () => {
         : Promise.resolve(list([])),
     );
     render(<BlockScreen blockId="b1" />);
-    await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
-    });
+    // "Save and next" is drawn only once the 404 has landed.
+    expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
     expect(screen.getByLabelText("Unit number")).toBeInTheDocument();
     expect(screen.getByText("One unit at a time.")).toBeInTheDocument();
     // Still standing in: a save asks again, and a running session names it.
