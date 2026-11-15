@@ -1,6 +1,6 @@
 # #131 · CI and agent tooling hygiene
 
-- **Status:** In progress (branch `chore/131-ci-hygiene`)
+- **Status:** Done (PR #173)
 - **Phase:** 7 - Hardening
 - **Depends on:** #118, PR #142
 

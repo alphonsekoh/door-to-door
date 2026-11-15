@@ -1,6 +1,6 @@
 # #160 · Page a unit's history (`GET /households/{id}`)
 
-- **Status:** In progress (PR #190)
+- **Status:** Done (PR #190)
 - **Phase:** 7 - Hardening
 - **Depends on:** #126, #155, #164
 

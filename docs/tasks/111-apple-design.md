@@ -441,7 +441,8 @@ and D-111-21; the owner rejected both (D-111-61).
   wrapped height was rejected: it needs a hidden second copy of the text, which breaks
   the tests that find the row by its text. _Refined by D-111-63:_ compact on a short
   screen, with a ring edge. _See D-136-4:_ `hold-text`'s copy is in no text a test
-  reads; whether to hold this line is an open question in #136.
+  reads, so it could hold this line; the owner left it unheld for a later change
+  (2026-11-15, #136).
 - **D-111-54 · The way back is 44px or the chevron's width, whichever is more.** The
   back link is at least 44×44, and the inline header's first column is no longer held at
   2.75 reader-rems. Refines D-111-25 and D-111-28. _Why:_ at 32px that column was 88px
@@ -485,7 +486,7 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   D-111-24's `--nav-height` clause; refines D-111-25 and D-111-20. Answers round 6's
   second open question. _Why:_ at 32px the nav and Save bar alone took 43% of an iPhone
   13's screen and put the unit field under Save. _Research:_ R-74, R-75, R-76.
-  _Extended by D-136-1 (pending the owner):_ every sheet's `SheetActions`, whose note
+  _Extended by D-136-1 (owner, 2026-11-15):_ every sheet's `SheetActions`, whose note
   keeps the text size (D-136-2).
 - **D-111-61 · D-33-12 stands as it is (owner).** The sync row is held from the first
   paint on every signed-in page at every size, and the waiting bar stays pinned while

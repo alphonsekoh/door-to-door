@@ -1,6 +1,6 @@
 # #187 · Vitest 5, ESLint 10, jsdom 31 and @types/node 24 (Dependabot #183)
 
-- **Status:** In progress (branch `chore/187-vitest-5`, no PR yet)
+- **Status:** Done (PR #198)
 - **Phase:** 7 - Hardening
 - **Depends on:** #166, #124
 
