@@ -27,8 +27,8 @@ auth:
   # deployment, so the cookies stay Secure even when the proxy forgets to send
   # X-Forwarded-Proto: https. Set it false only for a plain-http run: Safari
   # on localhost, or a phone on the LAN, will not keep a Secure cookie over
-  # http, so sign-in would say "Email or password is incorrect." even for the
-  # right password (MissingCSRF in the server log). Default: true.
+  # http, so sign-in would say "This page expired. Reload it and try again."
+  # however often it is reloaded (MissingCSRF in the server log). Default: true.
   secureCookies: true
 
   # Google sign-in. Set it to offer "Sign in with Google" above the email

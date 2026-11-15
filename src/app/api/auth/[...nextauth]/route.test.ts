@@ -31,6 +31,21 @@ afterEach(async () => {
 
 const ORIGIN = "http://127.0.0.1:3210";
 
+/* A token and the cookie that backs it, as the form's first request gets them. */
+async function freshCsrf(): Promise<{ csrfToken: string; cookie: string }> {
+  const csrf = await GET(new NextRequest(`${ORIGIN}/api/auth/csrf`));
+  const { csrfToken } = (await csrf.json()) as { csrfToken: string };
+  const cookie = csrf.headers
+    .getSetCookie()
+    .map((set) => set.split(";")[0])
+    .join("; ");
+  return { csrfToken, cookie };
+}
+
+/* Over-long, so it is refused before the limiter or the database, with a line
+   of its own from the credentials check. */
+const OVERLONG_EMAIL = `${"a".repeat(MAX_EMAIL_LENGTH)}@example.com`;
+
 describe("auth catch-all route", () => {
   it("answers GET with Auth.js's CSRF token, no-store", async () => {
     const response = await GET(new NextRequest(`${ORIGIN}/api/auth/csrf`));
@@ -82,23 +97,13 @@ describe("what it logs (#128)", () => {
   });
 
   it("writes a refused sign-in once: the sign-in log's line, not Auth.js's CredentialsSignin", async () => {
-    const csrf = await GET(new NextRequest(`${ORIGIN}/api/auth/csrf`));
-    const { csrfToken } = (await csrf.json()) as { csrfToken: string };
-    const cookie = csrf.headers
-      .getSetCookie()
-      .map((set) => set.split(";")[0])
-      .join("; ");
+    const { csrfToken, cookie } = await freshCsrf();
 
-    // Over-long, so it is refused before the limiter or the database.
     const response = await POST(
       new NextRequest(`${ORIGIN}/api/auth/callback/credentials`, {
         method: "POST",
         headers: { "content-type": "application/x-www-form-urlencoded", cookie },
-        body: new URLSearchParams({
-          csrfToken,
-          email: `${"a".repeat(MAX_EMAIL_LENGTH)}@example.com`,
-          password: "wrong",
-        }),
+        body: new URLSearchParams({ csrfToken, email: OVERLONG_EMAIL, password: "wrong" }),
       }),
     );
 
@@ -106,5 +111,37 @@ describe("what it logs (#128)", () => {
     expect(written).toEqual([
       "Sign-in refused: an email or password longer than any account can have",
     ]);
+  });
+
+  /*
+   * The form sends a CSRF refusal again by itself (#151), and tells it apart
+   * from a refused password by this type. Both rest on Auth.js refusing it
+   * before the credentials check runs: no budget is charged, and the answer
+   * is the same whoever the email belongs to.
+   */
+  it("refuses a token its cookie does not back as MissingCSRF, before reading the credentials", async () => {
+    const [page, stale] = await Promise.all([freshCsrf(), freshCsrf()]);
+
+    const response = await POST(
+      new NextRequest(`${ORIGIN}/api/auth/callback/credentials`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/x-www-form-urlencoded",
+          // As next-auth/react's signIn sends it, for an answer it can read.
+          "x-auth-return-redirect": "1",
+          cookie: stale.cookie,
+        },
+        body: new URLSearchParams({
+          csrfToken: page.csrfToken,
+          email: OVERLONG_EMAIL,
+          password: "wrong",
+        }),
+      }),
+    );
+
+    const { url } = (await response.json()) as { url: string };
+    expect(new URL(url).searchParams.get("error")).toBe("MissingCSRF");
+    // No line from the credentials check: it never ran.
+    expect(written).toEqual(["[auth][error] MissingCSRF"]);
   });
 });
