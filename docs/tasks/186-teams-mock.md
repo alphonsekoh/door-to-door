@@ -1,7 +1,6 @@
 # #186 · A late teams request in the block-screen tests
 
-- **Status:** In progress (no PR yet), with #176 on one branch
-  (`test/176-186-block-screen-guards`)
+- **Status:** Done (PR #189), with #176
 - **Phase:** 7 - Hardening
 - **Depends on:** #74
 

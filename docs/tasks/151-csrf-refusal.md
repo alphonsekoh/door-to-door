@@ -1,6 +1,6 @@
 # #151 · A refused CSRF check is not a wrong password
 
-- **Status:** In progress (no PR yet)
+- **Status:** Done (PR #184)
 - **Phase:** 7 - Hardening
 - **Depends on:** #15, #120, #122, #128
 
@@ -26,7 +26,8 @@ authorization code changed.
 - **D-151-2 · Only when the resend is refused for CSRF too does the form say "This page
   expired. Reload it and try again." (owner).** A resend refused on the credentials gets
   the generic message. _Why:_ a phone that keeps no CSRF cookie would be refused every
-  time. A reload brings a new page and cookie.
+  time. A reload brings a new page and cookie. _Kept by the owner (2026-11-15):_ the
+  same words in the installed app, which has no reload button (PR #184 asked).
 - **D-151-3 · Every refusal about an account keeps D-15-1's one message (owner).** That
   covers a wrong password, an unknown, deactivated or Google-only email, and a spent
   budget (the ruling's "locked"). D-15-1 is kept, with its scope stated: it covers
@@ -136,4 +137,6 @@ D-122-12 (refined), D-128-2, D-128-4, D-129-5, D-164-2, D-164-5, D-164-6, D-164-
 
 ## Open questions
 
-None. The owner's ruling of 2026-11-13 settled the issue's "decide later".
+None. The owner's ruling of 2026-11-13 settled the issue's "decide later". On
+2026-11-15 the owner answered PR #184's question, whether "Reload it" fits the
+installed app, by keeping D-151-2's wording as built.

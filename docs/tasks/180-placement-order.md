@@ -1,6 +1,6 @@
 # #180 · Team placement: id order, session lock, one id in two cases
 
-- **Status:** In progress (no PR yet)
+- **Status:** Done (PR #188)
 - **Phase:** 7 - Hardening
 - **Depends on:** #74, #132, #158
 
@@ -48,7 +48,7 @@ change.
   `openapi.yaml` already declares for those states, in D-74-14's order (`404`, `403`,
   then `409`), and a `409` means nothing for a team that no longer exists. Before
   #180, a disband landing between the unlocked read and the insert was a `500` from the
-  foreign key (`23503`). Owner to confirm (Open questions).
+  foreign key (`23503`). _Accepted as built by the owner (2026-11-15)._
 - **D-180-6 · Lock order, refining D-158-5.** Users `FOR SHARE` in id order; the
   session `FOR KEY SHARE` (an add's statement locks its team, then the session); for a
   member's add, their membership `FOR KEY SHARE`; then the plain reads, the team
@@ -111,8 +111,6 @@ D-126-3, D-132-5, D-132-8, D-158-2 to D-158-9.
 
 ## Open questions
 
-- **D-180-5 (owner to confirm).** The issue asks that an add which waited on a team
-  change be refused "with the existing 409". The PR answers `404` after a disband and
-  `403` after the caller's removal, the refusals the contract already gives those
-  states. A `409` there would break D-74-14's order, where a missing team is `404` and
-  a non-member `403`.
+None. The owner accepted D-180-5 as built on 2026-11-15: an add that waited on a
+disband is `404`, and one whose member caller was removed is `403`, not the issue's
+`409`, keeping D-74-14's order.

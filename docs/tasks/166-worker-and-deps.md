@@ -1,6 +1,6 @@
 # #166 · Worker state flake, and Dependabot #174 and #175
 
-- **Status:** In progress (branch `chore/166-deps-and-pwa-worker`, no PR yet)
+- **Status:** Done (PR #182). Dependabot #175 merged after it; Dependabot closed #174.
 - **Phase:** 7 - Hardening
 - **Depends on:** #32, #33, #77, #118, #131
 
