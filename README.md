@@ -77,7 +77,8 @@ offline (D-33-13).
 
 ### Requirements
 
-- Node.js 20+ (CI and the Docker image use 24) and npm 10+
+- Node.js 24.15+ or 22.22.2+, which the test tools need (CI and the Docker image use 24),
+  and npm 10+
 - PostgreSQL 17, either through Docker Desktop (`docker compose`) or installed natively
 - `psql`, to create databases when not using Docker (it ships with PostgreSQL)
 
