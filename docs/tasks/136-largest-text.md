@@ -107,7 +107,8 @@ only: no contract or schema change.
   "may mean its body passed". The test is now `:640`, with no mark. `:369`, now `:376`,
   passed 40 of 40 on macOS WebKit at `dff2daf`. #136 changes nothing it opens, so it
   exposes no cause. The PR says `Refs #181`. _Why:_ with no cause found, any change
-  would be a guess or a wait (D-181-5). _Research:_ R-183.
+  would be a guess or a wait (D-181-5). _Research:_ R-183. _See D-181-7:_ CI's trace
+  later showed the cause, in the block screen's stand-in title.
 
 ### How existing decisions are handled
 
@@ -141,18 +142,19 @@ only: no contract or schema change.
   sent." or a note's suffix can still grow the line.
 - In a door-to-door session at 32px, the unit field drops 48px when the send lands and
   "Suggest a return visit" appears beside the words, since nothing is held then. On
-  both engines the line grows from 114px to 162px. Main dropped it further. Worth an
-  issue of its own (verifier); none has been filed yet.
+  both engines the line grows from 114px to 162px. Main dropped it further. Filed as
+  #196's item 2.
 - `WholeWords` covers only the marked-done text. Other "follow-up" words, such as the
   "Add to the follow-up list" and "Edit follow-up" sheet titles, can still break at the
   hyphen, and no check covers them.
 - In Add households at 32px on WebKit, a focused checkbox clears the bar but its tile
   runs about 64px under it. The scroll target is the input (D-119-22). Main was worse.
 - Found outside #136 and not touched here; the PR should list them:
-  - On CI's Linux WebKit at 32px, "Record a visit" wraps before the session loads,
-    against D-111-54.
-  - For #181: CI's screenshot of `:369` shows "Add details" never opened, with Save and
-    next already live. This was not followed up.
+  - ~~On CI's Linux WebKit at 32px, "Record a visit" wraps before the session loads,
+    against D-111-54.~~ Resolved by D-181-6 (#196's item 1).
+  - ~~For #181: CI's screenshot of `:369` shows "Add details" never opened, with Save and
+    next already live. This was not followed up.~~ Followed up in D-181-7: the session
+    answered during the press, and the button moved out from under it.
 - Not run on a real phone: Dynamic Type with SF metrics, a sheet with the software
   keyboard up, and VoiceOver on the live region. These are checks for the owner.
 

@@ -2108,3 +2108,45 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
   #136 reviewer r2, not re-measured by the docs step
 - **Used by:** D-136-3 (known limit)
+
+### R-190 · CI's trace of `large-text:369`: the session answered 1ms into the press on Add details
+
+- **Finding:** in CI run 43375997037 on mobile-webkit, Playwright pressed Add details at
+  (121, 460) from 262317.6 to 262352.8ms, with the page at scrollTop 664 and "Record a
+  visit" on two lines. `/api/sessions/active` answered at 262318.7ms, the households
+  at 262342.1ms, and the teams request went out at 262336.2ms, so the session was drawn
+  before the release. The snapshot after the click, 46ms after the press began, has
+  "Blk 123" on one line and scrollTop 634. Rendered with CI's CSS in DejaVu Sans, the
+  header goes from 136 to 88px and the page from 1328 to 1280. The press point then
+  falls about 4px under the button's foot if the header shrinks before the scroll is
+  clamped, and stays on it in every other order. A clamp at once would leave 616, so 634
+  fits only a release while the scroll was unclamped. The 18px between them came with a
+  later answer, most likely the units' ("All units (0)" became "(38)"). macOS WebKit
+  clamps in the same layout (builder), so it never missed here.
+- **Source:** CI run 43375997037's trace (`0-trace.trace`, `0-trace.network`,
+  snapshots `input@call@1354` and `after@call@1354`); measured with DejaVu Sans served
+  from the app's origin (R-182) by the #181 builder, reviewer r0 and verifier r0
+- **Used by:** D-181-7
+
+### R-191 · Playwright checks a click's hit target only at its first pointer event
+
+- **Finding:** `setupHitTargetInterceptor` sets its result only while it is still
+  undefined, on the first trusted pointer event of the action that has a point. Later
+  events, the release and the click among them, are blocked only if that first check
+  failed. So an element that moves between press and release takes neither the release
+  nor the click, and the action still reports success.
+- **Source:** `node_modules/playwright-core/lib/coreBundle.js`, `setupHitTargetInterceptor`
+  (1.65.0, read by #181 reviewer r0 and the docs step). CI's run used 1.62.1, not
+  re-read.
+- **Used by:** D-181-7
+
+### R-192 · At the 32px root, "Record a visit" needs two lines in DejaVu Sans, and in any font at 320px
+
+- **Finding:** set in `text-title` bold in the inline header's title column, "Record a
+  visit" fits one line in the macOS system font at 390 and 393px. It takes two in
+  DejaVu Sans at 390px (CI's iPhone 13) and in both fonts at 320px. Held to one line it
+  reads "Recor…" in DejaVu at 320px and "Record a…" in the system font at 320px or in
+  DejaVu at 390px. The header is 88px in every state once the stand-in is one line.
+- **Source:** measured (#181 builder renders at 320 and 390px in both fonts; verifier r0
+  on both projects, with DejaVu Sans served from the app's origin, R-182)
+- **Used by:** D-181-6, D-181-8
