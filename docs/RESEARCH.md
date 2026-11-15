@@ -2022,9 +2022,11 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Finding:** `mockClear`, which `vi.clearAllMocks` calls, clears a mock's calls and
   results but keeps its implementations, including any queued with
   `mockResolvedValueOnce`. `mockReset` also resets "all 'once' implementations".
-- **Source:** `@vitest/spy` (Vitest 4.1.11) `dist/index.d.ts`, the `mockReset` doc
-  comment
-- **Used by:** D-151-11
+  Vitest 5's default `clearMocks` (R-185) calls the same `mockClear`, so it keeps them
+  too, and D-151-11's `mockReset` is still needed.
+- **Source:** `@vitest/spy` 5.1.0 (first read on 4.1.11) `dist/index.d.ts`,
+  the `mockClear` ("does not reset implementations") and `mockReset` doc comments
+- **Used by:** D-151-11, D-187-1
 
 ### R-179 · A multi-row INSERT waits mid-statement on an uncommitted unique key, so opposite orders deadlock (measured)
 
@@ -2108,3 +2110,69 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
   #136 reviewer r2, not re-measured by the docs step
 - **Used by:** D-136-3 (known limit)
+
+### R-185 · Vitest 5 clears every mock's calls before each test, including those made as a module loaded
+
+- **Finding:** Vitest 5 turns `clearMocks` on by default (4.1.11: off). The runner calls
+  `vi.clearAllMocks()` in `onBeforeTryTask`, before the test's `beforeEach` hooks. So
+  calls recorded at a module's top level, in a setup file or in `beforeAll` are gone when
+  the test reads them. Implementations stay (R-178). Setting `clearMocks: false` restores
+  Vitest 4's behaviour.
+- **Source:** [Vitest migration guide](https://vitest.dev/guide/migration), "`clearMocks`
+  is Enabled by Default"; `vitest` 5.1.0 `dist/chunks/defaults.B1FCaFfh.js`
+  (`clearMocks: true`; 4.1.11's `defaults.9aQKnqFk.js` has `false`), the `clearMocks`
+  doc comment (`@default true`) in `dist/chunks/plugin.d.LRFSN46m.d.ts`, and
+  `clearModuleMocks` in `dist/chunks/index.CZzC1gGg.js`, called before `beforeEach` in
+  `dist/chunks/run.CjdgFZiW.js`
+- **Used by:** D-187-1, D-187-2
+
+### R-186 · Vitest 5's other breaking changes leave this repo's config as it is (measured)
+
+- **Finding:** inline projects now extend the root config by default (`extends: true` was
+  already set on all three) and share the root's Vite server unless they change Vite
+  options. Coverage `include` and `exclude` now match paths relative to the root,
+  without `contains`; the report still lists the same files as `git ls-files` minus the
+  exclusions. Glob thresholds no longer inherit a top-level `perFile`, and none is set. A
+  `vi.mock` or `vi.hoisted` below the top level now throws, and an unawaited async
+  assertion or a late `expect.poll` fails; the suites pass, so none does either.
+- **Source:** [Vitest migration guide](https://vitest.dev/guide/migration), the sections
+  named; measured (#187 builder)
+- **Used by:** D-187-4
+
+### R-187 · ESLint 10 under eslint-config-next 16.4.5: three plugins' peers stop at 9, their rules still run
+
+- **Finding:** eslint-config-next 16.4.5 nests eslint-plugin-react 7.37.5 (`eslint` peer
+  `… || ^9.7`), eslint-plugin-import 2.32.0 (`… || ^9`) and eslint-plugin-jsx-a11y 6.10.2
+  (`… || ^9`), so `npm ls eslint` marks 10.14.0 invalid. `npm ci` installs the lockfile
+  anyway. The config wraps react and import in its own `fixupPluginRules`;
+  eslint-plugin-react-hooks 7.1.1 takes `^10.0.0`. Their rules, and the repo's own, still
+  report under 10.14.0. ESLint 10 drops eslintrc and Node below 20.19, and looks up the
+  config from each linted file; the repo's flat `eslint.config.mjs` at the root needs no
+  change.
+- **Source:** each plugin's `package.json`; `eslint-config-next` `dist/index.js` and
+  `dist/rule-context.js`; `npm ls eslint`; ESLint's "Migrate to v10.x" guide; measured
+  (#187 builder and reviewer, linting probe code from stdin)
+- **Used by:** D-187-4, D-187-5
+
+### R-188 · Node floors: Vitest 5 22.12, ESLint 10 20.19, jsdom 31 22.22.2 or 24.15; the pinned `node:24-alpine` is 24.22.3
+
+- **Finding:** `engines.node` is `^22.12.0 || ^24.0.0 || >=26.0.0` for vitest 5.1.0,
+  `^20.19.0 || ^22.13.0 || >=24` for eslint 10.14.0 and `^22.22.2 || ^24.15.0 || >=26.0.0`
+  for jsdom 31.0.0, the tightest. Node 20 is out. The Dockerfile's index digest
+  `sha256:116b800c…` is Node 24.22.3, so the dev container meets jsdom's floor.
+- **Source:** each package's `package.json`; the Vitest migration guide's prerequisites;
+  docker-library/repo-info `repos/node/remote/24-alpine.md` at `3912a4a` (2026-11-12),
+  whose `NODE_VERSION` for that digest is 24.22.3, read with `gh api`. The registry was
+  not queried: a local hook blocks curl to it, as for R-147.
+- **Used by:** D-187-6
+
+### R-189 · jsdom 31's breaking changes need nothing here (measured)
+
+- **Finding:** jsdom 31 moves canvas to `@napi-rs/canvas`, replaces its CSS engine
+  (computed styles and serialisation can differ) and pauses parsing at blocking scripts.
+  Focus now leaves an element that stops being focusable, asynchronously. Every
+  component test passes unchanged. `@types/node` 24 needed no change to typecheck
+  either.
+- **Source:** [jsdom 31.0.0 release notes](https://github.com/jsdom/jsdom/releases/tag/v31.0.0);
+  measured (#187 builder: `npm test`, `npm run typecheck`)
+- **Used by:** D-187-4
