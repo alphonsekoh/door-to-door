@@ -69,4 +69,20 @@ describe("PageHeader, inline", () => {
     expect(screen.queryByRole("link")).toBeNull();
     expect(container.querySelector("p")).toBeNull();
   });
+
+  it("holds a title standing in for one not yet known to one line, and lets a known one wrap", () => {
+    const { rerender } = render(
+      <PageHeader title="Record a visit" subtitle="One unit at a time." inline standIn />,
+    );
+    // One line, as the block's name that replaces it is, so nothing below
+    // it moves as that name arrives.
+    const standIn = screen.getByRole("heading", { level: 1, name: "Record a visit" });
+    expect(standIn).toHaveClass("truncate");
+    expect(standIn).not.toHaveClass("break-words");
+
+    rerender(<PageHeader title="Blk 123" subtitle="Ang Mo Kio Ave 3" inline />);
+    const known = screen.getByRole("heading", { level: 1, name: "Blk 123" });
+    expect(known).toHaveClass("break-words");
+    expect(known).not.toHaveClass("truncate");
+  });
 });

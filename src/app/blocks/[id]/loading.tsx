@@ -13,6 +13,7 @@ export default function BlockLoading() {
         subtitle="One unit at a time."
         back={{ href: "/", label: "Session" }}
         inline
+        standIn
       />
       <p className="text-body text-foreground-muted">Loading the block…</p>
     </div>

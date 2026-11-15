@@ -250,7 +250,8 @@ export function BlockScreen({
   }, [sessionId, userId]);
 
   /* Named for the block, so a member moving between blocks can see where
-     the next Save lands. Generic only until the session has answered. */
+     the next Save lands. Generic only until the session has answered, and
+     until then on one line, so the form holds still as the name arrives. */
   const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
   /* Opened from a bookmark or a stale tab, a block the running session does
      not cover: nothing could be saved here, so no form is offered. */
@@ -278,6 +279,7 @@ export function BlockScreen({
         }
         back={{ href: "/", label: "Session" }}
         inline
+        standIn={active === null}
       />
 
       {error === null ? null : (
