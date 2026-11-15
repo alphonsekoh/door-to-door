@@ -1,7 +1,6 @@
 # #176 · The #155 probe in the real engines
 
-- **Status:** In progress (no PR yet), with #186 on one branch
-  (`test/176-186-block-screen-guards`)
+- **Status:** Done (PR #189), with #186
 - **Phase:** 7 - Hardening
 - **Depends on:** #155
 

@@ -1,6 +1,6 @@
 # #124 · Keep the dev stack out of production
 
-- **Status:** In progress
+- **Status:** Done (PR #179)
 - **Phase:** 7 - Hardening
 - **Depends on:** #5, #9, #16, #75, #122
 

@@ -21,6 +21,7 @@ const SESSION = "cdcdcdcd-0000-4000-8002-000000000001";
 
 let visitSeq = 0;
 const nextVisitId = () => `01960000-0000-7000-8000-${String(++visitSeq).padStart(12, "0")}`;
+const FIRST_PAGE = { limit: 100, offset: 0 };
 
 beforeEach(async () => {
   visitSeq = 0;
@@ -70,7 +71,7 @@ const record = (unit: string, extra: Record<string, unknown> = {}) =>
 describe("households accumulate", () => {
   it("creates the household on first contact", async () => {
     const visit = await record("#05-123", { name: "Mr Tan" });
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.household.unitNumber).toBe("#05-123");
     expect(history.household.name).toBe("Mr Tan");
   });
@@ -84,9 +85,9 @@ describe("households accumulate", () => {
     const second = await record("#05-123", { memberId: BEN, interestLevel: "high" });
 
     expect(second.householdId).toBe(first.householdId);
-    const history = await getHouseholdHistory(db, first.householdId);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
     expect(history.visits).toHaveLength(2);
-    expect(history.visits.map((v) => v.interestLevel)).toEqual(["low", "high"]);
+    expect(history.visits.map((v) => v.interestLevel)).toEqual(["high", "low"]);
   });
 
   it("treats the same unit number in another block as a different household", async () => {
@@ -118,7 +119,7 @@ describe("identity fields are latest-known", () => {
     const first = await record("#05-123");
     await record("#05-123", { name: "Mrs Lee", contact: "+65 9000 0000" });
 
-    const history = await getHouseholdHistory(db, first.householdId);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
     expect(history.household).toMatchObject({ name: "Mrs Lee", contact: "+65 9000 0000" });
   });
 
@@ -130,20 +131,20 @@ describe("identity fields are latest-known", () => {
     const first = await record("#05-123", { name: "Mr Tan", religion: "buddhist" });
     await record("#05-123", { name: null, contact: null, religion: null });
 
-    const history = await getHouseholdHistory(db, first.householdId);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
     expect(history.household).toMatchObject({ name: "Mr Tan", religion: "buddhist" });
   });
 
   it("leaves identity untouched when the field is simply omitted", async () => {
     const first = await record("#05-123", { name: "Mr Tan" });
     await record("#05-123");
-    const history = await getHouseholdHistory(db, first.householdId);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
     expect(history.household.name).toBe("Mr Tan");
   });
 
   it("records a household nobody answered, with nothing known", async () => {
     const visit = await record("#06-201", { interestLevel: "no_response" });
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.household).toMatchObject({ name: null, contact: null, religion: null });
   });
 });
@@ -154,15 +155,15 @@ describe("visits are never overwritten", () => {
     await record("#05-123", { interestLevel: "medium" });
     await record("#05-123", { interestLevel: "high" });
 
-    const history = await getHouseholdHistory(db, first.householdId);
-    expect(history.visits.map((v) => v.interestLevel)).toEqual(["low", "medium", "high"]);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
+    expect(history.visits.map((v) => v.interestLevel)).toEqual(["high", "medium", "low"]);
   });
 
-  it("orders history oldest first, so it reads left to right", async () => {
+  it("orders history newest first, so the first page is the latest knocks (#160)", async () => {
     const first = await record("#05-123", { description: "First" });
     await record("#05-123", { description: "Second" });
-    const history = await getHouseholdHistory(db, first.householdId);
-    expect(history.visits.map((v) => v.description)).toEqual(["First", "Second"]);
+    const history = await getHouseholdHistory(db, first.householdId, FIRST_PAGE);
+    expect(history.visits.map((v) => v.description)).toEqual(["Second", "First"]);
   });
 });
 
@@ -272,14 +273,14 @@ describe("amending a visit", () => {
   it("updates household identity through an amendment", async () => {
     const visit = await record("#05-123");
     await updateVisit(db, visit.id, { name: "Learned later" }, asMember(ALICE));
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.household.name).toBe("Learned later");
   });
 
   it("still refuses to erase identity through an amendment", async () => {
     const visit = await record("#05-123", { name: "Mr Tan" });
     await updateVisit(db, visit.id, { name: null, description: "x" }, asMember(ALICE));
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.household.name).toBe("Mr Tan");
   });
 
@@ -296,7 +297,7 @@ describe("amending a visit", () => {
       ),
     ).rejects.toThrow();
 
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.household).toMatchObject({ name: "Mr Tan", religion: null });
     expect(history.visits).toMatchObject([{ id: visit.id, interestLevel: "low" }]);
   });
@@ -396,14 +397,14 @@ describe("upsertHousehold", () => {
 
 describe("household history", () => {
   it("refuses an unknown household", async () => {
-    await expect(getHouseholdHistory(db, "cdcdcdcd-0000-4000-8003-00000000ffff")).rejects.toThrow(
-      NotFoundError,
-    );
+    await expect(
+      getHouseholdHistory(db, "cdcdcdcd-0000-4000-8003-00000000ffff", FIRST_PAGE),
+    ).rejects.toThrow(NotFoundError);
   });
 
   it("includes the block, so the screen can title itself", async () => {
     const visit = await record("#05-123");
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.block.name).toBe("123");
   });
 
@@ -414,7 +415,7 @@ describe("household history", () => {
        VALUES ($1,$2,'Sent the flyer',now(),$3)`,
       [visit.householdId, ALICE, BEN],
     );
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.followUps[0]?.authorName).toBe("Alice");
     expect(history.followUps[0]?.doneByName).toBe("Ben");
   });
@@ -425,7 +426,7 @@ describe("household history", () => {
       `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Todo')`,
       [visit.householdId, ALICE],
     );
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.followUps[0]).toMatchObject({ blockName: "123", unitNumber: "#05-123" });
   });
 
@@ -435,8 +436,148 @@ describe("household history", () => {
       `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Todo')`,
       [visit.householdId, ALICE],
     );
-    const history = await getHouseholdHistory(db, visit.householdId);
+    const history = await getHouseholdHistory(db, visit.householdId, FIRST_PAGE);
     expect(history.followUps[0]?.doneById).toBeNull();
+  });
+});
+
+describe("a page of the history (#160)", () => {
+  const HOUSEHOLD = "cdcdcdcd-0000-4000-8004-000000000001";
+  const TEAM = "cdcdcdcd-0000-4000-8005-000000000001";
+  const NOON = "2026-03-14T12:00:00.000Z";
+  const id = (n: number) => `01960000-0000-7000-8001-${String(n).padStart(12, "0")}`;
+
+  beforeEach(async () => {
+    await pool.query(`INSERT INTO households (id, block_id, unit_number) VALUES ($1,$2,'#07-07')`, [
+      HOUSEHOLD,
+      BLOCK,
+    ]);
+  });
+
+  async function visitAt(
+    n: number,
+    at: string,
+    options: { level?: string; team?: string } = {},
+  ): Promise<void> {
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, team_id, interest_level, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+      [id(n), HOUSEHOLD, SESSION, ALICE, options.team ?? null, options.level ?? "low", at],
+    );
+  }
+
+  const page = (limit: number, offset: number) =>
+    getHouseholdHistory(db, HOUSEHOLD, { limit, offset });
+
+  it("answers one bounded page of a unit with thousands of visits, newest first", async () => {
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       SELECT gen_random_uuid(), $1, $2, $3, 'low', $4::timestamptz - make_interval(secs => i)
+       FROM generate_series(1, 3000) AS i`,
+      [HOUSEHOLD, SESSION, ALICE, NOON],
+    );
+
+    const first = await page(100, 0);
+    expect(first.visits).toHaveLength(100);
+    expect(first.total).toBe(3000);
+    expect(first.visits[0]?.createdAt.toISOString()).toBe("2026-03-14T11:59:59.000Z");
+    const times = first.visits.map((visit) => visit.createdAt.getTime());
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+
+    const last = await page(100, 2900);
+    expect(last.visits).toHaveLength(100);
+    expect(last.visits.at(-1)?.createdAt.toISOString()).toBe("2026-03-14T11:10:00.000Z");
+  });
+
+  it("neither repeats nor skips a visit at a page boundary inside a run stored at one instant", async () => {
+    // Three runs, each stored at one instant and out of id order, so only the
+    // id can order a tie; the newest run has the middle ids.
+    const at = (n: number) =>
+      n <= 2 ? "2026-03-14T10:00:00.000Z" : n <= 7 ? NOON : "2026-03-14T11:00:00.000Z";
+    for (const n of [5, 9, 2, 7, 3, 10, 1, 6, 8, 4]) await visitAt(n, at(n));
+
+    const read: string[] = [];
+    for (let offset = 0; offset < 10; offset += 3) {
+      read.push(...(await page(3, offset)).visits.map((visit) => visit.id));
+    }
+    // Pages of three break inside the noon run (5 | 4) and the eleven o'clock one (10 | 9).
+    expect(read).toEqual([7, 6, 5, 4, 3, 10, 9, 8, 2, 1].map(id));
+    expect(new Set(read).size).toBe(10);
+  });
+
+  it("answers no visits past the last, with the unit and its notes as on any page", async () => {
+    await visitAt(1, NOON, { level: "medium" });
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Come back')`,
+      [HOUSEHOLD, ALICE],
+    );
+
+    const past = await page(20, 20);
+    expect(past.visits).toEqual([]);
+    expect(past).toMatchObject({
+      total: 1,
+      answered: true,
+      household: { id: HOUSEHOLD, unitNumber: "#07-07" },
+      block: { id: BLOCK, name: "123" },
+      followUps: [{ note: "Come back" }],
+    });
+  });
+
+  it("keeps the same notes on every page", async () => {
+    for (const n of [1, 2, 3]) await visitAt(n, `2026-03-1${String(n)}T12:00:00.000Z`);
+    await pool.query(
+      `INSERT INTO follow_ups (household_id, author_id, note, done_at, done_by)
+       VALUES ($1,$2,'Sent the flyer',now(),$3), ($1,$2,'Come back',null,null)`,
+      [HOUSEHOLD, ALICE, BEN],
+    );
+
+    const [first, second] = [await page(2, 0), await page(2, 2)];
+    expect(first.visits.map((visit) => visit.id)).toEqual([id(3), id(2)]);
+    expect(second.visits.map((visit) => visit.id)).toEqual([id(1)]);
+    expect(first.followUps.map((note) => note.note)).toEqual(["Sent the flyer", "Come back"]);
+    expect(second.followUps).toEqual(first.followUps);
+  });
+
+  it("says nobody has answered a unit with no visits", async () => {
+    expect(await page(20, 0)).toMatchObject({ visits: [], total: 0, answered: false });
+  });
+
+  it("says nobody has answered when every visit had no response", async () => {
+    await visitAt(1, NOON, { level: "no_response" });
+    await visitAt(2, "2026-03-15T12:00:00.000Z", { level: "no_response" });
+    expect(await page(20, 0)).toMatchObject({ total: 2, answered: false });
+  });
+
+  it("says the door answered when only a visit off the page did", async () => {
+    await visitAt(1, "2026-03-01T12:00:00.000Z", { level: "high" });
+    await visitAt(2, "2026-03-02T12:00:00.000Z", { level: "no_response" });
+    await visitAt(3, "2026-03-03T12:00:00.000Z", { level: "no_response" });
+
+    const newest = await page(2, 0);
+    expect(newest.visits.map((visit) => visit.interestLevel)).toEqual([
+      "no_response",
+      "no_response",
+    ]);
+    expect(newest.answered).toBe(true);
+  });
+
+  it("attaches the team of each visit on a later page", async () => {
+    await pool.query(
+      `INSERT INTO session_teams (id, session_id, name, created_by) VALUES ($1,$2,'Ann & Ben',$3)`,
+      [TEAM, SESSION, ADMIN],
+    );
+    await visitAt(1, "2026-03-01T12:00:00.000Z", { team: TEAM });
+    await visitAt(2, "2026-03-02T12:00:00.000Z");
+    await pool.query(`INSERT INTO visit_teammates (visit_id, user_id) VALUES ($1,$2)`, [
+      id(1),
+      BEN,
+    ]);
+
+    const older = await page(1, 1);
+    expect(older.visits).toMatchObject([
+      { id: id(1), team: { id: TEAM, name: "Ann & Ben", members: [{ id: BEN, name: "Ben" }] } },
+    ]);
+    expect((await page(1, 0)).visits).toMatchObject([{ id: id(2), team: null }]);
   });
 });
 

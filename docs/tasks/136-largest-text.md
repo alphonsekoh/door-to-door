@@ -1,7 +1,7 @@
 # #136 · Largest text: the Saved line, the next unit and a sheet's Send
 
-- **Status:** In progress (PR #191), on `fix/136-181-largest-text` with #181's
-  large-text part. The owner approved D-136-1 on 2026-11-15.
+- **Status:** Done (PR #191), with #181's large-text part. The owner approved D-136-1
+  on 2026-11-15.
 - **Phase:** 7 - Hardening
 - **Depends on:** #111, #117, #119
 

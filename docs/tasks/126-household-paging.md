@@ -30,7 +30,9 @@ from every member and from the offline copy. Both were found by a security audit
   Node does. Postgres still counts a household's visits with an index scan, which grows
   with them. "Bounded by the page" is per household: each latest visit still carries its
   team's whole teammate snapshot, and team size stays D-118-6's accepted exposure (`main`
-  loaded teammates for every visit). _Research:_ R-7, R-132, R-133.
+  loaded teammates for every visit). _Research:_ R-7, R-132, R-133. _Wording refined by
+  D-160-2:_ the history is now newest first, so its first visit, not its last, is the
+  list's latest.
 - **D-126-2 · Grouping by key pushes and never spreads.** `appendTo`
   (`src/server/db-utils.ts`) builds `attachTeams`' `matesByVisit` and `loadTeams`'
   `byTeam`. `listHouseholds` no longer groups visits at all. _Why:_ spreading into a new
@@ -45,7 +47,8 @@ from every member and from the offline copy. Both were found by a security audit
   stays uncapped (D-74-15). Household history passes every visit of a household to
   `attachTeams`. A service test places 22,000 members in one call. _Research:_ R-131.
   _Corrected by D-158-2:_ until #158 the checks ran before the transaction; they now run
-  inside it, with the user chunks sorted and locked in id order.
+  inside it, with the user chunks sorted and locked in id order. _Refined by D-160-5:_
+  household history now passes one page of visits, not every visit.
 - **D-126-4 · `readJsonBody` refuses a body over its operation's cap with
   `413 content_too_large`.** An all-digits `Content-Length` over the cap is refused before
   reading. Otherwise it counts bytes as it reads, and cancels the stream once past the
@@ -135,9 +138,11 @@ from every member and from the offline copy. Both were found by a security audit
   _Why:_ only the built server's proxy cuts bodies. With the sync cap raised above 2 MiB,
   the test gets `400`. _Research:_ R-108, R-130.
 - **D-126-13 · Scope cut.** These are not built: #127's server-side lookup of a typed
-  unit, admin removal or merging of junk households, a per-member cap on new households,
-  and paging `GET /households/{id}`, which is a contract change. _Why:_ reading every page
-  meets #127's criteria. Paging `GET /households/{id}` is #160 (owner, 2026-11-04).
+  unit, admin removal or merging of junk households, a per-member cap on new
+  households~~, and paging `GET /households/{id}`, which is a contract change~~. _Why:_
+  reading every page meets #127's criteria. Paging `GET /households/{id}` is #160 (owner,
+  2026-11-04). _Partly superseded by D-160-1 (#160):_ the history's visits are paged; the
+  rest of the cut stands.
 
 ### How existing decisions are handled
 
@@ -157,8 +162,9 @@ from every member and from the offline copy. Both were found by a security audit
 
 ## Known limits
 
-- `GET /households/{id}` still returns every visit, so typing a flooded unit fetches all
-  of them. It no longer fails at the bind limit (D-126-3). Paging it is #160.
+- ~~`GET /households/{id}` still returns every visit, so typing a flooded unit fetches all
+  of them. It no longer fails at the bind limit (D-126-3). Paging it is #160.~~ Closed by
+  D-160-1 (#160).
 - `stampVisit` inserts a team's snapshot in one statement, which would pass the bind limit
   at about 32,700 teammates.
 - In a block of more than 10,100 units, the later ones are never read. That read still
