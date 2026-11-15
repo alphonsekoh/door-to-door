@@ -147,7 +147,10 @@ describe("block screen", () => {
 describe("block screen while it loads", () => {
   it("answers the tap at once, with a way back", () => {
     render(<BlockLoading />);
-    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+    // On one line, as the screen it stands in for draws it.
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toHaveClass(
+      "truncate",
+    );
     expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
     expect(screen.getByText("Loading the block…")).toBeInTheDocument();
   });

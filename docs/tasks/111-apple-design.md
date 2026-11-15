@@ -219,7 +219,9 @@ round 8, and they are in the PR #112 body too.
   icon out of line. _Refined by D-111-35 and D-111-36:_ the 12ch rule covers every row,
   and unit numbers never split. _Refined by D-111-54:_ the back column is 44px or the
   chevron, whichever is more. _Refined by D-117-50:_ a sheet title keeps 12ch measured in
-  body text, not the title's larger size, before Cancel drops under it.
+  body text, not the title's larger size, before Cancel drops under it. _Refined by
+  D-181-6 (owner, 2026-11-15):_ the block screen's stand-in title, shown until the
+  session answers, is held to one line and may be cut short.
 
 - **D-111-26 · A refused Save says why, beside Save.** It uses one line in D-33-29's
   `role="alert"` slot ("Not saved. Choose an interest level."). Field errors clear as
@@ -321,6 +323,8 @@ round 8, and they are in the PR #112 body too.
   spec opened every screen at the cap; each fault in D-111-35 passed the existing suite.
   _Refined by D-111-59:_ it also checks every size up to the cap, records waiting and the
   offline shell. _Refined by D-111-65:_ the chrome's own size, and the form after a save.
+  _Excepted by D-181-6 (owner, 2026-11-15):_ the block screen's stand-in title may be
+  cut under 12ch until the session answers.
 - **D-111-38 · Every per-session unit count reads "N visited".** The admin session
   detail's block card and the history card now match the home card; `admin-session.png`
   and `history.png` were retaken (D-38-14). Refines D-111-7. _Why:_ "N units" read as
@@ -447,7 +451,8 @@ and D-111-21; the owner rejected both (D-111-61).
   back link is at least 44×44, and the inline header's first column is no longer held at
   2.75 reader-rems. Refines D-111-25 and D-111-28. _Why:_ at 32px that column was 88px
   and wrapped "Record a visit" onto two lines before the session loaded; at 20px the link
-  was 35px wide.
+  was 35px wide. _See D-181-6:_ in CI's DejaVu Sans the title still wrapped, so the
+  stand-in is now held to one line.
 - **D-111-55 · The stand-in Save bar is glass while pinned, before any script runs.** A
   view timeline on its marker (`dock-scope`, `dock-marker`, `dock-glass`) shows the glass
   until the marker scrolls into view. Where scroll-driven animations are unsupported it

@@ -142,9 +142,13 @@ describe("BlockScreen", () => {
   it("is named for its block once the outing says which one it is, with a way back", async () => {
     serve(list([]));
     render(<BlockScreen blockId="b1" />);
-    // Generic only until the outing answers.
-    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { level: 1, name: "Blk 123" })).toBeInTheDocument();
+    // Generic only until the outing answers, and a stand-in held to one line
+    // until then, so the form does not jump up as the name arrives (#181).
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toHaveClass(
+      "truncate",
+    );
+    const named = await screen.findByRole("heading", { level: 1, name: "Blk 123" });
+    expect(named).not.toHaveClass("truncate");
     expect(screen.getByText("Ang Mo Kio Ave 3")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to Session" })).toHaveAttribute("href", "/");
   });
@@ -169,7 +173,10 @@ describe("BlockScreen", () => {
         "href",
         "/",
       );
-      expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toBeInTheDocument();
+      // The answer is in: the generic title is this screen's own now, whole.
+      expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).not.toHaveClass(
+        "truncate",
+      );
       expect(screen.queryByText("One unit at a time.")).toBeNull();
       expect(screen.queryByLabelText("Unit number")).toBeNull();
       expect(screen.queryByRole("button", { name: /^Save/ })).toBeNull();
@@ -183,11 +190,14 @@ describe("BlockScreen", () => {
         : Promise.resolve(list([])),
     );
     render(<BlockScreen blockId="b1" />);
-    await waitFor(() => {
-      expect(apiFetch).toHaveBeenCalledWith("/sessions/active");
-    });
+    // "Save and next" is drawn only once the 404 has landed.
+    expect(await screen.findByRole("button", { name: "Save and next" })).toBeInTheDocument();
     expect(screen.getByLabelText("Unit number")).toBeInTheDocument();
     expect(screen.getByText("One unit at a time.")).toBeInTheDocument();
+    // Still standing in: a save asks again, and a running session names it.
+    expect(screen.getByRole("heading", { level: 1, name: "Record a visit" })).toHaveClass(
+      "truncate",
+    );
   });
 
   it("loads the units already recorded on this block", async () => {

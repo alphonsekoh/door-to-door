@@ -831,6 +831,40 @@ test("the recording screen opens with its unit number in view, at every text siz
   });
 });
 
+test.describe("as the session answers", () => {
+  /* page.route cannot reach a request the service worker makes. */
+  test.use({ serviceWorkers: "block" });
+
+  /*
+   * The title is generic until the session answers. Set on two lines at the
+   * largest text, it gave one back as "Blk 123" arrived, and the form jumped
+   * 48px up under a press already on its way: on CI's Linux WebKit, Add
+   * details was pressed and never opened (#181). 320px wide, the generic
+   * title wraps in every engine's font, as it did 390px wide in CI's.
+   */
+  test("the recording form holds still as the block's name arrives", async ({
+    memberPage: page,
+  }) => {
+    let answer: () => void = () => undefined;
+    const answered = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    await page.route("**/api/sessions/active", async (route) => {
+      await answered;
+      await route.continue();
+    });
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto(`/blocks/${SEED_BLOCK}`);
+    await atCap(page);
+    await untilLive(page);
+    const unit = page.getByLabel("Unit number");
+    const before = await unit.boundingBox();
+    answer();
+    await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+    expect(await unit.boundingBox(), "the unit field as the name arrives").toEqual(before);
+  });
+});
+
 /* The blocks the phone has kept for recording offline. */
 function blocksOnPhone(page: Page): Promise<string[]> {
   return page.evaluate(
