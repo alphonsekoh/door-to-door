@@ -28,7 +28,8 @@ history), d813b0a (the queue, Undo, Mark done) and efea5f9 (`useRole`).
   unit is read first. _Rejected:_ an uncontrolled field (D-113-1 kept it controlled);
   reading the field in `onInputCapture`, which guards one field and keeps the urgent
   redraw; waits in the spec. _Extended by D-171-2:_ New session's follow-up list and
-  the sessions list.
+  the sessions list. _Extended by D-160-9 (#160):_ the history panel's older pages,
+  although their land-while-typing test cannot fail.
 - **D-155-3 · The session kind is told to `knownSessionKind` from an effect, once this
   screen has drawn it.** _Why:_ a store's change is drawn at once whatever the lane
   (R-151), so telling it as the answer lands could put the unit back. _Trade-off:_

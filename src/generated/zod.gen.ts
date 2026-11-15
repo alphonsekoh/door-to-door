@@ -256,14 +256,18 @@ export const zFollowUp = z.object({
 });
 
 /**
- * A unit's full timeline. This is what a member sees before knocking, and
- * the reason the household/visit split exists.
+ * A unit's timeline, a page of its visits at a time. This is what a
+ * member sees before knocking, and the reason the household/visit split
+ * exists. Only `visits` is paged: `household`, `block`, `answered` and
+ * `followUps` are whole on every page.
  *
  */
 export const zHouseholdHistory = z.object({
     household: zHousehold,
     block: zBlock,
-    visits: z.array(zVisit),
+    visits: z.array(zVisit).max(100),
+    answered: z.boolean(),
+    pagination: zPaginationMeta,
     followUps: z.array(zFollowUp)
 });
 
@@ -879,8 +883,13 @@ export const zGetHouseholdHistoryPath = z.object({
     id: z.uuid()
 });
 
+export const zGetHouseholdHistoryQuery = z.object({
+    limit: z.int().gte(1).lte(100).optional().default(50),
+    offset: z.int().gte(0).lte(10000).optional().default(0)
+});
+
 /**
- * The unit's timeline.
+ * The unit, its notes, and a page of its visits.
  */
 export const zGetHouseholdHistoryResponse = zHouseholdHistory;
 

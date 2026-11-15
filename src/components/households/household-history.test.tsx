@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -91,22 +93,28 @@ const note = (over: Partial<FollowUp> = {}): FollowUp => ({
   ...over,
 });
 
-const history = (over: Partial<HouseholdHistory> = {}): HouseholdHistory => ({
-  household: {
-    id: "h1",
-    blockId: "b1",
-    unitNumber: "#05-123",
-    name: "Mr Tan",
-    contact: "+65 9000 0000",
-    religion: "buddhist",
-    createdAt: "2026-03-14T10:00:00.000Z",
-    updatedAt: "2026-03-14T10:00:00.000Z",
-  },
-  block: { id: "b1", name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
-  visits: [visit()],
-  followUps: [],
-  ...over,
-});
+/* The whole unit on one page unless a test says otherwise. */
+const history = (over: Partial<HouseholdHistory> = {}): HouseholdHistory => {
+  const visits = over.visits ?? [visit()];
+  return {
+    household: {
+      id: "h1",
+      blockId: "b1",
+      unitNumber: "#05-123",
+      name: "Mr Tan",
+      contact: "+65 9000 0000",
+      religion: "buddhist",
+      createdAt: "2026-03-14T10:00:00.000Z",
+      updatedAt: "2026-03-14T10:00:00.000Z",
+    },
+    block: { id: "b1", name: "123", street: "Test Ave", postalCode: null, createdAt: "" },
+    visits,
+    answered: true,
+    pagination: { limit: 20, offset: 0, total: visits.length, hasMore: false },
+    followUps: [],
+    ...over,
+  };
+};
 
 function Panel({
   over = {},
@@ -146,6 +154,7 @@ describe("what is known about the unit", () => {
         over={{
           household: { ...unknown.household, name: null },
           visits: [visit({ interestLevel: "no_response" })],
+          answered: false,
         }}
       />,
     );
@@ -157,6 +166,22 @@ describe("what is known about the unit", () => {
     render(<Panel over={{ household: { ...unnamed.household, name: null } }} />);
     expect(screen.getByText("Name not known")).toBeInTheDocument();
     expect(screen.queryByText("Nobody has answered here yet")).not.toBeInTheDocument();
+  });
+
+  it("knows someone answered from a visit on an older page, not only the visits shown", () => {
+    // The newest page is all silence; the answer was further back (#160).
+    const unnamed = history();
+    render(
+      <Panel
+        over={{
+          household: { ...unnamed.household, name: null },
+          visits: [visit({ interestLevel: "no_response" })],
+          answered: true,
+          pagination: { limit: 20, offset: 0, total: 30, hasMore: true },
+        }}
+      />,
+    );
+    expect(screen.getByText("Name not known")).toBeInTheDocument();
   });
 
   it("shows a contact when there is one", () => {
@@ -311,7 +336,7 @@ describe("previous visits", () => {
         ],
       },
     });
-    render(<Panel over={{ visits: [visit(), teamed] }} />);
+    render(<Panel over={{ visits: [teamed, visit()] }} />);
     const [solo, paired] = within(screen.getByRole("list", { name: "Timeline" })).getAllByRole(
       "listitem",
     );
@@ -707,5 +732,313 @@ describe("acting on a note", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You can mark this done during a follow-up session that includes this household.",
     );
+  });
+});
+
+describe("older visits (#160)", () => {
+  /* Visit n was stored on day n, so a higher n is newer. */
+  const day = (n: number) => new Date(2026, 0, n, 12).toISOString();
+  const dated = (n: number) =>
+    visit({
+      id: `v${String(n).padStart(2, "0")}`,
+      description: `Visit ${String(n)}`,
+      createdAt: day(n),
+      updatedAt: day(n),
+    });
+  /* Newest first, as the server answers. */
+  const run = (from: number, to: number) => {
+    const visits: Visit[] = [];
+    for (let n = from; n >= to; n -= 1) visits.push(dated(n));
+    return visits;
+  };
+  const firstPage = (over: Partial<HouseholdHistory> = {}) =>
+    history({
+      visits: run(30, 11),
+      pagination: { limit: 20, offset: 0, total: 30, hasMore: true },
+      ...over,
+    });
+  const olderPage = history({
+    visits: run(10, 1),
+    pagination: { limit: 20, offset: 20, total: 30, hasMore: false },
+  });
+  const shown = () =>
+    within(screen.getByRole("list", { name: "Timeline" }))
+      .getAllByRole("listitem")
+      .map((item) => /Visit \d+|Old promise|Recent promise/.exec(item.textContent)?.[0]);
+  const showEarlier = () => screen.getByRole("button", { name: "Show earlier visits" });
+
+  /* An answer that waits until the test lets it go. */
+  function later() {
+    let settle: { resolve: (value: unknown) => void; reject: (reason: unknown) => void } = {
+      resolve: noop,
+      reject: noop,
+    };
+    const answer = new Promise((resolve, reject) => {
+      settle = { resolve, reject };
+    });
+    apiFetch.mockReturnValueOnce(answer);
+    return settle;
+  }
+
+  it("offers them only while the unit has more than the visits shown", () => {
+    const { unmount } = render(
+      <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />,
+    );
+    expect(showEarlier()).toBeEnabled();
+    unmount();
+
+    render(<Panel over={{ visits: run(30, 11) }} />);
+    expect(screen.queryByRole("button", { name: "Show earlier visits" })).not.toBeInTheDocument();
+  });
+
+  it("reads the next page from where the first ended, and puts it above, oldest first", async () => {
+    apiFetch.mockResolvedValueOnce(olderPage);
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    expect(shown()[0]).toBe("Visit 11");
+
+    fireEvent.click(showEarlier());
+    expect(apiFetch).toHaveBeenCalledWith("/households/h1?limit=20&offset=20");
+    await waitFor(() => {
+      expect(shown()).toHaveLength(30);
+    });
+    expect(shown().slice(0, 3)).toEqual(["Visit 1", "Visit 2", "Visit 3"]);
+    expect(shown().at(-1)).toBe("Visit 30");
+    // Every visit is shown, so there is nothing earlier to offer.
+    expect(screen.queryByRole("button", { name: "Show earlier visits" })).not.toBeInTheDocument();
+  });
+
+  it("says it is loading, and takes no second tap, while a read is in flight", async () => {
+    const answer = later();
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    fireEvent.click(showEarlier());
+
+    const loading = screen.getByRole("button", { name: "Loading…" });
+    expect(loading).toBeDisabled();
+    fireEvent.click(loading);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+
+    answer.resolve(olderPage);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Loading…" })).not.toBeInTheDocument();
+    });
+  });
+
+  it("keeps every visit and the control when a read fails, and says so in one line", async () => {
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    fireEvent.click(showEarlier());
+
+    expect(await screen.findByText("Could not load earlier visits.")).toBeInTheDocument();
+    expect(shown()).toHaveLength(20);
+    expect(showEarlier()).toBeEnabled();
+
+    // Trying again clears the line while it reads.
+    later();
+    fireEvent.click(showEarlier());
+    expect(screen.queryByText("Could not load earlier visits.")).not.toBeInTheDocument();
+  });
+
+  /* jsdom lays nothing out, so the control is put where the member left it:
+     by default just above the docked Save of a 768px screen. */
+  const placeControl = (top = 640) => {
+    const rect = vi.spyOn(showEarlier(), "getBoundingClientRect");
+    rect.mockReturnValue(DOMRect.fromRect({ y: top, width: 320, height: 44 }));
+    return rect;
+  };
+
+  /* Drawn under the control, the line landed under the docked Save at the
+     door on an iPhone 13, and a tap there seemed to do nothing. */
+  it("brings a failure into view, clear of the docked Save at the door, and only a failure", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    placeControl();
+    fireEvent.click(showEarlier());
+
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).toHaveBeenCalledOnce();
+    expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+    /* The line itself: at large text the control can fill the room left,
+       and the two together would then be aligned by the control's top. */
+    expect(scrolled.mock.contexts[0]).toBe(failure);
+    expect(failure).toHaveClass("scroll-clear-chrome");
+
+    // A second failure is brought into view again; a page that lands is not.
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.click(showEarlier());
+    await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).toHaveBeenCalledTimes(2);
+    apiFetch.mockResolvedValueOnce(olderPage);
+    fireEvent.click(showEarlier());
+    await waitFor(() => {
+      expect(shown()).toHaveLength(30);
+    });
+    expect(scrolled).toHaveBeenCalledTimes(2);
+  });
+
+  it("brings a failure clear of the nav and any floating banner away from the door", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />);
+    placeControl();
+    fireEvent.click(showEarlier());
+
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled.mock.contexts).toEqual([failure]);
+    expect(failure).toHaveClass("scroll-clear-nav");
+    expect(failure).not.toHaveClass("scroll-clear-chrome");
+  });
+
+  /* On poor signal the failure can land long after the tap, once the member
+     is at the interest picker or typing a note: bringing the line into view
+     then pulled the page 1,500px up, away from the note, on both phones. */
+  it("leaves the page where it is when a failure lands after the member moved on to a note", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const answer = later();
+    render(
+      <>
+        <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />
+        <textarea aria-label="Notes" />
+      </>,
+    );
+    placeControl();
+    fireEvent.click(showEarlier());
+    const notes = screen.getByRole("textbox", { name: "Notes" });
+    act(() => {
+      notes.focus();
+    });
+
+    answer.reject(new TypeError("Failed to fetch"));
+    expect(await screen.findByText("Could not load earlier visits.")).toBeInTheDocument();
+    expect(scrolled).not.toHaveBeenCalled();
+    expect(notes).toHaveFocus();
+  });
+
+  it("leaves the page where it is when a failure lands after the member scrolled away, and moves it once they are back", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const answer = later();
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    const rect = placeControl();
+    fireEvent.click(showEarlier());
+    // Down at the interest picker, the control far above the screen.
+    rect.mockReturnValue(DOMRect.fromRect({ y: -1500, width: 320, height: 44 }));
+
+    answer.reject(new TypeError("Failed to fetch"));
+    await screen.findByText("Could not load earlier visits.");
+    expect(scrolled).not.toHaveBeenCalled();
+
+    // Back at the control, a failure is brought into view again.
+    rect.mockReturnValue(DOMRect.fromRect({ y: 640, width: 320, height: 44 }));
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    fireEvent.click(showEarlier());
+    const failure = await screen.findByText("Could not load earlier visits.");
+    expect(scrolled.mock.contexts).toEqual([failure]);
+  });
+
+  it("keeps the older visits when the parent reads the first page again", async () => {
+    apiFetch.mockResolvedValueOnce(olderPage);
+    const view = render(
+      <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />,
+    );
+    fireEvent.click(showEarlier());
+    await waitFor(() => {
+      expect(shown()).toHaveLength(30);
+    });
+
+    // A visit stored since: the new first page moves one visit down.
+    const reread = firstPage({
+      visits: run(31, 12),
+      pagination: { limit: 20, offset: 0, total: 31, hasMore: true },
+    });
+    view.rerender(<HouseholdHistoryPanel history={reread} active={null} onChanged={noop} />);
+    expect(shown()).toHaveLength(31);
+    expect(shown().at(-1)).toBe("Visit 31");
+    expect(shown()[0]).toBe("Visit 1");
+  });
+
+  it("leaves no gap when the first page is read again while an older one is on its way", async () => {
+    const answer = later();
+    const view = render(
+      <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} />,
+    );
+    fireEvent.click(showEarlier());
+    // Visit 31 is stored: Visit 11 is now on neither the new first page nor the older one.
+    view.rerender(
+      <HouseholdHistoryPanel
+        history={firstPage({
+          visits: run(31, 12),
+          pagination: { limit: 20, offset: 0, total: 31, hasMore: true },
+        })}
+        active={null}
+        onChanged={noop}
+      />,
+    );
+    answer.resolve(olderPage);
+
+    await waitFor(() => {
+      expect(shown()).toHaveLength(31);
+    });
+    expect(shown()).toContain("Visit 11");
+  });
+
+  it("holds back a resolved note older than every visit shown until its visits are", async () => {
+    const promise = (id: string, n: number) =>
+      note({
+        id,
+        note: id === "old" ? "Old promise" : "Recent promise",
+        createdAt: day(n),
+        doneAt: day(n),
+      });
+    apiFetch.mockResolvedValueOnce(olderPage);
+    render(
+      <HouseholdHistoryPanel
+        history={firstPage({ followUps: [promise("old", 3), promise("recent", 25)] })}
+        active={null}
+        onChanged={noop}
+      />,
+    );
+    expect(shown()).not.toContain("Old promise");
+    expect(shown()).toContain("Recent promise");
+
+    fireEvent.click(showEarlier());
+    await waitFor(() => {
+      expect(shown()).toContain("Old promise");
+    });
+    expect(shown().slice(0, 4)).toEqual(["Visit 1", "Visit 2", "Visit 3", "Old promise"]);
+  });
+
+  /* At the door: WebKit can run the answer inside the input event of the next
+     unit landing in the field, before React has read it (#155). Landing must
+     not render the field's owner again with the unit it still holds. */
+  it("keeps what is typed as an older page lands", async () => {
+    function AtTheDoor() {
+      const [unit, setUnit] = useState("#05-123");
+      return (
+        <>
+          <input
+            aria-label="Unit number"
+            value={unit}
+            onChange={(event) => {
+              setUnit(event.target.value);
+            }}
+          />
+          <HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />
+        </>
+      );
+    }
+    const answer = later();
+    render(<AtTheDoor />);
+    fireEvent.click(showEarlier());
+    const field = screen.getByLabelText<HTMLInputElement>("Unit number");
+
+    await landWhileTyping(field, "#05-1234", () => {
+      answer.resolve(olderPage);
+    });
+
+    expect(field).toHaveValue("#05-1234");
+    await waitFor(() => {
+      expect(shown()).toHaveLength(30);
+    });
+    expect(field).toHaveValue("#05-1234");
   });
 });

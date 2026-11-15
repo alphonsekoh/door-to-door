@@ -120,7 +120,7 @@ export async function listHouseholds(
     .from(visits)
     .where(and(eq(visits.householdId, households.id), inSession))
     .as("tally");
-  /* Newest first, the id breaking a tie, as the history's last visit (getHouseholdHistory). */
+  /* Newest first, the id breaking a tie, as the history's first visit (getHouseholdHistory). */
   const latest = db
     .select({ id: visits.id })
     .from(visits)
@@ -180,12 +180,24 @@ export type HouseholdHistoryRows = {
   household: HouseholdRow;
   block: { id: string; name: string; street: string; postalCode: string | null; createdAt: Date };
   visits: VisitRow[];
+  /* Every visit at the unit, not only the page's. */
+  total: number;
+  /* Some visit, on any page, had an answer: "Name not known" rather than nobody yet. */
+  answered: boolean;
   followUps: FollowUpRow[];
 };
 
+/*
+ * A unit and one page of its visits (#160): four queries, or six with a
+ * visit on a team, however many visits it holds. Only the page goes through
+ * attachTeams. Newest first, the id breaking a tie as listHouseholds' latest
+ * visit does (D-126-1), so the order is total and a page boundary inside a
+ * run of visits stored at one instant neither repeats nor skips one.
+ */
 export async function getHouseholdHistory(
   db: Database,
   householdId: string,
+  page: { limit: number; offset: number },
 ): Promise<HouseholdHistoryRows> {
   const found = await db
     .select({ household: households, block: blocks })
@@ -199,7 +211,6 @@ export async function getHouseholdHistory(
     throw new NotFoundError("No such household.");
   }
 
-  /* Oldest first, so the interest trajectory reads left to right. */
   const history = await attachTeams(
     db,
     await db
@@ -207,13 +218,26 @@ export async function getHouseholdHistory(
       .from(visits)
       .innerJoin(users, eq(users.id, visits.memberId))
       .where(eq(visits.householdId, householdId))
-      .orderBy(asc(visits.createdAt), asc(visits.id)),
+      .orderBy(desc(visits.createdAt), desc(visits.id))
+      .limit(page.limit)
+      .offset(page.offset),
   );
+
+  const tally = await db
+    .select({
+      total: sql<number>`count(*)::int`,
+      answered: sql<boolean>`coalesce(bool_or(${visits.interestLevel} <> 'no_response'), false)`,
+    })
+    .from(visits)
+    .where(eq(visits.householdId, householdId));
+  const { total, answered } = firstOrThrow(tally, "the visit tally");
 
   return {
     household: row.household,
     block: row.block,
     visits: history,
+    total,
+    answered,
     followUps: await listFollowUpsFor(db, householdId),
   };
 }
