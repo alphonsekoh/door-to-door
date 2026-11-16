@@ -189,17 +189,25 @@ test.describe("an end that fails", () => {
       await expect(alert).toHaveText("Could not sign out. Check your connection and try again.");
       await expect(list).toHaveAttribute("aria-busy", "false");
       await expect(signOut).toBeEnabled();
+      /* Sign out's foot is read off the block it ends, which is what is
+         scrolled into view and is never scaled. Sign out itself can still be
+         pressed in (`press`, 97%) once enabled again, as Chromium holds a
+         tap's :active a moment, and at 32px its foot then reads 1.3px high. */
+      const block = alert.locator("..");
+      await expect(block.locator(":scope > :last-child")).toHaveAccessibleName(
+        /^Sign out .+, last used /,
+      );
 
-      const [alertBox, signOutBox, after, top] = await Promise.all([
+      const [alertBox, blockBox, after, top] = await Promise.all([
         alert.boundingBox(),
-        signOut.boundingBox(),
+        block.boundingBox(),
         page.evaluate(() => window.scrollY),
         footTop(page),
       ]);
-      if (alertBox === null || signOutBox === null) {
+      if (alertBox === null || blockBox === null) {
         throw new Error(`the alert or Sign out is not drawn at ${at}`);
       }
-      const bottom = signOutBox.y + signOutBox.height;
+      const bottom = blockBox.y + blockBox.height;
       expect(alertBox.y, `the alert above the top of the screen at ${at}`).toBeGreaterThanOrEqual(
         0,
       );
