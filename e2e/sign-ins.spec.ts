@@ -105,6 +105,118 @@ test("an admin signs one of a member's phones out, and the other carries on", as
   }
 });
 
+/* The top of what stays put at the foot of the screen: the nav, or the
+   install banner where it floats on the nav. */
+function footTop(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Primary"]');
+    if (nav === null) throw new Error("the nav is not drawn");
+    const banner = document.querySelector('section[aria-label="Install the app"]');
+    const floats = banner !== null && getComputedStyle(banner).position === "fixed";
+    return Math.min(
+      nav.getBoundingClientRect().top,
+      floats ? banner.getBoundingClientRect().top : Infinity,
+    );
+  });
+}
+
+/*
+ * A failed end is told just above the control pressed, and the two are
+ * brought into view together (D-125-22). Only the nav and a banner floating
+ * on it stay put over this page, so it moves only as far as they hide the
+ * control: kept clear of a docked Save it never has, it moved up to 80px
+ * further (#195).
+ */
+test.describe("an end that fails", () => {
+  // Routing sees what a service worker fetches for the page on some engines only.
+  test.use({ serviceWorkers: "block" });
+
+  test("brings its message and Sign out into view above the nav, and moves the page no further", async ({
+    adminPage: page,
+    adminApi,
+    browser,
+    browserName,
+  }) => {
+    const member = await freshMember(adminApi, `${browserName}-scroll`);
+    // Enough sign-ins for the list to run past the nav at the default text size.
+    for (let made = 0; made < 4; made += 1) await (await phone(browser, member.email)).close();
+    await page.route("**/api/users/*/sign-ins/*", (route) =>
+      route.request().method() === "DELETE" ? route.abort() : route.fallback(),
+    );
+    const list = page.getByRole("region", { name: "Signed in on" }).getByRole("list");
+    // The last row's: the list's end, below it, leaves room to move too far.
+    const signOut = page.getByRole("button", { name: /^Sign out .+, last used / }).last();
+
+    /* At the default text and at the largest (D-111-24); a full load starts
+       again at the default. An iPhone shows its install guide regardless,
+       floating on the nav at the default size: it is measured once it is
+       there. */
+    for (const size of [null, "32px"]) {
+      const at = size ?? "the default text size";
+      await page.goto(`/admin/team/${member.id}`);
+      await expect(list).toHaveAttribute("aria-busy", "false");
+      if (browserName === "webkit") {
+        await expect(page.getByRole("region", { name: "Install the app" })).toBeVisible();
+      }
+      if (size !== null) {
+        await page.evaluate((root) => {
+          document.documentElement.style.fontSize = root;
+        }, size);
+      }
+      // Two frames for the banner to float or settle into the page at that size.
+      await page.evaluate(
+        () =>
+          new Promise((resolve) => {
+            requestAnimationFrame(() => requestAnimationFrame(resolve));
+          }),
+      );
+
+      /* Pressed sitting on what covers the foot of the screen, where the
+         failure has the most to bring back. */
+      const edge = await footTop(page);
+      await signOut.evaluate((button, top) => {
+        window.scrollBy(0, button.getBoundingClientRect().bottom - top);
+      }, edge);
+      const placed = await signOut.boundingBox();
+      expect(
+        placed === null ? null : placed.y + placed.height,
+        `Sign out not set on the nav at ${at}: the list no longer runs past it`,
+      ).toBeCloseTo(edge, 0);
+      const before = await page.evaluate(() => window.scrollY);
+      await signOut.click();
+      // In the page: Next's route announcer is an alert too.
+      const alert = page.getByRole("main").getByRole("alert");
+      await expect(alert).toHaveText("Could not sign out. Check your connection and try again.");
+      await expect(list).toHaveAttribute("aria-busy", "false");
+      await expect(signOut).toBeEnabled();
+
+      const [alertBox, signOutBox, after, top] = await Promise.all([
+        alert.boundingBox(),
+        signOut.boundingBox(),
+        page.evaluate(() => window.scrollY),
+        footTop(page),
+      ]);
+      if (alertBox === null || signOutBox === null) {
+        throw new Error(`the alert or Sign out is not drawn at ${at}`);
+      }
+      const bottom = signOutBox.y + signOutBox.height;
+      expect(alertBox.y, `the alert above the top of the screen at ${at}`).toBeGreaterThanOrEqual(
+        0,
+      );
+      expect(bottom, `Sign out under the nav or its banner at ${at}`).toBeLessThanOrEqual(
+        top + 0.5,
+      );
+      /* No further than the alert pushed Sign out under the nav: onto it,
+         not 80px clear of it for a docked Save. */
+      const moved = after - before;
+      const hidden = Math.max(0, bottom + moved - top);
+      expect(moved, `the page moved further than Sign out was hidden at ${at}`).toBeLessThanOrEqual(
+        hidden + 1,
+      );
+    }
+  });
+});
+
 /* Every record in the queue on this phone, whoever saved it. */
 function queuedRecords(page: Page): Promise<{ unit: string; state: string }[]> {
   return page.evaluate(

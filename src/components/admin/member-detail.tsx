@@ -83,7 +83,9 @@ export function MemberDetail({ userId }: { userId: string }) {
   }, [load]);
 
   /* At large text the message and its control can reach below the screen or
-     under the nav: brought into view, clear of them, before they are painted. */
+     under the nav: brought into view, clear of them, before they are painted.
+     Clear of the nav and a banner floating on it, and no further: no Save bar
+     docks here (#195, as on Account, D-164-7). */
   useLayoutEffect(() => {
     if (failure !== null) failureBlock.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
@@ -120,10 +122,7 @@ export function MemberDetail({ userId }: { userId: string }) {
   const withFailure = (at: string, control: ReactNode, className = "") => {
     const failed = failure?.at === at;
     return (
-      <div
-        ref={failed ? failureBlock : null}
-        className={`scroll-clear-chrome space-y-3 ${className}`}
-      >
+      <div ref={failed ? failureBlock : null} className={`scroll-clear-nav space-y-3 ${className}`}>
         {failed ? (
           <p role="alert" className="notice-danger">
             {failure.message}
