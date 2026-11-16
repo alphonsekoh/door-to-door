@@ -105,6 +105,30 @@ describe("replaying is safe", () => {
     const [replayed] = await flush([item()]);
     expect(replayed?.visit?.id).toBe(VISIT_A);
   });
+
+  it("knows a stored visit's block and session in either letter case", async () => {
+    await flush([item()]);
+    const upper = { blockId: BLOCK.toUpperCase(), sessionId: SESSION.toUpperCase() };
+    expect((await flush([item(upper)]))[0]?.status).toBe("unchanged");
+
+    const [amended] = await flush([item({ ...upper, interestLevel: "high", updatedAt: T2 })]);
+    expect(amended?.status).toBe("applied");
+    expect(amended?.visit?.interestLevel).toBe("high");
+    expect(await countVisits()).toBe(1);
+  });
+
+  it.each<[string, Partial<SyncItem>]>([
+    ["unit", { unitNumber: "#06-201" }],
+    ["block", { blockId: LOOSE_BLOCK }],
+    ["session", { sessionId: "efefefef-0000-4000-8002-00000000ffff" }],
+  ])("refuses a replay that names another %s", async (_case, moved) => {
+    await flush([item()]);
+    const [result] = await flush([item({ ...moved, updatedAt: T2 })]);
+    expect(result?.error).toMatchObject({
+      code: "conflict",
+      message: "A saved visit cannot be moved to another unit or session.",
+    });
+  });
 });
 
 describe("conflicts resolve last-write-wins", () => {

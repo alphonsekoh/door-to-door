@@ -478,6 +478,19 @@ describe("undoing what a visit marked done", () => {
     expect((await notesAt(LISTED))[0]).toMatchObject({ done_by: ALICE });
   });
 
+  it("knows the visit in either letter case", async () => {
+    // Letters in the id, so its two cases differ.
+    const id = "01960000-0000-7000-8000-0000000c7abc";
+    asAlice();
+    expect((await post("#01-01", { id })).status).toBe(201);
+    const [note] = await notesAt(LISTED);
+    if (note === undefined) throw new Error("expected the listed note");
+    expect(note.done_visit_id).toBe(id);
+
+    expect((await undo(note.id, id.toUpperCase())).status).toBe(200);
+    expect((await notesAt(LISTED))[0]).toMatchObject({ done_at: null, done_visit_id: null });
+  });
+
   it("takes markedByVisit only with done: false", async () => {
     asAlice();
     const saved = (await (await post("#01-01")).json()) as { id: string };

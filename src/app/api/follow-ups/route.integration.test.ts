@@ -212,6 +212,17 @@ describe("creating a note", () => {
     ).toBe(404);
   });
 
+  it("matches a visit to its household in either letter case", async () => {
+    asAlice();
+    const response = await create({
+      householdId: HOUSEHOLD.toUpperCase(),
+      visitId: VISIT.toUpperCase(),
+      note: "As promised.",
+    });
+    expect(response.status).toBe(201);
+    expect(await read(response)).toMatchObject({ householdId: HOUSEHOLD, visitId: VISIT });
+  });
+
   it("returns 404 for a visit that does not exist", async () => {
     asAlice();
     expect(
@@ -992,6 +1003,18 @@ describe("reading removed notes", () => {
     expect(body.data.map((n) => [n.note, n["deleteReason"]])).toEqual([
       ["Dismissed one", "Already visited"],
     ]);
+  });
+
+  it("knows a member's own id in either letter case", async () => {
+    await seedRemoved();
+    const theirs = `?deleted=true&authorId=${ALICE.toUpperCase()}`;
+    asAlice();
+    const { status, body } = await list(theirs);
+    expect(status).toBe(200);
+    expect(body.data.map((n) => n.note)).toEqual(["Dismissed one"]);
+    // Still only their own: someone else's id in capitals is refused.
+    asBen();
+    expect((await list(theirs)).status).toBe(403);
   });
 
   it("refuses a member reading everyone's removed notes", async () => {

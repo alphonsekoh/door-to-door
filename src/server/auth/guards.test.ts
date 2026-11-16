@@ -133,6 +133,11 @@ describe("resolveMemberScope", () => {
     expect(resolveMemberScope(member, "m1")).toBe("m1");
   });
 
+  it("knows a member's own id in either letter case, and scopes to the session's", () => {
+    // The contract takes a uuid in capitals; the session's id is lower case.
+    expect(resolveMemberScope(member, "M1")).toBe("m1");
+  });
+
   it("refuses a member asking for someone else's records", () => {
     // No parameter combination may widen a member's view.
     expect(() => resolveMemberScope(member, "m2")).toThrow(ForbiddenError);

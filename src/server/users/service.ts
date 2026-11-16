@@ -4,6 +4,7 @@ import type { Role } from "@/db/schema";
 import { signIns, users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { checkOwnName } from "@/lib/session/own-name";
+import { sameUuid } from "@/lib/uuid";
 import {
   GOOGLE_NOT_SET_UP_MESSAGE,
   inGoogleDomains,
@@ -199,12 +200,15 @@ export async function updateUser(
       .orderBy(asc(users.id))
       .for("no key update");
 
-    const current = locked.find((row) => row.id === id);
+    /* The path's id may be in capitals (R-161). Each comparison below takes
+       either case, or a capitalised id would skip the self rules, and count
+       the target itself as another admin. */
+    const current = locked.find((row) => sameUuid(row.id, id));
     if (!current) {
       throw new NotFoundError("No such user.");
     }
 
-    if (id === actorId) {
+    if (sameUuid(id, actorId)) {
       if (changes.role !== undefined && changes.role !== current.role) {
         throw new ConflictError("conflict", "You cannot change your own role.");
       }
@@ -219,7 +223,7 @@ export async function updateUser(
       !(changes.deactivated ?? current.deactivatedAt !== null);
     /* Postgres re-checks the filter on a row it waited for, so every other
        locked row is still an active admin once the change ahead has landed. */
-    const anotherAdmin = locked.some((row) => row.id !== id);
+    const anotherAdmin = locked.some((row) => !sameUuid(row.id, id));
     if (wasActiveAdmin && !staysActiveAdmin && !anotherAdmin) {
       throw new ConflictError("conflict", "The team needs at least one active admin.");
     }

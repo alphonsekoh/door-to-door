@@ -9,7 +9,7 @@ import {
   users,
 } from "@/db/schema";
 import { checkTeamName } from "@/lib/teams/team-name";
-import { distinctUuidsInOrder } from "@/lib/uuid";
+import { distinctUuidsInOrder, sameUuid } from "@/lib/uuid";
 import {
   appendTo,
   chunked,
@@ -461,7 +461,7 @@ export async function removeTeamMember(
   userId: string,
 ): Promise<TeamRow> {
   await loadTeamFor(db, actor, teamId);
-  if (actor.role !== "admin" && userId !== actor.id) {
+  if (actor.role !== "admin" && !sameUuid(userId, actor.id)) {
     throw new ForbiddenError("You can only remove yourself from a team.");
   }
   const removed = await db

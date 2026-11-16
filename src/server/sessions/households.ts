@@ -10,6 +10,7 @@ import {
   sessionHouseholds,
   visits,
 } from "@/db/schema";
+import { distinctUuidsInOrder } from "@/lib/uuid";
 import type { BlockRow } from "@/server/blocks/service";
 import { firstOrThrow } from "@/server/db-utils";
 import {
@@ -100,14 +101,15 @@ function assertPicksOpen(session: { kind: SessionKind; status: SessionStatus }):
  * Adds households to a session and their blocks to its blocks, all or
  * nothing: an unknown household is 404, and one with no listed, live,
  * outstanding note (a stale screen) is 409 before anything is written.
- * A household already picked is left as it is.
+ * A household already picked is left as it is, and one named in two letter
+ * cases is one household.
  */
 export async function pickHouseholds(
   tx: Database,
   sessionId: string,
   householdIds: readonly string[],
 ): Promise<void> {
-  const unique = [...new Set(householdIds)];
+  const unique = distinctUuidsInOrder(householdIds);
   const found = await tx
     .select({ id: households.id, blockId: households.blockId })
     .from(households)

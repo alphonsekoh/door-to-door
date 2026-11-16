@@ -10,6 +10,7 @@ import {
   visits,
 } from "@/db/schema";
 import type { SessionKind, SessionStatus } from "@/db/schema";
+import { distinctUuidsInOrder } from "@/lib/uuid";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { onRevisitList } from "@/server/follow-ups/list-rule";
 import { ConflictError, NotFoundError, ValidationError } from "@/server/http/errors";
@@ -166,13 +167,16 @@ export function assertBlocksByHand(session: { kind: SessionKind }): void {
   }
 }
 
-/* Rejects unknown blocks before attaching any, so the request is all or nothing. */
+/*
+ * Rejects unknown blocks before attaching any, so the request is all or
+ * nothing. One block named in two letter cases is one block, not a missing one.
+ */
 export async function attachBlocks(
   db: Database,
   sessionId: string,
   blockIds: string[],
 ): Promise<void> {
-  const unique = [...new Set(blockIds)];
+  const unique = distinctUuidsInOrder(blockIds);
   const found = await db.select({ id: blocks.id }).from(blocks).where(inArray(blocks.id, unique));
 
   if (found.length !== unique.length) {
