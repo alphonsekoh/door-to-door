@@ -65,39 +65,46 @@ if [ "$ref" = HEAD ] && [ -n "$(git status --porcelain --untracked-files=no)" ];
 fi
 
 # Serialised: two suites at once on one machine slow each other into timeouts
-# that CI, one job per runner, would never see.
-lock="$common/e2e-linux.lock"
-waiting=""
-until mkdir "$lock" 2>/dev/null; do
-  holder=$(cat "$lock/pid" 2>/dev/null || true)
-  if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
-    rm -rf "$lock"
-    continue
-  fi
-  [ -n "$waiting" ] || say "another run holds $lock (pid ${holder:-starting}); waiting for it"
-  waiting=1
-  sleep 10
-done
-echo $$ >"$lock/pid"
+# that CI, one job per runner, would never see. flock(2) on fd 9, which this
+# shell keeps open: the kernel lets go when the shell ends, however it ends,
+# and once any child still holding fd 9 ends, which is why the long-running
+# docker commands below close it.
+lock="$common/e2e-linux.flock"
+exec 9>>"$lock"
+flock9() { perl -MFcntl=:flock -e 'open(my $fh, ">&=", 9) or die "$!\n"; exit(flock($fh, $ARGV[0]) ? 0 : 1)' "$1"; }
+if ! flock9 "$(perl -MFcntl=:flock -e 'print LOCK_EX | LOCK_NB')"; then
+  say "another run holds $lock; waiting for it"
+  flock9 "$(perl -MFcntl=:flock -e 'print LOCK_EX')"
+fi
+
+# Whatever a run killed outright left behind in this clone.
+label="door-to-door.e2e-linux=$common"
+# shellcheck disable=SC2086 # one id per word
+{
+  stale=$(docker ps -aq --filter "label=$label")
+  [ -z "$stale" ] || docker rm -f $stale >/dev/null
+  stale=$(docker network ls -q --filter "label=$label")
+  [ -z "$stale" ] || docker network rm $stale >/dev/null
+}
 
 name="d2d-e2e-$short-$$"
 ctx=$(mktemp -d)
 cleanup() {
   docker rm -f "$name-run" "$name-db" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
-  rm -rf "$ctx" "$lock"
+  rm -rf "$ctx"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
 # The commit's own package files, so its node_modules are the ones it locks.
-# Its Dockerfile too, unless it predates the e2e stage.
+# Its Dockerfile too, unless it predates the e2e stage: then this script's.
 git show "$commit:package.json" >"$ctx/package.json"
 git show "$commit:package-lock.json" >"$ctx/package-lock.json"
 if git show "$commit:Dockerfile" 2>/dev/null | grep -q ' AS e2e$'; then
   git show "$commit:Dockerfile" >"$ctx/Dockerfile"
 else
-  cp "$root/Dockerfile" "$ctx/Dockerfile"
+  cp "$(dirname "$0")/../Dockerfile" "$ctx/Dockerfile"
 fi
 # CI's service image, read from the workflow rather than repeated here.
 pg_image=$(git show "$commit:.github/workflows/ci.yml" | sed -n 's/^ *image: *\(postgres:[^ ]*\) *$/\1/p' | head -n 1)
@@ -108,13 +115,14 @@ pg_image=$(git show "$commit:.github/workflows/ci.yml" | sed -n 's/^ *image: *\(
 
 platform_args=()
 [ -z "$platform" ] || platform_args=(--platform "$platform")
+# Tagged, so a rebuild leaves the last image dangling for docker image prune.
+image="door-to-door-e2e:$(printf '%s' "${platform:-native}" | tr / -)"
 
 say "building the runner image (cached after the first build)"
-docker build ${platform_args[@]+"${platform_args[@]}"} --target e2e --iidfile "$ctx/iid" "$ctx" >&2
-image=$(cat "$ctx/iid")
+docker build ${platform_args[@]+"${platform_args[@]}"} --target e2e -t "$image" "$ctx" >&2 9>&-
 
-docker network create "$name" >/dev/null
-docker run -d --name "$name-db" --network "$name" --tmpfs /var/lib/postgresql/data \
+docker network create --label "$label" "$name" >/dev/null
+docker run -d --name "$name-db" --label "$label" --network "$name" --tmpfs /var/lib/postgresql/data \
   -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres "$pg_image" >/dev/null
 # Over TCP: the image's first-boot server listens only on its socket, so this
 # answers once the real server is up.
@@ -138,11 +146,15 @@ mkdir -p "$out"
 
 say "running on $short ${platform:-natively}${pw_args[*]+ with: ${pw_args[*]}}"
 # shellcheck disable=SC2016 # expanded in the container
-docker create --init --ipc=host --name "$name-run" \
+docker create --init --ipc=host --name "$name-run" --label "$label" \
   ${platform_args[@]+"${platform_args[@]}"} --network "$name" \
   -e E2E_DATABASE_URL="postgresql://postgres:postgres@$name-db:5432/door_to_door_e2e" \
   -v "$out:/out" -w /work "$image" /bin/bash -c '
-    echo "e2e-linux: sans-serif is $(fc-match -f "%{family}" sans-serif), as on CI (R-182)" >&2
+    font=$(fc-match -f "%{family}" sans-serif)
+    if [ "$font" != "DejaVu Sans" ]; then
+      echo "e2e-linux: sans-serif is $font, not DejaVu Sans as on CI (R-182)" >&2
+      exit 1
+    fi
     npm run test:e2e -- --reporter=line,html "$@"
     status=$?
     cp -R playwright-report test-results /out/ 2>/dev/null
@@ -151,8 +163,11 @@ docker create --init --ipc=host --name "$name-run" \
 # Docker unpacks the commit, not tar in the container: under amd64 emulation
 # the container's tar cannot create a file (ENOSYS).
 git archive --format=tar "$commit" | docker cp - "$name-run:/work"
+# In the background, so Ctrl-C reaches this shell's trap at once, and its
+# cleanup stops the container, rather than waiting out the suite.
 set +e
-docker start --attach "$name-run"
+docker start --attach "$name-run" 9>&- &
+wait $!
 status=$?
 set -e
 

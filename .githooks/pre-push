@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # The Linux E2E gate (#201). Before a push leaves this machine, CI's E2E job
-# runs on each pushed commit in a Linux container (scripts/e2e-linux.sh), so a
-# failure costs local minutes instead of Actions minutes. Enable it once per
-# clone, for every worktree:
+# runs in a Linux container (scripts/e2e-linux.sh) on the tip of each branch
+# it sends, as CI does, so a failure costs local minutes instead of Actions
+# minutes. Enable it once per clone, for every worktree:
 #
 #   git config core.hooksPath .githooks
 #
@@ -23,8 +23,12 @@ zero=0000000000000000000000000000000000000000
 # Paths no E2E test reads.
 docs='^docs/|^[^/]+\.md$|^\.claude/'
 
+# Fails closed: anything but grep finding no line outside docs means code.
 only_docs() {
-  [ -n "$1" ] && ! printf '%s\n' "$1" | grep -qvE "$docs"
+  local status=0
+  [ -n "$1" ] || return 1
+  grep -qvE "$docs" <<<"$1" || status=$?
+  [ "$status" -eq 1 ]
 }
 
 # Its tree passed, or differs from a recent tree that passed only in docs.
@@ -34,7 +38,7 @@ has_passed() {
   tree=$(git rev-parse "$1^{tree}")
   ! grep -q "^$tree " "$passed" || return 0
   for t in $(tail -n 50 "$passed" | cut -d ' ' -f 1); do
-    ! only_docs "$(git diff --name-only "$t" "$tree" 2>/dev/null)" || return 0
+    ! only_docs "$(git diff --no-renames --name-only "$t" "$tree" 2>/dev/null)" || return 0
   done
   return 1
 }
@@ -52,7 +56,8 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
     base=$(git merge-base "$local_sha" origin/main 2>/dev/null || true)
   fi
   if [ -n "$base" ]; then
-    changed=$(git diff --name-only "$base" "$local_sha")
+    # --no-renames: a rename lists its source too, so code moved into docs/ counts.
+    changed=$(git diff --no-renames --name-only "$base" "$local_sha")
     [ -n "$changed" ] || continue
     ! only_docs "$changed" || continue
   fi
