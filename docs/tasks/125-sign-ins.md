@@ -211,7 +211,8 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
 - **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
   `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
   ids are lower case. Without this, your own current sign-in was not `409`, and "Sign
-  out other devices" ended it too.
+  out other devices" ended it too. _Refined by D-193-1:_ every request id (path, query,
+  body, sync item), at each comparison with a stored or session id.
 - **D-125-24 · `endOneSignIn` answers `404` for a sign-in that has expired but is not yet
   pruned, and leaves the row for pruning.** Refines D-125-15 by D-125-7. _Why:_ the list
   no longer shows it, so it has already ended.
