@@ -578,25 +578,29 @@ npm run test:e2e:linux -- --platform linux/amd64   # CI's architecture, emulated
 It runs a commit, never uncommitted changes: `git archive` feeds the container, so a
 pass covers exactly what a push sends. The image is the `Dockerfile`'s `e2e` stage
 (Ubuntu 26.04, Node 24, and Playwright's browsers installed as CI installs them), built
-once and then cached until `package-lock.json` changes. The database is CI's postgres
-image in a throwaway container on a private network, so the run needs neither the
-host's Postgres nor any free port. One run goes at a time per clone, and a second one
-waits. The report lands in `e2e-linux-results/`
-(`npx playwright show-report e2e-linux-results/playwright-report`).
+once and then cached until `package.json`, `package-lock.json` or the stage changes
+(Dependabot's weekly digest bumps included). Each rebuild leaves the last image, about
+3 GB, untagged; `docker image prune` reclaims it. The database is CI's postgres image in a
+throwaway container on a private network, so the run needs neither the host's Postgres
+nor any free port. One run goes at a time per clone, and a second one waits. The run
+stops if `sans-serif` is not DejaVu Sans. The report lands in `e2e-linux-results/`:
+`npx playwright show-report e2e-linux-results/playwright-report` opens it.
 
 **The pre-push gate.** [`.githooks/pre-push`](.githooks/pre-push) runs the whole suite
-this way on every commit a push sends, and refuses the push if it fails. Enable it once
-per clone; worktrees share the setting:
+this way on the tip of each branch a push sends, as CI does, and refuses the push if it
+fails. Enable it once per clone; worktrees share the setting:
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-It skips branch deletions, pushes that change only docs (`docs/`, a top-level `*.md`
-or `.claude/`), and any tree that has passed a whole-suite run or differs from one only
-in docs, so running `npm run test:e2e:linux` before a push makes the push itself
-immediate. `SKIP_E2E_LINUX=1 git push` skips the gate
-once, and CI still runs the suite.
+The hook lives in the branch, so a worktree on a branch from before it has none, and its
+pushes go through ungated.
+
+It skips branch deletions, pushes that change only docs (`docs/`, a top-level `*.md` or
+`.claude/`), and any tree that has passed a whole-suite run or differs from one only in
+docs, so running `npm run test:e2e:linux` before a push makes the push itself immediate.
+`SKIP_E2E_LINUX=1 git push` skips the gate once, and CI still runs the suite.
 
 ## CI
 

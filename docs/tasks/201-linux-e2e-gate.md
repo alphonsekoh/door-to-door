@@ -26,7 +26,8 @@ also needs a Linux WebKit run that nothing local could give. The owner asked
   E2E job. In the root `Dockerfile`, both base images are held to digests by
   `src/supply-chain.test.ts` (D-131-4) and kept current by Dependabot's docker entry
   (D-131-5), which now ignores `ubuntu` majors and minors, so only the LTS's digest
-  moves and the stage changes release only with CI. _Rejected:_ Playwright's own image,
+  moves and the stage changes release only with CI. This extends D-131-5, whose ignore
+  list named only node and postgres majors. _Rejected:_ Playwright's own image,
   a second source of browsers and system packages beside CI's install step; and the
   app's `node:24-alpine`, because Playwright does not support musl distributions.
   _Research:_ R-193.
@@ -41,21 +42,33 @@ also needs a Linux WebKit run that nothing local could give. The owner asked
   throwaway container with its data on tmpfs, on a private network.** Nothing is
   published on a host port. _Why:_ the run needs neither the host's Postgres nor a free
   port, so worktrees cannot collide over a port or a database.
-- **D-201-4 · Only the reporter differs from CI: `line` and `html` in place of `github`
-  and `html`.** `npm run test:e2e`, `CI=true` (no reused server, no `test.only`), one
-  worker and no retries all come from `playwright.config.ts` as on CI. It runs on the
-  machine's own architecture, and `--platform linux/amd64` runs CI's, under emulation.
-  _Why:_ the `github` reporter writes annotations for a CI log; a terminal needs
-  progress.
-- **D-201-5 · One run at a time per clone.** A lock directory in the shared git
-  directory serialises runs across worktrees, and a lock whose process has died is
-  taken over. _Why:_ two suites at once slow each other into timeouts that CI, with one
-  job per runner, would never see.
-- **D-201-6 · `.githooks/pre-push` runs the whole suite on each commit a push sends, and
-  refuses the push if it fails.** It is enabled once per clone with
+- **D-201-4 · Of the suite's own settings, only the reporter differs from CI: `line` and
+  `html` in place of `github` and `html`.** `npm run test:e2e`, `CI=true` (no reused
+  server, no `test.only`), one worker and no retries all come from `playwright.config.ts`
+  as on CI. The run fails at once if `sans-serif` is not DejaVu Sans. The environment
+  still differs: the container runs as root where CI runs as `runner`; it has Docker
+  Desktop's CPUs and memory, not a runner's; its Node patch comes from the image digest,
+  not `setup-node`; and it runs on the machine's own architecture unless
+  `--platform linux/amd64` emulates CI's. Timing is what these change, which is why
+  `:376` passes here with or without #199's fix (R-194). _Why:_ the `github` reporter
+  writes annotations for a CI log; a terminal needs progress.
+- **D-201-5 · One run at a time per clone.** `flock(2)`, through perl, on
+  `e2e-linux.flock` in the shared git directory serialises runs across worktrees. The
+  kernel releases it when the run ends, however it ends, so no lock goes stale and none
+  is taken over. The long-running docker commands do not inherit it. A run first removes
+  the containers and network a killed run of the same clone left, found by label.
+  _Why:_ two suites at once slow each other into timeouts that CI, with one job per
+  runner, would never see. _Rejected:_ a lock directory with a pid file. A run killed
+  between creating it and writing the pid left a lock nothing would take over, and a
+  takeover could delete a fresh lock (#201 review).
+- **D-201-6 · `.githooks/pre-push` runs the whole suite on the tip of each branch a push
+  sends, as CI does, and refuses the push if it fails.** It is enabled once per clone with
   `git config core.hooksPath .githooks`. It skips branch deletions and pushes that
   change only docs: `docs/`, a top-level `*.md` or `.claude/`, which no E2E test reads
-  (`public/README.md` is served, so it counts). `SKIP_E2E_LINUX=1` skips
+  (`public/README.md` is served, so it counts). The check fails closed, and diffs
+  without rename detection, so code moved into `docs/` still counts. A worktree on a
+  branch from before this change has no `.githooks/pre-push`, so its pushes are not
+  gated. `SKIP_E2E_LINUX=1` skips
   it for one push, and CI still runs the suite. _Why:_ a hook cannot be installed from
   the repository. _Rejected:_ a `prepare` script to set `core.hooksPath`, because it
   would also run in `npm ci` in the image, which has no `.git`; and lint, types and unit

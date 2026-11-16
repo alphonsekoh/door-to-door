@@ -2219,7 +2219,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   on both projects, with DejaVu Sans served from the app's origin, R-182)
 - **Used by:** D-181-6, D-181-8
 
-### R-193 · CI's E2E job runs on Ubuntu 26.04, and Playwright's browsers need glibc, `--ipc=host` and `--init` in a container
+### R-193 · CI's E2E job runs on Ubuntu 26.04; Playwright's browsers need glibc, and its Docker guide recommends `--ipc=host` and `--init`
 
 - **Finding:** CI's `ubuntu-latest` is Ubuntu 26.04. The E2E jobs of run 43375997037
   (#181's failure), 43596084911 and 43627225097 (the last green run on `main`, Node
@@ -2239,7 +2239,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   playwright.dev/docs/docker (read 2026-11-16); measured (#201)
 - **Used by:** D-201-1, D-201-4
 
-### R-194 · In CI's Linux WebKit, `:376` passes 40 runs with and without #199's fix, and `:845` fails without it
+### R-194 · In the e2e container's Linux WebKit, `:376` passes 40 runs with and without #199's fix, and `:845` fails without it
 
 - **Finding:** in the e2e container (R-193, Ubuntu 26.04, DejaVu Sans),
   `large-text.spec.ts:376 --project=mobile-webkit --repeat-each=40` passed 40 of 40 on
