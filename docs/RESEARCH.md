@@ -2218,3 +2218,20 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#181 builder renders at 320 and 390px in both fonts; verifier r0
   on both projects, with DejaVu Sans served from the app's origin, R-182)
 - **Used by:** D-181-6, D-181-8
+
+### R-195 · A `findBy` polls its whole container on the main thread, so a slow query holds up the render it waits for (measured)
+
+- **Finding:** `findBy*` is `waitFor` around a `getBy*` query. By default it gives up
+  after 1000 ms (`asyncUtilTimeout`). It runs the query every 50 ms, and again on every
+  mutation in its container, using a `MutationObserver` on the subtree. Each query runs
+  on the main thread, so a slow one holds up whatever render is waiting. From
+  `within(el)`, it watches and queries only `el`. On the block screen with more than 100
+  rows, under load (builder's diagnostic copy of the test), a whole-page
+  `findByRole("tab")` took up to about 250 ms a query. The tab landed after a median of
+  about 400 ms and as late as 949 ms. Scoped to the tablist, at the same load, each query
+  took at most 70 ms and the tab landed by 293 ms.
+- **Source:** `node_modules/@testing-library/dom/dist/wait-for.js`, `config.js` and
+  `query-helpers.js` (`makeFindQuery`), 10.4.1, read by the #192 docs step. Measured by
+  the #192 builder: per-poll timings in `block-screen.test.tsx`, 16 to 24 runs per
+  variant.
+- **Used by:** D-192-2

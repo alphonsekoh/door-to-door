@@ -42,13 +42,10 @@ viewer's teams request with the unit list. Test only: the app cannot meet this, 
   takes away a unit shown because a later read got less" and "shows the units that
   arrived when a later page drops on first open, and saves none". The first two wait for
   a request, then assert at once on an answer drawn in a transition (D-155-2), which
-  D-88-4 warns against. All four are in tests #160 is editing. No issue is filed.
+  D-88-4 warns against. All four are in tests #160 is editing. _Closed by #192_, which
+  the owner filed to be worked after #160 (D-192-1, D-192-2). Its Causes section has
+  the cause of each test.
 
 ## Relies on
 
 D-12-1, D-37-4, D-74-52, D-88-1, D-88-4.
-
-## Open questions
-
-- **Owner:** file an issue for the four block-screen flakes in Known limits, to be
-  worked after #160 lands?
