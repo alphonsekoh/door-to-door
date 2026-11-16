@@ -207,7 +207,8 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   control reads "Sign out" again at once. With no answer it reads "Could not sign out.
   Check your connection and try again."; a refusal shows the server's message. When the
   read after a failed end fails too, the list is kept, and the row's alert still says
-  "Could not sign out. …". _Applied to Account by D-164-1._
+  "Could not sign out. …". _Applied to Account by D-164-1._ _Refined by D-195-1:_ the
+  failure blocks are `scroll-clear-nav`, with D-164-9's two-sided bound in the E2E.
 - **D-125-23 · Path ids are compared with the session's in either case** (`sameUuid`,
   `src/lib/uuid.ts`). _Why:_ the contract takes an upper-case UUID, and the session's
   ids are lower case. Without this, your own current sign-in was not `409`, and "Sign
