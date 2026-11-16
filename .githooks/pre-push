@@ -6,9 +6,10 @@
 #
 #   git config core.hooksPath .githooks
 #
-# Skipped: branch deletions, pushes that change only docs (docs/ or *.md), and
-# trees that have already passed a whole-suite run. SKIP_E2E_LINUX=1 skips it
-# for one push; CI still runs the suite.
+# Skipped: branch deletions, pushes that change only docs (docs/, a top-level
+# *.md or .claude/), and trees that have passed a whole-suite run, or differ
+# from one only in docs. SKIP_E2E_LINUX=1 skips it for one push; CI still runs
+# the suite.
 set -euo pipefail
 
 if [ "${SKIP_E2E_LINUX:-}" = 1 ]; then
@@ -19,9 +20,23 @@ fi
 root=$(git rev-parse --show-toplevel)
 passed="$(git rev-parse --path-format=absolute --git-common-dir)/e2e-linux-passed"
 zero=0000000000000000000000000000000000000000
+# Paths no E2E test reads.
+docs='^docs/|^[^/]+\.md$|^\.claude/'
 
+only_docs() {
+  [ -n "$1" ] && ! printf '%s\n' "$1" | grep -qvE "$docs"
+}
+
+# Its tree passed, or differs from a recent tree that passed only in docs.
 has_passed() {
-  [ -f "$passed" ] && grep -q "^$(git rev-parse "$1^{tree}") " "$passed"
+  local tree t
+  [ -f "$passed" ] || return 1
+  tree=$(git rev-parse "$1^{tree}")
+  ! grep -q "^$tree " "$passed" || return 0
+  for t in $(tail -n 50 "$passed" | cut -d ' ' -f 1); do
+    ! only_docs "$(git diff --name-only "$t" "$tree" 2>/dev/null)" || return 0
+  done
+  return 1
 }
 
 todo=()
@@ -39,7 +54,7 @@ while read -r _local_ref local_sha _remote_ref remote_sha; do
   if [ -n "$base" ]; then
     changed=$(git diff --name-only "$base" "$local_sha")
     [ -n "$changed" ] || continue
-    printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$' || continue
+    ! only_docs "$changed" || continue
   fi
   todo+=("$local_sha")
 done

@@ -9,7 +9,7 @@
 #
 # It tests a commit, never the working copy: git archive feeds the container,
 # so what passes is what a push sends. The image is the Dockerfile's e2e stage
-# (Ubuntu 24.04, Node 24, Playwright's Chromium and WebKit), the database is
+# (Ubuntu 26.04, Node 24, Playwright's Chromium and WebKit), the database is
 # CI's postgres service image, and both sit on a private network, so nothing
 # here touches the host's ports or its Postgres. One run at a time per clone:
 # a second waits for the first. A whole-suite pass is recorded by tree, which

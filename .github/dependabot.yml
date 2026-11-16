@@ -62,9 +62,10 @@ updates:
     ignore:
       - dependency-name: node
         update-types: ["version-update:semver-major"]
-      # The e2e stage's ubuntu follows CI's ubuntu-latest (#201), never ahead.
+      # The e2e stage's ubuntu is the LTS that CI's ubuntu-latest runs (#201),
+      # so only its digest moves here; an interim release never fits.
       - dependency-name: ubuntu
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       docker:
         patterns: ["*"]

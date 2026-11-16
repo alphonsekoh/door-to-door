@@ -29,13 +29,13 @@ CMD ["node_modules/.bin/next", "dev", "-H", "0.0.0.0"]
 # CI's "End-to-end smoke" job on this machine (scripts/e2e-linux.sh, #201).
 # Not part of the app's image: built only with --target e2e, and kept above
 # builder so that runner stays the last stage, the one a plain docker build
-# builds. CI runs on ubuntu-latest (24.04) with Node 24 and installs the
+# builds. CI runs on ubuntu-latest (26.04) with Node 24 and installs the
 # browsers with `playwright install --with-deps`; this stage does the same, so
 # its WebKit is Linux WebKit and draws in DejaVu Sans as CI's does (R-182),
 # which macOS never shows. ubuntu moves with CI's ubuntu-latest, never ahead.
 FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS e2e-node
 
-FROM ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8 AS e2e
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db AS e2e
 COPY --from=e2e-node /usr/local/ /usr/local/
 # As on a GitHub runner. PLAYWRIGHT_HTML_OPEN stops the report from starting a
 # server in a container nobody can browse.
