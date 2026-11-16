@@ -137,19 +137,22 @@ rm -rf "$out"
 mkdir -p "$out"
 
 say "running on $short ${platform:-natively}${pw_args[*]+ with: ${pw_args[*]}}"
-set +e
 # shellcheck disable=SC2016 # expanded in the container
-git archive --format=tar "$commit" | docker run --rm -i --init --ipc=host --name "$name-run" \
+docker create --init --ipc=host --name "$name-run" \
   ${platform_args[@]+"${platform_args[@]}"} --network "$name" \
   -e E2E_DATABASE_URL="postgresql://postgres:postgres@$name-db:5432/door_to_door_e2e" \
-  -v "$out:/out" "$image" /bin/bash -c '
-    tar -xf - -C /work && cd /work || exit 1
+  -v "$out:/out" -w /work "$image" /bin/bash -c '
     echo "e2e-linux: sans-serif is $(fc-match -f "%{family}" sans-serif), as on CI (R-182)" >&2
     npm run test:e2e -- --reporter=line,html "$@"
     status=$?
     cp -R playwright-report test-results /out/ 2>/dev/null
     exit $status
-  ' e2e-linux ${pw_args[@]+"${pw_args[@]}"}
+  ' e2e-linux ${pw_args[@]+"${pw_args[@]}"} >/dev/null
+# Docker unpacks the commit, not tar in the container: under amd64 emulation
+# the container's tar cannot create a file (ENOSYS).
+git archive --format=tar "$commit" | docker cp - "$name-run:/work"
+set +e
+docker start --attach "$name-run"
 status=$?
 set -e
 
