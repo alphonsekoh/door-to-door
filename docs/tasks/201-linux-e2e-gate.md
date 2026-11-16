@@ -92,6 +92,7 @@ WebKit draws in DejaVu Sans).
 - **Keep CI's E2E job?** With the gate on, CI's E2E job mostly repeats a pass already
   seen here, and it is about half of each run's billed minutes. CI is still the only
   check that cannot be skipped.
-- **Agents and the gate.** A push now runs the suite for about 10 minutes, which is
-  longer than an agent's command may wait. The pipeline's publish step should run
-  `npm run test:e2e:linux` first and push once it has passed.
+- **Agents and the gate.** A gated push runs the suite for about 6 minutes with the
+  image cached (8 when it rebuilds), which is longer than an agent's command may wait.
+  The pipeline's publish step should run `npm run test:e2e:linux` first and push once it
+  has passed.
