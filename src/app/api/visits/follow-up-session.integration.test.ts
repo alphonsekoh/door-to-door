@@ -491,6 +491,35 @@ describe("undoing what a visit marked done", () => {
     expect((await notesAt(LISTED))[0]).toMatchObject({ done_at: null, done_visit_id: null });
   });
 
+  it("never reopens a note another visit marked done since, whatever the case", async () => {
+    const BEN = "c7c7c7c7-0000-4000-8000-000000000003";
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES ($1,'ben@t.local','Ben Tan','member')`,
+      [BEN],
+    );
+    const aliceVisit = "01960000-0000-7000-8000-0000000c7abc";
+    asAlice();
+    expect((await post("#01-01", { id: aliceVisit })).status).toBe(201);
+    const [note] = await notesAt(LISTED);
+    if (note === undefined) throw new Error("expected the listed note");
+
+    // An admin reopens it, and Ben's visit marks it done again.
+    asAdmin();
+    expect((await reopen(note.id)).status).toBe(200);
+    auth.mockImplementation(() => signedInAs(pool, { id: BEN, role: "member" }));
+    const bens = (await (await post("#01-01")).json()) as { id: string };
+    expect((await notesAt(LISTED))[0]).toMatchObject({ done_by: BEN, done_visit_id: bens.id });
+
+    asAlice();
+    const refused = await undo(note.id, aliceVisit.toUpperCase());
+    expect(refused.status).toBe(409);
+    expect(await error(refused)).toEqual({
+      code: "conflict",
+      message: "Ben marked it done again after this visit was saved, so it stays done.",
+    });
+    expect((await notesAt(LISTED))[0]).toMatchObject({ done_by: BEN, done_visit_id: bens.id });
+  });
+
   it("takes markedByVisit only with done: false", async () => {
     asAlice();
     const saved = (await (await post("#01-01")).json()) as { id: string };
