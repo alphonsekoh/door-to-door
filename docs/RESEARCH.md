@@ -2218,3 +2218,38 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#181 builder renders at 320 and 390px in both fonts; verifier r0
   on both projects, with DejaVu Sans served from the app's origin, R-182)
 - **Used by:** D-181-6, D-181-8
+
+### R-193 · CI's E2E job runs on Ubuntu 26.04, and Playwright's browsers need glibc, `--ipc=host` and `--init` in a container
+
+- **Finding:** CI's `ubuntu-latest` is Ubuntu 26.04. The E2E jobs of run 43375997037
+  (#181's failure), 43596084911 and 43627225097 (the last green run on `main`, Node
+  24.22.2) all report `Image: ubuntu-26.04`. Playwright's Docker guide supports Ubuntu
+  26.04, 24.04 and 22.04, and not Alpine or any other musl distribution. It recommends
+  `--ipc=host`, without which Chromium can run out of memory and crash, and `--init`,
+  so PID 1 reaps zombie processes. Run as root, Chromium's sandbox is off, which matters
+  only for untrusted sites. After `npx playwright install --with-deps chromium webkit`
+  and `fonts-dejavu-core`, fontconfig resolves `sans-serif` to DejaVu Sans, as on CI
+  (R-182). On an arm64 Mac (Docker Desktop with 8 CPUs and 12 GB), the whole suite
+  passed natively on arm64: 183 passed and 7 skipped, as on macOS at b0976bc, in
+  5.3 minutes on 24.04 and 5.4 on 26.04. The first image build plus the run took 8m17s
+  and 7m29s. Under Docker Desktop's amd64 emulation (Rosetta), GNU tar in the 26.04
+  image could not create a file or directory (`Function not implemented`), while
+  `docker cp` of the same archive works.
+- **Source:** the runs' job logs (`gh run view --log`, "Runner Image");
+  playwright.dev/docs/docker (read 2026-11-16); measured (#201)
+- **Used by:** D-201-1, D-201-4
+
+### R-194 · In CI's Linux WebKit, `:376` passes 40 runs with and without #199's fix, and `:845` fails without it
+
+- **Finding:** in the e2e container (R-193, Ubuntu 26.04, DejaVu Sans),
+  `large-text.spec.ts:376 --project=mobile-webkit --repeat-each=40` passed 40 of 40 on
+  `main` at b0976bc (#199's fix), natively on arm64 in 3.6 minutes and under amd64
+  emulation, CI's architecture, in 10.2. It also passed 40 of 40 on arm64 at 13215e7,
+  before the fix. So the forty runs #181's acceptance asks for cannot tell the fix from
+  its absence here: the miss in run 43375997037 needed the session's answer to land
+  within the press (R-190). `:845`, which holds the session's answer and measures the
+  unit field, failed on both projects with `standIn={false}` on b0976bc, the field
+  moving from y 386 to 338, the same numbers as on macOS (D-181-8). With the fix it
+  passed on both in the whole-suite runs.
+- **Source:** measured (#201, `npm run test:e2e:linux`, 2026-11-16)
+- **Used by:** D-181 known limits, D-201-1
