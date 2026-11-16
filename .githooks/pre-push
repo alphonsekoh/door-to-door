@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# The Linux E2E gate (#201). Before a push leaves this machine, CI's E2E job
+# runs on each pushed commit in a Linux container (scripts/e2e-linux.sh), so a
+# failure costs local minutes instead of Actions minutes. Enable it once per
+# clone, for every worktree:
+#
+#   git config core.hooksPath .githooks
+#
+# Skipped: branch deletions, pushes that change only docs (docs/ or *.md), and
+# trees that have already passed a whole-suite run. SKIP_E2E_LINUX=1 skips it
+# for one push; CI still runs the suite.
+set -euo pipefail
+
+if [ "${SKIP_E2E_LINUX:-}" = 1 ]; then
+  echo "pre-push: SKIP_E2E_LINUX=1, so the Linux E2E gate is skipped (CI still runs it)" >&2
+  exit 0
+fi
+
+root=$(git rev-parse --show-toplevel)
+passed="$(git rev-parse --path-format=absolute --git-common-dir)/e2e-linux-passed"
+zero=0000000000000000000000000000000000000000
+
+has_passed() {
+  [ -f "$passed" ] && grep -q "^$(git rev-parse "$1^{tree}") " "$passed"
+}
+
+todo=()
+while read -r _local_ref local_sha _remote_ref remote_sha; do
+  [ "$local_sha" != "$zero" ] || continue
+  ! has_passed "$local_sha" || continue
+  # What this push adds: since the remote's tip, or for a new branch since
+  # main. With neither known, everything counts.
+  base=""
+  if [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    base=$remote_sha
+  else
+    base=$(git merge-base "$local_sha" origin/main 2>/dev/null || true)
+  fi
+  if [ -n "$base" ]; then
+    changed=$(git diff --name-only "$base" "$local_sha")
+    [ -n "$changed" ] || continue
+    printf '%s\n' "$changed" | grep -qvE '^docs/|\.md$' || continue
+  fi
+  todo+=("$local_sha")
+done
+
+for sha in ${todo[@]+"${todo[@]}"}; do
+  # A second ref at the same tree passed with the first.
+  ! has_passed "$sha" || continue
+  echo "pre-push: running the Linux E2E gate on $(git rev-parse --short "$sha"), about 10 minutes (SKIP_E2E_LINUX=1 skips it)" >&2
+  if ! "$root/scripts/e2e-linux.sh" --ref "$sha" </dev/null; then
+    echo "pre-push: the Linux E2E gate failed, so nothing was pushed" >&2
+    exit 1
+  fi
+done

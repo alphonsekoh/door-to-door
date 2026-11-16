@@ -33,6 +33,7 @@
     "generate:api": "openapi-ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
+    "test:e2e:linux": "bash scripts/e2e-linux.sh",
     "start:standalone": "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && CONFIG_PATH=\"${CONFIG_PATH:-$PWD/config.yaml}\" node .next/standalone/server.js",
     "icons": "tsx scripts/generate-icons.ts"
   },

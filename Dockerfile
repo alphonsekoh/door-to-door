@@ -55,3 +55,26 @@ USER nextjs
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0 CONFIG_PATH=/app/config.yaml
 CMD ["node", "server.js"]
+
+# ----------------------------------------------------------------- e2e
+# CI's "End-to-end smoke" job on this machine (scripts/e2e-linux.sh, #201).
+# Not part of the app's image: built only with --target e2e. CI runs on
+# ubuntu-latest (24.04) with Node 24 and installs the browsers with
+# `playwright install --with-deps`; this stage does the same, so its WebKit is
+# Linux WebKit and draws in DejaVu Sans as CI's does (R-182), which macOS never
+# shows. ubuntu moves with CI's ubuntu-latest, never ahead of it.
+FROM node:24-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS e2e-node
+
+FROM ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8 AS e2e
+COPY --from=e2e-node /usr/local/ /usr/local/
+# As on a GitHub runner. PLAYWRIGHT_HTML_OPEN stops the report from starting a
+# server in a container nobody can browse.
+ENV CI=true LANG=C.UTF-8 NEXT_TELEMETRY_DISABLED=1 PLAYWRIGHT_HTML_OPEN=never
+WORKDIR /work
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci
+# CI's runner image has DejaVu already. Here it is named, so fontconfig cannot
+# settle on another sans-serif that the browser deps happen to bring.
+RUN npx playwright install --with-deps chromium webkit \
+  && apt-get install -y --no-install-recommends fonts-dejavu-core \
+  && rm -rf /var/lib/apt/lists/*
