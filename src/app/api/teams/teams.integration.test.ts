@@ -652,6 +652,25 @@ describe("leaving a team", () => {
     expect(await count("session_team_members")).toBe(2);
   });
 
+  it("knows a member by their own id in either letter case", async () => {
+    // Letters in the ids, so their two cases differ.
+    const fay = "74747474-0000-4000-8000-0000000000fa";
+    const gus = "74747474-0000-4000-8000-0000000000fb";
+    await pool.query(
+      `INSERT INTO users (id, email, name, role) VALUES
+        ($1,'fay@t.local','Fay','member'), ($2,'gus@t.local','Gus','member')`,
+      [fay, gus],
+    );
+    const team = await makeTeam(ACTIVE, "Pair", [fay, gus]);
+    as(fay);
+    // A teammate is still not theirs to remove, in capitals too.
+    const teammate = await call(removeMember, "DELETE", { id: team, userId: gus.toUpperCase() });
+    expect(teammate.status).toBe(403);
+    const self = await call(removeMember, "DELETE", { id: team, userId: fay.toUpperCase() });
+    expect(self.status).toBe(200);
+    expect(memberIds((await self.json()) as TeamBody)).toEqual([gus]);
+  });
+
   it("lets an admin remove anyone, and 404s on someone not on the team", async () => {
     const team = await makeTeam(ACTIVE, "Pair", [ALICE, BEN]);
     asAdmin();

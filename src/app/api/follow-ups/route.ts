@@ -11,6 +11,7 @@ import { ForbiddenError, ValidationError } from "@/server/http/errors";
 import { createFollowUp, listFollowUps } from "@/server/follow-ups/service";
 import { withContract } from "@/server/http/contract";
 import { toFollowUp } from "@/server/visits/serialise";
+import { sameUuid } from "@/lib/uuid";
 
 export const GET = withContract(
   {
@@ -53,7 +54,8 @@ export const GET = withContract(
      * Removed notes are an admin's audit trail. A member may read only their
      * own, to learn that a suggestion was not added and why.
      */
-    if (query.deleted && user.role !== "admin" && query.authorId !== user.id) {
+    const ownNotes = query.authorId !== undefined && sameUuid(query.authorId, user.id);
+    if (query.deleted && user.role !== "admin" && !ownNotes) {
       throw new ForbiddenError("Only an admin can see removed follow-ups.");
     }
 

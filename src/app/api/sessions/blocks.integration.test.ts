@@ -72,6 +72,14 @@ describe("attaching", () => {
     expect(body).toHaveLength(1);
   });
 
+  it("attaches one block named in two letter cases once", async () => {
+    asAdmin();
+    const response = await attach(attachRequest([BLOCK_A, BLOCK_A.toUpperCase()]), ctx());
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { block: { id: string } }[];
+    expect(body.map((b) => b.block.id)).toEqual([BLOCK_A]);
+  });
+
   it("can add a block to a session that is already running", async () => {
     // The contingency path: members pick it up on their next refresh.
     asAdmin();

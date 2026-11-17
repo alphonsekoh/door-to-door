@@ -1821,7 +1821,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [PostgreSQL, UUID type](https://www.postgresql.org/docs/current/datatype-uuid.html);
   `uuid_internal_cmp` (`memcmp`) in PostgreSQL's `src/backend/utils/adt/uuid.c`;
   `node_modules/zod/v4/core/regexes.js` (`uuid`); measured with `psql` (#158 docs)
-- **Used by:** D-158-2, D-158-6, D-180-1, D-180-2
+- **Used by:** D-158-2, D-158-6, D-180-1, D-180-2, D-193-1, D-193-6
 
 ### R-162 · Without an `ORDER BY`, a locking SELECT locks in its scan's order (measured)
 

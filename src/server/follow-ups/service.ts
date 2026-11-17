@@ -4,6 +4,7 @@ import type { FollowUpStatus, Role } from "@/db/schema";
 import { followUps, households, visits } from "@/db/schema";
 import { waitingSentence } from "@/lib/follow-ups/waiting";
 import { firstName } from "@/lib/session/own-name";
+import { sameUuid } from "@/lib/uuid";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { isNoteOnActiveRevisitList, liveFollowUp } from "@/server/follow-ups/list-rule";
 import {
@@ -208,7 +209,7 @@ async function insertFollowUp(
     if (!found) {
       throw new NotFoundError("No such visit.");
     }
-    if (found.householdId !== input.householdId) {
+    if (!sameUuid(found.householdId, input.householdId)) {
       // A note anchored to a visit at another door would read as nonsense.
       throw new NotFoundError("That visit belongs to a different household.");
     }
@@ -347,7 +348,7 @@ async function assertStillMarkedBy(
       .where(eq(followUps.id, existing.id)),
     "follow-up",
   );
-  if (doneVisitId === visitId) return;
+  if (doneVisitId !== null && sameUuid(doneVisitId, visitId)) return;
   const who = existing.doneById === actor.id ? "You" : firstName(existing.doneByName);
   throw new ConflictError(
     "conflict",
