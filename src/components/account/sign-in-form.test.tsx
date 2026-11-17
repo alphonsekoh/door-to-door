@@ -380,6 +380,27 @@ describe("SignInForm", () => {
       await screen.findByRole("alert");
       expect(document.body).toHaveFocus();
     });
+
+    it("stays where the member put it while the attempt was out", async () => {
+      let refuse: (value: typeof failed) => void = () => undefined;
+      signIn.mockReturnValue(
+        new Promise<typeof failed>((resolve) => {
+          refuse = resolve;
+        }),
+      );
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+      await screen.findByRole("button", { name: "Signing in…" });
+      // Back to fix a typo, keyboard up, before the answer comes.
+      await user.click(screen.getByLabelText("Password"));
+
+      refuse(failed);
+      await screen.findByRole("alert");
+      expect(screen.getByLabelText("Password")).toHaveFocus();
+    });
   });
 
   it("never puts the password in the DOM as readable text", async () => {
