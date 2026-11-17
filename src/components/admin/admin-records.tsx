@@ -17,6 +17,7 @@ import type {
   User,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import {
   UNDO_READY,
   type UndoState,
@@ -126,7 +127,7 @@ export function AdminRecords() {
       }
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the records.",
+        message: failureLine(error, "Could not load the records."),
       });
     }
   }, []);

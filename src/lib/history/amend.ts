@@ -1,5 +1,6 @@
 import type { Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { isNetworkFailure } from "@/lib/teams/team-ui";
 
 /*
@@ -42,5 +43,5 @@ export function describeAmendFailure(error: unknown, route: AmendRoute = null): 
       ? "You are not on this record's team any more, so you cannot amend it. Its author or an admin still can."
       : "You can no longer amend this record.";
   }
-  return error instanceof Error ? error.message : "Could not save this change.";
+  return failureLine(error, "Could not save this change.");
 }

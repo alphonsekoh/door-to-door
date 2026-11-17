@@ -8,6 +8,7 @@ import { HouseholdHistoryPanel } from "@/components/households/household-history
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import {
   ADD_TO_LIST,
   ON_THE_LIST,
@@ -56,7 +57,7 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
           ? current
           : {
               status: "error",
-              message: error instanceof Error ? error.message : "Could not load this unit.",
+              message: failureLine(error, "Could not load this unit."),
             },
       );
     }

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { HouseholdScreen } from "@/components/households/household-screen";
 import type { FollowUp, HouseholdHistory } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -189,11 +190,25 @@ describe("HouseholdScreen", () => {
     });
   });
 
-  it("reports a failure rather than an empty unit", async () => {
-    apiFetch.mockRejectedValue(new Error("No such unit."));
+  it("reports a failure rather than an empty unit, in the server's words", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(404, { error: { code: "not_found", message: "No such unit." } }),
+    );
     render(<HouseholdScreen householdId="h1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("No such unit.");
   });
+
+  /* #194: fetch's own text is the browser's ("Failed to fetch", "Load failed"). */
+  it.each(["Failed to fetch", "Load failed"])(
+    "says its own sentence when the unit gets no answer (%s)",
+    async (browserWords) => {
+      apiFetch.mockRejectedValue(new TypeError(browserWords));
+      render(<HouseholdScreen householdId="h1" />);
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not load this unit.");
+      expect(alert).not.toHaveTextContent(browserWords);
+    },
+  );
 
   it("copes with a non-Error failure", async () => {
     apiFetch.mockRejectedValue("boom");

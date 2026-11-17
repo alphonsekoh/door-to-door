@@ -1230,7 +1230,11 @@ describe("validation and failure", () => {
 
   it("reports a failure without losing what was typed", async () => {
     // Retyping a description at the door is exactly what loses records.
-    apiFetch.mockRejectedValue(new Error("No session is active."));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "session_not_active", message: "No session is active." },
+      }),
+    );
     const user = userEvent.setup();
     render(
       <RecordVisitForm
@@ -1871,11 +1875,13 @@ describe("saving into the offline queue", () => {
 
   it("keeps everything typed when neither the phone nor the server takes it", async () => {
     withQueue(vi.fn(() => Promise.reject(new Error("private mode"))));
-    apiFetch.mockRejectedValueOnce(new Error("Failed to fetch"));
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
     await fill();
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Failed to fetch");
+    // The form's sentence, never the browser's (#194).
+    expect(alert).toHaveTextContent("Could not save this visit.");
+    expect(alert).not.toHaveTextContent("Failed to fetch");
     expect(screen.getByRole("button", { name: "Save and next" }).parentElement).toContainElement(
       alert,
     );

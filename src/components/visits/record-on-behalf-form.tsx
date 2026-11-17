@@ -6,6 +6,7 @@ import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import type { Block, InterestLevel, RecordedVisit, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import {
   type NotSaved,
   type NotSavedField,
@@ -114,9 +115,7 @@ export function RecordOnBehalfForm({
       setFailure(
         refused !== null
           ? notSavedLine(refused)
-          : error instanceof Error
-            ? error.message
-            : "Could not record that visit.",
+          : failureLine(error, "Could not record that visit."),
       );
       setNotSaved(refused);
     } finally {

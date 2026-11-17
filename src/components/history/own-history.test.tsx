@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { OwnHistoryScreen } from "@/components/history/own-history";
 import type { HistoryEntry, SessionHistorySummary } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -185,14 +186,25 @@ describe("OwnHistoryScreen", () => {
 
   it("offers a retry when the history fails to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<OwnHistoryScreen />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load your history.");
 
     serve(sessionPage([summary("s1", "June outing")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("June outing")).toBeInTheDocument();
+  });
+
+  it("shows the server's sentence when it refuses the history", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(401, {
+        error: { code: "unauthenticated", message: "Sign in to continue." },
+      }),
+    );
+    render(<OwnHistoryScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign in to continue.");
   });
 
   it("copes with a non-Error failure", async () => {
@@ -373,9 +385,22 @@ describe("Me or My team", () => {
 
   it("shows the server's reason for a failure", async () => {
     searchParams.value = new URLSearchParams("view=team");
-    onceReject(new Error("Your sign-in has ended."));
+    onceReject(
+      new ApiRequestError(403, {
+        error: { code: "account_deactivated", message: "Your sign-in has ended." },
+      }),
+    );
     render(<OwnHistoryScreen />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Your sign-in has ended.");
+  });
+
+  it("says its own sentence, not the browser's, when the team's records get no answer", async () => {
+    searchParams.value = new URLSearchParams("view=team");
+    onceReject(new TypeError("Load failed"));
+    render(<OwnHistoryScreen />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load your team's records.",
+    );
   });
 
   it("drops a late page that a reload after an amend has overtaken", async () => {

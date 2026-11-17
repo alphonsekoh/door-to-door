@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionDetail } from "@/components/sessions/session-detail";
 import type { OutingSession, SessionBlock, SessionStatus } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -271,7 +272,11 @@ describe("SessionDetail", () => {
     render(<SessionDetail sessionId="s1" />);
     await screen.findByText("Blk 123");
 
-    apiFetch.mockRejectedValue(new Error("Visits have been recorded on this block."));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "block_in_use", message: "Visits have been recorded on this block." },
+      }),
+    );
     await user.click(screen.getByRole("button", { name: "Remove" }));
     await user.click(screen.getByRole("button", { name: "Remove the block" }));
 
@@ -295,14 +300,23 @@ describe("SessionDetail", () => {
 
   it("offers a retry when the outing will not load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("No such session."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<SessionDetail sessionId="s1" />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No such session.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this session.");
 
     serve("active", []);
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("June outing")).toBeInTheDocument();
+  });
+
+  it("shows the server's sentence when it refuses the session", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(404, { error: { code: "not_found", message: "No such session." } }),
+    );
+    render(<SessionDetail sessionId="s1" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("No such session.");
   });
 
   it("copes with a non-Error load failure", async () => {

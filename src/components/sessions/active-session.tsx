@@ -10,6 +10,7 @@ import { HintCard } from "@/components/ui/hint-card";
 import { PageHeader } from "@/components/ui/page-header";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { useRole } from "@/lib/hooks/use-role";
 import { knownSessionKind } from "@/lib/session/known-kind";
 
@@ -46,7 +47,7 @@ export function ActiveSessionScreen() {
       } else {
         setState({
           status: "error",
-          message: error instanceof Error ? error.message : "Could not load the session.",
+          message: failureLine(error, "Could not load the session."),
         });
       }
     } finally {

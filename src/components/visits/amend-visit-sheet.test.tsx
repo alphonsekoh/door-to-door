@@ -312,7 +312,11 @@ describe("AmendVisitSheet", () => {
   it("keeps the sheet open and reports a rejected amendment", async () => {
     const user = userEvent.setup();
     const onSaved = vi.fn();
-    apiFetch.mockRejectedValue(new Error("That session has ended."));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "session_not_active", message: "That session has ended." },
+      }),
+    );
 
     render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={onSaved} />);
     await user.click(screen.getByRole("radio", { name: "High" }));

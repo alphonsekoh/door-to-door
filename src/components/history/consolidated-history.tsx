@@ -20,6 +20,7 @@ import type {
   User,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history/history";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
@@ -100,7 +101,7 @@ export function ConsolidatedHistory() {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the records.",
+        message: failureLine(error, "Could not load the records."),
       });
     }
   }, []);
@@ -221,7 +222,7 @@ export function ConsolidatedHistory() {
           : `Exported ${String(rows.length)} records.`,
       );
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not export those records.");
+      setNotice(failureLine(error, "Could not export those records."));
     } finally {
       setExporting(false);
     }

@@ -12,7 +12,8 @@ import type {
   SessionHousehold,
   SessionHouseholdList,
 } from "@/generated/types.gen";
-import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { loadAllListed } from "@/lib/follow-ups/listed";
 import { addBlocker, groupForPicking } from "@/lib/follow-ups/pick";
 import { groupByBlock } from "@/lib/follow-ups/revisits";
@@ -27,9 +28,6 @@ import {
 
 type State =
   { status: "loading" } | { status: "ready"; entries: SessionHousehold[] } | { status: "error" };
-
-const failureText = (error: unknown, fallback: string) =>
-  error instanceof ApiRequestError ? error.message : fallback;
 
 /*
  * What a follow-up session goes back to: the households its admin picked,
@@ -98,7 +96,7 @@ export function SessionHouseholds({
       });
       setNotice("Removed from this session. It is still on the follow-up list.");
     } catch (error) {
-      setFailure(failureText(error, "Could not remove that household."));
+      setFailure(failureLine(error, "Could not remove that household."));
     } finally {
       removingNow.current = false;
       setRemoving(null);
@@ -358,7 +356,7 @@ function AddHouseholdsSheet({
           : "Added.",
       );
     } catch (error) {
-      setFailure(failureText(error, "Could not add those households."));
+      setFailure(failureLine(error, "Could not add those households."));
       // One may have left the list since it was read.
       void load();
     } finally {

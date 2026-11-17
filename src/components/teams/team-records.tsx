@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OwnRecords, TEAM_VIEW_NOTE } from "@/components/history/own-records";
 import type { HistoryEntry, HistoryList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { ownHistoryRequest } from "@/lib/teams/team-view";
 
 const PAGE_SIZE = 20;
@@ -39,7 +40,7 @@ export function TeamRecords() {
       if (mine !== generation.current) return;
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load your team's records.",
+        message: failureLine(error, "Could not load your team's records."),
       });
     }
   }, []);

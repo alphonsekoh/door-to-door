@@ -5,6 +5,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { accountStore } from "@/lib/session/account-state";
 import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/session/own-name";
 import { signOutAndForget } from "@/lib/session/sign-out";
@@ -15,10 +16,6 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 
 const ROLE_LABEL = { admin: "Admin", member: "Member" } as const;
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof ApiRequestError ? error.message : fallback;
-}
 
 export function AccountScreen() {
   const { update } = useSession();
@@ -50,7 +47,7 @@ export function AccountScreen() {
       },
       (error: unknown) => {
         if (cancelled) return;
-        setLoadFailure(messageOf(error, "Could not load your details."));
+        setLoadFailure(failureLine(error, "Could not load your details."));
         setStaleSession(
           error instanceof ApiRequestError &&
             (error.status === 401 || error.code === "account_deactivated"),
@@ -93,7 +90,7 @@ export function AccountScreen() {
          name until the next sign-in, which is not worth failing the save for. */
       await update({ name: updated.name }).catch(() => undefined);
     } catch (error) {
-      setFailure(messageOf(error, "Could not save your name."));
+      setFailure(failureLine(error, "Could not save your name."));
     } finally {
       setSaving(false);
     }

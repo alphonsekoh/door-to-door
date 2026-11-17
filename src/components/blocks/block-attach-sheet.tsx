@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Block, BlockList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 
 /*
@@ -47,7 +48,7 @@ export function BlockAttachSheet({
       }
     } catch (error) {
       if (mine === generation.current) {
-        setFailure(error instanceof Error ? error.message : "Could not load the blocks.");
+        setFailure(failureLine(error, "Could not load the blocks."));
       }
     }
   }, []);
@@ -80,7 +81,7 @@ export function BlockAttachSheet({
       setStreet("");
       setCreating(false);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not add that block.");
+      setFailure(failureLine(error, "Could not add that block."));
     } finally {
       setBusy(false);
     }
@@ -92,7 +93,7 @@ export function BlockAttachSheet({
     try {
       await onAttach(chosen);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not attach those blocks.");
+      setFailure(failureLine(error, "Could not attach those blocks."));
     } finally {
       setBusy(false);
     }

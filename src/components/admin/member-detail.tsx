@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { formatDayTime } from "@/lib/history/dates";
 
 const BACK = { href: "/admin/team", label: "Team" };
@@ -68,7 +69,7 @@ export function MemberDetail({ userId }: { userId: string }) {
         if (mine !== generation.current || keepList) return;
         setState({
           status: "error",
-          message: error instanceof Error ? error.message : "Could not load this member.",
+          message: failureLine(error, "Could not load this member."),
         });
       }
     },
@@ -105,7 +106,7 @@ export function MemberDetail({ userId }: { userId: string }) {
         setEnding(null);
         setFailure({
           at: pressed,
-          message: error instanceof ApiRequestError ? error.message : NO_ANSWER,
+          message: failureLine(error, NO_ANSWER),
         });
       }
     }
