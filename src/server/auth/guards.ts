@@ -1,4 +1,5 @@
 import type { Role } from "@/db/schema";
+import { sameUuid } from "@/lib/uuid";
 import {
   AccountDeactivatedError,
   ForbiddenError,
@@ -80,7 +81,7 @@ export function resolveMemberScope(session: SessionLike, requestedMemberId?: str
   if (user.role === "admin") {
     return requestedMemberId ?? user.id;
   }
-  if (requestedMemberId !== undefined && requestedMemberId !== user.id) {
+  if (requestedMemberId !== undefined && !sameUuid(requestedMemberId, user.id)) {
     throw new ForbiddenError("You can only view your own records.");
   }
   return user.id;

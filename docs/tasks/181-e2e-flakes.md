@@ -83,10 +83,14 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
 ## Known limits
 
 - **#181 stays open until `:376` passes `--repeat-each=40` on CI's Linux WebKit.**
-  Actions cannot run (spending limit) and Linux WebKit cannot run here (no Docker). On
-  macOS, `:376` passed 100 of 100 (builder) and 40 of 40 beside a coverage run
-  (verifier) with the fix. It also passes without the fix, so no local run of it proves
-  the Linux miss is gone. The proof is the header's fixed height and `:845`.
+  Actions cannot run (spending limit). On macOS, `:376` passed 100 of 100 (builder) and
+  40 of 40 beside a coverage run (verifier) with the fix. It also passes without the
+  fix, so no local run of it proves the Linux miss is gone. The proof is the header's
+  fixed height and `:845`. _Update (#201, 2026-11-16):_ in a container with CI's Ubuntu
+  and fonts, `:376` passed 40 of 40 on Linux WebKit both with the fix and without it,
+  so the forty runs cannot separate them there either, and `:845` failed on both
+  engines with the fix switched off (R-194). Whether that closes #181 is the owner's
+  call.
 - **The stand-in can be cut short.** At 32px it reads "Recor…" in DejaVu Sans on a
   320px screen, and "Record a…" in the system font at 320px or in DejaVu at 390px. It
   stays cut until the session answers, and for good when no session runs (404) or the

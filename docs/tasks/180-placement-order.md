@@ -88,10 +88,11 @@ change.
 
 ### Known limits
 
-- Ids are still compared as text outside placement. A member removing themselves by an
+- ~~Ids are still compared as text outside placement. A member removing themselves by an
   upper-case id is `403` (`removeTeamMember`), and `PATCH /users/{id}` by an
   upper-case id is `404` (`updateUser` finds its row by text). Both refuse and write
-  nothing. The reviewer suggested a follow-up issue; none is filed here.
+  nothing. The reviewer suggested a follow-up issue; none is filed here.~~ _Closed by
+  #193 (D-193-2, D-193-3)._
 
 ## Relies on
 

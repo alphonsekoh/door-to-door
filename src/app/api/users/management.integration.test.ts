@@ -50,6 +50,14 @@ type Body = {
   lastRecordedAt: string | null;
 };
 
+const stored = async (id: string) =>
+  (
+    await pool.query<{ role: string; deactivated_at: Date | null }>(
+      "select role, deactivated_at from users where id = $1",
+      [id],
+    )
+  ).rows[0];
+
 beforeEach(async () => {
   await truncateAll(pool);
   await pool.query(
@@ -186,6 +194,36 @@ describe("PATCH /api/users/{id}", () => {
     expect((await patch(ADMIN, { deactivated: false })).status).toBe(200);
   });
 
+  it("reads the id in either letter case as the same person", async () => {
+    asAdmin();
+    const response = await patch(ALICE.toUpperCase(), { role: "admin" });
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as Body).id).toBe(ALICE);
+    expect(await stored(ALICE)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
+  it("keeps an admin's own-account rules by their id in capitals", async () => {
+    // A second admin is active, so only the self rules stand in the way.
+    asAdmin();
+    const own = ADMIN.toUpperCase();
+    const refusal = async (response: Response) => ({
+      status: response.status,
+      message: ((await response.json()) as { error: { message: string } }).error.message,
+    });
+    expect(await refusal(await patch(own, { role: "member" }))).toEqual({
+      status: 409,
+      message: "You cannot change your own role.",
+    });
+    expect(await refusal(await patch(own, { deactivated: true }))).toEqual({
+      status: 409,
+      message: "You cannot deactivate your own account.",
+    });
+    // And what they let through by the lower-case id, they let through here.
+    expect((await patch(own, { role: "admin" })).status).toBe(200);
+    expect((await patch(own, { deactivated: false })).status).toBe(200);
+    expect(await stored(ADMIN)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
   it("deactivates a member without touching their records", async () => {
     asAdmin();
     const body = (await (await patch(ALICE, { deactivated: true })).json()) as Body;
@@ -264,13 +302,6 @@ describe("PATCH /api/users/{id}", () => {
  */
 describe("the last active admin", () => {
   const lastAdmin = "The team needs at least one active admin.";
-  const stored = async (id: string) =>
-    (
-      await pool.query<{ role: string; deactivated_at: Date | null }>(
-        "select role, deactivated_at from users where id = $1",
-        [id],
-      )
-    ).rows[0];
 
   beforeEach(async () => {
     await pool.query("update users set role = 'member' where id = $1", [SECOND_ADMIN]);
@@ -315,5 +346,26 @@ describe("the last active admin", () => {
     await expect(updateUser(getDatabase(), ADMIN, { role: "member" }, ADMIN)).rejects.toMatchObject(
       { status: 409, message: "You cannot change your own role." },
     );
+  });
+
+  /* Without the target counted as "another admin" once its id is in capitals. */
+  it("is the last one by an id in capitals too", async () => {
+    for (const changes of [{ role: "member" as const }, { deactivated: true }]) {
+      await expect(
+        updateUser(getDatabase(), ADMIN.toUpperCase(), changes, ALICE),
+      ).rejects.toMatchObject({ status: 409, code: "conflict", message: lastAdmin });
+    }
+    expect(await stored(ADMIN)).toEqual({ role: "admin", deactivated_at: null });
+  });
+
+  it("knows the actor as the target whichever id is in capitals", async () => {
+    for (const [target, actor] of [
+      [ADMIN.toUpperCase(), ADMIN],
+      [ADMIN, ADMIN.toUpperCase()],
+    ] as const) {
+      await expect(
+        updateUser(getDatabase(), target, { role: "member" }, actor),
+      ).rejects.toMatchObject({ status: 409, message: "You cannot change your own role." });
+    }
   });
 });

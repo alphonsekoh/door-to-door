@@ -50,7 +50,7 @@ export function uuidv7(now: number = Date.now(), random: () => number = Math.ran
 }
 
 /*
- * The same id, in either case. A path's id is checked as a UUID, which takes
+ * The same id, in either case. A request's id is checked as a UUID, which takes
  * upper case, while ids from the database and the session are lower case.
  */
 export function sameUuid(a: string, b: string): boolean {

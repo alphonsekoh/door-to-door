@@ -3,6 +3,7 @@ import type { Database } from "@/db/client";
 import type { InterestLevel, Role } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
+import { sameUuid } from "@/lib/uuid";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
 import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
@@ -163,9 +164,9 @@ async function applyItem(
      * to the author too: moving a record to another unit is a new record.
      */
     if (
-      item.blockId !== stored.blockId ||
+      !sameUuid(item.blockId, stored.blockId) ||
       item.unitNumber !== stored.unitNumber ||
-      (item.sessionId !== undefined && item.sessionId !== stored.sessionId)
+      (item.sessionId !== undefined && !sameUuid(item.sessionId, stored.sessionId))
     ) {
       throw new ConflictError(
         "conflict",

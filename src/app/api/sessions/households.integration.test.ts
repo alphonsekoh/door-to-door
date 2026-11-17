@@ -160,6 +160,11 @@ describe("creating a follow-up session", () => {
     expect(await blockIds(id)).toEqual([BLOCK_A, BLOCK_B]);
   });
 
+  it("picks one household named in two letter cases once", async () => {
+    const id = await followUp([OWED_1, OWED_1.toUpperCase()]);
+    expect(await pickedIds(id)).toEqual([OWED_1]);
+  });
+
   it("refuses one with no households, and says what to do", async () => {
     asAdmin();
     const response = await create({ title: "Follow-up", kind: "follow_up" });
@@ -433,6 +438,13 @@ describe("POST /api/sessions/{id}/households", () => {
       [OWED_1],
     );
     expect(after.rows).toEqual(before);
+  });
+
+  it("adds one household named in two letter cases once", async () => {
+    const id = await followUp([OWED_1]);
+    asAdmin();
+    expect((await add(id, [OWED_2, OWED_2.toUpperCase()])).status).toBe(200);
+    expect(await pickedIds(id)).toEqual([OWED_1, OWED_2]);
   });
 
   it("adds to a running session", async () => {
