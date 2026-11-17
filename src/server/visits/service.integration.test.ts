@@ -525,9 +525,11 @@ describe("a page of the history (#160)", () => {
 
   it("keeps the same notes on every page", async () => {
     for (const n of [1, 2, 3]) await visitAt(n, `2026-03-1${String(n)}T12:00:00.000Z`);
+    // Stored newest first, so only ordering by when each was written lists them oldest first.
     await pool.query(
-      `INSERT INTO follow_ups (household_id, author_id, note, done_at, done_by)
-       VALUES ($1,$2,'Sent the flyer',now(),$3), ($1,$2,'Come back',null,null)`,
+      `INSERT INTO follow_ups (household_id, author_id, note, done_at, done_by, created_at) VALUES
+        ($1,$2,'Come back',null,null,'2026-03-13T13:00:00Z'),
+        ($1,$2,'Sent the flyer',now(),$3,'2026-03-11T13:00:00Z')`,
       [HOUSEHOLD, ALICE, BEN],
     );
 
@@ -535,6 +537,23 @@ describe("a page of the history (#160)", () => {
     expect(first.visits.map((visit) => visit.id)).toEqual([id(3), id(2)]);
     expect(second.visits.map((visit) => visit.id)).toEqual([id(1)]);
     expect(first.followUps.map((note) => note.note)).toEqual(["Sent the flyer", "Come back"]);
+    expect(second.followUps).toEqual(first.followUps);
+  });
+
+  it("orders notes written at one instant by id, the same on every page (#207)", async () => {
+    const note = (n: number) => `cdcdcdcd-0000-4000-8006-${String(n).padStart(12, "0")}`;
+    for (const n of [1, 2]) await visitAt(n, `2026-03-1${String(n)}T12:00:00.000Z`);
+    // Stored neither in id order nor its reverse: a tie comes back in the
+    // order stored, or reversed under another plan (seen after an ANALYZE of
+    // follow_ups), so only the id lists them 1, 2, 3.
+    await pool.query(
+      `INSERT INTO follow_ups (id, household_id, author_id, note, created_at) VALUES
+        ($1,$4,$5,'Two',$6), ($2,$4,$5,'Three',$6), ($3,$4,$5,'One',$6)`,
+      [note(2), note(3), note(1), HOUSEHOLD, ALICE, NOON],
+    );
+
+    const [first, second] = [await page(1, 0), await page(1, 1)];
+    expect(first.followUps.map((followUp) => followUp.id)).toEqual([note(1), note(2), note(3)]);
     expect(second.followUps).toEqual(first.followUps);
   });
 

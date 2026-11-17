@@ -191,6 +191,40 @@ describe("GET /api/households/attention", () => {
     expect(body.pagination).toMatchObject({ total: 4, hasMore: true });
   });
 
+  it("keeps doors whose last visits tie in one order from page to page (#207)", async () => {
+    const home = (n: number) => `abababab-0000-4000-8003-${String(n).padStart(12, "0")}`;
+    const visit = (n: number) => `01960000-0000-7000-8021-${String(n).padStart(12, "0")}`;
+    await pool.query(
+      `INSERT INTO households (id, block_id, unit_number) VALUES
+        ($1,$4,'#08-08'), ($2,$4,'#09-09'), ($3,$4,'#10-10')`,
+      [home(8), home(9), home(10), BLOCK_B],
+    );
+    // Stored neither in visit id order nor its reverse, nor are their units,
+    // so only the visit id gives #10-10 (visit 1), #08-08 (2), #09-09 (3).
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       VALUES ($1,$4,$7,$8,'high',$9), ($2,$5,$7,$8,'high',$9), ($3,$6,$7,$8,'high',$9)`,
+      [
+        visit(2),
+        visit(3),
+        visit(1),
+        home(8),
+        home(9),
+        home(10),
+        MARCH,
+        ALICE,
+        "2026-02-01T10:00:00Z",
+      ],
+    );
+    asAdmin();
+
+    const read: string[] = [];
+    for (const offset of ["0", "1", "2"]) {
+      read.push(...(await units(await call(`?blockId=${BLOCK_B}&limit=1&offset=${offset}`))));
+    }
+    expect(read).toEqual(["#10-10", "#08-08", "#09-09"]);
+  });
+
   it("rejects an interest level outside the contract", async () => {
     asAdmin();
     expect((await call("?minimumInterest=warm")).status).toBe(400);
