@@ -79,7 +79,9 @@ without signing in again. No contract, schema or server change.
   cannot exist during server rendering.
 - **D-85-15 · After a refused sign-out, focus returns to the button.** _Why:_ a browser
   drops focus from a control while it is disabled, leaving a keyboard user nowhere. The
-  test moves focus outside the screen first. _Research:_ R-43.
+  test moves focus outside the screen first. _Research:_ R-43. _Extended by D-208-2:_
+  sign-in and Sign in with Google refocus too, only when focus fell to the page. R-43 held
+  for jsdom 30 only (R-199).
 
 ## Relies on
 

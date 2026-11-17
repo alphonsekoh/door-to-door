@@ -372,6 +372,8 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** in jsdom, disabling the focused button leaves it as `activeElement`, and
   `blur()` on a disabled button does nothing, unlike a browser, which drops focus. A test
   that only calls `blur()` passes without a refocus fix; it must move focus elsewhere.
+  _Superseded by R-199 (#208):_ true of jsdom 30.0.1 only. jsdom 31 moves focus off a
+  disabled control at its next rendering update.
 - **Source:** observed in PR #98 (`auth-failure-screen.test.tsx`); jsdom 30.0.1
 - **Used by:** D-85-15
 
@@ -2172,7 +2174,8 @@ config`, parse only; #124 docs step, confirming the planner's check)
   (computed styles and serialisation can differ) and pauses parsing at blocking scripts.
   Focus now leaves an element that stops being focusable, asynchronously. Every
   component test passes unchanged. `@types/node` 24 needed no change to typecheck
-  either.
+  either. _Amended by R-199 (#208):_ that focus move made a sign-in test fail under load,
+  and it showed a real focus drop in the form.
 - **Source:** [jsdom 31.0.0 release notes](https://github.com/jsdom/jsdom/releases/tag/v31.0.0);
   measured (#187 builder: `npm test`, `npm run typecheck`)
 - **Used by:** D-187-4
@@ -2270,3 +2273,40 @@ config`, parse only; #124 docs step, confirming the planner's check)
   the #192 builder: per-poll timings in `block-screen.test.tsx`, 16 to 24 runs per
   variant.
 - **Used by:** D-192-2
+
+### R-199 · jsdom 31 moves focus off a control that became disabled, at its next rendering update
+
+- **Finding:** jsdom 31 runs the HTML focus fixup. A DOM change clears the style cache,
+  and a clear while an element is focused requests a fixup (`_clearStyleCache`). The
+  fixup runs in a 60 Hz `setInterval`, after the animation-frame callbacks of the same
+  tick. If the focused element is no longer focusable, disabled for one, focus moves to
+  the document, so `activeElement` is `<body>`. A test that reads focus while a control
+  stays disabled past a frame finds it on `<body>`, as a browser does (R-200). Removing
+  the focused element still moves focus at once. On main, #208's test flow repeated 200
+  times beside a full `npm test` failed 7 times, each from `focusFixup`. This supersedes
+  R-43, which held for jsdom 30.0.1 only, and amends R-189.
+- **Source:** jsdom 31.0.0, `living/nodes/Document-impl.js:288-293`,
+  `browser/Window.js:628-637` and `living/helpers/focusing.js:212`, read by the #208
+  builder and both reviewers. Measured by the #208 builder.
+- **Used by:** D-208-1, D-208-6
+
+### R-200 · On the phone profiles, a press on a disabled sign-in button ends with focus on the page
+
+- **Finding:** the builder measured a refused sign-in before #208's fix:
+  - On Pixel 5 (Chromium), a tap, click or keyboard press on Sign in, or a tap or click
+    on Sign in with Google, focused the button. The button lost focus to `<body>` while
+    disabled, and focus stayed there.
+  - On iPhone 13 (WebKit), a tap or click focused no button, so focus was on `<body>`
+    from the start. A keyboard press on Sign in ended on `<body>`.
+  - On both, Go in Password kept focus in Password.
+
+  After the fix, Pixel 5 ended on the pressed button, with a `:focus-visible` ring only
+  after a keyboard press. iPhone 13 ended on Sign in after a keyboard press, and on
+  `<body>` after a tap or click. So D-151-7's "focus stays on Sign in" never held for a
+  real refusal before #208. Reviewer r1 reproduced the drop and the refocus on a static
+  page in both engines.
+
+- **Source:** Playwright on a production build with the `e2e` config, on the Pixel 5
+  and iPhone 13 projects, run natively on macOS by the #208 builder. It was a manual
+  probe, not a spec, so no E2E pins it.
+- **Used by:** D-208-1, D-208-3, D-208-5, D-208-8
