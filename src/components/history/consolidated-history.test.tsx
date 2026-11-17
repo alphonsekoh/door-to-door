@@ -469,10 +469,11 @@ describe("ConsolidatedHistory", () => {
     render(<ConsolidatedHistory />);
     await screen.findByText(door("Blk 123, #05-123"));
 
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Load failed"));
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
 
-    expect(await screen.findByText("Could not reach the server.")).toBeInTheDocument();
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByText("Could not export those records.")).toBeInTheDocument();
   });
 
   it("says nothing has been recorded when nothing is filtered", async () => {
@@ -528,10 +529,10 @@ describe("ConsolidatedHistory", () => {
 
   it("offers a retry when the records fail to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<ConsolidatedHistory />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the records.");
 
     serve([entry("h1")]);
     await user.click(screen.getByRole("button", { name: "Try again" }));

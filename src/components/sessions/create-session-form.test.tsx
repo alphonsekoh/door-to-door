@@ -141,11 +141,27 @@ describe("CreateSessionForm", () => {
   });
 
   it("keeps what was typed when the server refuses", async () => {
-    server({ create: () => Promise.reject(new Error("A session with that name already exists.")) });
+    server({
+      create: () =>
+        Promise.reject(
+          new ApiRequestError(409, {
+            error: { code: "conflict", message: "A session with that name already exists." },
+          }),
+        ),
+    });
     const user = await open();
     await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
     await user.click(create());
     expect(await screen.findByRole("alert")).toHaveTextContent("already exists");
+    expect(screen.getByLabelText("Name this session")).toHaveValue("Saturday morning");
+  });
+
+  it("says its own sentence, not the browser's, when the create gets no answer (#194)", async () => {
+    server({ create: () => Promise.reject(new TypeError("Load failed")) });
+    const user = await open();
+    await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
+    await user.click(create());
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not create the session.");
     expect(screen.getByLabelText("Name this session")).toHaveValue("Saturday morning");
   });
 

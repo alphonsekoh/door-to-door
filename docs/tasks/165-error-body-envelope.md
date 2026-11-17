@@ -28,7 +28,8 @@ Client only: no contract or schema change.
   proxy's words were not written for the member. _Effect:_ the callers that show
   `error instanceof Error ? error.message : fallback` used to show the `TypeError`'s text
   ("Cannot read properties of undefined …") for such a body. They now show "Something
-  went wrong.", and no caller changed.
+  went wrong.", and no caller changed. _Since #194_ those callers use `failureLine`
+  (D-194-1), which still shows "Something went wrong." for such a body (D-194-3).
 - **D-165-3 · `details` keeps only entries with a string `path` and a string
   `message`.** Others are dropped one by one, and a `details` that is not a list becomes
   `[]`. Keeps D-119-16: the contract's `FieldError` always passes. _Why:_

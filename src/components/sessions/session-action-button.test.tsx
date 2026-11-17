@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { availableActions } from "@/lib/session/sessions";
 
@@ -120,7 +121,9 @@ describe("SessionActionButton", () => {
     // The message says how to clear the clash; a generic apology would not.
     const clash =
       "Another session is already active. End it before starting or reopening this one.";
-    apiFetch.mockRejectedValue(new Error(clash));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, { error: { code: "session_already_active", message: clash } }),
+    );
     render(<SessionActionButton sessionId="s2" spec={start} onDone={vi.fn()} />);
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
@@ -147,7 +150,7 @@ describe("SessionActionButton", () => {
 
   it("closes the dialog when the confirmed action fails, so the error is readable", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("nope"));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
 
     await user.click(screen.getByRole("button", { name: "End session" }));
@@ -155,7 +158,8 @@ describe("SessionActionButton", () => {
       within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
     );
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("nope");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 });

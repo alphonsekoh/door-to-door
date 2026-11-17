@@ -6,6 +6,7 @@ import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/f
 import { InterestChip } from "@/components/ui/interest-chip";
 import type { HouseholdAttention, HouseholdAttentionList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { formatDay } from "@/lib/history/dates";
 import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
@@ -61,7 +62,7 @@ export function AttentionList() {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the list.",
+        message: failureLine(error, "Could not load the list."),
       });
     }
   }, []);

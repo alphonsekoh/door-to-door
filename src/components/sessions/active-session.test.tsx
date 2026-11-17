@@ -225,10 +225,11 @@ describe("when loading fails", () => {
     });
   });
 
-  it("handles a failure that is not an ApiRequestError", async () => {
-    apiFetch.mockRejectedValue(new Error("Network down"));
+  /* #194: not the browser's words for a lost connection. */
+  it("says its own sentence when the request gets no answer", async () => {
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<ActiveSessionScreen />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Network down");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the session.");
   });
 
   it("copes with something thrown that is not an Error", async () => {

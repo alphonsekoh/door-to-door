@@ -300,7 +300,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   when the request reached the server and only the response was lost. The client cannot
   tell whether a change was applied. Not tested here; from the Fetch specification.
 - **Source:** [Fetch Standard, network error](https://fetch.spec.whatwg.org/#concept-network-error); #74
-- **Used by:** D-74-43, D-33-5
+- **Used by:** D-74-43, D-33-5, D-194-2
 
 ### R-37 · The on-screen keyboard shrinks the viewport (observed, unverified)
 
@@ -2270,3 +2270,17 @@ config`, parse only; #124 docs step, confirming the planner's check)
   the #192 builder: per-poll timings in `block-screen.test.tsx`, 16 to 24 runs per
   variant.
 - **Used by:** D-192-2
+
+### R-196 · Each browser words a fetch with no answer its own way, and a worker's network-only route rejects the same (measured)
+
+- **Finding:** the Fetch Standard rejects `fetch()` with a `TypeError` on a network error
+  and leaves its message to the browser. With no answer, the message read "Failed to
+  fetch" in Chromium and "Load failed" in WebKit, both for a request aborted by a route
+  and for a context taken offline with the worker blocked. In Chromium with the service
+  worker in charge, an API request rejected the same way, "Failed to fetch": the API
+  route is network-only, and the worker's fallback answers navigations only. Firefox's
+  "NetworkError when attempting to fetch resource." was not measured; the project runs
+  no Firefox. Extends R-36.
+- **Source:** [Fetch Standard, `fetch()` method](https://fetch.spec.whatwg.org/#fetch-method);
+  measured (#194 verifier, Pixel 5 on Chromium and iPhone 13 on WebKit, production build)
+- **Used by:** D-194-2

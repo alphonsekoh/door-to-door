@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddMemberForm } from "@/components/admin/add-member-form";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -23,6 +24,9 @@ const created = {
 
 /* As config.yaml's auth.google.domains has them; t.local stands for a listed one. */
 const DOMAINS = ["gmail.com", "t.local"];
+
+const refusal = (message: string) =>
+  new ApiRequestError(409, { error: { code: "conflict", message } });
 
 async function open() {
   const user = userEvent.setup();
@@ -126,7 +130,7 @@ describe("AddMemberForm", () => {
   });
 
   it("keeps what was typed when the server refuses the email", async () => {
-    apiFetch.mockRejectedValue(new Error("That email address already belongs to someone."));
+    apiFetch.mockRejectedValue(refusal("That email address already belongs to someone."));
     render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
     const user = await open();
 
@@ -136,6 +140,20 @@ describe("AddMemberForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("already belongs to someone");
     expect(screen.getByLabelText("Email")).toHaveValue("alice@t.local");
+  });
+
+  /* #194: not the browser's "Failed to fetch". */
+  it("says its own sentence when the request gets no answer", async () => {
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
+    const user = await open();
+
+    await user.type(screen.getByLabelText("Email"), "new@t.local");
+    await user.type(screen.getByLabelText("Initial password"), "password123");
+    await user.click(screen.getByRole("button", { name: "Add to the team" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/^Could not add that person\.$/);
+    expect(screen.getByLabelText("Email")).toHaveValue("new@t.local");
   });
 
   it("copes with a non-Error failure", async () => {
@@ -217,7 +235,12 @@ describe("AddMemberForm", () => {
     it("shows the server's refusal, which is what holds", async () => {
       // Set up when the page was drawn, and since taken out of config.yaml.
       apiFetch.mockRejectedValue(
-        new Error("Google sign-in isn't set up here, so they need a password."),
+        new ApiRequestError(400, {
+          error: {
+            code: "validation_failed",
+            message: "Google sign-in isn't set up here, so they need a password.",
+          },
+        }),
       );
       render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
       const user = await open();
