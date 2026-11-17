@@ -10,6 +10,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "coverage/**",
+    // Playwright's reports: a failed run keeps the trace viewer's bundled JS.
+    "playwright-report/**",
+    "test-results/**",
+    "e2e-linux-results/**",
     "next-env.d.ts",
     // Generated from openapi.yaml (#11) - never hand-edited, so never linted.
     "src/generated/**",
