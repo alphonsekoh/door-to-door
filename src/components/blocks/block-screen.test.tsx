@@ -328,7 +328,11 @@ describe("BlockScreen", () => {
       };
       servePages(undefined, () => Promise.resolve(fresher));
       syncs(view, 1);
-      expect(await screen.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
+      // Polled in the tabs alone: asked of the whole page, a hundred units
+      // deep, each poll was slow enough on a busy runner to hold up the very
+      // render it waited for past findBy's limit (#192).
+      const tabs = within(screen.getByRole("tablist", { name: "Block views" }));
+      expect(await tabs.findByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
       expect(screen.queryByRole("alert")).toBeNull();
       expect(screen.queryByText(partNote)).toBeNull();
       expect(
@@ -348,7 +352,10 @@ describe("BlockScreen", () => {
       // The next read loses its first page, so it has nothing at all.
       servePages(undefined, () => Promise.reject(new TypeError("Failed to fetch")));
       syncs(view, 1);
-      expect(await screen.findByRole("alert")).toHaveTextContent("Failed to fetch");
+      // The first read's alert stands until this one lands (#192).
+      await waitFor(() => {
+        expect(screen.getByRole("alert")).toHaveTextContent("Failed to fetch");
+      });
       expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
     });
 
@@ -1038,7 +1045,9 @@ describe("BlockScreen", () => {
       await waitFor(() => {
         expect(households()).toBe(2);
       });
-      expect(screen.getByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
+      // A sent record is no longer laid over the units, so until the read
+      // lands, after its request, the tab says one (#192).
+      expect(await screen.findByRole("tab", { name: "All units (2)" })).toBeInTheDocument();
     });
   });
 });
@@ -1413,7 +1422,11 @@ describe("in a follow-up session", () => {
           expect.objectContaining({ method: "POST" }),
         );
       });
-      expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      // The save sends as soon as it has read the list again, which is drawn
+      // later, as a transition (#192).
+      await waitFor(() => {
+        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
+      });
       expect(screen.queryByText(/Not saved/)).toBeNull();
     });
   });

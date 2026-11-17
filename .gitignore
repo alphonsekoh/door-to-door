@@ -53,6 +53,7 @@ next-env.d.ts
 /test-results
 /playwright-report
 /blob-report
+/e2e-linux-results
 /playwright/.cache
 # Saved sign-ins for the e2e suite; regenerated on every run.
 /e2e/.auth

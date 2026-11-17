@@ -474,6 +474,7 @@ to `medium` between March and June.
 | `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)  |
 | `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433) |
 | `npm run test:e2e:ui`      | The same in Playwright's UI mode                                             |
+| `npm run test:e2e:linux`   | The same suite in a Linux container, as CI runs it (needs Docker)            |
 | `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)    |
 | `npm run db:migrate`       | Apply pending migrations                                                     |
 | `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users |
@@ -559,6 +560,47 @@ It fails on any Content Security Policy violation too: the policy only reports f
 
 The suite is deliberately thin; Vitest owns coverage. It exists for what jsdom cannot
 see: layout, stacking order, client-side navigation and the production build.
+
+#### On Linux, as CI runs it
+
+CI runs the suite on Ubuntu, where WebKit draws text in DejaVu Sans rather than the
+macOS system font (R-182), so a layout can pass here and fail there. To see CI's result
+before a push spends Actions minutes on it, run the suite in a Linux container (Docker
+Desktop must be running):
+
+```bash
+npm run test:e2e:linux                          # the whole suite, on HEAD
+npm run test:e2e:linux -- --ref <commit>        # on another commit
+npm run test:e2e:linux -- -- e2e/large-text.spec.ts:376 --project=mobile-webkit --repeat-each=40
+npm run test:e2e:linux -- --platform linux/amd64   # CI's architecture, emulated (slower)
+```
+
+It runs a commit, never uncommitted changes: `git archive` feeds the container, so a
+pass covers exactly what a push sends. The image is the `Dockerfile`'s `e2e` stage
+(Ubuntu 26.04, Node 24, and Playwright's browsers installed as CI installs them), built
+once and then cached until `package.json`, `package-lock.json` or the stage changes
+(Dependabot's weekly digest bumps included). Each rebuild leaves the last image, about
+3 GB, untagged; `docker image prune` reclaims it. The database is CI's postgres image in a
+throwaway container on a private network, so the run needs neither the host's Postgres
+nor any free port. One run goes at a time per clone, and a second one waits. The run
+stops if `sans-serif` is not DejaVu Sans. The report lands in `e2e-linux-results/`:
+`npx playwright show-report e2e-linux-results/playwright-report` opens it.
+
+**The pre-push gate.** [`.githooks/pre-push`](.githooks/pre-push) runs the whole suite
+this way on the tip of each branch a push sends, as CI does, and refuses the push if it
+fails. Enable it once per clone; worktrees share the setting:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+The hook lives in the branch, so a worktree on a branch from before it has none, and its
+pushes go through ungated.
+
+It skips branch deletions, pushes that change only docs (`docs/`, a top-level `*.md` or
+`.claude/`), and any tree that has passed a whole-suite run or differs from one only in
+docs, so running `npm run test:e2e:linux` before a push makes the push itself immediate.
+`SKIP_E2E_LINUX=1 git push` skips the gate once, and CI still runs the suite.
 
 ## CI
 
