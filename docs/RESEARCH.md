@@ -876,7 +876,7 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   can repeat or skip rows; a unique last key (the id) makes the order total. Not
   measured here.
 - **Source:** [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html)
-- **Used by:** D-117-51
+- **Used by:** D-117-51, D-207-1, D-207-2, D-207-8
 
 ### R-85 · Scroll anchoring moves a growing line above the anchor (measured)
 
@@ -2270,3 +2270,20 @@ config`, parse only; #124 docs step, confirming the planner's check)
   the #192 builder: per-poll timings in `block-screen.test.tsx`, 16 to 24 runs per
   variant.
 - **Used by:** D-192-2
+
+### R-198 · A tie's order follows the plan, which an `ANALYZE` can change (measured)
+
+- **Finding:** rows equal on every `ORDER BY` key come back in an
+  implementation-dependent order, so a tie can read differently on another day of the
+  same database. Measured on PostgreSQL 17.11 in #207: three notes stored at one
+  `created_at` (ids 2, 3, 1) and read by `listFollowUpsFor` without the id came back in
+  the order stored, and reversed (1, 3, 2) after `ANALYZE follow_ups` in the same test;
+  in psql, a plan that hashed `follow_ups` for the author join also reversed a tie. On
+  `door_to_door_test_193`, reused for many runs, #160's two tied notes came back
+  reversed in 8 runs of 8, and in the order stored on a new database in 3 of 3. The
+  builder could not reproduce that on `door_to_door_test_207`, as it was or after
+  `ANALYZE`. So a test of a tie needs ids whose order is neither the order stored nor
+  its reverse.
+- **Source:** [PostgreSQL, SELECT, ORDER BY](https://www.postgresql.org/docs/current/sql-select.html#SQL-ORDERBY).
+  Cited, not fetched. Measured (#207: the issue, the builder and the reviewer).
+- **Used by:** D-207-1, D-207-5, D-207-7
