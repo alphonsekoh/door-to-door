@@ -240,6 +240,10 @@ describe("MemberDetail (#125)", () => {
         const alert = await within(row).findByRole("alert");
         const both = alert.parentElement;
         expect(both).toContainElement(within(row).getByRole("button"));
+        /* Clear of the nav and no further: no Save bar docks on this page
+           (#195). jsdom lays nothing out: the E2E measures. */
+        expect(both).toHaveClass("scroll-clear-nav");
+        expect(both).not.toHaveClass("scroll-clear-chrome");
         expect(scrolled.mock.contexts).toContain(both);
         expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
       } finally {
@@ -328,6 +332,8 @@ describe("MemberDetail (#125)", () => {
       expect(alert.nextElementSibling).toBe(
         screen.getByRole("button", { name: "Sign out everywhere" }),
       );
+      expect(alert.parentElement).toHaveClass("scroll-clear-nav");
+      expect(alert.parentElement).not.toHaveClass("scroll-clear-chrome");
       expect(within(card("Chrome on Android")).queryByRole("alert")).not.toBeInTheDocument();
     });
 

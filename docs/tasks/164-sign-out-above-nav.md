@@ -53,7 +53,8 @@ PR #161. Client only: no contract or schema change.
   at the default text (Sign out ends at 630, the nav starts at 600), Pixel 5 at 32px (905
   against 663). It also fails with only the margin removed (builder, confirmed by the
   verifier). _Why:_ jsdom lays nothing out, and either size alone misses one phone.
-  _Extended by D-164-9:_ an upper bound on how far the page moves.
+  _Extended by D-164-9:_ an upper bound on how far the page moves. _Refined by D-195-7:_
+  Sign out's foot is read off its failure block, which `press` never scales.
 - **D-164-7 · Account clears the nav alone, with a new shared utility, `scroll-clear-nav`
   (owner, 2026-11-13).** Supersedes D-164-3. In `globals.css` beside
   `scroll-clear-chrome`, with the same top margin and no room for a docked Save, so the
@@ -67,7 +68,8 @@ PR #161. Client only: no contract or schema change.
   equals `pb-nav`'s padding.** `scroll-clear-chrome` leaves it out. _Why:_ that padding
   is the room the end of every page leaves, so the margin can always be met, and a banner
   floating above the nav is cleared too. On Account it adds nothing today: the install
-  banner does not float while Account's Save is mounted (D-111-46).
+  banner does not float while Account's Save is mounted (D-111-46). _Extended by
+  D-195-2:_ on the member page, which docks no Save, it clears the floating banner.
 - **D-164-9 · The E2E also bounds the move from above.** The page may move at most 1px
   more than the nav hid Sign out; Sign out is scrolled to before it is pressed, so the
   move is the failure's. The default-text pass shows the install banner below Sign out,
@@ -75,6 +77,7 @@ PR #161. Client only: no contract or schema change.
   `e2e/fixtures.ts` for it. With `scroll-clear-chrome` put back it fails on both phones
   (Pixel 5: 47 > 1; iPhone 13: 110 > 30.98). _Why:_ D-164-6's checks passed the 110px
   move, and without the banner nothing below Sign out leaves room to over-scroll.
+  _Refined by D-195-7:_ Sign out's foot is read off its failure block.
 
 ## Known limits
 
@@ -83,11 +86,12 @@ PR #161. Client only: no contract or schema change.
   at 32px, and none on a Pixel 5 at 32px, where the page is at its end. It reads "Signing
   out…" and is disabled meanwhile. This was already so on main (verifier; figures with
   `scroll-clear-nav` from the reviewer).
-- The member page's failed sign-in end (`src/components/admin/member-detail.tsx`) still
+- ~~The member page's failed sign-in end (`src/components/admin/member-detail.tsx`) still
   scrolls with `scroll-clear-chrome`, though it docks no Save: on a row near the end of
   the list the page can move up to 80px further than needed, or where nothing was hidden.
   Ruling (b) covers Account only. Follow-up (no issue yet): switch it to
-  `scroll-clear-nav`, with D-164-9's two-sided bound (reviewer).
+  `scroll-clear-nav`, with D-164-9's two-sided bound (reviewer).~~ Fixed by D-195-1
+  ([#195](195-member-page-scroll.md)).
 
 ## Owner checks (real iPhone; not claimed by the PR)
 

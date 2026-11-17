@@ -157,17 +157,22 @@ test.describe("a refused sign-out", () => {
       await expect(alert).toHaveText("Could not sign out. Check your connection and try again.");
       await expect(signOut).toBeEnabled();
       await expect(page).toHaveURL(/\/account$/);
+      /* Sign out's foot is read off the block it ends, which is what is
+         scrolled into view and is never scaled: Sign out itself can still be
+         pressed in (`press`, 97%) once enabled again (#195). */
+      const block = alert.locator("..");
+      await expect(block.locator(":scope > :last-child")).toHaveAccessibleName("Sign out");
 
-      const [alertBox, signOutBox, navBox, after] = await Promise.all([
+      const [alertBox, blockBox, navBox, after] = await Promise.all([
         alert.boundingBox(),
-        signOut.boundingBox(),
+        block.boundingBox(),
         nav.boundingBox(),
         page.evaluate(() => window.scrollY),
       ]);
-      if (alertBox === null || signOutBox === null || navBox === null) {
+      if (alertBox === null || blockBox === null || navBox === null) {
         throw new Error(`the alert, Sign out or the nav is not drawn at ${at}`);
       }
-      const bottom = signOutBox.y + signOutBox.height;
+      const bottom = blockBox.y + blockBox.height;
       expect(alertBox.y, `the alert above the top of the screen at ${at}`).toBeGreaterThanOrEqual(
         0,
       );
