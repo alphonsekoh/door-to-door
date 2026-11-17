@@ -17,6 +17,7 @@ import type {
   TeamList,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { heldOffListKey } from "@/lib/follow-ups/revisits";
 import { keepEachOnce, loadAllHouseholds } from "@/lib/households/pages";
 import type { OutingAnswer } from "@/lib/sync/outing";
@@ -100,7 +101,7 @@ export function BlockScreen({
     landed.current.any = mine;
     startTransition(() => {
       setArrived((shown) => keepEachOnce([shown, read.units]));
-      setError(read.failure instanceof Error ? read.failure.message : "Could not load this block.");
+      setError(failureLine(read.failure, "Could not load this block."));
     });
   }, [blockId]);
 

@@ -29,6 +29,7 @@ import type {
   RevisitEntry,
 } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import {
   UNDO_READY,
   type UndoState,
@@ -542,9 +543,7 @@ export function RecordVisitForm({
         setFailure(
           error instanceof ApiRequestError && error.code === "not_on_follow_up_list"
             ? OFF_THE_LIST
-            : error instanceof Error
-              ? error.message
-              : "Could not save this visit.",
+            : failureLine(error, "Could not save this visit."),
         );
       } else {
         const named: FormErrors = {};

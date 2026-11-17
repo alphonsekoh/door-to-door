@@ -10,6 +10,7 @@ import { SessionActionButton } from "@/components/sessions/session-action-button
 import { SessionHouseholds } from "@/components/sessions/session-households";
 import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { startBlocker } from "@/lib/follow-ups/session-households";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
@@ -46,7 +47,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load this session.",
+        message: failureLine(error, "Could not load this session."),
       });
     }
   }, [sessionId]);
@@ -91,7 +92,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not remove that block.",
+        message: failureLine(error, "Could not remove that block."),
       });
     } finally {
       setBusy(false);

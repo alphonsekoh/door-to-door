@@ -292,11 +292,12 @@ describe("BlockScreen", () => {
       const view = render(<BlockScreen blockId="b1" />);
       await screen.findByRole("tab", { name: "All units (101)" });
 
-      servePages(() => Promise.reject(new Error("Could not reach the server.")));
+      servePages(() => Promise.reject(new TypeError("Failed to fetch")));
       useSyncQueue.mockReturnValue({ ...NO_QUEUE, syncedVersion: 1 });
       view.rerender(<BlockScreen blockId="b1" />);
 
-      expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+      // The screen's sentence, never the browser's (#194).
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this block.");
       expect(screen.getByRole("tab", { name: "All units (101)" })).toBeInTheDocument();
       expect(noteBlock).toHaveBeenCalledTimes(1);
     });
@@ -306,7 +307,7 @@ describe("BlockScreen", () => {
       const user = userEvent.setup();
       const view = render(<BlockScreen blockId="b1" />);
       expect(await screen.findByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
-      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.getByRole("alert")).toHaveTextContent("Could not load this block.");
       await screen.findByRole("heading", { level: 1, name: "Blk 123" });
 
       // A unit on the page that did arrive still shows its history.
@@ -345,16 +346,18 @@ describe("BlockScreen", () => {
     });
 
     it("never takes away a unit shown because a later read got less", async () => {
-      servePages(() => Promise.reject(new TypeError("Load failed")));
+      // A server failure, so its alert reads apart from the next read's.
+      servePages(() => Promise.reject(new ApiRequestError(500, undefined)));
       const view = render(<BlockScreen blockId="b1" />);
       await screen.findByRole("tab", { name: "All units (100)" });
+      expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong.");
 
       // The next read loses its first page, so it has nothing at all.
       servePages(undefined, () => Promise.reject(new TypeError("Failed to fetch")));
       syncs(view, 1);
       // The first read's alert stands until this one lands (#192).
       await waitFor(() => {
-        expect(screen.getByRole("alert")).toHaveTextContent("Failed to fetch");
+        expect(screen.getByRole("alert")).toHaveTextContent("Could not load this block.");
       });
       expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
     });
@@ -376,7 +379,7 @@ describe("BlockScreen", () => {
       );
       syncs(view, 1);
       await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
-      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.getByRole("alert")).toHaveTextContent("Could not load this block.");
       // Every unit was read whole before, so nothing is said to be missing.
       expect(screen.getByLabelText("Search this block")).toBeInTheDocument();
       expect(screen.queryByText(partNote)).toBeNull();
@@ -493,7 +496,7 @@ describe("BlockScreen", () => {
 
       // The newer read loses its last page first: what it got is shown, not saved.
       syncs(view, 1);
-      expect(await screen.findByRole("alert")).toHaveTextContent("Load failed");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this block.");
       expect(screen.getByRole("tab", { name: "All units (100)" })).toBeInTheDocument();
 
       // The older read then ends whole: it lands and is saved, under the unit
@@ -504,7 +507,7 @@ describe("BlockScreen", () => {
       });
       await user.click(await screen.findByRole("tab", { name: "All units (102)" }));
       expect(screen.getByText("#00-000a")).toBeInTheDocument();
-      expect(screen.getByRole("alert")).toHaveTextContent("Load failed");
+      expect(screen.getByRole("alert")).toHaveTextContent("Could not load this block.");
       expect(screen.queryByText(partNote)).toBeNull();
       await waitFor(() => {
         expect(noteBlock).toHaveBeenCalledWith(active, "b1", [...first.data, ...second.data]);
@@ -672,10 +675,10 @@ describe("BlockScreen", () => {
 
   it("still shows the form when the unit list fails to load", async () => {
     // Recording must not depend on the history lookup succeeding.
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Load failed"));
     render(<BlockScreen blockId="b1" />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this block.");
     // Nor on the session: unknown, it is a plain Save.
     expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
   });

@@ -369,10 +369,11 @@ describe("AdminRecords", () => {
 
   it("offers a retry when the records fail to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<AdminRecords />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the records.");
 
     serve([entry("#05-123")]);
     await user.click(screen.getByRole("button", { name: "Try again" }));

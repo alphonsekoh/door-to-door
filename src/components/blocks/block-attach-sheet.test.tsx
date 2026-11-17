@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import type { Block } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 
 const { apiFetch } = vi.hoisted(() => ({
@@ -225,7 +226,14 @@ describe("BlockAttachSheet", () => {
        whose error reads the same, and the test would pass without a create. */
     apiFetch.mockImplementation((_path, init) =>
       init?.method === "POST"
-        ? Promise.reject(new Error("A block with that number and street already exists."))
+        ? Promise.reject(
+            new ApiRequestError(409, {
+              error: {
+                code: "conflict",
+                message: "A block with that number and street already exists.",
+              },
+            }),
+          )
         : Promise.resolve(page([block("b1", "125")])),
     );
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
@@ -272,7 +280,11 @@ describe("BlockAttachSheet", () => {
 
   it("reports a failure to attach without closing", async () => {
     const user = userEvent.setup();
-    const onAttach = vi.fn().mockRejectedValue(new Error("That session has ended."));
+    const onAttach = vi.fn().mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "session_not_active", message: "That session has ended." },
+      }),
+    );
     apiFetch.mockResolvedValue(page([block("b1", "123")]));
     render(<BlockAttachSheet attachedIds={[]} onAttach={onAttach} onClose={vi.fn()} />);
 
@@ -282,10 +294,10 @@ describe("BlockAttachSheet", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("That session has ended.");
   });
 
-  it("reports a registry that will not load", async () => {
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+  it("reports a registry that will not load in its own words, not the browser's (#194)", async () => {
+    apiFetch.mockRejectedValue(new TypeError("Load failed"));
     render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the blocks.");
   });
 
   it("copes with non-Error failures", async () => {

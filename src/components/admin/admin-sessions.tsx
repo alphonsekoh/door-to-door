@@ -7,6 +7,7 @@ import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
 import type { OutingSession, SessionList, SessionStatus } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { availableActions, statusLabel } from "@/lib/session/sessions";
 
 const PAGE_SIZE = 25;
@@ -50,7 +51,7 @@ export function AdminSessions({ notices }: { notices?: ReactNode }) {
     } catch (error) {
       next = {
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the sessions.",
+        message: failureLine(error, "Could not load the sessions."),
       };
     }
     startTransition(() => {

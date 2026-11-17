@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminSessions } from "@/components/admin/admin-sessions";
 import type { OutingSession, SessionStatus } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { landWhileTyping } from "../../../test/land-while-typing";
 
@@ -149,16 +150,25 @@ describe("AdminSessions", () => {
 
   it("offers a retry when the list fails to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<AdminSessions />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the sessions.");
     // Only the list failed: a session can still be created.
     expect(screen.getByRole("button", { name: "New session" })).toBeEnabled();
 
     apiFetch.mockResolvedValue(page([session("s1", "June outing", "active")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("June outing")).toBeInTheDocument();
+  });
+
+  it("shows the server's sentence when it refuses the list", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(403, { error: { code: "forbidden", message: "Admins only." } }),
+    );
+    render(<AdminSessions />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Admins only.");
   });
 
   it("copes with a non-Error failure", async () => {

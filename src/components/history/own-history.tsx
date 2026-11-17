@@ -13,6 +13,7 @@ import type {
   SessionHistorySummary,
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { parseScope, scopeHref } from "@/lib/teams/team-view";
 import { useRole } from "@/lib/hooks/use-role";
 
@@ -104,7 +105,7 @@ function OwnOutings() {
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load your history.",
+        message: failureLine(error, "Could not load your history."),
       });
     }
   }, []);

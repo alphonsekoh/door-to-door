@@ -563,13 +563,22 @@ describe("MemberDetail (#125)", () => {
 
   it("offers a retry when the member cannot be loaded", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValueOnce(new Error("No such user."));
+    apiFetch.mockRejectedValueOnce(new TypeError("Load failed"));
     render(<MemberDetail userId="u1" />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("No such user.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this member.");
     serve(alice, []);
     await user.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Alice" })).toBeInTheDocument();
+  });
+
+  it("shows the server's sentence when it refuses the member", async () => {
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(404, { error: { code: "not_found", message: "No such user." } }),
+    );
+    render(<MemberDetail userId="u1" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("No such user.");
   });
 
   it("copes with a load failure that is not an Error", async () => {

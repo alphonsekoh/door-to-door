@@ -190,10 +190,11 @@ describe("AttentionList", () => {
 
   it("offers a retry when the list fails to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<AttentionList />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the list.");
 
     apiFetch.mockResolvedValue(page([row("#05-123")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
