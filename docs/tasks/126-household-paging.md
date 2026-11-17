@@ -177,8 +177,9 @@ from every member and from the offline copy. Both were found by a security audit
   every page has arrived. With three pages on slow 3G that took 15 s (verifier).
 - On slow 3G, a sent unit is missing from All units for 1 to 5 s, until the next read
   lands. `main` has the same gap for one page.
-- The alert gives the browser's words ("Failed to fetch", "Load failed"). It stays after
-  an older whole read lands, until the next read lands.
+- ~~The alert gives the browser's words ("Failed to fetch", "Load failed").~~ Fixed by
+  #194 (D-194-2): it reads "Could not load this block." It stays after an older whole
+  read lands, until the next read lands.
 - With three reads in flight, an older failed read's pages can sit over a newer whole read
   until the next whole read lands.
 
