@@ -19,7 +19,7 @@ describe("PageHeader", () => {
       <PageHeader
         title={
           <>
-            <span className="whitespace-nowrap">Follow-up</span> list
+            <span className="whole-word">Follow-up</span> list
           </>
         }
       />,

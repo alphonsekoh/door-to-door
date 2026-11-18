@@ -125,7 +125,7 @@ const serve = (unit: (call: number) => HouseholdHistory | Promise<HouseholdHisto
 const saysOnTheList = (_: string, element: Element | null): boolean =>
   element?.textContent === "On the follow-up list" &&
   [...element.children].every((child) => child.textContent !== element.textContent) &&
-  element.querySelector(".whitespace-nowrap")?.textContent === "follow-up";
+  element.querySelector(".whole-word")?.textContent === "follow-up";
 
 describe("HouseholdScreen", () => {
   it("names the unit and its block", async () => {
@@ -264,7 +264,7 @@ describe("HouseholdScreen", () => {
     const [header] = await screen.findAllByRole("button", { name: "Add to follow-up list" });
     if (header === undefined) throw new Error("expected the header action");
     // "follow-" over "up" read as two words at large text (#196).
-    expect(within(header).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(header).getByText("follow-up")).toHaveClass("whole-word");
     fireEvent.click(header);
     const sheet = within(
       screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
@@ -300,7 +300,7 @@ describe("HouseholdScreen", () => {
     expect(add).toHaveLength(1);
     const [header] = add;
     if (header === undefined) throw new Error("expected the header action");
-    expect(within(header).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(header).getByText("follow-up")).toHaveClass("whole-word");
     fireEvent.click(header);
     // The suggestion is read in a sheet before it goes on the list.
     const sheet = within(

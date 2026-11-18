@@ -51,6 +51,15 @@ import {
   offerLabel,
 } from "@/lib/follow-ups/rights";
 import { historyPath } from "@/lib/households/history-pages";
+import {
+  HISTORY_UNREAD,
+  LONGEST_SUMMARY,
+  NO_EARLIER_VISITS,
+  OVERDUE,
+  READING_HISTORY,
+  SEE_HISTORY,
+  historyLine,
+} from "@/lib/households/history-summary";
 import { useOnline } from "@/lib/hooks/use-online";
 import {
   type NotSaved,
@@ -180,6 +189,9 @@ type Props = {
   followUp?: FollowUpRule | null;
   /* The running session, for what the history panel lets the member change. */
   active?: ActiveSession | null;
+  /* Every unit of the block has been read, so a unit not among `known` has
+     no history: until then, or where they cannot all be, nothing says so. */
+  unitsRead?: boolean;
   initialUnit?: string;
   /* False while the session's kind is unknown: Save then promises, and
      guesses, no next unit. A follow-up session never guesses one. */
@@ -236,6 +248,7 @@ export function RecordVisitForm({
   known,
   followUp = null,
   active = null,
+  unitsRead = false,
   initialUnit = "",
   guessNext = true,
   sessionId,
@@ -271,6 +284,11 @@ export function RecordVisitForm({
   const [notSaved, setNotSaved] = useState<NotSaved | null>(null);
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<HouseholdHistory | null>(null);
+  /* When the history last landed, which says whether a note is overdue as
+     the panel, drawn as it lands, says it. */
+  const [readAt, setReadAt] = useState(() => new Date());
+  /* The household whose history could not be read, until another is typed. */
+  const [unread, setUnread] = useState<string | null>(null);
   const [saved, setSaved] = useState<Saved | null>(null);
   const [noting, setNoting] = useState(false);
   /* Suggesting the unit just refused, from the notice that refused it. */
@@ -279,6 +297,7 @@ export function RecordVisitForm({
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
   const savedLine = useRef<HTMLDivElement>(null);
+  const historyPanel = useRef<HTMLElement>(null);
   /* Where OK on the Not saved dialog sends focus. */
   const unitField = useRef<HTMLInputElement>(null);
   const firstInterest = useRef<HTMLInputElement>(null);
@@ -340,6 +359,7 @@ export function RecordVisitForm({
         if (cancelled) return;
         startTransition(() => {
           setHistory(data);
+          setReadAt(new Date());
         });
       })
       .catch(() => {
@@ -351,10 +371,13 @@ export function RecordVisitForm({
         if (cancelled) return;
         startTransition(() => {
           setHistory((current) => (current?.household.id === matchId ? current : null));
+          setUnread(matchId);
         });
       });
     return () => {
       cancelled = true;
+      /* Read again when typed again: not unread until that read fails. */
+      setUnread(null);
     };
   }, [matchId, reloadKey]);
 
@@ -399,6 +422,31 @@ export function RecordVisitForm({
           : null
         : householdAction(here.followUps, { userId, isAdmin }).kind;
   const canSuggestHere = unlistedAction === "suggest";
+  /* What the line under the unit field says of its history, from the moment
+     a unit the form would save is typed. */
+  const unitLine =
+    unitNumberFault(unitNumber) === null
+      ? historyLine(
+          {
+            history: here,
+            matched: matchId !== null,
+            unread: matchId !== null && unread === matchId,
+            unitsRead,
+            onPhone: sync.records.some(
+              (record) =>
+                record.item.blockId === blockId &&
+                normaliseUnitNumber(record.item.unitNumber) === typed,
+            ),
+          },
+          readAt,
+        )
+      : null;
+  /* Down to the history, last in the form, clear of the pinned sync row,
+     and into it, so a screen reader goes on from there. */
+  const seeHistory = () => {
+    historyPanel.current?.focus({ preventScroll: true });
+    historyPanel.current?.scrollIntoView({ block: "start" });
+  };
   const blocked = refused
     ? (blockedMessage(errors) ?? (offList && gate !== "ok" ? OFF_THE_LIST : null))
     : null;
@@ -836,6 +884,50 @@ export function RecordVisitForm({
             Not on this session&apos;s list. You can still record it as an admin.
           </p>
         ) : null}
+        {/* The history's key facts, before knocking: the history itself is
+            last in the form, below Save on a phone (#196). Held from the
+            moment a unit is typed at the longest it can say, so nothing
+            below moves as it lands, and heard as it changes. Its lines are
+            as tall as See history's target, so that target grows none. */}
+        {unitLine === null ? null : (
+          <p
+            id="unit-history"
+            aria-live="polite"
+            aria-atomic="true"
+            data-hold={unbroken(LONGEST_SUMMARY)}
+            className="hold-text leading-target text-caption font-semibold"
+          >
+            <span className="font-medium">
+              {unitLine.kind === "read" ? (
+                <>
+                  {unitLine.summary.followUp === null ? null : (
+                    <>
+                      <WholeWords text={unitLine.summary.followUp} />
+                      {" · "}
+                    </>
+                  )}
+                  {unitLine.summary.overdue ? (
+                    <>
+                      <span className="font-semibold text-danger">{OVERDUE}</span>
+                      {" · "}
+                    </>
+                  ) : null}
+                  {unitLine.summary.visits}
+                  {" · "}
+                  <button type="button" onClick={seeHistory} className="btn-text">
+                    {SEE_HISTORY}
+                  </button>
+                </>
+              ) : unitLine.kind === "reading" ? (
+                <span className="text-foreground-muted">{READING_HISTORY}</span>
+              ) : unitLine.kind === "unread" ? (
+                <span className="text-foreground-muted">{HISTORY_UNREAD}</span>
+              ) : unitLine.kind === "no_household" ? (
+                NO_EARLIER_VISITS
+              ) : null}
+            </span>
+          </p>
+        )}
       </div>
 
       {/* Online and in the offline shell alike, so the chips below never
@@ -1037,6 +1129,7 @@ export function RecordVisitForm({
           down under a thumb on its way to it (#196). */}
       {history === null ? null : (
         <HouseholdHistoryPanel
+          ref={historyPanel}
           key={history.household.id}
           history={history}
           active={active}

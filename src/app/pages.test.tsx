@@ -193,7 +193,7 @@ describe("admin screens", () => {
     expect(requireAdminPage).toHaveBeenCalled();
     const heading = screen.getByRole("heading", { level: 1, name: "Follow-up list" });
     // At large text "Follow-" over "up" read as two words (#196).
-    expect(within(heading).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(heading).getByText("Follow-up")).toHaveClass("whole-word");
     expect(screen.getByRole("link", { name: "Back to Sessions" })).toHaveAttribute(
       "href",
       "/admin/sessions",

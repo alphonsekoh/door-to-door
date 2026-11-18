@@ -125,7 +125,7 @@ describe("PromoteButton", () => {
     render(<PromoteButton suggestion={SUGGESTION} onPromoted={vi.fn()} className="" />);
     const add = screen.getByRole("button", { name: "Add to follow-up list" });
     expect(add).toBeDisabled();
-    expect(within(add).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(add).getByText("follow-up")).toHaveClass("whole-word");
   });
 });
 
@@ -134,7 +134,7 @@ describe("PromoteSheet", () => {
     render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
     // The title keeps the word whole: "follow-" over "up" read as two (#196).
-    expect(within(dialog).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(dialog).getByText("follow-up")).toHaveClass("whole-word");
     expect(dialog).toHaveTextContent("Blk 123 · #05-123");
     expect(dialog).toHaveTextContent("Asked us back after 7pm");
     expect(dialog).toHaveTextContent("Go back by 1 Nov 2026");

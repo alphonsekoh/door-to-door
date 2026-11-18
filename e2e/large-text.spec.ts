@@ -1,7 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import type { VisitSyncRequest, VisitSyncResponse } from "../src/generated/types.gen";
 import { uuidv7 } from "../src/lib/uuid";
-import { SEED_BLOCK, SEED_PASSWORD } from "./accounts";
+import { SEED_BLOCK, SEED_MEMBER_ID, SEED_PASSWORD } from "./accounts";
 import {
   endActiveSession,
   ensureActiveSession,
@@ -131,7 +131,14 @@ function layoutFaults(page: Page): Promise<string[]> {
         })
         .filter((line) => line.width > 0.5 && line.height > 0.5);
 
-      const own = parent.getBoundingClientRect();
+      /* An inline box goes wherever its words go, so words it holds on one
+         line are measured against the box they are set in: held whole,
+         "follow-ups?" ran 16px out of a hint at 320px (#196). */
+      let set = parent;
+      while (set.parentElement !== null && getComputedStyle(set).display === "inline") {
+        set = set.parentElement;
+      }
+      const own = set.getBoundingClientRect();
       // Kept spaces (a typed note) hang past the end of each line unseen.
       const hangs = getComputedStyle(parent).whiteSpace.startsWith("pre");
       const spills = lines.some(
@@ -392,9 +399,6 @@ const LISTED_UNIT = "#05-123";
 /* #06-201 in the seed: never answered, and nothing asked for. */
 const QUIET_HOUSEHOLD = "00000000-0000-4000-8003-000000000003";
 
-/* alice@example.com in the seed, chosen by id: another spec may rename her. */
-const SEED_MEMBER_ID = "00000000-0000-4000-8000-000000000002";
-
 test("a member's screens fit at the largest text", async ({ memberPage: page, adminApi }) => {
   const running = await ensureActiveSession(adminApi);
   const recorded = await page.request.post("/api/visits", {
@@ -444,6 +448,13 @@ test("a member's screens fit at the largest text", async ({ memberPage: page, ad
   await atCap(page);
   const door = page.locator('main a[href^="/households/"]').first();
   await expectFits(page, "Follow-ups", door);
+  /* 320px wide, its hint's title is narrower than "follow-ups?" in CI's
+     face: held whole, it ran out of the card rather than break (#196). */
+  const phone = page.viewportSize();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect(page.getByRole("region", { name: "What are follow-ups?" })).toBeVisible();
+  await expectFits(page, "Follow-ups, 320px wide", door);
+  if (phone !== null) await page.setViewportSize(phone);
   await door.click();
   await page.waitForURL(/\/households\//);
   // On the list already, so the header says so beside the unit.
@@ -884,6 +895,11 @@ test.describe("as the session answers", () => {
    * and drawn above the form that dropped the unit field 170px (#200). The
    * unit's history lands later still, and above the interest level it pushed
    * the picker down under a thumb (#196).
+   *
+   * So the history is last in the form, and on an iPhone at the default
+   * text that left all of it below Save: an overdue note went unseen before
+   * the knock. The line under the unit field says what it holds, held from
+   * the start at the room it can take.
    */
   test("the recording form holds still as the block's name arrives", async ({
     memberPage: page,
@@ -902,6 +918,45 @@ test.describe("as the session answers", () => {
         held.resolve(undefined);
       };
     };
+    const line = page.locator("#unit-history");
+    const seeHistory = line.getByRole("button", { name: "See history" });
+
+    /* A door-to-door session at the phone's own width: at the default sizes
+       the line is read before knocking, above the docked Save, unscrolled.
+       16px, and 17px, an iPhone's default. */
+    await listSeededHousehold(adminApi);
+    for (const size of ["16px", "17px", CAP]) {
+      const history = await holdBack("**/api/households/*");
+      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+      await atSize(page, size);
+      await untilLive(page);
+      await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+      await expect(line).toHaveText("Checking this unit's history…");
+      const tapped = [
+        line,
+        page.getByRole("radio", { name: "Medium" }),
+        page.getByRole("button", { name: "Add details" }),
+      ];
+      const boxes = await Promise.all(tapped.map((target) => target.boundingBox()));
+      expect(boxes, `the line, Medium and Add details at ${size}`).not.toContain(null);
+      history();
+      /* Overdue unless an earlier spec has done the seed's note. */
+      await expect(line).toHaveText(
+        /^On the follow-up list · (Overdue · )?\d+ visits? · See history$/,
+      );
+      expect(
+        await Promise.all(tapped.map((target) => target.boundingBox())),
+        `the line, Medium and Add details as the unit's history lands at ${size}`,
+      ).toEqual(boxes);
+      expect((await seeHistory.boundingBox())?.height, `See history's target at ${size}`).toBe(
+        Math.max(44, parseFloat(size) * 1.5),
+      );
+      if (size !== CAP) {
+        expect(await page.evaluate(() => window.scrollY), `scrolled at ${size}`).toBe(0);
+        await expectInView(line, `the unit's history line at ${size}`);
+      }
+    }
+
     let answer = await holdBack("**/api/sessions/active");
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto(`/blocks/${SEED_BLOCK}`);
@@ -930,19 +985,24 @@ test.describe("as the session answers", () => {
       );
 
       await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      await expect(line).toHaveText("Checking this unit's history…");
       const tapped = [
+        line,
         page.getByRole("radio", { name: "Medium" }),
         page.getByRole("button", { name: "Add details" }),
       ];
       const boxes = await Promise.all(tapped.map((target) => target.boundingBox()));
-      expect(boxes, "Medium and Add details before the unit's history").not.toContain(null);
+      expect(boxes, "the line, Medium and Add details before the unit's history").not.toContain(
+        null,
+      );
       history();
       await expect(
         page.getByRole("region", { name: "What we know about this unit" }),
       ).toBeVisible();
+      await expect(seeHistory).toBeVisible();
       expect(
         await Promise.all(tapped.map((target) => target.boundingBox())),
-        "Medium and Add details as the unit's history lands",
+        "the line, Medium and Add details as the unit's history lands",
       ).toEqual(boxes);
     } finally {
       await endActiveSession(adminApi);

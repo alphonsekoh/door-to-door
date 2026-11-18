@@ -299,7 +299,7 @@ describe("a follow-up session", () => {
     expect(await screen.findAllByText("Follow-up")).toHaveLength(2);
     const notice = screen.getByText(/Visits can be recorded only at the households below\.$/);
     // "Follow-" over "up" read as two words at large text (#196).
-    expect(within(notice).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(notice).getByText("Follow-up")).toHaveClass("whole-word");
     expect(notice).toHaveTextContent(
       /^Follow-up session\. Visits can be recorded only at the households below\.$/,
     );
@@ -376,7 +376,7 @@ describe("a follow-up session", () => {
     render(<ActiveSessionScreen />);
     const hint = await screen.findByRole("region", { name: "How a follow-up session works" });
     // Its title keeps the word whole: "follow-" over "up" read as two (#196).
-    expect(within(hint).getAllByText("follow-up")[0]).toHaveClass("whitespace-nowrap");
+    expect(within(hint).getAllByText("follow-up")[0]).toHaveClass("whole-word");
     // Saving marks the follow-up done; Mark done is for one finished without a visit.
     expect(hint).toHaveTextContent(
       "Tap a household to record your visit. Saving your visit marks the household's follow-up done. If it still needs another visit, tap Undo, or Reopen on this list.",

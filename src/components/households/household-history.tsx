@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useLayoutEffect, useRef, useState } from "react";
+import { type Ref, startTransition, useLayoutEffect, useRef, useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
@@ -58,6 +58,10 @@ const INTEREST_LABEL: Record<string, string> = {
  * The parent reads only the newest page of visits (#160). Older pages are
  * read here, on request, and held across the parent's re-reads of that first
  * page; parents key the panel by unit, so they never cross to another door.
+ *
+ * At the door it is last in the form, and the line under the unit field
+ * leads down to it (See history): there it takes focus, and is brought clear
+ * of the pinned sync row.
  */
 export function HouseholdHistoryPanel({
   history,
@@ -65,6 +69,7 @@ export function HouseholdHistoryPanel({
   onChanged,
   anchorVisits = false,
   atDoor = false,
+  ref,
 }: {
   history: HouseholdHistory;
   /* The running session, which decides what a member may change. */
@@ -73,6 +78,7 @@ export function HouseholdHistoryPanel({
   /* Offer a follow-up anchored to each visit row. */
   anchorVisits?: boolean;
   atDoor?: boolean;
+  ref?: Ref<HTMLElement>;
 }) {
   const { household, followUps } = history;
   const { userId, isAdmin } = useRole();
@@ -171,8 +177,10 @@ export function HouseholdHistoryPanel({
 
   return (
     <section
+      ref={ref}
       aria-label="What we know about this unit"
-      className="rounded-xl border border-border bg-surface-muted p-4"
+      tabIndex={atDoor ? -1 : undefined}
+      className={`rounded-xl border border-border bg-surface-muted p-4 ${atDoor ? "scroll-clear-chrome" : ""}`}
     >
       {/* A door that has answered without giving a name is not one nobody answered. */}
       <p className="text-body font-semibold">

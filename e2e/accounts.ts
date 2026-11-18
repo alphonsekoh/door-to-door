@@ -10,6 +10,10 @@ export const SEED_MEMBER = "alice@example.com";
 export const SEED_PARTNER = "ben@example.com";
 export const SEED_PASSWORD = "password123";
 
+/* alice@example.com's id in the seed, for a spec that must find her by more
+   than her name: another spec may rename her. */
+export const SEED_MEMBER_ID = "00000000-0000-4000-8000-000000000002";
+
 export const ADMIN_STATE = "e2e/.auth/admin.json";
 export const MEMBER_STATE = "e2e/.auth/member.json";
 export const PARTNER_STATE = "e2e/.auth/partner.json";

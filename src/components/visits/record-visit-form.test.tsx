@@ -965,6 +965,317 @@ describe("history before knocking", () => {
   });
 });
 
+/*
+ * The history is last in the form, so its landing moves nothing tapped, and
+ * on an iPhone at the default text that put all of it below Save: an overdue
+ * note went unseen before the knock (#196). One line under the unit field
+ * says what it holds, and leads down to it.
+ */
+describe("the line under the unit field", () => {
+  const line = () => document.getElementById("unit-history");
+  /* What is in it, once it is there. */
+  const inLine = () => {
+    const found = line();
+    if (found === null) throw new Error("No line under the unit field");
+    return within(found);
+  };
+  const visits = (total: number) => ({ limit: 20, offset: 0, total, hasMore: false });
+  const DUE_LONG_AGO = "2020-01-01T00:00:00.000Z";
+  const DUE_LATER = "2999-01-01T00:00:00.000Z";
+
+  const mount = (props: { unitsRead?: boolean; initialUnit?: string } = {}) =>
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        onRecorded={vi.fn()}
+        {...props}
+      />,
+    );
+
+  const typeUnit = async (unit: string) => {
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Unit number"), unit);
+    return user;
+  };
+
+  it("says a note owed on the follow-up list is overdue, the visits, and leads to the history", async () => {
+    apiFetch.mockResolvedValue(history({ followUps: [{ ...owed, dueDate: DUE_LONG_AGO }] }));
+    mount();
+    await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^On the follow-up list · Overdue · 1 visit · See history$/);
+    });
+    const said = inLine();
+    // Words as well as colour, in the tone the history gives an overdue note.
+    expect(said.getByText("Overdue")).toHaveClass("text-danger");
+    expect(said.getByText("follow-up")).toHaveClass("whole-word");
+    expect(said.getByRole("button", { name: "See history" })).toBeInTheDocument();
+  });
+
+  it("says nothing is overdue of a note owed later, or on no day", async () => {
+    apiFetch.mockResolvedValue(
+      history({
+        followUps: [
+          { ...owed, dueDate: DUE_LATER },
+          { ...owed, id: "f2" },
+        ],
+        pagination: visits(3),
+      }),
+    );
+    mount();
+    await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^On the follow-up list · 3 visits · See history$/);
+    });
+  });
+
+  it("says a suggestion waits for review where nothing is owed", async () => {
+    const waiting = { ...owed, status: "suggested" as const, dueDate: DUE_LONG_AGO };
+    apiFetch.mockResolvedValue(history({ followUps: [waiting] }));
+    mount();
+    await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^Waiting for review · 1 visit · See history$/);
+    });
+  });
+
+  it("gives only the visits of a unit with nothing on the list or waiting", async () => {
+    const done = { ...owed, dueDate: DUE_LONG_AGO, doneAt: "2026-01-02T00:00:00.000Z" };
+    apiFetch.mockResolvedValue(history({ followUps: [done], pagination: visits(12) }));
+    mount();
+    await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^12 visits · See history$/);
+    });
+  });
+
+  it("says a household no visit has been recorded at has none yet", async () => {
+    apiFetch.mockResolvedValue(history({ visits: [], answered: false, pagination: visits(0) }));
+    mount();
+    await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^No visits yet · See history$/);
+    });
+  });
+
+  it("says a unit the block has no household at has no earlier visits, once its units are read", async () => {
+    mount({ unitsRead: true });
+    await typeUnit("#09-999");
+    expect(line()).toHaveTextContent(/^No earlier visits$/);
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("claims nothing of a unit not among the block's units until they have all been read", async () => {
+    mount();
+    await typeUnit("#09-999");
+    expect(line()).toBeInTheDocument();
+    expect(line()).toHaveTextContent(/^$/);
+  });
+
+  it("claims nothing of a unit whose visit waits on this phone, which the units read may not show", async () => {
+    const waiting = buildQueuedVisit(
+      {
+        blockId: BLOCK,
+        unitNumber: "#09-999",
+        interestLevel: "high",
+        description: "",
+        name: "",
+        contact: "",
+        religion: "",
+        sessionId: "s1",
+      },
+      "u1",
+      Date.parse("2026-10-15T10:00:00.000Z"),
+      () => "v-queued",
+    );
+    useSyncQueue.mockReturnValue({ ...NO_QUEUE, records: [waiting] });
+    mount({ unitsRead: true });
+    await typeUnit("09-999");
+    expect(line()).toHaveTextContent(/^$/);
+
+    // Another block's unit of the same number says nothing for this one.
+    useSyncQueue.mockReturnValue({
+      ...NO_QUEUE,
+      records: [{ ...waiting, item: { ...waiting.item, blockId: "b2" } }],
+    });
+    cleanup();
+    mount({ unitsRead: true });
+    await typeUnit("#09-999");
+    expect(line()).toHaveTextContent(/^No earlier visits$/);
+  });
+
+  it("says it is reading a known unit's history until it lands", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockReturnValue(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    mount({ unitsRead: true });
+    await typeUnit("#05-123");
+    expect(line()).toHaveTextContent(/^Checking this unit's history…$/);
+
+    await act(async () => {
+      answer(history());
+      await Promise.resolve();
+    });
+    expect(line()).toHaveTextContent(/^1 visit · See history$/);
+  });
+
+  it("says when the history could not be read, and Save still saves", async () => {
+    apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    mount({ unitsRead: true });
+    const user = await typeUnit("#05-123");
+
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^Could not read this unit's history\.$/);
+    });
+    expect(screen.queryByRole("region", { name: "What we know about this unit" })).toBeNull();
+
+    apiFetch.mockResolvedValueOnce({ id: "v1", householdId: "h1" });
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved #05-123.");
+  });
+
+  it("reads a unit typed again afresh, saying it is reading rather than that it could not", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    const reads = [
+      () => Promise.reject(new TypeError("Failed to fetch")),
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    ];
+    apiFetch.mockImplementation((path: string) =>
+      path === "/households/h1?limit=20&offset=0"
+        ? reads.shift()?.()
+        : Promise.resolve(history({ household: summary("#05-125", "h2").household })),
+    );
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123"), summary("#05-125", "h2")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    const unit = screen.getByLabelText("Unit number");
+    fireEvent.change(unit, { target: { value: "#05-123" } });
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^Could not read this unit's history\.$/);
+    });
+
+    // Straight to another known unit and back, never through an unknown one.
+    fireEvent.change(unit, { target: { value: "#05-125" } });
+    fireEvent.change(unit, { target: { value: "#05-123" } });
+    expect(line()).toHaveTextContent(/^Checking this unit's history…$/);
+    await act(async () => {
+      answer(history());
+      await Promise.resolve();
+    });
+    expect(line()).toHaveTextContent(/^1 visit · See history$/);
+  });
+
+  /* Its height is held from the first character, so neither the history
+     landing nor any of what the line comes to say moves what is below. */
+  it("is held at the longest it can say from the moment a unit is typed, and goes once it is cleared", async () => {
+    apiFetch.mockResolvedValue(history());
+    mount();
+    expect(line()).toBeNull();
+    const user = await typeUnit("#");
+
+    const held = line();
+    expect(held).toHaveClass("hold-text", "leading-target");
+    // Held from CSS, so in no text a reader or a test reads, with its hyphen
+    // as unbreakable as WholeWords holds it on screen.
+    expect(held).toHaveAttribute(
+      "data-hold",
+      "On the follow‑up list · Overdue · No visits yet · See history",
+    );
+    // Heard when it changes, as one line.
+    expect(held).toHaveAttribute("aria-live", "polite");
+    expect(held).toHaveAttribute("aria-atomic", "true");
+
+    await user.type(screen.getByLabelText("Unit number"), "05-123");
+    await waitFor(() => {
+      expect(line()).toHaveTextContent("See history");
+    });
+    expect(line()).toBe(held);
+
+    await user.clear(screen.getByLabelText("Unit number"));
+    expect(line()).toBeNull();
+  });
+
+  it("is under the unit field and what it says of it, above the session's notice and chips", async () => {
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        followUp={{
+          revisits: [
+            {
+              household: { ...summary("#05-123").household },
+              block: {
+                id: BLOCK,
+                name: "123",
+                street: "Test Ave",
+                postalCode: null,
+                createdAt: "",
+              },
+              notes: [owed],
+              latestVisit: null,
+              visitedInSession: false,
+            },
+          ],
+        }}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await typeUnit("#05-124");
+    const gate = document.getElementById("unit-gate");
+    const notice = screen.getByText(/Only units on the list can be recorded\.$/);
+    const chips = screen.getByRole("list", { name: "On the list in this block" });
+    expect(gate?.compareDocumentPosition(line() as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(line()?.compareDocumentPosition(notice)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(line()?.compareDocumentPosition(chips)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("takes See history down to the history, clear of the pinned chrome, and focus into it", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      apiFetch.mockResolvedValue(history());
+      mount();
+      const user = await typeUnit("#05-123");
+      const panel = await screen.findByRole("region", { name: "What we know about this unit" });
+      expect(scrolled).not.toHaveBeenCalled();
+
+      await user.click(inLine().getByRole("button", { name: "See history" }));
+      expect(scrolled).toHaveBeenCalledOnce();
+      expect(scrolled).toHaveBeenCalledWith({ block: "start" });
+      expect(scrolled.mock.contexts[0]).toBe(panel);
+      // Its top clear of the pinned sync row; jsdom lays nothing out, the E2E measures.
+      expect(panel).toHaveClass("scroll-clear-chrome");
+      // So a screen reader goes on from the history.
+      expect(panel).toHaveAttribute("tabindex", "-1");
+      expect(panel).toHaveFocus();
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
+});
+
 describe("a follow-up after saving", () => {
   const saveVisit = async () => {
     apiFetch.mockResolvedValueOnce({ id: "v-new", householdId: "h-new" });
@@ -1025,7 +1336,7 @@ describe("a follow-up after saving", () => {
     const user = await saveVisit();
     const add = await screen.findByRole("button", { name: "Add to follow-up list" });
     // "Follow-" over "up" read as two words at large text (#196).
-    expect(within(add).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(add).getByText("follow-up")).toHaveClass("whole-word");
     await user.click(add);
     const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #06-201" });
     await user.type(within(sheet).getByLabelText("What should the next visit do?"), "Flyer");
@@ -2095,7 +2406,7 @@ describe("in a follow-up session", () => {
     expect(notice).toHaveTextContent(
       /^Follow-up session · Only units on the list can be recorded\.$/,
     );
-    expect(within(notice).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
+    expect(within(notice).getByText("Follow-up")).toHaveClass("whole-word");
     const field = screen.getByLabelText("Unit number");
     const chips = screen.getByRole("list", { name: "On the list in this block" });
     expect(field.compareDocumentPosition(notice)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
@@ -2683,7 +2994,7 @@ describe("in a follow-up session", () => {
         view.rerender(form());
         const undo = within(status).getByRole("button", { name: UNDO });
         expect(undo.closest("p")).toHaveTextContent(/^Follow-up marked done\. Undo/);
-        expect(within(status).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
+        expect(within(status).getByText("Follow-up")).toHaveClass("whole-word");
       });
 
       it("drops the line once sent if the server marked nothing", async () => {

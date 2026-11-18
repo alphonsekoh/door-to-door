@@ -343,6 +343,39 @@
 }
 
 /*
+ * Lines as tall as a tap target: 44px, or a line of body text, whichever is
+ * more, as target-compact's least. A text action set among the words is then
+ * a whole target and no line is taller than the next, so hold-text can hold
+ * words that may come to hold one. --tw-leading too, so a text-* size here
+ * takes this height whichever utility comes first. What is set among the
+ * words sits at the top of its line, a line tall: on its baseline, a word in
+ * another weight, whose face rounds its leading apart, made WebKit's line
+ * 1/64px taller than its held words at 32px.
+ */
+@utility leading-target {
+  --tw-leading: max(44px, calc(var(--reader-rem) * 1.5));
+  line-height: max(44px, calc(var(--reader-rem) * 1.5));
+  & * {
+    vertical-align: top;
+  }
+}
+
+/*
+ * A hyphenated word held on one line (WholeWords) that still never runs out
+ * of its box. As one box it goes whole onto the next line where it fits on
+ * one, and wraps inside, at its hyphen first, only where it alone is wider
+ * than the line: nowrap ran "follow-ups?" 16px out of a hint at 32px, 320px
+ * wide, in DejaVu Sans. An inline box takes no underline from its action, so
+ * it draws its own.
+ */
+@utility whole-word {
+  display: inline-block;
+  max-width: 100%;
+  overflow-wrap: break-word;
+  text-decoration: inherit;
+}
+
+/*
  * The Saved line after a save, as a container. Under 18.75 reader-rems its
  * words and the widest offer, "Saved #12-1234A." and "Suggest a return
  * visit", no longer share a row in the system face (18.71 rems). There the
@@ -352,7 +385,9 @@
  * and nothing is held: so at the default text size, a 360px phone or a
  * 375pt iPhone lays the line out as before. A wider face can still drop the
  * offer there, as DejaVu Sans does under 20.7 rems. A container query's rem
- * is the reader's (D-111-60).
+ * is the root's, and so the reader's only from a 16px root to 32px, where
+ * --reader-rem follows it (D-111-60): under 16px the line reads more rems
+ * wide than its 16px text needs, and the offer can drop unheld (R-202).
  */
 @utility saved-line {
   container: saved-line / inline-size;

@@ -277,6 +277,31 @@ describe("BlockScreen", () => {
       expect(await screen.findByText("Asked us to come back in June.")).toBeInTheDocument();
     });
 
+    /* A unit on a page that never arrived may have been visited (#196). */
+    it("says a unit has no earlier visits only once every page of the block has been read", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (100)" });
+      const unit = screen.getByLabelText("Unit number");
+      const line = () => document.getElementById("unit-history");
+      await user.type(unit, "#10-001");
+      expect(line()).toHaveTextContent(/^$/);
+      await user.clear(unit);
+      await user.type(unit, "#09-999");
+      expect(line()).toHaveTextContent(/^$/);
+
+      servePages();
+      syncs(view, 1);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(line()).toHaveTextContent(/^1 visit · See history$/);
+      });
+      await user.clear(unit);
+      await user.type(unit, "#10-001");
+      expect(line()).toHaveTextContent(/^No earlier visits$/);
+    });
+
     it("writes the offline copy once, from every page, never from the first alone", async () => {
       servePages();
       render(<BlockScreen blockId="b1" />);

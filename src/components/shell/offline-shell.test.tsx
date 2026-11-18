@@ -288,6 +288,17 @@ describe("OfflineShell, recording", () => {
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
   });
 
+  /* Its copy of the block may be hours old, and a unit not in it may have
+     been visited since (#196). */
+  it("never says a unit missing from its copy has no earlier visits", async () => {
+    mount();
+    await openBlock("123");
+    await user().type(screen.getByLabelText("Unit number"), "#05-02");
+    const line = document.getElementById("unit-history");
+    expect(line).toBeInTheDocument();
+    expect(line).toHaveTextContent(/^$/);
+  });
+
   it("counts only this member's records, never another's on the same phone", async () => {
     const draft = {
       blockId: BLK_123,
