@@ -272,7 +272,8 @@ round 8, and they are in the PR #112 body too.
   visible area and push Cancel off the screen. _Research:_ R-63. _Refined by D-119-21:_
   a sheet opens at its top, even when the control focused on open is below the view.
   _Refined by D-136-3:_ the body clears the bar as drawn (`scroll-clear-sheet-actions`),
-  not `scroll-pb-24`.
+  not `scroll-pb-24`. _Refined by D-196-5:_ a box drawn inside its label brings the whole
+  tile (`wholeControl`).
 - **D-111-32 · The E2E adds one describe block, "the phone's display settings",** in
   `record-visit.spec.ts`. It covers:
   - press on touch-down;
@@ -314,6 +315,8 @@ round 8, and they are in the PR #112 body too.
   over "203" reads as two doors. _Refined by D-136-5 and D-136-7:_ U+2011 only in
   hidden generated text, and `WholeWords` keeps the marked-done text's hyphenated words
   whole. `UnitNumber` is now in `src/components/ui/unit-number.tsx` (D-115-1).
+  _Extended by D-196-6:_ `WholeWords` also in the app's titles and labels; typed text
+  still breaks as before.
 - **D-111-37 · `e2e/large-text.spec.ts` sweeps every member and admin screen at the
   32px cap.** A spec file of its own, outside D-111-32's describe block. It flags
   sideways scroll, a control past the edge or into the page margin, text spilling or
@@ -492,7 +495,8 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   second open question. _Why:_ at 32px the nav and Save bar alone took 43% of an iPhone
   13's screen and put the unit field under Save. _Research:_ R-74, R-75, R-76.
   _Extended by D-136-1 (owner, 2026-11-15):_ every sheet's `SheetActions`, whose note
-  keeps the text size (D-136-2).
+  keeps the text size (D-136-2). _See R-202:_ the root's rem is the reader's only from
+  16 to 32px.
 - **D-111-61 · D-33-12 stands as it is (owner).** The sync row is held from the first
   paint on every signed-in page at every size, and the waiting bar stays pinned while
   anything is unsent. D-111-50 and D-111-52 are rejected, and `held-row` and
@@ -529,7 +533,8 @@ Fix rounds 8 and 9 (D-111-60 to D-111-69). D-111-60 and D-111-61 are the owner's
   dropped. Refines D-111-59. _Why:_ the owner's requirement for D-111-60 and D-111-61 is
   measured layout, which jsdom cannot see (D-37-6). _Extended by D-136-12:_ a save among
   a dozen listed doors at 32px and 320×568, and the unit still from Sending to Saved on
-  this phone.
+  this phone. _Extended by D-196-8 and D-196-15:_ the unit still as the offer turns up,
+  at 32px and at 16px on a 360px screen.
 - **D-111-66 · E2E tests wait for `untilLive` before typing into a block screen loaded by
   address.** It is the hydration marker in `e2e/fixtures.ts`: the docked Save is the
   form's own `type="submit"`, not the stand-in. _Why:_ text typed before hydration is

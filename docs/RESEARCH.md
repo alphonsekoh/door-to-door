@@ -775,9 +775,11 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   query container's computed values, and `rem` there is still the root element's font
   size: the reader's text size (D-111-24). Resetting `--reader-rem` on an element does
   not change it, so a nav drawn at the 16px base needs a px threshold for its labels.
+  _Amended by R-202 (#196):_ the root's size is the reader's only from 16 to 32px, as
+  `--reader-rem` clamps it and the root does not.
 - **Source:** [CSS Containment 3, the `@container` rule](https://drafts.csswg.org/css-contain-3/#container-rule);
   seen in PR #112, fix round 8
-- **Used by:** D-111-60
+- **Used by:** D-111-60, D-196-2
 
 ### R-76 · What the chrome leaves once it stops growing (measured)
 
@@ -2341,3 +2343,94 @@ config`, parse only; #124 docs step, confirming the planner's check)
   and iPhone 13 projects, run natively on macOS by the #208 builder. It was a manual
   probe, not a spec, so no E2E pins it.
 - **Used by:** D-208-1, D-208-3, D-208-5, D-208-8
+
+### R-201 · The Saved line's widest pair is 18.71 rems in the system face and 20.68 in DejaVu Sans (measured)
+
+- **Finding:** at 16px, the pair is "Saved #12-1234A.", the line's 8px gap and the offer:
+
+  | Offer                    | System face, both engines | DejaVu Sans                                |
+  | ------------------------ | ------------------------- | ------------------------------------------ |
+  | "Suggest a return visit" | 18.71 rem (299.3px)       | 20.68 rem (330.8px) WebKit, 20.66 Chromium |
+  | "Add to follow-up list"  | 18.12 rem                 | 19.87 rem WebKit, 19.85 Chromium           |
+
+  The line's content box measures:
+  - 21.44 rems on the Pixel 5 and 21.25 on the iPhone 13 at 16px;
+  - 20.0 and 19.82 rems at 17px, the iPhone's default (R-62);
+  - 310px (19.38 rems) on a 360px phone at 16px;
+  - 322px (18.94 rems) on a 375pt iPhone at 17px;
+  - 270px (16.9 rems) on a 320px phone at 16px.
+
+  So a 21-rem threshold, sized for DejaVu, held a blank row at the default size on
+  360px phones and on 375pt and 390pt iPhones, where the pair fits in the phone's own
+  face. In the system face, a line of 18.75 rems or wider always fits the pair. At 16px,
+  only a screen under about 350px wide, such as a 320px one, is narrower than that.
+
+- **Source:** measured (#196 builder, Chromium and WebKit, with DejaVu Sans served from
+  a test origin and from the app's origin, R-182; verifier r0 and r1, at 5 widths and 7
+  text sizes)
+- **Used by:** D-196-2, D-196-15
+
+### R-202 · Below a 16px root, a container query measures in a smaller rem than the text (measured)
+
+- **Finding:** a container query's `rem` is the root's font size (R-75), while the text
+  follows `--reader-rem`, which is `clamp(16px, 1rem, 32px)`. The two agree only from a
+  16px root to 32px.
+  - At iOS's 14px body size (R-62) on a 320pt screen, the Saved line's 270px content box
+    measures 19.29 rems. It takes the wide layout, though its text is 16px and the pair
+    needs 299px.
+  - The offer then drops the unit field 22px when it turns up, on both engines, as on
+    main.
+  - Above a 32px root, the query measures fewer rems than the text needs, which errs
+    toward the held row. This follows from the clamp and was not measured.
+
+  Amends R-75, whose "the reader's text size" holds only within the clamp.
+
+- **Source:** `src/app/globals.css` (`--reader-rem`); measured (#196 verifier r1, the
+  `320-14px` case on both projects)
+- **Used by:** D-196-2 (known limit)
+
+### R-203 · An element's client rects are its boxes; a Range's are the lines of its text
+
+- **Finding:** `Element.getClientRects()` returns one rect per box fragment. An inline
+  element over two lines gives two. A blockified one, such as a flex item or one whose
+  display changed, gives one, whatever its text does. `Range.getClientRects()` over the
+  element's contents also includes a rect for each line fragment of the text in it,
+  whatever the element's display. So the distinct tops of a Range's rects count the
+  lines a word is drawn on. No bite reached this step: each failed earlier, on the
+  element count.
+- **Source:** [CSSOM View, `getClientRects()`](https://drafts.csswg.org/cssom-view/#dom-element-getclientrects)
+  and [`Range.getClientRects()`](https://drafts.csswg.org/cssom-view/#dom-range-getclientrects).
+  Cited, not fetched.
+- **Used by:** D-196-7
+
+### R-204 · A focused box inside its label tile: on WebKit only the box comes into view (measured)
+
+- **Finding:** at 32px in Add households, the last box was focused while the sheet body
+  called `scrollIntoView({ block: "nearest" })` on the input. On WebKit the label tile's
+  foot ended 64px under the docked Add, both on main and with `wholeControl` reverted.
+  On Chromium the tile cleared the bar either way, by the browser's own focus scroll, so
+  the check bites on WebKit only. Scrolling the tile instead, it clears the bar by 16px
+  on WebKit and 17px on Chromium.
+- **Source:** measured (#196 builder; verifier r0 to r2, iPhone 13 and Pixel 5 profiles,
+  production builds of main 17e935b and the branch)
+- **Used by:** D-196-5, D-196-8
+
+### R-205 · What of a unit's history shows above the docked Save, with the panel last in the form (measured)
+
+- **Finding:** at `#05-123` in a door-to-door session, unscrolled, once the history
+  lands, this is how much of it is above the docked Save:
+
+  | Phone, root     | Main (panel above the picker) | Branch (panel last)       |
+  | --------------- | ----------------------------- | ------------------------- |
+  | iPhone 13, 16px | 236px                         | 12px, the card's top edge |
+  | iPhone 13, 17px | 222px                         | 0px                       |
+  | Pixel 5, 16px   | 299px                         | 75px, its first line      |
+  | Pixel 5, 17px   | 285px                         | 47px                      |
+
+  On main, the history held the household's name, "On the follow-up list" and an
+  Overdue note. As it landed at 32px, Medium dropped 1,494px (Chromium) and 1,582px
+  (WebKit) on main, and 0px on the branch.
+
+- **Source:** measured (#196 verifier r0 and r2, production builds of main 17e935b and
+  f1d02d3)
+- **Used by:** D-196-4 (Open questions)

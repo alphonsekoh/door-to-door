@@ -430,9 +430,12 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
     `target-compact` and `space-under-tabs`, so it holds on the first paint.
   - `hold-text` keeps an element as tall as the words in its `data-hold`, drawn by a
     hidden `::after`, so the words changing to them moves nothing below.
+  - The Saved line is a container (`saved-line`). Under 18.75 reader-rems its offer has
+    a row of its own (`offer-row`), held by `offer-pending` until the server has the
+    visit, and its words are held by `hold-text-narrow`.
 
-  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60, D-111-67
-  and D-136-1 to D-136-9.
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60, D-111-67,
+  D-136-1 to D-136-9 and D-196-2.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
@@ -443,7 +446,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`useEarlyInput`), and until then `useLive` keeps Enter from submitting the form
   natively (D-113-1 to D-113-4). Unit numbers are shown through `UnitNumber`, which
   never splits them (D-111-36). `WholeWords`, beside it, does the same for each
-  hyphenated word in a follow-up's marked-done text (D-136-7).
+  hyphenated word in a follow-up's marked-done text and in the app's own titles and
+  labels that say "follow-up" (D-136-7, D-196-6).
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).

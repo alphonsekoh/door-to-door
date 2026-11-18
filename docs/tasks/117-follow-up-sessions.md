@@ -547,7 +547,8 @@ well." (D-117-62 onwards).
   record or leaving; Undo is disabled without signal. An admin's Undo, there or on the
   Saved line, also lists a suggestion that arrived after the save, unwarned (D-117-32;
   accepted, the window is seconds). _Why:_ the admin was never told the note became
-  "Done by Ann".
+  "Done by Ann". _Extended by D-196-3:_ the line is brought into view, clear of the nav,
+  before paint.
 - **D-117-77 · Each save scrolls the Saved line itself into view**, not the wrapper with
   the unit field and the block's chips. Refines D-111-69. _Why:_ with about ten listed
   doors in a block that wrapper outgrew a Pixel 5, and `block: "nearest"` aligned its
