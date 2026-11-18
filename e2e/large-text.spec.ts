@@ -1065,35 +1065,64 @@ test.describe("without signal", () => {
      * once the server has the visit. Beside the words, at the cap it was
      * pushed onto a row of its own as it turned up, and the next unit
      * dropped 48px under a thumb about to type it (#196). Its row is held
-     * from the save on. The send waits for the test, so the field is
-     * measured while it is still on its way.
+     * from the save on. At the base size, on a phone as narrow as 360px,
+     * these words and the offer still share a row, so the line stays one
+     * row with nothing held, as it always was. Each send waits for the test,
+     * so the field is measured while it is still on its way.
      */
-    const sent = Promise.withResolvers<undefined>();
-    await page.unroute("**/api/visits/sync");
-    await page.route("**/api/visits/sync", async (route) => {
-      await sent.promise;
-      await route.continue();
-    });
-    await unit.fill("#86-04");
-    await high.evaluate((element) => {
-      element.scrollIntoView({ block: "center" });
-    });
-    await high.click();
-    await page.getByRole("button", { name: "Save and next" }).click();
-    const sending = status.filter({ hasText: "Sending #86-04" });
-    await expect(sending).toBeVisible();
-    const whileSending = await unit.boundingBox();
-    expect(whileSending, "the next unit while sending").not.toBeNull();
-    await expect(sending).toBeVisible();
-    sent.resolve(undefined);
-    await expect(
-      status
-        .filter({ hasText: "Saved #86-04." })
-        .getByRole("button", { name: "Suggest a return visit" }),
-    ).toBeVisible();
-    expect(await unit.boundingBox(), "the next unit as the suggestion is offered").toEqual(
-      whileSending,
-    );
+    const holdSend = async (): Promise<() => void> => {
+      await page.unroute("**/api/visits/sync");
+      const sent = Promise.withResolvers<undefined>();
+      await page.route("**/api/visits/sync", async (route) => {
+        await sent.promise;
+        await route.continue();
+      });
+      return () => {
+        sent.resolve(undefined);
+      };
+    };
+    /* 0 while the line is one row: no taller than its least height. */
+    const pastOneRow = () =>
+      status.evaluate(
+        (line) =>
+          line.getBoundingClientRect().height - parseFloat(getComputedStyle(line).minHeight),
+      );
+    const phone = page.viewportSize();
+    if (phone === null) throw new Error("The phone project sets no viewport");
+    for (const [size, number] of [
+      ["16px", "#86-04"],
+      [CAP, "#86-05"],
+    ] as const) {
+      const base = size === "16px";
+      await page.setViewportSize(base ? { width: 360, height: phone.height } : phone);
+      await atSize(page, size);
+      const send = await holdSend();
+      await unit.fill(number);
+      if (!base) {
+        await high.evaluate((element) => {
+          element.scrollIntoView({ block: "center" });
+        });
+      }
+      await high.click();
+      await page.getByRole("button", { name: "Save and next" }).click();
+      const sending = status.filter({ hasText: `Sending ${number}` });
+      await expect(sending).toBeVisible();
+      const whileSending = await unit.boundingBox();
+      expect(whileSending, `the next unit while sending at ${size}`).not.toBeNull();
+      if (base) expect(await pastOneRow(), "the Saved line while sending at 16px").toBe(0);
+      await expect(sending).toBeVisible();
+      send();
+      await expect(
+        status
+          .filter({ hasText: `Saved ${number}.` })
+          .getByRole("button", { name: "Suggest a return visit" }),
+      ).toBeVisible();
+      if (base) expect(await pastOneRow(), "the suggestion beside the words at 16px").toBe(0);
+      expect(
+        await unit.boundingBox(),
+        `the next unit as the suggestion is offered at ${size}`,
+      ).toEqual(whileSending);
+    }
   });
 
   test("the offline shell's recording form opens with its unit number in view, at every text size", async ({
