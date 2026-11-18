@@ -1267,9 +1267,13 @@ describe("the line under the unit field", () => {
       expect(scrolled.mock.contexts[0]).toBe(panel);
       // Its top clear of the pinned sync row; jsdom lays nothing out, the E2E measures.
       expect(panel).toHaveClass("scroll-clear-chrome");
-      // So a screen reader goes on from the history.
-      expect(panel).toHaveAttribute("tabindex", "-1");
-      expect(panel).toHaveFocus();
+      // Its first line, so a screen reader reads on from there.
+      const first = within(panel).getByText("Mr Tan");
+      expect(first).toHaveAttribute("tabindex", "-1");
+      expect(first).toHaveFocus();
+      /* Not the panel: in WebKit a tap on anything in it that is not itself
+         focusable, its buttons too, focused it and scrolled the page. */
+      expect(panel).not.toHaveAttribute("tabindex");
     } finally {
       scrolled.mockRestore();
     }

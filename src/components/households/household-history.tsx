@@ -1,6 +1,13 @@
 "use client";
 
-import { type Ref, startTransition, useLayoutEffect, useRef, useState } from "react";
+import {
+  type Ref,
+  startTransition,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { VisitByline } from "@/components/visits/visit-byline";
@@ -60,9 +67,17 @@ const INTEREST_LABEL: Record<string, string> = {
  * page; parents key the panel by unit, so they never cross to another door.
  *
  * At the door it is last in the form, and the line under the unit field
- * leads down to it (See history): there it takes focus, and is brought clear
- * of the pinned sync row.
+ * leads down to it (See history, `show`).
  */
+export type HistoryPanelHandle = {
+  /* Its top into view, clear of the pinned sync row, and focus on its first
+     line, so a screen reader reads on from there. That line, not the
+     panel: in WebKit a tap on anything in a focusable panel that is not
+     itself focusable, every button among it, focused the panel and
+     scrolled the page to it, away from the line Show earlier visits says. */
+  show: () => void;
+};
+
 export function HouseholdHistoryPanel({
   history,
   active,
@@ -78,7 +93,7 @@ export function HouseholdHistoryPanel({
   /* Offer a follow-up anchored to each visit row. */
   anchorVisits?: boolean;
   atDoor?: boolean;
-  ref?: Ref<HTMLElement>;
+  ref?: Ref<HistoryPanelHandle>;
 }) {
   const { household, followUps } = history;
   const { userId, isAdmin } = useRole();
@@ -89,6 +104,18 @@ export function HouseholdHistoryPanel({
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierFailed, setEarlierFailed] = useState(false);
   const earlierControl = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLElement>(null);
+  const firstLine = useRef<HTMLParagraphElement>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      show: () => {
+        firstLine.current?.focus({ preventScroll: true });
+        panel.current?.scrollIntoView({ block: "start" });
+      },
+    }),
+    [],
+  );
   const earlierFailure = useRef<HTMLParagraphElement>(null);
   /* The first page shown last. When the parent reads it again, its visits
      join the older ones, so a visit stored in between leaves no gap. */
@@ -177,13 +204,12 @@ export function HouseholdHistoryPanel({
 
   return (
     <section
-      ref={ref}
+      ref={panel}
       aria-label="What we know about this unit"
-      tabIndex={atDoor ? -1 : undefined}
       className={`rounded-xl border border-border bg-surface-muted p-4 ${atDoor ? "scroll-clear-chrome" : ""}`}
     >
       {/* A door that has answered without giving a name is not one nobody answered. */}
-      <p className="text-body font-semibold">
+      <p ref={firstLine} tabIndex={atDoor ? -1 : undefined} className="text-body font-semibold">
         {household.name ?? (history.answered ? "Name not known" : "Nobody has answered here yet")}
       </p>
       {household.contact === null ? null : (

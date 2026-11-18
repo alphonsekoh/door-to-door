@@ -15,7 +15,10 @@ import { DockedActions } from "@/components/ui/docked-actions";
 import { FollowUpSheet, SUGGESTION_SENT } from "@/components/follow-ups/follow-up-sheet";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
-import { HouseholdHistoryPanel } from "@/components/households/household-history";
+import {
+  type HistoryPanelHandle,
+  HouseholdHistoryPanel,
+} from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
 import { useSyncQueue } from "@/components/sync/sync-provider";
@@ -297,7 +300,7 @@ export function RecordVisitForm({
   /* Bumped after a follow-up changes, so the panel re-reads the unit. */
   const [reloadKey, setReloadKey] = useState(0);
   const savedLine = useRef<HTMLDivElement>(null);
-  const historyPanel = useRef<HTMLElement>(null);
+  const historyPanel = useRef<HistoryPanelHandle>(null);
   /* Where OK on the Not saved dialog sends focus. */
   const unitField = useRef<HTMLInputElement>(null);
   const firstInterest = useRef<HTMLInputElement>(null);
@@ -441,11 +444,9 @@ export function RecordVisitForm({
           readAt,
         )
       : null;
-  /* Down to the history, last in the form, clear of the pinned sync row,
-     and into it, so a screen reader goes on from there. */
+  /* Down to the history, last in the form. */
   const seeHistory = () => {
-    historyPanel.current?.focus({ preventScroll: true });
-    historyPanel.current?.scrollIntoView({ block: "start" });
+    historyPanel.current?.show();
   };
   const blocked = refused
     ? (blockedMessage(errors) ?? (offList && gate !== "ok" ? OFF_THE_LIST : null))
