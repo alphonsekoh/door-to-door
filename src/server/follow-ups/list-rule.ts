@@ -32,11 +32,13 @@ export const byBlockThenUnit = [asc(blocks.name), asc(blocks.street), asc(househ
  * due day with undated last, then what was resolved, most recently first.
  * So the first note is the one the visit is for: the soonest owed, or, once
  * all are done, the one resolved last, never an old one resolved long ago.
+ * The id settles a tie, so the first note is the same on every read.
  */
 export const byNoteOwedThenResolved = [
   sql`${followUps.doneAt} desc nulls first`,
   asc(followUps.dueDate),
   asc(followUps.createdAt),
+  asc(followUps.id),
 ];
 
 /* The list's own notes, apart from whichever follow-ups a caller reads. */

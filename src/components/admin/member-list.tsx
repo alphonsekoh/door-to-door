@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AddMemberForm } from "@/components/admin/add-member-form";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { useRole } from "@/lib/hooks/use-role";
 import { formatDay } from "@/lib/history/dates";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
@@ -41,7 +42,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Could not load the team.",
+        message: failureLine(error, "Could not load the team."),
       });
     }
   }, []);
@@ -63,7 +64,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     } catch (error) {
       /* The server refuses self-demotion and self-deactivation. Showing its
          message keeps one rule in one place rather than two that can drift. */
-      setFailure(error instanceof Error ? error.message : "Could not make that change.");
+      setFailure(failureLine(error, "Could not make that change."));
       setDeactivating(null);
     } finally {
       setBusy(false);

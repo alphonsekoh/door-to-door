@@ -3,6 +3,7 @@
 import { useId, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import type { ActionSpec } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -44,7 +45,7 @@ export function SessionActionButton({
     } catch (error) {
       /* ApiRequestError carries the contract's message, which for a clash
          says how to clear it - keep it rather than a generic apology. */
-      setFailure(error instanceof Error ? error.message : "Could not do that.");
+      setFailure(failureLine(error, "Could not do that."));
       setConfirming(false);
     } finally {
       setBusy(false);

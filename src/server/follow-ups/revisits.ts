@@ -51,7 +51,8 @@ export async function listRevisits(db: Database, session: RevisitSession): Promi
       .from(visits)
       .innerJoin(users, eq(users.id, visits.memberId))
       .where(inArray(visits.householdId, ids))
-      .orderBy(visits.householdId, desc(visits.createdAt)),
+      /* A tie goes to the higher id, the visit the unit's history puts first. */
+      .orderBy(visits.householdId, desc(visits.createdAt), desc(visits.id)),
   );
 
   const visited = await db

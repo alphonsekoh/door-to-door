@@ -9,6 +9,7 @@ import {
   type RevisitSession,
 } from "@/server/follow-ups/list-rule";
 import { listRevisits } from "@/server/follow-ups/revisits";
+import { getHouseholdHistory } from "@/server/visits/queries";
 import { createVisit } from "@/server/visits/service";
 
 /*
@@ -169,6 +170,19 @@ describe("the follow-up list", () => {
     ]);
   });
 
+  it("orders notes owed alike and written at one instant by id (#207)", async () => {
+    const note = (n: number) => `f0f0f0f0-0000-4000-8004-${String(n).padStart(12, "0")}`;
+    // Stored neither in id order nor its reverse, so only the id lists them One, Two, Three.
+    await pool.query(
+      `INSERT INTO follow_ups (id, household_id, author_id, note, created_at) VALUES
+        ($1,$4,$5,'Two',$6), ($2,$4,$5,'Three',$6), ($3,$4,$5,'One',$6)`,
+      [note(2), note(3), note(1), DONE_TONIGHT, ADMIN, STARTED],
+    );
+    const entries = await listRevisits(db, session);
+    const done = entries.find((entry) => entry.household.id === DONE_TONIGHT);
+    expect(done?.notes.map((n) => n.note)).toEqual(["One", "Two", "Three", "Resolved tonight"]);
+  });
+
   it("carries the latest visit anywhere and whether it was visited in this session", async () => {
     const entries = await listRevisits(db, session);
     const byUnit = new Map(entries.map((e) => [`${e.block.name} ${e.household.unitNumber}`, e]));
@@ -181,6 +195,22 @@ describe("the follow-up list", () => {
       latestVisit: { interestLevel: "low", sessionId: PAST },
     });
     expect(byUnit.get("123 #05-05")).toMatchObject({ visitedInSession: false, latestVisit: null });
+  });
+
+  it("carries, of visits stored at one instant, the one the unit's history puts first (#207)", async () => {
+    const visit = (n: number) => `01960000-0000-7000-8001-${String(n).padStart(12, "0")}`;
+    // The highest id stored between the others, so neither the order stored
+    // nor its reverse puts it first.
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       VALUES ($1,$4,$5,$6,'low',$7), ($2,$4,$5,$6,'low',$7), ($3,$4,$5,$6,'low',$7)`,
+      [visit(2), visit(3), visit(1), OTHER_BLOCK, PAST, ALICE, STARTED],
+    );
+    const entries = await listRevisits(db, session);
+    const latest = entries.find((entry) => entry.household.id === OTHER_BLOCK)?.latestVisit;
+    const history = await getHouseholdHistory(db, OTHER_BLOCK, { limit: 1, offset: 0 });
+    expect(latest?.id).toBe(visit(3));
+    expect(history.visits.map((v) => v.id)).toEqual([visit(3)]);
   });
 
   it("counts only what is still owed for a draft, which has not started", async () => {

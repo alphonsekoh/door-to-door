@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Role, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import {
   inGoogleDomains,
   listDomains,
@@ -80,7 +81,7 @@ export function AddMemberForm({
       setOpen(false);
       onAdded(user);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not add that person.");
+      setFailure(failureLine(error, "Could not add that person."));
     } finally {
       setSaving(false);
     }

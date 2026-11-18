@@ -252,9 +252,10 @@ describe("SessionRecords", () => {
   });
 
   it("reports a failure instead of an empty outing", async () => {
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<SessionRecords sessionId="s1" />);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load these records.");
   });
 
   it("copes with a non-Error failure", async () => {

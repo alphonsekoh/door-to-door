@@ -5,6 +5,7 @@ import { startTransition, useRef, useState } from "react";
 import { HouseholdPicker } from "@/components/sessions/household-picker";
 import type { FollowUp, OutingSession, SessionKind } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
+import { failureLine } from "@/lib/failure-line";
 import { loadAllListed } from "@/lib/follow-ups/listed";
 import {
   type ListLoad,
@@ -93,7 +94,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       setOpen(false);
       onCreated(session);
     } catch (error) {
-      setFailure(error instanceof Error ? error.message : "Could not create the session.");
+      setFailure(failureLine(error, "Could not create the session."));
       /* A household left the list since it was read: read it again, keeping
          what was unticked. */
       if (error instanceof ApiRequestError && error.code === "not_on_follow_up_list") {

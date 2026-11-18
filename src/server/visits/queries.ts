@@ -316,11 +316,15 @@ export function selectFollowUps(db: Database) {
     .leftJoin(suggester, eq(suggester.id, pending.authorId));
 }
 
-/* Listed notes and pending suggestions alike, so the next member sees both. */
+/*
+ * Listed notes and pending suggestions alike, so the next member sees both.
+ * The id settles a tie, which the plan would otherwise order afresh on each
+ * read (#207).
+ */
 export async function listFollowUpsFor(db: Database, householdId: string): Promise<FollowUpRow[]> {
   return selectFollowUps(db)
     .where(and(eq(followUps.householdId, householdId), liveFollowUp))
-    .orderBy(asc(followUps.createdAt));
+    .orderBy(asc(followUps.createdAt), asc(followUps.id));
 }
 
 export type HouseholdAttentionRow = {
@@ -397,8 +401,9 @@ export async function listHouseholdsNeedingAttention(
     .innerJoin(households, eq(households.id, visits.householdId))
     .innerJoin(blocks, eq(blocks.id, households.blockId))
     .where(filter)
-    /* Oldest first: the longer a yes has been left, the more it has cost. */
-    .orderBy(asc(visits.createdAt))
+    /* Oldest first: the longer a yes has been left, the more it has cost. The
+       id keeps doors whose last visits tie in one order from page to page. */
+    .orderBy(asc(visits.createdAt), asc(visits.id))
     .limit(options.limit)
     .offset(options.offset);
 

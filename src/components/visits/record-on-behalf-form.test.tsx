@@ -315,7 +315,11 @@ describe("RecordOnBehalfForm", () => {
 
   it("reports the server's refusal without losing what was typed", async () => {
     const user = renderForm();
-    apiFetch.mockRejectedValue(new Error("That block is not part of the active session."));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "conflict", message: "That block is not part of the active session." },
+      }),
+    );
 
     await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
@@ -323,6 +327,19 @@ describe("RecordOnBehalfForm", () => {
     await user.click(screen.getByRole("button", { name: "Save the record" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("not part of the active session");
+    expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  it("says its own sentence, not the browser's, when the save gets no answer (#194)", async () => {
+    const user = renderForm();
+    apiFetch.mockRejectedValue(new TypeError("Load failed"));
+
+    await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save the record" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not record that visit.");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
   });
 

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberList, lastActiveLabel } from "@/components/admin/member-list";
 import type { Role, User } from "@/generated/types.gen";
+import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { formatDay } from "@/lib/history/dates";
 
@@ -228,10 +229,27 @@ describe("MemberList", () => {
     render(<MemberList googleDomains={null} />);
     await screen.findByText(/^Alice/);
 
-    apiFetch.mockRejectedValue(new Error("You cannot change your own role."));
+    apiFetch.mockRejectedValue(
+      new ApiRequestError(409, {
+        error: { code: "conflict", message: "You cannot change your own role." },
+      }),
+    );
     await user.click(within(row("Alice")).getByRole("button", { name: "Make an admin" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("You cannot change your own role.");
+  });
+
+  it("says its own sentence when a change gets no answer", async () => {
+    const user = userEvent.setup();
+    apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+    render(<MemberList googleDomains={null} />);
+    await screen.findByText(/^Alice/);
+
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    await user.click(within(row("Alice")).getByRole("button", { name: "Make an admin" }));
+
+    // The screen's sentence, never the browser's (#194).
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not make that change.");
   });
 
   it("copes with a non-Error change failure", async () => {
@@ -267,10 +285,10 @@ describe("MemberList", () => {
 
   it("offers a retry when the team fails to load", async () => {
     const user = userEvent.setup();
-    apiFetch.mockRejectedValue(new Error("Could not reach the server."));
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
     render(<MemberList googleDomains={null} />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the team.");
 
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
     await user.click(screen.getByRole("button", { name: "Try again" }));
