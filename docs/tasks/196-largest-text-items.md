@@ -3,11 +3,13 @@
 - **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #200). The
   owner ruled Q1 and Q2 on 2026-11-18, then rulings 1 and 2 (D-196-2, D-196-18), then
   (c), the `WholeWords` narrowing and one follow-up state rule (D-196-29, D-196-26,
-  D-196-30), all the same day. One point is with the owner (Open questions).
+  D-196-30), then no history line on the offline page (D-196-36) and the drop when a
+  door is opened from the follow-up list, accepted (Known limits), all the same day.
+  Nothing is with the owner.
   - The PR closes #196 and #200: the owner accepted #200's two limits on 2026-11-18,
     after ruling 3 had kept it open (D-200-3).
   - The PR body and the squash message must say 18.75, not 21 (a0470ad's message says
-    21), and must describe the history line as D-196-29 has it.
+    21), and must describe the history line as D-196-29 and D-196-36 have it.
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #160, #181
 
@@ -24,8 +26,8 @@ PR #191 (#136) left seven items at the 32px root:
 7. a check that waits out its timeout.
 
 Built with #200 in a0470ad, 45e1816 and f1d02d3, then the history line and `whole-word`
-in 775137c, 6be1c93 and 5d85916, then the owner's later rulings in 22347db and 30853ff.
-Client and E2E only: no contract or schema change.
+in 775137c, 6be1c93 and 5d85916, then the owner's later rulings in 22347db, 30853ff and
+6d4b358. Client and E2E only: no contract or schema change.
 
 ## Decisions
 
@@ -290,8 +292,9 @@ none` where the offer sits beside the words.
     not read this unit's history.".
   - Every other typed unit has no line and holds no room (0px): never recorded, the
     block's units not yet read or not all read, the offline shell, or a visit to it held
-    only on this phone. The offline shell is read as a unit missing from its copy
-    (D-196-33, owner to confirm).
+    only on this phone. ~~The offline shell is read as a unit missing from its copy
+    (D-196-33, owner to confirm).~~ The offline page has no line for any unit, in its
+    copy or not, and holds no room (D-196-36, owner).
   - The match is read from the block's units as the form renders, so the line comes in
     the same render as the keystroke, or the Save and next, that makes the unit match.
     It is held at `LONGEST_SUMMARY` from that render (D-196-22).
@@ -303,7 +306,8 @@ none` where the offer sits beside the words.
   Now all of them show there, at 16px and 17px (builder r4). _Cost:_ the line comes as
   the unit matches, with no tap in flight, which the owner was told. Where the block's
   units land after the unit is in the field, typed or from the URL, it comes as they
-  land, which the owner was not (Known limits). _Research:_ R-206, R-209.
+  land (Known limits). For a door opened from the follow-up list, the owner accepted
+  that drop as a known limit on 2026-11-18. _Research:_ R-206, R-209.
 
 - **D-196-30 · One rule for a household's follow-up state (owner, ruling 3,
   2026-11-18).** `isOwed` (listed and not done) and `awaitsReview` (a suggestion) are in
@@ -321,16 +325,17 @@ none` where the offer sits beside the words.
 - **D-196-31 · `historyLine` decides whether there is a line: it returns `null` for an
   unmatched unit.** The form draws `#unit-history` only for a non-null result. _Why:_
   one tested function in `src/lib` then says both whether there is a line and what it
-  says.
+  says. _Refined by D-196-37:_ the form's `showHistoryLine` first decides whether the
+  form draws a line at all; where it does, `historyLine` decides for the typed unit.
 - **D-196-32 · The form no longer checks `unitNumberFault` before the line.** _Why:_ a
   unit that matches a household is always one the form would save, so the guard could
   not be reached; unreachable code is deleted, not tested (CLAUDE.md).
-- **D-196-33 · In the offline shell, its copy of the block is its units read (owner to
+- ~~**D-196-33 · In the offline shell, its copy of the block is its units read (owner to
   confirm, Open questions).** A unit in the copy matches, and offline its line says
   "Could not read this unit's history.", as the shell already did for a known unit. A
   unit missing from the copy has no line. _Why:_ ruling (c) gives a line "only while the
   typed unit matches a household among the block's units read", and the shell's copy is
-  what it has read.
+  what it has read.~~ Superseded by D-196-36 (owner, 2026-11-18).
 - **D-196-34 · `:904` also checks a unit with no history.** At 16px and 17px, at the
   phone's own width, on both projects: typing a never-recorded unit (#87-99), and Save
   and next onto one (#87-02), leave no line and the interest picker where it is with no
@@ -342,6 +347,28 @@ none` where the offer sits beside the words.
   to the server rather than being aborted, so no queued record raises the pinned count
   in the follow-up pass that follows; the E2E database is truncated each run (D-37-4),
   and visits are idempotent (D-37-7).
+
+### The offline page (owner, 2026-11-18)
+
+- **D-196-36 · The offline page draws no history line (owner, 2026-11-18). Supersedes
+  D-196-33.** In the offline shell the form has no `#unit-history` for any typed unit,
+  in the shell's copy of the block or not, and holds no room for one, so typing a unit
+  the copy knows moves nothing. Unchanged: the block screen, where a failed read still
+  says "Could not read this unit's history.", and the history panel at the end of the
+  form in the shell. _Why (owner):_ offline the line can only say it cannot read the
+  history, which reads as an error at every known door just where there is no signal,
+  and it took back the 44px that (c) gave back (92 to 136px at 16px, verifier round 5).
+- **D-196-37 · The form's `showHistoryLine` prop, on by default, turns the line off.
+  `BlockViews` sets it from its existing `offline`, as it sets `amendable`; there is no
+  second prop.** Refines D-196-31. _Why:_ one fact, "this is the offline shell", then
+  decides everything the shell turns off; a second prop set beside `offline` could
+  disagree with it. The name follows `FollowUpItem`'s `showUnit` and `OwnRecords`'
+  `showOuting`.
+- **D-196-38 · The shell's form still reads the unit's history; only the line is
+  gone.** _Why:_ that read gives the panel at the end of the form once signal returns
+  before Continue, the household action used on save, and what a follow-up session's
+  refusal offers (Suggest, waiting for review, on the list, or ask an admin). _Cost:_ one
+  failed request per known unit typed offline, as before.
 
 ### How existing decisions are handled
 
@@ -359,6 +386,7 @@ none` where the offer sits beside the words.
 | D-117-76                     | Extended: the marked line is scrolled into view before paint                  | D-196-3                     |
 | D-111-69, D-117-77           | Pattern followed                                                              | D-196-3, D-196-24           |
 | D-25-3                       | Refined (owner): the panel is last; a held line says a known unit's facts     | D-196-4, D-196-18, D-196-29 |
+| D-25-3                       | Refined (owner): no line on the offline page; the panel stays                 | D-196-36                    |
 | D-160 limit, iPhone          | Closed: older pages land below Notes                                          | D-196-4                     |
 | D-160-17                     | Kept: the failure line still lands in view above Save at 32px                 | D-196-4                     |
 | D-160-1                      | Applied: the count is `pagination.total`; notes are whole on every page       | D-196-20                    |
@@ -374,6 +402,8 @@ none` where the offer sits beside the words.
 | D-196-18, D-196-19, D-196-22 | Partly superseded (owner): no line for a unit with no history to read         | D-196-29                    |
 | D-196-21                     | Superseded (owner)                                                            | D-196-29                    |
 | D-196-20                     | Extended (owner): owed and waiting are one rule, shared                       | D-196-30                    |
+| D-196-33                     | Superseded (owner): no line on the offline page, in its copy or not           | D-196-36                    |
+| D-196-31                     | Refined: the form's `showHistoryLine` decides first whether it draws a line   | D-196-37                    |
 | D-117-25, D-35-6             | Kept: the panel's two sections, now read by the same rule as the line         | D-196-30                    |
 | D-196-27, D-196-16           | Extended: `:904` checks a unit with no history, and stores #87-01             | D-196-34, D-196-35          |
 | D-111-37                     | Refined: a spill is measured against the nearest non-inline box               | D-196-28                    |
@@ -414,6 +444,12 @@ none` where the offer sits beside the words.
     16px, 141.75 for 97.75px at 17px), and every "no line" count was 1.
   - `isOwed` without its done check failed 6 tests, and `awaitsReview` false for an
     undecided suggestion 13, across `rights`, `history-summary`, the panel and the form.
+- **Bites, the offline page** (builder r5 and verifier round 5, Vitest): the fix
+  reverted failed 4 tests; `BlockViews` passing `false` failed 2 block-screen tests; the
+  read skipped with the line off failed 3; room held with no words failed 4. In the
+  shell on Chromium with the worker, typing a unit in its copy left the picker at 92px
+  (97.75 at 17px), where 43fc909 moved it to 136 (141.75); the follow-up refusals
+  read word for word as before.
 - **After Save and next onto a new unit** (builder r4, radio boxes, unscrolled): all of
   Low, Medium and High is above Save on an iPhone 13 at 16px and 17px, and on a Pixel 5;
   at 360×640 all at 16px, and 10 to 11px at 17px, where main showed 0.
@@ -423,9 +459,13 @@ none` where the offer sits beside the words.
   (`linux-196-builder-4.log`, `linux-196-verifier-2.log`). At 30853ff (builder r4):
   lint, typecheck, format, `npm test` (3,848 tests) and `test:coverage` (282 files,
   5,018 tests, thresholds met); `large-text.spec.ts` and `record-visit.spec.ts` natively,
-  75 passed and 1 skipped; Linux WebKit 15 of 15 (`linux-196-builder-c1.log`).
+  75 passed and 1 skipped; Linux WebKit 15 of 15 (`linux-196-builder-c1.log`). At
+  6d4b358: lint, typecheck, format, `npm test` (3,852 tests) and `test:coverage` (282
+  files, 5,022 tests, thresholds met; builder r5); the native E2E passed 185, with 7
+  skipped (verifier round 5). Linux WebKit was not run: the change reaches only the
+  shell, which WebKit cannot drive (D-32-18).
 - **Signing:** a0470ad, 45e1816, 5d85916, 22347db and 30853ff are unsigned, as the owner
-  allowed; f1d02d3, 775137c and 6be1c93 are signed.
+  allowed; f1d02d3, 775137c, 6be1c93 and 6d4b358 are signed.
 
 ## Known limits
 
@@ -465,7 +505,7 @@ none` where the offer sits beside the words.
   moved, so the height buys nothing there. At 32px the next unit sits 48px lower, still
   in view (verifier r2).
 
-- **The history line (D-196-18 to D-196-25, D-196-29):**
+- **The history line (D-196-18 to D-196-25, D-196-29, D-196-36):**
   - **It comes with no tap in flight.** In the render the typed unit matches, the line
     is inserted and the picker drops 44px while the member types. Typing on to a unit
     that does not match takes it away again.
@@ -480,10 +520,14 @@ none` where the offer sits beside the words.
       land, about 0.3s after the block is opened on 4G and 2s on weak signal. The
       notice, the chips, the picker and Add details then drop 44px after the page has
       opened, at any signal. This adds to D-200-3's cold-load movement (#200, Known
-      limits), and was found after the owner accepted D-200-3; it was reported to the
-      owner the same day. It is untested: `:904` waits for the line before it measures.
+      limits). It was found after the owner accepted D-200-3, and the owner accepted it
+      as a known limit on 2026-11-18. It is untested: `:904` waits for the line before
+      it measures.
   - **A unit first visited since the block's units were read**, by a teammate or only
     on this phone, has no line until they are read again, though it has a history.
+  - **On the block screen with signal lost mid-block**, every known unit typed still
+    says "Could not read this unit's history." and drops the picker 44px, as D-196-36
+    keeps it; only the offline page has no line (verifier round 5).
   - **Some screen readers may not announce the line as it appears**, since it is
     inserted already saying "Checking this unit's history…" (D-196-25). The summary that
     replaces it is heard.
@@ -511,8 +555,8 @@ none` where the offer sits beside the words.
     covered `mobile-webkit` only. In DejaVu a Pixel 5 at 17px leaves about 7.6px to
     spare. The publish step's full Linux run is their first there;
   - a real iPhone with Dynamic Type;
-  - the offline shell's held row on WebKit (D-32-18), and its history line (D-196-33)
-    outside Vitest;
+  - the offline shell on WebKit (D-32-18): its held row, and that it draws no history
+    line (D-196-36, checked on Chromium only);
   - VoiceOver and TalkBack on the line as it is inserted (D-196-25);
   - a throttled phone with a block of 100 or more units (R-209).
 
@@ -525,8 +569,5 @@ D-155-2, D-160-1, D-160-17, D-181-6, D-181-8, D-200-1.
 
 ## Open questions
 
-- **The offline shell's line (D-196-33).** Ruling (c) lists "the offline shell" among
-  the cases with no line. The builder read that as a unit missing from the shell's copy:
-  a unit in the copy matches, and offline its line says "Could not read this unit's
-  history.", as before the ruling. If the owner meant no line at all in the shell, that
-  is a small change.
+None. The offline shell's line (D-196-33) was answered on 2026-11-18: no line on the
+offline page (D-196-36).

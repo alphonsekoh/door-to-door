@@ -503,7 +503,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16). On the recording
   form the panel is last, and for a unit among the block's units read, a held line
   under the unit field says its key facts and leads down to it
-  (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29).
+  (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
+  page draws no line, though its form still reads the history for the panel
+  (`showHistoryLine`, D-196-36 to D-196-38).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
@@ -623,7 +625,7 @@ at the address that failed; `OfflineShell` then reads the local copy at runtime.
 online:  session / block screen ─► useLocalCopyWriter ─► door-to-door-local (copy)
 offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCopy (≤ 12 h)
            ─► "Continue as <name>" ─► shellState.continueAs ─► SyncProvider owner
-           ─► BlockViews (in-page, not amendable) ─► queue as usual
+           ─► BlockViews (in-page, not amendable, no history line) ─► queue as usual
 ```
 
 - The copy (`src/lib/offline/`, `v: 2`) holds the member, the session, each opened

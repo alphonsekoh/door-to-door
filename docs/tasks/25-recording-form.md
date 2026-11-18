@@ -20,7 +20,8 @@ The screen used at a door.
   a held line under the unit field says its key facts (the follow-up list, Overdue, the
   visit count) and leads down to it. At the default text that line is above Save on
   every phone measured. _Refined by D-196-29 (owner):_ the line is there only for a unit
-  among the block's units read.
+  among the block's units read. _Refined by D-196-36 (owner):_ the offline page draws no
+  line; its panel stays.
 - **D-25-4 · Save is pinned above the bottom nav.** _Why:_ history pushed it below the fold.
   _Refined by D-111-20:_ `DockedActions`, glass only while pinned and meeting the nav edge
   to edge; `DockHost` holds it at the end of the block screen and the offline shell.

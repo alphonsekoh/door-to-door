@@ -27,8 +27,9 @@ change.
   As the session answers, the field now stays at y 320 on both engines, for a member and
   an admin. Main moved it to 490, or 522 for an admin. Since D-196-18 a unit's history
   line sits between the field and the notice, only for a unit with a history to read
-  (D-196-29); the field still moves 0px (verifier fix-r1). _Why:_ the notice arrives
-  with the session's answer, and nothing above the unit field may arrive late (D-181-7).
+  (D-196-29) and never on the offline page (D-196-36); the field still moves 0px
+  (verifier fix-r1). _Why:_ the notice arrives with the session's answer, and nothing
+  above the unit field may arrive late (D-181-7).
   _Rejected:_
   - holding room for it, which is a 170px gap at 32px in every door-to-door block,
     against D-111-65 and `:904`;
@@ -77,8 +78,9 @@ change.
 - **On a cold load, what is below the unit field still moves** (D-200-3, accepted by the
   owner, 2026-11-18). This is the D-181-7 mechanism, below the field. Opened from the
   follow-up list, it moves again, 44px, as the block's units land and the unit's history
-  line comes (D-196-29). That second drop was found after the owner accepted D-200-3,
-  and was reported to the owner the same day.
+  line comes (D-196-29, R-209). That second drop was found after the owner accepted
+  D-200-3, and the owner accepted it as a known limit on 2026-11-18. It is untested:
+  `:904` waits for the line before it measures.
 - **D-117-58's "Nothing in this block is on this session's list."** still sits above the
   form, as that decision places it, and it arrives with the answer.
 - **At 320×568 and 32px, the unit field's foot is about 6px under the docked Save's
@@ -90,9 +92,10 @@ change.
 ## Relies on
 
 D-37-4, D-111-5, D-111-10, D-111-65, D-117-19, D-117-30, D-117-58, D-181-6, D-181-7,
-D-181-8, D-196-4, D-196-14, D-196-29.
+D-181-8, D-196-4, D-196-14, D-196-29, D-196-36.
 
 ## Open questions
 
 None. On 2026-11-18 the owner accepted both limits that had kept #200 open, D-200-3 and
-the 320×568 overlap (Known limits), and PR #217 closes #200 with #196.
+the 320×568 overlap (Known limits), and PR #217 closes #200 with #196. Later that day
+the owner also accepted the second drop found under D-200-3 (Known limits).
