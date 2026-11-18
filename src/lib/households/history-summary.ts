@@ -44,10 +44,11 @@ export function historySummary(
 
 /*
  * The longest the line can say, which it is held to from the moment the
- * typed unit matches one of the block's: all four parts, with two figures of visits. In tabular figures
- * every two-figure count is as wide, so only a unit knocked at a hundred
- * times outgrows it, by a figure. Held much wider, it took two rows where
- * the words take one: at the default 17px, a 375pt iPhone has 6px to spare.
+ * typed unit matches one of the block's: all four parts, with two figures
+ * of visits. In tabular figures every two-figure count is as wide, so only
+ * a unit knocked at a hundred times outgrows it, by a figure. Held much
+ * wider, it took two rows where the words take one: at the default 17px, a
+ * 375pt iPhone has 6px to spare.
  */
 export const LONGEST_SUMMARY = [ON_THE_LIST, OVERDUE, visitCount(99), SEE_HISTORY].join(" · ");
 

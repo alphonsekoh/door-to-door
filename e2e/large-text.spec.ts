@@ -898,8 +898,8 @@ test.describe("as the session answers", () => {
    *
    * So the history is last in the form, and on an iPhone at the default
    * text that left all of it below Save: an overdue note went unseen before
-   * the knock. The line under the unit field says what it holds, held from
-   * the start at the room it can take.
+   * the knock. The line under the unit field says what it holds, held at
+   * the room it can take from the render the unit matches one of the block's.
    */
   test("the recording form holds still as the block's name arrives", async ({
     memberPage: page,
