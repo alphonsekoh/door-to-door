@@ -21,9 +21,10 @@ until it has cleared its HTTP cache. The app waits for the answer before it leav
   Chromium profile holding 400 MB of another site's files held the answer for 4.1s,
   against 44ms with an empty cache (R-210), and real profiles hold several GB. Nothing
   signed-in is in the HTTP cache to clear: every signed-in page, its RSC payload and
-  every API answer is `no-store` (D-122-9, D-150-1). Sign-out still clears the worker's
-  caches itself (D-74-9), replaces the history entry, and `RestoreGuard` reloads a page
-  restored from the bfcache. _Rejected:_ keeping the header and not waiting for the
+  every API answer is `no-store` (D-74-11, D-122-9, D-150-2). Sign-out still clears the worker's
+  caches itself (D-74-9), replaces the history entry (D-129-3), and `RestoreGuard` reloads a page
+  restored from the bfcache (D-129-1). Without the header, the same profile reached
+  `/sign-in` 106ms after the tap (R-210). _Rejected:_ keeping the header and not waiting for the
   answer, since the app must read it to tell a refused sign-out (D-125-20, #162) from one
   that held.
 - **D-218-2 · Tests require that no answer carries `Clear-Site-Data`, the sign-out
@@ -48,7 +49,7 @@ until it has cleared its HTTP cache. The app waits for the answer before it leav
 
 ## Relies on
 
-D-74-9, D-122-9, D-122-10, D-125-20, D-150-1, D-164-5.
+D-74-9, D-74-11, D-122-9, D-122-10, D-125-20, D-129-1, D-129-3, D-150-2, D-164-5.
 
 ## Open questions
 

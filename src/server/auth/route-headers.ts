@@ -4,7 +4,8 @@
  *
  * A sign-out sends no Clear-Site-Data (D-218-1). Chrome holds the answer back
  * until it has cleared its whole HTTP cache, seconds on a real profile, and
- * nothing signed-in is in that cache: every page and API answer is no-store.
+ * nothing signed-in is in that cache: every signed-in page and API answer is
+ * no-store.
  *
  * The response is copied rather than edited because a Response.redirect has
  * immutable headers.

@@ -2536,7 +2536,9 @@ config`, parse only; #124 docs step, confirming the planner's check)
   the wait grows with the whole cache, every site's entries included, not this origin's
   share. Real profiles hold several GB. A fresh Playwright profile has an empty cache,
   which is why the E2E suite never saw it. Every signed-in page, its RSC payload and every
-  API answer was `no-store` on the same build, so the cache held nothing signed-in.
+  API answer was `no-store` on the same build, so the cache held nothing signed-in. With
+  the header removed (#218's branch, the same 400 MB profile), the answer came after
+  11ms and the page reached `/sign-in` 106ms after the tap.
 - **Source:** measured (#218, 2026-11-18; production image against postgres:17-alpine on
   a private Docker network).
 - **Used by:** D-218-1

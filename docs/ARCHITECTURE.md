@@ -276,10 +276,10 @@ per 5 s burst. The sync catch uses the same helpers.
   the policy (D-122-7).
 - API answers are `Cache-Control: no-store`, set in three places: `jsonResponse` in
   `withContract`, the `401` the proxy writes, and `withAuthRouteHeaders`
-  (`src/server/auth/route-headers.ts`) around Auth.js's route (D-122-9, D-122-10). No
-  answer sends `Clear-Site-Data`: Chrome held a sign-out until its whole HTTP cache was
-  cleared (D-218-1). Next's own bodiless
-  `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
+  (`src/server/auth/route-headers.ts`) around Auth.js's route (D-122-9, D-122-10).
+  Next's own bodiless `405`, `OPTIONS` and trailing-slash `308` answers are the
+  exceptions. No answer sends `Clear-Site-Data`: Chrome held a sign-out until its whole
+  HTTP cache was cleared (D-218-1).
 - The proxy marks `no-store` on every response that carries `Set-Cookie`, once Auth.js
   has added its cookies. It always marks `/sign-in` (D-150-1, D-150-2), which renders per
   request (D-14-10, superseding D-150-4). `/offline` is a prerender, sent with
