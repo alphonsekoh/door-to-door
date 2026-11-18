@@ -2459,12 +2459,14 @@ config`, parse only; #124 docs step, confirming the planner's check)
     two-figure count as wide as "99 visits".
   - After Save and next, at a new unit, Medium shows 4 of its 60px above the docked
     Save on an iPhone 13 at 17px, and 4 of 56px on a 360×640 screen at 16px. Before the
-    line it showed 48px at both. A Pixel 5 shows all of it.
+    line it showed 48px at both. A Pixel 5 shows all of it. With no line at a new unit
+    (30853ff), all of Low, Medium and High is above Save on an iPhone 13 at 16px and
+    17px, and 10 to 11px of them at 360×640 and 17px, where main showed none.
 
-- **Source:** measured (#196 builder r3; verifier fix-r0 and fix-r1, both engines,
-  production builds of f1d02d3, 6be1c93 and 5d85916; DejaVu Sans from its font file).
-  Roboto was not measured.
-- **Used by:** D-196-18, D-196-22 (Known limits, Open questions)
+- **Source:** measured (#196 builder r3 and r4; verifier fix-r0 and fix-r1, both
+  engines, production builds of f1d02d3, 6be1c93, 5d85916 and 30853ff; DejaVu Sans from
+  its font file). Roboto was not measured.
+- **Used by:** D-196-18, D-196-22, D-196-29 (Known limits)
 
 ### R-207 · On WebKit, a tap on a button inside a focusable panel focuses the panel, and the page scrolls to it
 
@@ -2498,3 +2500,29 @@ config`, parse only; #124 docs step, confirming the planner's check)
   Sans injected); [CSS Text Decoration 3, line decoration](https://drafts.csswg.org/css-text-decor-3/#line-decoration).
   Cited, not fetched.
 - **Used by:** D-196-23, D-196-26, D-196-28
+
+### R-209 · A block's units land before a member can type a unit, except on weak signal (measured)
+
+- **Finding:** fresh block opens, JS cached, service worker blocked, 3 runs each; ms
+  from the start of navigation. Typing `#05-123` began the moment the unit field existed.
+
+  | Network                      | Units read land | Last key, 150ms a key | Last key, 250ms a key |
+  | ---------------------------- | --------------- | --------------------- | --------------------- |
+  | Local, Chromium              | 62–205          | 988–1003              | 1597–1602             |
+  | Local, WebKit                | 70–224          | 1014–1030             | 1602–1618             |
+  | 4G-like: 100ms RTT, 9 Mbps   | 264–280         | 1087–1093             | 1694–1707             |
+  | 3G-like: 300ms RTT, 1.6 Mbps | 760–783         | 1310–1314             | 1902–1918             |
+  | Weak: 800ms RTT, 400 kbps    | 2166–2194       | 1874–1935             | 2469–2521             |
+
+  The line came 2 to 6ms after the last key in every cell but one: on weak signal at
+  150ms a key, the units landed after the last key, and the line came 259 to 296ms after
+  it.
+
+  - The read starts once the page is live, and is one 3.5 KB page for the seeded block
+    of 6 units. Each further 100 units is another round trip.
+  - Not measured: a block of 100 or more units, client-side navigation from the Session
+    screen, a cold cache, and WebKit throttled.
+
+- **Source:** measured (#196 builder r4, production build; Chromium throttled through
+  CDP).
+- **Used by:** D-196-29 (Known limits), D-200-3 (Open questions)

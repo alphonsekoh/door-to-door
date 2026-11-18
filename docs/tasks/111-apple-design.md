@@ -316,7 +316,10 @@ round 8, and they are in the PR #112 body too.
   hidden generated text, and `WholeWords` keeps the marked-done text's hyphenated words
   whole. `UnitNumber` is now in `src/components/ui/unit-number.tsx` (D-115-1).
   _Extended by D-196-6:_ `WholeWords` also in the app's titles and labels; typed text
-  still breaks as before.
+  still breaks as before. _Refined by D-196-26 (owner, 2026-11-18):_ a unit number
+  inside `WholeWords` text may break at its hyphen only where it alone is wider than its
+  line box; `UnitNumber` stays no-wrap and is still the one wrapper for a unit number in
+  the app's own text.
 - **D-111-37 · `e2e/large-text.spec.ts` sweeps every member and admin screen at the
   32px cap.** A spec file of its own, outside D-111-32's describe block. It flags
   sideways scroll, a control past the edge or into the page margin, text spilling or

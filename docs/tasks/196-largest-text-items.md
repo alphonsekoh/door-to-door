@@ -1,11 +1,14 @@
 # #196 · Largest text: seven layout items left after #136
 
 - **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #200). The
-  owner ruled Q1 and Q2 on 2026-11-18, then rulings 1 and 2 the same day (D-196-2,
-  D-196-18). Two points are with the owner (Open questions).
-  - The PR closes #196 only; #200 stays open (owner ruling 3).
+  owner ruled Q1 and Q2 on 2026-11-18, then rulings 1 and 2 (D-196-2, D-196-18), then
+  (c), the `WholeWords` narrowing and one follow-up state rule (D-196-29, D-196-26,
+  D-196-30), all the same day. One point is with the owner (Open questions).
+  - The PR closes #196 only; #200 stays open (owner ruling 3, kept 2026-11-18).
   - The PR body and the squash message must say 18.75, not 21 (a0470ad's message says
-    21), and must describe the history line.
+    21), and must describe the history line as D-196-29 has it. The body still describes
+    "No earlier visits", `unitsRead`, five states and two open questions: the publish
+    step rewrites it, keeping `Closes #196` only.
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #160, #181
 
@@ -22,7 +25,8 @@ PR #191 (#136) left seven items at the 32px root:
 7. a check that waits out its timeout.
 
 Built with #200 in a0470ad, 45e1816 and f1d02d3, then the history line and `whole-word`
-in 775137c, 6be1c93 and 5d85916. Client and E2E only: no contract or schema change.
+in 775137c, 6be1c93 and 5d85916, then the owner's later rulings in 22347db and 30853ff.
+Client and E2E only: no contract or schema change.
 
 ## Decisions
 
@@ -164,17 +168,17 @@ none` where the offer sits beside the words.
 
   _Why:_ the send must land for the offer to show, and only a record marks a note done.
   `listSeededHousehold` lists #05-123 again, and the E2E database is truncated each run
-  (D-37-4).
+  (D-37-4). _Extended by D-196-35:_ `:904` stores #87-01.
 
 - **D-196-17 · Record for a member picks Alice by her seed id (`SEED_MEMBER_ID`, now in
   `e2e/accounts.ts`), not her name.** _Why:_ another spec may rename her.
 
-### The history line (owner, ruling 2, 2026-11-18)
+### The history line (owner, ruling 2 and (c), 2026-11-18)
 
 - **D-196-18 · A held line under the unit field (`#unit-history`) says the unit's
   history in one line and leads down to the panel.**
   - The owner approved its words: "On the follow-up list · Overdue · 3 visits · See
-    history", and "No earlier visits" for a unit with nothing recorded.
+    history"~~, and "No earlier visits" for a unit with nothing recorded~~.
   - It sits after the unit field's error and gate lines, and before #200's notice
     (D-200-1). The panel stays last (D-196-4).
   - `historySummary` and `historyLine` are in `src/lib/households/history-summary.ts`.
@@ -183,12 +187,16 @@ none` where the offer sits beside the words.
   and a Pixel 5 at 16px and 17px the whole line is above the docked Save, unscrolled, and
   nothing moves as the history lands (verifier fix-r1). _Why:_ with the panel last, none
   of the history, an Overdue note included, showed above Save on an iPhone 13 at 17px
-  (verifier r2). _Research:_ R-205, R-206.
+  (verifier r2). _Research:_ R-205, R-206. _Partly superseded by D-196-29 (owner,
+  2026-11-18):_ no line, and no "No earlier visits", for a unit with no history to read;
+  the rest stands.
 
-- **D-196-19 · The line has five states:** the summary; "Checking this unit's history…"
-  while it is read; "Could not read this unit's history." when it cannot be; "No earlier
-  visits"; and blank. Save never waits on it, as D-25-3's lookup never blocks. _Why:_ it
-  says only what is known, and a failed read is not an empty history.
+- **D-196-19 · The line has ~~five~~ states:** the summary; "Checking this unit's
+  history…" while it is read; "Could not read this unit's history." when it cannot
+  be~~; "No earlier visits"; and blank~~. Save never waits on it, as D-25-3's lookup
+  never blocks. _Why:_ it says only what is known, and a failed read is not an empty
+  history. _Partly superseded by D-196-29 (owner, 2026-11-18):_ three states, and no line
+  at all for any other unit; the rest stands.
 - **D-196-20 · The summary follows the panel's rules.** The first part is "On the
   follow-up list" for a listed note still owed, else "Waiting for review" for a waiting
   suggestion. Overdue counts owed notes only (D-117-6), past their day (D-35-4) as of
@@ -196,16 +204,21 @@ none` where the offer sits beside the words.
   has no "none" case. _Why:_ the line and the panel must agree. The panel reads one page,
   so only the total counts every visit. A household is created by its first visit and
   visits are never deleted, so an unreachable branch is deleted rather than tested.
-- **D-196-21 · "No earlier visits" only once a whole read of the block's units has
+  _Extended by D-196-30 (owner):_ owed and waiting are now one rule that the line, the
+  panel and the header's action all read.
+- ~~**D-196-21 · "No earlier visits" only once a whole read of the block's units has
   landed (`unitsRead`, `known !== null` on the block screen) and nothing for the unit is
   held on the phone, sent or not. Otherwise the line is blank.** `unitsRead` is never set
   in the offline shell. _Why:_ a unit missing from a partial read, from the shell's copy,
-  which may be hours old, or from a read older than this phone's own save, has history.
-- **D-196-22 · The line is held from the moment a unit the form would save is typed, at
-  `LONGEST_SUMMARY`: "On the follow-up list · Overdue · 99 visits · See history".** It is
-  set in one weight, medium, with tabular figures. Overdue keeps its word and danger
-  colour (D-35-5, D-111-10) but is no longer semibold. Extends D-136-4's `hold-text` and
-  D-136-5's `unbroken()` to the line. _Why:_ nothing below moves as it lands.
+  which may be hours old, or from a read older than this phone's own save, has
+  history.~~ Superseded by D-196-29 (owner, 2026-11-18).
+- **D-196-22 · The line is held ~~from the moment a unit the form would save is typed~~,
+  at `LONGEST_SUMMARY`: "On the follow-up list · Overdue · 99 visits · See history".**
+  It is set in one weight, medium, with tabular figures. Overdue keeps its word and
+  danger colour (D-35-5, D-111-10) but is no longer semibold. Extends D-136-4's
+  `hold-text` and D-136-5's `unbroken()` to the line. _Why:_ nothing below moves as it
+  lands. _Partly superseded by D-196-29 (owner, 2026-11-18):_ held from the render the
+  typed unit matches; the rest stands.
   - The held `::after` copy has one weight. A semibold Overdue outgrew a medium hold by
     about 1px, and a semibold hold took two rows on a 375pt iPhone at 17px.
   - "99 visits" is the widest count a unit realistically reaches. In tabular figures,
@@ -230,7 +243,10 @@ none` where the offer sits beside the words.
   the page to it. "Could not load earlier visits." then sat under the docked Save
   (`record-visit.spec.ts:998`; fixed in 6be1c93). _Research:_ R-207.
 - **D-196-25 · The line is a polite, atomic live region.** _Why:_ it changes as the
-  history is read, with no tap, and each state reads whole.
+  history is read, with no tap, and each state reads whole. _Since D-196-29_ it is
+  inserted already saying "Checking this unit's history…", which some screen readers do
+  not announce; the summary or failure that replaces it is a change, and is heard (Known
+  limits).
 
 ### `WholeWords` and the checks
 
@@ -243,9 +259,10 @@ none` where the offer sits beside the words.
   follow-ups?" hint at 320px and 32px in DejaVu Sans. It now breaks there, as "follow-"
   over "ups?". An inline-block takes no underline from its action, so it inherits one.
   _Research:_ R-208.
-  - _Narrows D-111-36 (owner to confirm, Open questions):_ a unit number in `WholeWords`
-    text, such as a server's reason, can now break at its hyphen where it alone is wider
-    than its box. Before, it ran out of the box.
+  - _Refines D-111-36 (owner, 2026-11-18):_ a unit number inside `WholeWords` text, such
+    as a server's reason, may break at its hyphen only where it alone is wider than its
+    line box; before, it ran out of the box. `UnitNumber` stays no-wrap and is still the
+    one wrapper for a unit number in the app's own text.
 - **D-196-27 · `:904` checks the line, and "a member's screens fit" checks the Follow-ups
   hint at 320px.**
   - `:904` gains a door-to-door pass at the phone's own width, at 16px, 17px and 32px.
@@ -257,12 +274,75 @@ none` where the offer sits beside the words.
 
   Extends D-196-8 and D-181-8. _Why:_ a hold one row too tall took the picker under Save
   on an iPhone at 17px. The hint check bites only in DejaVu, CI's face: the system face
-  has 18px to spare there.
+  has 18px to spare there. _Extended by D-196-34:_ a unit with no history has no line.
 
 - **D-196-28 · `layoutFaults` measures a line of text against its nearest non-inline
   box.** Refines D-111-37's spill check. _Why:_ an inline box goes wherever its words go,
   so measured against itself a held word never spills. The old measure passed with
   "follow-ups?" 16px out of its card (verifier fix-r0). _Research:_ R-208.
+
+### Rulings (c) and 3, and what they brought (owner, 2026-11-18)
+
+- **D-196-29 · Only a unit with a history to read has the line (owner, ruling (c),
+  2026-11-18). Supersedes, in part, D-196-18, D-196-19 and D-196-22, and all of
+  D-196-21.**
+  - `#unit-history` exists only while the typed unit matches a household among the
+    block's units read. It says "Checking this unit's history…", the summary, or "Could
+    not read this unit's history.".
+  - Every other typed unit has no line and holds no room (0px): never recorded, the
+    block's units not yet read or not all read, the offline shell, or a visit to it held
+    only on this phone. The offline shell is read as a unit missing from its copy
+    (D-196-33, owner to confirm).
+  - The match is read from the block's units as the form renders, so the line comes in
+    the same render as the keystroke, or the Save and next, that makes the unit match.
+    It is held at `LONGEST_SUMMARY` from that render (D-196-22).
+  - The rest of ruling 2 stands: the line under the unit field and its words, the panel
+    last in the form, See history, and the hold from the moment the unit matches.
+
+  _Why (owner):_ its 44px row at every new door put Low, Medium and High under the docked
+  Save after Save and next on an iPhone 13: 4 of 60px showed at 17px, where 48 had.
+  Now all of them show there, at 16px and 17px (builder r4). _Cost:_ the line comes as
+  the unit matches, with no tap in flight, which the owner was told. Where the block's
+  units land after the unit is in the field, typed or from the URL, it comes as they
+  land, which the owner was not (Known limits). _Research:_ R-206, R-209.
+
+- **D-196-30 · One rule for a household's follow-up state (owner, ruling 3,
+  2026-11-18).** `isOwed` (listed and not done) and `awaitsReview` (a suggestion) are in
+  `src/lib/follow-ups/rights.ts`, beside `ON_THE_LIST` and `WAITING_FOR_REVIEW`, which
+  moved there from `history-summary.ts`. `householdAction`, the history panel's owed and
+  waiting lists, and `historySummary` all read by them, with no change in behaviour. The
+  panel draws both headings and both lists' `aria-label` from the constants. _Why:_ the
+  three agreed only by being written alike. Breaking either rule now fails tests in all
+  three (6 and 13 tests, builder r4). _Names:_ not `isWaitingSuggestion`, since
+  `waitingSuggestion` already names a suggestion waiting at a resolved note's door.
+  _Out of scope:_ the literal "Waiting for review" in the timeline's byline
+  (`src/lib/history/follow-ups.ts`) and the Follow-ups screen's filter label
+  (`follow-ups-screen.tsx`), and the panel's resolved-notes filter (listed and done),
+  which is neither state.
+- **D-196-31 · `historyLine` decides whether there is a line: it returns `null` for an
+  unmatched unit.** The form draws `#unit-history` only for a non-null result. _Why:_
+  one tested function in `src/lib` then says both whether there is a line and what it
+  says.
+- **D-196-32 · The form no longer checks `unitNumberFault` before the line.** _Why:_ a
+  unit that matches a household is always one the form would save, so the guard could
+  not be reached; unreachable code is deleted, not tested (CLAUDE.md).
+- **D-196-33 · In the offline shell, its copy of the block is its units read (owner to
+  confirm, Open questions).** A unit in the copy matches, and offline its line says
+  "Could not read this unit's history.", as the shell already did for a known unit. A
+  unit missing from the copy has no line. _Why:_ ruling (c) gives a line "only while the
+  typed unit matches a household among the block's units read", and the shell's copy is
+  what it has read.
+- **D-196-34 · `:904` also checks a unit with no history.** At 16px and 17px, at the
+  phone's own width, on both projects: typing a never-recorded unit (#87-99), and Save
+  and next onto one (#87-02), leave no line and the interest picker where it is with no
+  unit typed. The picker is measured from the unit field. Extends D-196-27. _Why:_ the
+  Saved line above the field, and any scroll, must not count as the picker moving. With
+  the old row back, both checks fail by 44px on both projects.
+- **D-196-35 · `:904` stores a No response visit at #87-01, at 16px and at 17px in each
+  project.** #87-99 and #87-02 are never stored. Extends D-196-16. _Why:_ the save goes
+  to the server rather than being aborted, so no queued record raises the pinned count
+  in the follow-up pass that follows; the E2E database is truncated each run (D-37-4),
+  and visits are idempotent (D-37-7).
 
 ### How existing decisions are handled
 
@@ -279,7 +359,7 @@ none` where the offer sits beside the words.
 | D-111-60, R-75               | Exact only from a 16px root to 32px (R-202)                                   | D-196-2                     |
 | D-117-76                     | Extended: the marked line is scrolled into view before paint                  | D-196-3                     |
 | D-111-69, D-117-77           | Pattern followed                                                              | D-196-3, D-196-24           |
-| D-25-3                       | Refined (owner): the panel is last, and a held line says its key facts first  | D-196-4, D-196-18           |
+| D-25-3                       | Refined (owner): the panel is last; a held line says a known unit's facts     | D-196-4, D-196-18, D-196-29 |
 | D-160 limit, iPhone          | Closed: older pages land below Notes                                          | D-196-4                     |
 | D-160-17                     | Kept: the failure line still lands in view above Save at 32px                 | D-196-4                     |
 | D-160-1                      | Applied: the count is `pagination.total`; notes are whole on every page       | D-196-20                    |
@@ -291,7 +371,12 @@ none` where the offer sits beside the words.
 | D-111-31                     | Refined: a box drawn in its label tile brings the tile                        | D-196-5                     |
 | D-119-22                     | Extended: its label rule applies to the focus scroll                          | D-196-5                     |
 | D-136-7                      | Extended: the app's titles and labels; refined: `whole-word`, not nowrap      | D-196-6, D-196-26           |
-| D-111-36                     | `UnitNumber` kept; narrowed in `WholeWords` text (owner to confirm)           | D-196-26                    |
+| D-111-36                     | Refined (owner): `UnitNumber` kept; in `WholeWords` text, only past its line  | D-196-26                    |
+| D-196-18, D-196-19, D-196-22 | Partly superseded (owner): no line for a unit with no history to read         | D-196-29                    |
+| D-196-21                     | Superseded (owner)                                                            | D-196-29                    |
+| D-196-20                     | Extended (owner): owed and waiting are one rule, shared                       | D-196-30                    |
+| D-117-25, D-35-6             | Kept: the panel's two sections, now read by the same rule as the line         | D-196-30                    |
+| D-196-27, D-196-16           | Extended: `:904` checks a unit with no history, and stores #87-01             | D-196-34, D-196-35          |
 | D-111-37                     | Refined: a spill is measured against the nearest non-inline box               | D-196-28                    |
 | D-111-65, D-136-12, D-181-8  | Extended                                                                      | D-196-8, D-196-15, D-196-27 |
 | D-37-4, D-37-7               | Followed: no waits or retries; new stored data is idempotent                  | D-196-14, D-196-16          |
@@ -323,12 +408,25 @@ none` where the offer sits beside the words.
   - See history focusing the panel, `tabular-nums` removed, Overdue in semibold, "No
     earlier visits" whatever the units or the queue say, and a done note counted as
     owed: each failed in Vitest.
+- **Bites, (c) and one follow-up state rule** (builder r4, both projects; not yet
+  verified):
+  - 30853ff's app code back at bc889e2: 7 Vitest tests failed. In `:904` the picker sat
+    44px lower at a never-recorded unit and after Save and next onto one (136 for 92px at
+    16px, 141.75 for 97.75px at 17px), and every "no line" count was 1.
+  - `isOwed` without its done check failed 6 tests, and `awaitsReview` false for an
+    undecided suggestion 13, across `rights`, `history-summary`, the panel and the form.
+- **After Save and next onto a new unit** (builder r4, radio boxes, unscrolled): all of
+  Low, Medium and High is above Save on an iPhone 13 at 16px and 17px, and on a Pixel 5;
+  at 360×640 all at 16px, and 10 to 11px at 17px, where main showed 0.
 - **Gates** at 5d85916: lint, typecheck, format and `test:coverage` (282 files, 5,017
   tests, thresholds met; builder r3). The native E2E passed 185, with 7 skipped
   (verifier fix-r1). Linux WebKit passed `large-text.spec.ts` 15 of 15
-  (`linux-196-builder-4.log`, `linux-196-verifier-2.log`).
-- **Signing:** a0470ad, 45e1816 and 5d85916 are unsigned, as the owner allowed; f1d02d3,
-  775137c and 6be1c93 are signed.
+  (`linux-196-builder-4.log`, `linux-196-verifier-2.log`). At 30853ff (builder r4):
+  lint, typecheck, format, `npm test` (3,848 tests) and `test:coverage` (282 files,
+  5,018 tests, thresholds met); `large-text.spec.ts` and `record-visit.spec.ts` natively,
+  75 passed and 1 skipped; Linux WebKit 15 of 15 (`linux-196-builder-c1.log`).
+- **Signing:** a0470ad, 45e1816, 5d85916, 22347db and 30853ff are unsigned, as the owner
+  allowed; f1d02d3, 775137c and 6be1c93 are signed.
 
 ## Known limits
 
@@ -368,23 +466,35 @@ none` where the offer sits beside the words.
   moved, so the height buys nothing there. At 32px the next unit sits 48px lower, still
   in view (verifier r2).
 
-- **The history line (D-196-18 to D-196-25):**
-  - **Its held row costs 44px at every door, "No earlier visits" included** (Open
-    questions).
+- **The history line (D-196-18 to D-196-25, D-196-29):**
+  - **It comes with no tap in flight.** In the render the typed unit matches, the line
+    is inserted and the picker drops 44px while the member types. Typing on to a unit
+    that does not match takes it away again.
+  - **Where the block's units land after the unit is in the field, the line comes as
+    they land, with no keystroke** (R-209).
+    - Typed: only on weak signal (800ms RTT, 400 kbps), with a typist at 150ms a key
+      from the moment the field exists, did the units land after the last key. The line
+      came 259 to 296ms after it. A block of 100 or more units (a round trip per 100),
+      opening the block from the Session screen, and a cold cache were not measured.
+    - From the URL: the follow-up list links every door as `/blocks/…?unit=…`, and a
+      listed household always has a history. So the line is inserted when the units
+      land, about 0.3s after the block is opened on 4G and 2s on weak signal. The
+      notice, the chips, the picker and Add details then drop 44px after the page has
+      opened, at any signal. This adds to D-200-3's cold-load movement (#200, Open
+      questions). It is untested: `:904` waits for the line before it measures.
+  - **A unit first visited since the block's units were read**, by a teammate or only
+    on this phone, has no line until they are read again, though it has a history.
+  - **Some screen readers may not announce the line as it appears**, since it is
+    inserted already saying "Checking this unit's history…" (D-196-25). The summary that
+    replaces it is heard.
   - At 360px and 17px the hold takes two rows in the system face. In DejaVu it takes two
     at 360px and 16px, where its words take one. Roboto, the face of most 360px phones,
     was not measured.
   - A unit with 100 or more visits is one figure wider than the hold: 7.8px at 16px.
     Where the line has less to spare, such as a 375pt iPhone at 17px, it takes a second
     row as the history lands and moves the picker down.
-  - At 32px the line is held two or three rows tall at every door, mostly blank under
-    "No earlier visits". See history is under Save on an iPhone 13, and at 320×568 the
-    whole line is.
-  - It appears at the first keystroke, and says "No earlier visits" for partial input
-    ("#", "#05-12"). The picker drops 44px as it appears, while the member types, and a
-    screen reader announces it.
-  - "No earlier visits" is only as fresh as the block's last whole read. Offline on the
-    live page, or after a teammate's visit since that read, it can be stale.
+  - At 32px a matched unit's line is held two or three rows tall. See history is under
+    Save on an iPhone 13, and at 320×568 the whole line is.
   - On Chromium, `:904` misses the line moved to the end of the form, since a Pixel 5
     has room for it above Save. WebKit and Vitest catch it.
 - **The history panel needs a scroll** at large text, and on an iPhone 13 at 16px and
@@ -401,39 +511,22 @@ none` where the offer sits beside the words.
     covered `mobile-webkit` only. In DejaVu a Pixel 5 at 17px leaves about 7.6px to
     spare. The publish step's full Linux run is their first there;
   - a real iPhone with Dynamic Type;
-  - the offline shell's held row on WebKit (D-32-18), and its blank history line
-    outside Vitest.
+  - the offline shell's held row on WebKit (D-32-18), and its history line (D-196-33)
+    outside Vitest;
+  - VoiceOver and TalkBack on the line as it is inserted (D-196-25);
+  - a throttled phone with a block of 100 or more units (R-209).
 
 ## Relies on
 
-D-25-3, D-30-8, D-35-4, D-35-5, D-37-4, D-37-6, D-37-7, D-111-5, D-111-10, D-111-31,
-D-111-36, D-111-37, D-111-60, D-111-65, D-111-69, D-117-6, D-117-59, D-117-76, D-117-77,
-D-119-22, D-136-4, D-136-5, D-136-6, D-136-7, D-136-8, D-136-12, D-155-2, D-160-1,
-D-160-17, D-181-6, D-181-8, D-200-1.
+D-25-3, D-30-8, D-35-4, D-35-5, D-35-6, D-37-4, D-37-6, D-37-7, D-111-5, D-111-10,
+D-111-31, D-111-36, D-111-37, D-111-60, D-111-65, D-111-69, D-117-6, D-117-25, D-117-59,
+D-117-76, D-117-77, D-119-22, D-136-4, D-136-5, D-136-6, D-136-7, D-136-8, D-136-12,
+D-155-2, D-160-1, D-160-17, D-181-6, D-181-8, D-200-1.
 
 ## Open questions
 
-- **The history line's held row (D-196-18, D-196-22).** It costs 44px at every door,
-  including "No earlier visits", which most doors in a new block show and where main
-  showed nothing. After Save and next, at a new unit, this much of Medium is above the
-  docked Save:
-
-  | Phone, root     | Before the line (f1d02d3) | 5d85916    |
-  | --------------- | ------------------------- | ---------- |
-  | iPhone 13, 16px | 56 of 56px                | 28 of 56px |
-  | iPhone 13, 17px | 48 of 60px                | 4 of 60px  |
-  | 360×640, 16px   | 48 of 56px                | 4 of 56px  |
-  | Pixel 5         | all                       | all        |
-
-  No accepted decision is contradicted, but the owner has not seen this cost. Builder
-  r3's options:
-  - (a) accept it as a known limit;
-  - (b) "No earlier visits" at text height, giving back about 24px where nothing is
-    recorded; the line then grows while a known unit is typed, with no tap in flight;
-  - (c) no line where nothing is recorded, against the approved wording.
-
-- **D-196-26 against D-111-36 ("A unit number is never split").** In `WholeWords` text, a
-  unit number now breaks at its hyphen where it alone is wider than its box; before, it
-  ran out of the box. A unit may be 32 characters long; a usual one, such as #05-123, is
-  far narrower than a line at 32px. Elsewhere `UnitNumber` is unchanged. Confirm the
-  narrowing, or keep unit numbers in `WholeWords` text on nowrap.
+- **The offline shell's line (D-196-33).** Ruling (c) lists "the offline shell" among
+  the cases with no line. The builder read that as a unit missing from the shell's copy:
+  a unit in the copy matches, and offline its line says "Could not read this unit's
+  history.", as before the ruling. If the owner meant no line at all in the shell, that
+  is a small change.

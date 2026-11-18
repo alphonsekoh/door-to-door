@@ -448,7 +448,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   never splits them (D-111-36). `WholeWords`, beside it, keeps each hyphenated word in
   a follow-up's marked-done text, and in the app's own titles and labels that say
   "follow-up", whole wherever it fits on its line (`whole-word`; D-136-7, D-196-6,
-  D-196-26).
+  D-196-26). A unit number in such text breaks at its hyphen only where it alone is
+  wider than its line.
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).
@@ -500,8 +501,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   screens read the first page; `HouseholdHistoryPanel` reads older ones on "Show earlier
   visits" and holds them across re-reads of the first, each visit once by id
   (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16). On the recording
-  form the panel is last, and a held line under the unit field says its key facts and
-  leads down to it (`src/lib/households/history-summary.ts`, D-196-4, D-196-18).
+  form the panel is last, and for a unit among the block's units read, a held line
+  under the unit field says its key facts and leads down to it
+  (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid

@@ -2,7 +2,8 @@
 
 - **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #196). Built
   in a0470ad. The PR closes #196 only: #200 stays open until the owner rules on D-200-3
-  and the 320×568 overlap (owner, ruling 3, 2026-11-18; Open questions).
+  and the 320×568 overlap (owner, ruling 3, 2026-11-18, kept by ruling 4 the same day;
+  Open questions).
 - **Phase:** 7 - Hardening
 - **Depends on:** #117, #181
 
@@ -24,10 +25,10 @@ change.
     longer shows it.
 
   As the session answers, the field now stays at y 320 on both engines, for a member and
-  an admin. Main moved it to 490, or 522 for an admin. Since D-196-18 the unit's history
-  line sits between the field and the notice; the field still moves 0px (verifier
-  fix-r1). _Why:_ the notice arrives with the session's answer, and nothing above the
-  unit field may arrive late (D-181-7).
+  an admin. Main moved it to 490, or 522 for an admin. Since D-196-18 a unit's history
+  line sits between the field and the notice, only for a unit with a history to read
+  (D-196-29); the field still moves 0px (verifier fix-r1). _Why:_ the notice arrives
+  with the session's answer, and nothing above the unit field may arrive late (D-181-7).
   _Rejected:_
   - holding room for it, which is a 170px gap at 32px in every door-to-door block,
     against D-111-65 and `:904`;
@@ -73,7 +74,8 @@ change.
 ## Known limits
 
 - **On a cold load, what is below the unit field still moves** (D-200-3). This is the
-  D-181-7 mechanism, below the field.
+  D-181-7 mechanism, below the field. Opened from the follow-up list, it moves again,
+  44px, as the block's units land and the unit's history line comes (D-196-29).
 - **D-117-58's "Nothing in this block is on this session's list."** still sits above the
   form, as that decision places it, and it arrives with the answer.
 - **At 320×568 and 32px, the unit field's foot is about 6px under the docked Save's
@@ -85,16 +87,24 @@ change.
 ## Relies on
 
 D-37-4, D-111-5, D-111-10, D-111-65, D-117-19, D-117-30, D-117-58, D-181-6, D-181-7,
-D-181-8, D-196-4, D-196-14.
+D-181-8, D-196-4, D-196-14, D-196-29.
 
 ## Open questions
 
-No ruling yet on either (owner, 2026-11-18). Until there is, #200 stays open and PR #217
-says `Closes #196` only.
+No ruling yet on either (owner, 2026-11-18, ruling 4). Until there is, #200 stays open
+and PR #217 says `Closes #196` only.
 
 - **#200's first criterion (D-200-3).** It is met for the unit field only: on a cold
   load the notice and the chips still push the interest picker and Add details down.
   Accept that knowingly, or keep #200 open for what is below the field. Either way, the
   PR body should not tick that criterion without saying so.
+  - Since D-196-29 there is a second drop. The follow-up list links every door as
+    `/blocks/…?unit=…`, and a listed household always has a history. So when a member
+    opens a door from the list, the unit's history line is inserted under the unit field
+    as the block's units land: about 0.3s after the block is opened on 4G, and 2s on weak
+    signal. The notice,
+    the chips, the interest picker and Add details then drop 44px, after the page has
+    opened, with no keystroke. `:904` waits for the line before it measures, so this is
+    untested (#196, Known limits; R-209).
 - **The 320×568 overlap at 32px (Known limits).** The unit field's foot is about 6px
   under the docked Save's glass, short of the second criterion at that size.
