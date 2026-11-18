@@ -181,13 +181,10 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
           type="button"
           disabled={leaving || submitting}
           onClick={() => void onGoogle()}
-          className="flex min-h-12 w-full btn-primary items-center justify-center gap-3 rounded-lg px-3 text-body font-medium"
+          className="flex min-h-12 w-full btn-secondary items-center justify-center gap-3 rounded-lg bg-surface px-3 text-body font-medium"
         >
-          {/* Google's own colours, on a chip in the button's text colour so
-              its blue never sits on ours. */}
-          <span className="grid size-7 shrink-0 place-items-center rounded-md bg-primary-foreground">
-            <span aria-hidden="true" className="size-4.5 google-mark" />
-          </span>
+          {/* Google's light button: its G on our surface, outlined (D-14-26). */}
+          <span aria-hidden="true" className="size-5 shrink-0 google-mark" />
           {leaving ? "Opening Google…" : "Sign in with Google"}
         </button>
       )}

@@ -336,7 +336,9 @@ credentials in it are refused (D-75-3).
 console. Register `<public origin>/api/auth/callback/google` as its authorised redirect
 URI (for local development, `http://localhost:3000/api/auth/callback/google`). Put the
 client ID in `auth.google.clientId` and export the client secret as
-`AUTH_GOOGLE_SECRET`. Only an address an admin has added (on **Admin → Team**, or with
+`AUTH_GOOGLE_SECRET`. In the Docker image, also set `AUTH_URL` to the public origin
+(`https://<your domain>`): without it Google is sent back to the server's own
+`0.0.0.0:3000` and refuses the sign-in (D-14-27). Only an address an admin has added (on **Admin → Team**, or with
 `create-admin`) can sign in, once Google has verified it. Anyone else, and a deactivated
 account, gets the same refusal, and signing in never creates an account. Without
 `auth.google`, sign-in is email and password only, and every account needs a password.
@@ -399,7 +401,7 @@ both is a startup error (D-75-2).
 | Variable                                   | Default                                                          | Meaning                                                                                                                                                                          |
 | ------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CONFIG_PATH`                              | `./config.yaml`; `/app/config.yaml` in the image                 | Where the settings file is                                                                                                                                                       |
-| `AUTH_URL`                                 | unset                                                            | Public URL, read by Auth.js itself; only needed with `auth.trustHost: false`                                                                                                     |
+| `AUTH_URL`                                 | unset                                                            | Public URL, read by Auth.js itself. Needed with Google sign-in in the image (D-14-27), and with `auth.trustHost: false`                                                          |
 | `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                                              |
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
 | `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
