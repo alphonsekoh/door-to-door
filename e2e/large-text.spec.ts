@@ -920,6 +920,15 @@ test.describe("as the session answers", () => {
     };
     const line = page.locator("#unit-history");
     const seeHistory = line.getByRole("button", { name: "See history" });
+    const unit = page.getByLabel("Unit number");
+    const picker = page.getByRole("radiogroup", { name: "Interest level" });
+    /* Measured from the unit field, so a Saved line above it, or a scroll,
+       does not count as the picker moving. */
+    const pickerBelowUnit = async () => {
+      const [field, group] = await Promise.all([unit.boundingBox(), picker.boundingBox()]);
+      if (field === null || group === null) throw new Error("No unit field or interest level");
+      return group.y - field.y;
+    };
 
     /* A door-to-door session at the phone's own width: at the default sizes
        the line is read before knocking, above the docked Save, unscrolled.
@@ -960,6 +969,28 @@ test.describe("as the session answers", () => {
         for (const level of ["Low", "Medium", "High"]) {
           await expectInView(page.getByRole("radio", { name: level }), `${level} at ${size}`);
         }
+
+        /* A unit with no history to read has no line and keeps no room
+           for one (owner, 2026-11-18): a row at every new door put Low,
+           Medium and High under Save after Save and next on an iPhone at
+           17px. #87-99 is never recorded, and #87-02 only ever guessed. */
+        await unit.fill("");
+        await expect(line).toHaveCount(0);
+        const empty = await pickerBelowUnit();
+        await unit.fill("#87-99");
+        expect(await pickerBelowUnit(), `the interest level, a new unit typed, at ${size}`).toBe(
+          empty,
+        );
+        await expect(line).toHaveCount(0);
+        await unit.fill("#87-01");
+        await page.getByRole("radio", { name: "No response" }).click();
+        await page.getByRole("button", { name: "Save and next" }).click();
+        await expect(unit).toHaveValue("#87-02");
+        expect(
+          await pickerBelowUnit(),
+          `the interest level, after Save and next onto a new unit, at ${size}`,
+        ).toBe(empty);
+        await expect(line).toHaveCount(0);
       }
     }
 
@@ -968,7 +999,6 @@ test.describe("as the session answers", () => {
     await page.goto(`/blocks/${SEED_BLOCK}`);
     await atCap(page);
     await untilLive(page);
-    const unit = page.getByLabel("Unit number");
     const before = await unit.boundingBox();
     answer();
     await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();

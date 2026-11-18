@@ -288,15 +288,22 @@ describe("OfflineShell, recording", () => {
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
   });
 
-  /* Its copy of the block may be hours old, and a unit not in it may have
-     been visited since (#196). */
-  it("never says a unit missing from its copy has no earlier visits", async () => {
+  /* Its copy of the block may be hours old, so a unit not in it may have
+     been visited since: it gets no history line, as no unit with nothing
+     to read does (#196). One in it does, and says it cannot be read. */
+  it("draws a history line only for a unit in its copy of the block", async () => {
     mount();
     await openBlock("123");
-    await user().type(screen.getByLabelText("Unit number"), "#05-02");
-    const line = document.getElementById("unit-history");
-    expect(line).toBeInTheDocument();
-    expect(line).toHaveTextContent(/^$/);
+    const unit = screen.getByLabelText("Unit number");
+    const line = () => document.getElementById("unit-history");
+    await user().type(unit, "#05-02");
+    expect(line()).toBeNull();
+
+    await user().clear(unit);
+    await user().type(unit, "#05-01");
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^Could not read this unit's history\.$/);
+    });
   });
 
   it("counts only this member's records, never another's on the same phone", async () => {

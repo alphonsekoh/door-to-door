@@ -296,7 +296,6 @@ export function BlockScreen({
         <BlockViews
           blockId={blockId}
           known={units}
-          unitsRead={known !== null}
           rows={rows}
           sessionId={sessionId}
           loadSession={loadSession}

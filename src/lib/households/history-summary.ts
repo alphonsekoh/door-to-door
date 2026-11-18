@@ -11,7 +11,6 @@ import { isOverdue } from "@/lib/history/follow-ups";
 
 export const OVERDUE = "Overdue";
 export const SEE_HISTORY = "See history";
-export const NO_EARLIER_VISITS = "No earlier visits";
 export const READING_HISTORY = "Checking this unit's history…";
 export const HISTORY_UNREAD = "Could not read this unit's history.";
 
@@ -44,8 +43,8 @@ export function historySummary(
 }
 
 /*
- * The longest the line can say, which it is held to from the moment a unit
- * is typed: all four parts, with two figures of visits. In tabular figures
+ * The longest the line can say, which it is held to from the moment the
+ * typed unit matches one of the block's: all four parts, with two figures of visits. In tabular figures
  * every two-figure count is as wide, so only a unit knocked at a hundred
  * times outgrows it, by a figure. Held much wider, it took two rows where
  * the words take one: at the default 17px, a 375pt iPhone has 6px to spare.
@@ -53,31 +52,25 @@ export function historySummary(
 export const LONGEST_SUMMARY = [ON_THE_LIST, OVERDUE, visitCount(99), SEE_HISTORY].join(" · ");
 
 export type HistoryLine =
-  | { kind: "read"; summary: HistorySummary }
-  | { kind: "reading" }
-  | { kind: "unread" }
-  /* The block's units were all read, and none is this one. */
-  | { kind: "no_household" }
-  /* Nothing can be said yet, or nothing true: the block's units are still
-     being read or could not all be, or a visit to it waits on this phone. */
-  | { kind: "blank" };
+  { kind: "read"; summary: HistorySummary } | { kind: "reading" } | { kind: "unread" };
 
 export type TypedUnit = {
-  /* Its history, once read. */
-  history: Pick<HouseholdHistory, "followUps" | "pagination"> | null;
   /* A household at this unit is among the block's units read. */
   matched: boolean;
+  /* Its history, once read. */
+  history: Pick<HouseholdHistory, "followUps" | "pagination"> | null;
   /* Its history could not be read. */
   unread: boolean;
-  /* Every unit of the block has been read. */
-  unitsRead: boolean;
-  /* A visit to it is held on this phone, which the block's units may not
-     show yet. */
-  onPhone: boolean;
 };
 
-export function historyLine(unit: TypedUnit, now: Date): HistoryLine {
+/*
+ * Only a unit among the block's units read has a line: there is a history
+ * to read. Any other says nothing and keeps no room (owner, 2026-11-18): a
+ * held row at every new door put Low, Medium and High under the docked Save
+ * after Save and next on an iPhone at its default text.
+ */
+export function historyLine(unit: TypedUnit, now: Date): HistoryLine | null {
+  if (!unit.matched) return null;
   if (unit.history !== null) return { kind: "read", summary: historySummary(unit.history, now) };
-  if (unit.matched) return { kind: unit.unread ? "unread" : "reading" };
-  return unit.unitsRead && !unit.onPhone ? { kind: "no_household" } : { kind: "blank" };
+  return { kind: unit.unread ? "unread" : "reading" };
 }

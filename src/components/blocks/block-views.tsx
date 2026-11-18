@@ -13,10 +13,6 @@ type Tab = "record" | "units";
 type Props = {
   blockId: string;
   known: HouseholdSummary[];
-  /* Every unit of the block is in `known`: the recording form then says a
-     unit not among them has no earlier visits. Never in the offline shell,
-     whose copy may be hours old. */
-  unitsRead?: boolean;
   rows: UnitRow[];
   sessionId: string | null;
   loadSession: () => Promise<OutingAnswer>;
@@ -40,7 +36,6 @@ type Props = {
 export function BlockViews({
   blockId,
   known,
-  unitsRead = false,
   rows,
   sessionId,
   loadSession,
@@ -107,7 +102,6 @@ export function BlockViews({
           <RecordVisitForm
             blockId={blockId}
             known={known}
-            unitsRead={unitsRead}
             followUp={followUp}
             active={active}
             initialUnit={initialUnit}

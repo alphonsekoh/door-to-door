@@ -57,7 +57,6 @@ import { historyPath } from "@/lib/households/history-pages";
 import {
   HISTORY_UNREAD,
   LONGEST_SUMMARY,
-  NO_EARLIER_VISITS,
   OVERDUE,
   READING_HISTORY,
   SEE_HISTORY,
@@ -192,9 +191,6 @@ type Props = {
   followUp?: FollowUpRule | null;
   /* The running session, for what the history panel lets the member change. */
   active?: ActiveSession | null;
-  /* Every unit of the block has been read, so a unit not among `known` has
-     no history: until then, or where they cannot all be, nothing says so. */
-  unitsRead?: boolean;
   initialUnit?: string;
   /* False while the session's kind is unknown: Save then promises, and
      guesses, no next unit. A follow-up session never guesses one. */
@@ -251,7 +247,6 @@ export function RecordVisitForm({
   known,
   followUp = null,
   active = null,
-  unitsRead = false,
   initialUnit = "",
   guessNext = true,
   sessionId,
@@ -425,25 +420,12 @@ export function RecordVisitForm({
           : null
         : householdAction(here.followUps, { userId, isAdmin }).kind;
   const canSuggestHere = unlistedAction === "suggest";
-  /* What the line under the unit field says of its history, from the moment
-     a unit the form would save is typed. */
-  const unitLine =
-    unitNumberFault(unitNumber) === null
-      ? historyLine(
-          {
-            history: here,
-            matched: matchId !== null,
-            unread: matchId !== null && unread === matchId,
-            unitsRead,
-            onPhone: sync.records.some(
-              (record) =>
-                record.item.blockId === blockId &&
-                normaliseUnitNumber(record.item.unitNumber) === typed,
-            ),
-          },
-          readAt,
-        )
-      : null;
+  /* What the line under the unit field says of its history, from the render
+     the unit matches one of the block's. */
+  const unitLine = historyLine(
+    { matched: matchId !== null, history: here, unread: matchId !== null && unread === matchId },
+    readAt,
+  );
   /* Down to the history, last in the form. */
   const seeHistory = () => {
     historyPanel.current?.show();
@@ -886,13 +868,14 @@ export function RecordVisitForm({
           </p>
         ) : null}
         {/* The history's key facts, before knocking: the history itself is
-            last in the form, below Save on a phone (#196). Held from the
-            moment a unit is typed at the longest it can say, so nothing
-            below moves as it lands, and heard as it changes. Its lines are
-            as tall as See history's target, so that target grows none.
-            One weight throughout, as the held copy can only be: Overdue in
-            a heavier one held the line a row taller than its words, at the
-            default text on the commonest phones. */}
+            last in the form, below Save on a phone (#196). Only for a unit
+            with a history to read; held from the render it matches at the
+            longest it can say, so nothing below moves as it lands, and
+            heard as it changes. Its lines are as tall as See history's
+            target, so that target grows none. One weight throughout, as the
+            held copy can only be: Overdue in a heavier one held the line a
+            row taller than its words, at the default text on the commonest
+            phones. */}
         {unitLine === null ? null : (
           <p
             id="unit-history"
@@ -922,13 +905,11 @@ export function RecordVisitForm({
                     {SEE_HISTORY}
                   </button>
                 </>
-              ) : unitLine.kind === "reading" ? (
-                <span className="text-foreground-muted">{READING_HISTORY}</span>
-              ) : unitLine.kind === "unread" ? (
-                <span className="text-foreground-muted">{HISTORY_UNREAD}</span>
-              ) : unitLine.kind === "no_household" ? (
-                NO_EARLIER_VISITS
-              ) : null}
+              ) : (
+                <span className="text-foreground-muted">
+                  {unitLine.kind === "reading" ? READING_HISTORY : HISTORY_UNREAD}
+                </span>
+              )}
             </span>
           </p>
         )}

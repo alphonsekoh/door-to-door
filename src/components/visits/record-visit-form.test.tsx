@@ -983,7 +983,7 @@ describe("the line under the unit field", () => {
   const DUE_LONG_AGO = "2020-01-01T00:00:00.000Z";
   const DUE_LATER = "2999-01-01T00:00:00.000Z";
 
-  const mount = (props: { unitsRead?: boolean; initialUnit?: string } = {}) =>
+  const mount = (props: { initialUnit?: string } = {}) =>
     render(
       <RecordVisitForm
         sessionId={null}
@@ -1058,21 +1058,17 @@ describe("the line under the unit field", () => {
     });
   });
 
-  it("says a unit the block has no household at has no earlier visits, once its units are read", async () => {
-    mount({ unitsRead: true });
+  /* Only a unit with a history to read has the line (owner, 2026-11-18): a
+     row kept at every new door put the interest level under the docked Save
+     after Save and next on an iPhone at its default text. */
+  it("has no line, and keeps no room, for a unit the block's units read have no household at", async () => {
+    mount();
     await typeUnit("#09-999");
-    expect(line()).toHaveTextContent(/^No earlier visits$/);
+    expect(line()).toBeNull();
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
-  it("claims nothing of a unit not among the block's units until they have all been read", async () => {
-    mount();
-    await typeUnit("#09-999");
-    expect(line()).toBeInTheDocument();
-    expect(line()).toHaveTextContent(/^$/);
-  });
-
-  it("claims nothing of a unit whose visit waits on this phone, which the units read may not show", async () => {
+  it("has no line for a unit whose only visit waits on this phone", async () => {
     const waiting = buildQueuedVisit(
       {
         blockId: BLOCK,
@@ -1089,19 +1085,9 @@ describe("the line under the unit field", () => {
       () => "v-queued",
     );
     useSyncQueue.mockReturnValue({ ...NO_QUEUE, records: [waiting] });
-    mount({ unitsRead: true });
+    mount();
     await typeUnit("09-999");
-    expect(line()).toHaveTextContent(/^$/);
-
-    // Another block's unit of the same number says nothing for this one.
-    useSyncQueue.mockReturnValue({
-      ...NO_QUEUE,
-      records: [{ ...waiting, item: { ...waiting.item, blockId: "b2" } }],
-    });
-    cleanup();
-    mount({ unitsRead: true });
-    await typeUnit("#09-999");
-    expect(line()).toHaveTextContent(/^No earlier visits$/);
+    expect(line()).toBeNull();
   });
 
   it("says it is reading a known unit's history until it lands", async () => {
@@ -1111,7 +1097,7 @@ describe("the line under the unit field", () => {
         answer = resolve;
       }),
     );
-    mount({ unitsRead: true });
+    mount();
     await typeUnit("#05-123");
     expect(line()).toHaveTextContent(/^Checking this unit's history…$/);
 
@@ -1124,7 +1110,7 @@ describe("the line under the unit field", () => {
 
   it("says when the history could not be read, and Save still saves", async () => {
     apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
-    mount({ unitsRead: true });
+    mount();
     const user = await typeUnit("#05-123");
 
     await waitFor(() => {
@@ -1178,15 +1164,19 @@ describe("the line under the unit field", () => {
     expect(line()).toHaveTextContent(/^1 visit · See history$/);
   });
 
-  /* Its height is held from the first character, so neither the history
-     landing nor any of what the line comes to say moves what is below. */
-  it("is held at the longest it can say from the moment a unit is typed, and goes once it is cleared", async () => {
+  /* Its height is held from the keystroke the unit matches, so neither the
+     history landing nor any of what the line comes to say moves what is
+     below. */
+  it("is held at the longest it can say from the keystroke the unit matches, and goes once it does not", async () => {
     apiFetch.mockResolvedValue(history());
     mount();
+    const unit = screen.getByLabelText("Unit number");
+    fireEvent.change(unit, { target: { value: "#05-12" } });
     expect(line()).toBeNull();
-    const user = await typeUnit("#");
+    fireEvent.change(unit, { target: { value: "#05-123" } });
 
     const held = line();
+    expect(held).toHaveTextContent(/^Checking this unit's history…$/);
     expect(held).toHaveClass("hold-text", "leading-target");
     // Every two-figure count as wide as the held one.
     expect(held).toHaveClass("tabular-nums");
@@ -1200,23 +1190,72 @@ describe("the line under the unit field", () => {
     expect(held).toHaveAttribute("aria-live", "polite");
     expect(held).toHaveAttribute("aria-atomic", "true");
 
-    await user.type(screen.getByLabelText("Unit number"), "05-123");
     await waitFor(() => {
       expect(line()).toHaveTextContent("See history");
     });
     expect(line()).toBe(held);
 
-    await user.clear(screen.getByLabelText("Unit number"));
+    // Typing on, to a unit the block has no household at, takes it away.
+    fireEvent.change(unit, { target: { value: "#05-1234" } });
+    expect(line()).toBeNull();
+    fireEvent.change(unit, { target: { value: "" } });
     expect(line()).toBeNull();
   });
 
-  it("is under the unit field and what it says of it, above the session's notice and chips", async () => {
+  /* After Save and next the next unit is the app's guess: a known one has
+     its line from that same render, a new one none. */
+  it("comes with a known next unit after Save and next, and not with a new one", async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((path: string) =>
+      path === "/visits"
+        ? Promise.resolve({ id: "v1", householdId: "h0" })
+        : new Promise((resolve) => {
+            answer = resolve;
+          }),
+    );
+    const user = userEvent.setup();
     render(
       <RecordVisitForm
         sessionId={null}
         loadSession={noSession}
         blockId={BLOCK}
-        known={[]}
+        known={[summary("#05-123")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    const unit = screen.getByLabelText("Unit number");
+    await user.type(unit, "#05-122");
+    expect(line()).toBeNull();
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+
+    await waitFor(() => {
+      expect(unit).toHaveValue("#05-123");
+    });
+    expect(line()).toHaveTextContent(/^Checking this unit's history…$/);
+    expect(line()).toHaveAttribute("data-hold", expect.stringContaining("99 visits"));
+    await act(async () => {
+      answer(history());
+      await Promise.resolve();
+    });
+    expect(line()).toHaveTextContent(/^1 visit · See history$/);
+
+    await user.click(screen.getByRole("radio", { name: "Low" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await waitFor(() => {
+      expect(unit).toHaveValue("#05-124");
+    });
+    expect(line()).toBeNull();
+  });
+
+  it("is under the unit field and what it says of it, above the session's notice and chips", async () => {
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-124", "h2")]}
         followUp={{
           revisits: [
             {

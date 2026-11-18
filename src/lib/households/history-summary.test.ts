@@ -114,32 +114,27 @@ describe("LONGEST_SUMMARY", () => {
 
 describe("historyLine", () => {
   const typed = (over: Partial<TypedUnit> = {}): TypedUnit => ({
+    matched: true,
     history: null,
-    matched: false,
     unread: false,
-    unitsRead: true,
-    onPhone: false,
     ...over,
   });
 
   it("sums up a history once read", () => {
-    expect(historyLine(typed({ history: unit([]), matched: true }), NOW)).toEqual({
+    expect(historyLine(typed({ history: unit([]) }), NOW)).toEqual({
       kind: "read",
       summary: { followUp: null, overdue: false, visits: "3 visits" },
     });
   });
 
   it("says it is reading a known unit's history until it lands, or fails to", () => {
-    expect(historyLine(typed({ matched: true }), NOW)).toEqual({ kind: "reading" });
-    expect(historyLine(typed({ matched: true, unread: true }), NOW)).toEqual({ kind: "unread" });
+    expect(historyLine(typed(), NOW)).toEqual({ kind: "reading" });
+    expect(historyLine(typed({ unread: true }), NOW)).toEqual({ kind: "unread" });
   });
 
-  it("says a unit has no earlier visits only once the block's units have all been read", () => {
-    expect(historyLine(typed(), NOW)).toEqual({ kind: "no_household" });
-    expect(historyLine(typed({ unitsRead: false }), NOW)).toEqual({ kind: "blank" });
-  });
-
-  it("never says so of a unit with a visit held on this phone", () => {
-    expect(historyLine(typed({ onPhone: true }), NOW)).toEqual({ kind: "blank" });
+  /* Never recorded, not among the units read yet, or held only on this
+     phone: no line, and no room kept for one (owner, 2026-11-18). */
+  it("has no line for a unit that is not among the block's units read", () => {
+    expect(historyLine(typed({ matched: false }), NOW)).toBeNull();
   });
 });
