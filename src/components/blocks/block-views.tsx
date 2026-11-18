@@ -19,7 +19,8 @@ type Props = {
   /* After a save straight to the server, or an amend. */
   onRecorded: () => void;
   teamIds: readonly string[];
-  /* The offline shell: nothing that needs the server's row is offered. */
+  /* The offline shell: nothing that needs the server's row is offered, and
+     the form has no history line. */
   offline?: boolean;
   onDirtyChange?: (dirty: boolean) => void;
   /* A follow-up session's list rule; null for door-to-door. */
@@ -109,6 +110,7 @@ export function BlockViews({
             sessionId={sessionId}
             loadSession={loadSession}
             onRecorded={onRecorded}
+            showHistoryLine={!offline}
             {...(onDirtyChange === undefined ? {} : { onDirtyChange })}
           />
         </div>

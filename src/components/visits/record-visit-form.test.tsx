@@ -983,7 +983,7 @@ describe("the line under the unit field", () => {
   const DUE_LONG_AGO = "2020-01-01T00:00:00.000Z";
   const DUE_LATER = "2999-01-01T00:00:00.000Z";
 
-  const mount = (props: { initialUnit?: string } = {}) =>
+  const mount = (props: { initialUnit?: string; showHistoryLine?: boolean } = {}) =>
     render(
       <RecordVisitForm
         sessionId={null}
@@ -1310,6 +1310,59 @@ describe("the line under the unit field", () => {
     } finally {
       scrolled.mockRestore();
     }
+  });
+
+  /* The offline page has none (owner, 2026-11-18), and holds no room for
+     one, yet still reads the history for the panel at the end of the form. */
+  describe("where it is not shown", () => {
+    const expectNoLine = () => {
+      expect(line()).toBeNull();
+      expect(document.querySelector('[data-hold*="See history"]')).toBeNull();
+      expect(screen.queryByText(/this unit's history/)).toBeNull();
+      expect(screen.queryByRole("button", { name: "See history" })).toBeNull();
+    };
+
+    it("is not drawn for a known unit while its history is read, nor once it is", async () => {
+      let answer: (value: unknown) => void = () => undefined;
+      apiFetch.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      mount({ showHistoryLine: false });
+      await typeUnit("#05-123");
+      expect(apiFetch).toHaveBeenCalledWith("/households/h1?limit=20&offset=0");
+      expectNoLine();
+
+      await act(async () => {
+        answer(history());
+        await Promise.resolve();
+      });
+      expect(
+        screen.getByRole("region", { name: "What we know about this unit" }),
+      ).toBeInTheDocument();
+      expectNoLine();
+    });
+
+    it("is not drawn when a known unit's history cannot be read, nor for a unit not known", async () => {
+      let fail: (reason: unknown) => void = () => undefined;
+      apiFetch.mockReturnValue(
+        new Promise((_, reject) => {
+          fail = reject;
+        }),
+      );
+      mount({ showHistoryLine: false });
+      const unit = screen.getByLabelText("Unit number");
+      fireEvent.change(unit, { target: { value: "#05-123" } });
+      await act(async () => {
+        fail(new TypeError("Failed to fetch"));
+        await new Promise((settle) => setTimeout(settle, 0));
+      });
+      expectNoLine();
+
+      fireEvent.change(unit, { target: { value: "#09-999" } });
+      expectNoLine();
+    });
   });
 });
 

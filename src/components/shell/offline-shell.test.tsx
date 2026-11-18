@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import type * as ApiClientModule from "@/lib/api-client";
 import { OfflineShell, PROBE_INTERVAL_MS } from "@/components/shell/offline-shell";
 import { SyncProvider } from "@/components/sync/sync-provider";
@@ -32,7 +32,9 @@ const { usePathname, useRole, apiFetch } = vi.hoisted(() => ({
   usePathname: vi.fn(() => "/blocks/b1"),
   /* Offline the session cannot be fetched, so nobody is signed in. */
   useRole: vi.fn(() => ({ userId: undefined })),
-  apiFetch: vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+  apiFetch: vi.fn<(path: string) => Promise<unknown>>(() =>
+    Promise.reject(new TypeError("Failed to fetch")),
+  ),
 }));
 vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment: () => null }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
@@ -288,21 +290,86 @@ describe("OfflineShell, recording", () => {
     expect(await screen.findByText("1 record is saved on this phone.")).toBeInTheDocument();
   });
 
-  /* Its copy of the block may be hours old, so a unit not in it may have
-     been visited since: it gets no history line, as no unit with nothing
-     to read does (#196). One in it does, and says it cannot be read. */
-  it("draws a history line only for a unit in its copy of the block", async () => {
-    mount();
-    await openBlock("123");
-    const unit = screen.getByLabelText("Unit number");
-    const line = () => document.getElementById("unit-history");
-    await user().type(unit, "#05-02");
-    expect(line()).toBeNull();
+  /*
+   * No line under the unit field here (owner, 2026-11-18): it said the
+   * history could not be read at every door in the copy, just where there
+   * is no signal. None is drawn, and no room is held for one.
+   */
+  describe("the unit's history", () => {
+    const historyRead = `/households/${household.household.id}?limit=20&offset=0`;
+    const expectNoLine = () => {
+      expect(document.getElementById("unit-history")).toBeNull();
+      expect(document.querySelector('[data-hold*="See history"]')).toBeNull();
+      expect(screen.queryByText(/this unit's history/)).toBeNull();
+      expect(screen.queryByRole("button", { name: "See history" })).toBeNull();
+    };
 
-    await user().clear(unit);
-    await user().type(unit, "#05-01");
-    await waitFor(() => {
-      expect(line()).toHaveTextContent(/^Could not read this unit's history\.$/);
+    it("has no line for any unit, in its copy of the block or not", async () => {
+      let fail: (reason: unknown) => void = () => undefined;
+      apiFetch.mockImplementation(
+        () =>
+          new Promise((_, reject) => {
+            fail = reject;
+          }),
+      );
+      onTestFinished(() => {
+        apiFetch.mockReset();
+      });
+      mount();
+      await openBlock("123");
+      const unit = screen.getByLabelText("Unit number");
+      await user().type(unit, "#05-02");
+      expectNoLine();
+
+      await user().clear(unit);
+      await user().type(unit, "#05-01");
+      expect(apiFetch).toHaveBeenCalledWith(historyRead);
+      expectNoLine();
+      await act(async () => {
+        fail(new TypeError("Failed to fetch"));
+        await new Promise((settle) => setTimeout(settle, 0));
+      });
+      expectNoLine();
+    });
+
+    /* Still read, as the block screen reads it: once signal is back, the
+       history is at the end of the form, as before the line. */
+    it("still shows a unit's history at the end of the form once it can be read", async () => {
+      apiFetch.mockImplementation((path) =>
+        path === historyRead
+          ? Promise.resolve({
+              household: household.household,
+              block: active.blocks[0]?.block,
+              visits: [
+                {
+                  id: "0190a000-0000-7000-8000-000000000701",
+                  householdId: household.household.id,
+                  sessionId: OUTING,
+                  member: { id: ALICE.id, name: ALICE.name, image: null },
+                  team: null,
+                  interestLevel: "medium",
+                  description: "Asked us to come back in June.",
+                  clientCreatedAt: STAMP,
+                  createdAt: STAMP,
+                  updatedAt: STAMP,
+                },
+              ],
+              answered: true,
+              pagination: { limit: 20, offset: 0, total: 1, hasMore: false },
+              followUps: [],
+            })
+          : Promise.reject(new TypeError("Failed to fetch")),
+      );
+      onTestFinished(() => {
+        apiFetch.mockReset();
+      });
+      mount();
+      await openBlock("123");
+      await user().type(screen.getByLabelText("Unit number"), "#05-01");
+
+      const panel = await screen.findByRole("region", { name: "What we know about this unit" });
+      expect(within(panel).getByText("Asked us to come back in June.")).toBeInTheDocument();
+      expectNoLine();
     });
   });
 

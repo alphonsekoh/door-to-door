@@ -205,6 +205,10 @@ type Props = {
   onRecorded: () => void;
   /* Whether anything typed would be lost by leaving now. */
   onDirtyChange?: (dirty: boolean) => void;
+  /* The line under the unit field that sums up its history. None on the
+     offline page: there it said the history could not be read at every
+     known door, an error just where there is no signal (owner, 2026-11-18). */
+  showHistoryLine?: boolean;
 };
 
 /* The status line for a save that went into the queue. */
@@ -253,6 +257,7 @@ export function RecordVisitForm({
   loadSession,
   onRecorded,
   onDirtyChange,
+  showHistoryLine = true,
 }: Props) {
   const sync = useSyncQueue();
   const { userId, isAdmin } = useRole();
@@ -421,11 +426,18 @@ export function RecordVisitForm({
         : householdAction(here.followUps, { userId, isAdmin }).kind;
   const canSuggestHere = unlistedAction === "suggest";
   /* What the line under the unit field says of its history, from the render
-     the unit matches one of the block's. */
-  const unitLine = historyLine(
-    { matched: matchId !== null, history: here, unread: matchId !== null && unread === matchId },
-    readAt,
-  );
+     the unit matches one of the block's. Without the line the history is
+     still read, for the panel and for what a refusal off the list offers. */
+  const unitLine = showHistoryLine
+    ? historyLine(
+        {
+          matched: matchId !== null,
+          history: here,
+          unread: matchId !== null && unread === matchId,
+        },
+        readAt,
+      )
+    : null;
   /* Down to the history, last in the form. */
   const seeHistory = () => {
     historyPanel.current?.show();
