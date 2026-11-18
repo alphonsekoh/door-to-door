@@ -954,6 +954,12 @@ test.describe("as the session answers", () => {
       if (size !== CAP) {
         expect(await page.evaluate(() => window.scrollY), `scrolled at ${size}`).toBe(0);
         await expectInView(line, `the unit's history line at ${size}`);
+        /* Held a row taller than its words, it took the picker under Save
+           at 17px on an iPhone. */
+        expect((await line.boundingBox())?.height, `the unit's history line at ${size}`).toBe(44);
+        for (const level of ["Low", "Medium", "High"]) {
+          await expectInView(page.getByRole("radio", { name: level }), `${level} at ${size}`);
+        }
       }
     }
 

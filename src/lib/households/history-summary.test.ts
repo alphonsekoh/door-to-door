@@ -96,7 +96,6 @@ describe("historySummary", () => {
 
 describe("visitCount", () => {
   it("counts every visit at the unit, on every page", () => {
-    expect(visitCount(0)).toBe("No visits yet");
     expect(visitCount(1)).toBe("1 visit");
     expect(visitCount(2)).toBe("2 visits");
     expect(visitCount(41)).toBe("41 visits");
@@ -108,8 +107,8 @@ describe("visitCount", () => {
 });
 
 describe("LONGEST_SUMMARY", () => {
-  it("is every part at its longest, in the order the line says them", () => {
-    expect(LONGEST_SUMMARY).toBe("On the follow-up list · Overdue · No visits yet · See history");
+  it("is every part at its longest, two figures of visits, in the order the line says them", () => {
+    expect(LONGEST_SUMMARY).toBe("On the follow-up list · Overdue · 99 visits · See history");
   });
 });
 

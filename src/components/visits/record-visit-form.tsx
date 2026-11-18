@@ -889,16 +889,19 @@ export function RecordVisitForm({
             last in the form, below Save on a phone (#196). Held from the
             moment a unit is typed at the longest it can say, so nothing
             below moves as it lands, and heard as it changes. Its lines are
-            as tall as See history's target, so that target grows none. */}
+            as tall as See history's target, so that target grows none.
+            One weight throughout, as the held copy can only be: Overdue in
+            a heavier one held the line a row taller than its words, at the
+            default text on the commonest phones. */}
         {unitLine === null ? null : (
           <p
             id="unit-history"
             aria-live="polite"
             aria-atomic="true"
             data-hold={unbroken(LONGEST_SUMMARY)}
-            className="hold-text leading-target text-caption font-semibold"
+            className="hold-text leading-target text-caption font-medium tabular-nums"
           >
-            <span className="font-medium">
+            <span>
               {unitLine.kind === "read" ? (
                 <>
                   {unitLine.summary.followUp === null ? null : (
@@ -909,7 +912,7 @@ export function RecordVisitForm({
                   )}
                   {unitLine.summary.overdue ? (
                     <>
-                      <span className="font-semibold text-danger">{OVERDUE}</span>
+                      <span className="text-danger">{OVERDUE}</span>
                       {" · "}
                     </>
                   ) : null}

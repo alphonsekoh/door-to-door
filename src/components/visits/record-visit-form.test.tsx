@@ -1010,8 +1010,10 @@ describe("the line under the unit field", () => {
       expect(line()).toHaveTextContent(/^On the follow-up list · Overdue · 1 visit · See history$/);
     });
     const said = inLine();
-    // Words as well as colour, in the tone the history gives an overdue note.
+    // Words as well as colour, in the tone the history gives an overdue note,
+    // and in the line's own weight, the one its held copy is set in.
     expect(said.getByText("Overdue")).toHaveClass("text-danger");
+    expect(said.getByText("Overdue").className).not.toMatch(/\bfont-/);
     expect(said.getByText("follow-up")).toHaveClass("whole-word");
     expect(said.getByRole("button", { name: "See history" })).toBeInTheDocument();
   });
@@ -1053,16 +1055,6 @@ describe("the line under the unit field", () => {
 
     await waitFor(() => {
       expect(line()).toHaveTextContent(/^12 visits · See history$/);
-    });
-  });
-
-  it("says a household no visit has been recorded at has none yet", async () => {
-    apiFetch.mockResolvedValue(history({ visits: [], answered: false, pagination: visits(0) }));
-    mount();
-    await typeUnit("#05-123");
-
-    await waitFor(() => {
-      expect(line()).toHaveTextContent(/^No visits yet · See history$/);
     });
   });
 
@@ -1196,11 +1188,13 @@ describe("the line under the unit field", () => {
 
     const held = line();
     expect(held).toHaveClass("hold-text", "leading-target");
+    // Every two-figure count as wide as the held one.
+    expect(held).toHaveClass("tabular-nums");
     // Held from CSS, so in no text a reader or a test reads, with its hyphen
     // as unbreakable as WholeWords holds it on screen.
     expect(held).toHaveAttribute(
       "data-hold",
-      "On the follow‑up list · Overdue · No visits yet · See history",
+      "On the follow‑up list · Overdue · 99 visits · See history",
     );
     // Heard when it changes, as one line.
     expect(held).toHaveAttribute("aria-live", "polite");

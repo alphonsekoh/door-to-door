@@ -26,8 +26,9 @@ export type HistorySummary = {
   visits: string;
 };
 
+/* Never none: a household is made by its first visit, and no visit is
+   deleted. */
 export function visitCount(total: number): string {
-  if (total === 0) return "No visits yet";
   return total === 1 ? "1 visit" : `${String(total)} visits`;
 }
 
@@ -46,9 +47,12 @@ export function historySummary(
 
 /*
  * The longest the line can say, which it is held to from the moment a unit
- * is typed: all four parts, with the visit count at its widest.
+ * is typed: all four parts, with two figures of visits. In tabular figures
+ * every two-figure count is as wide, so only a unit knocked at a hundred
+ * times outgrows it, by a figure. Held much wider, it took two rows where
+ * the words take one: at the default 17px, a 375pt iPhone has 6px to spare.
  */
-export const LONGEST_SUMMARY = [ON_THE_LIST, OVERDUE, visitCount(0), SEE_HISTORY].join(" · ");
+export const LONGEST_SUMMARY = [ON_THE_LIST, OVERDUE, visitCount(99), SEE_HISTORY].join(" · ");
 
 export type HistoryLine =
   | { kind: "read"; summary: HistorySummary }
