@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { AdminFollowUps } from "@/components/admin/admin-follow-ups";
 import { PageHeader } from "@/components/ui/page-header";
+import { WholeWords } from "@/components/ui/unit-number";
 import { requireAdminPage } from "@/server/auth/pages";
 
 export const metadata = { title: "Follow-up list" };
@@ -10,7 +11,7 @@ export default async function AdminFollowUpsPage() {
   return (
     <>
       <PageHeader
-        title="Follow-up list"
+        title={<WholeWords text="Follow-up list" />}
         subtitle="Review suggestions and choose which households to revisit."
         back={{ href: "/admin/sessions", label: "Sessions" }}
       />

@@ -208,6 +208,53 @@ describe("BlockScreen", () => {
     expect(apiFetch).toHaveBeenCalledWith("/households?blockId=b1&limit=100&offset=0");
   });
 
+  /* Online, a known unit's line says what its history holds, or that it
+     could not be read; only the offline page draws none (#196). */
+  it("says under the unit field what a known unit's history holds, or that it could not be read", async () => {
+    const units = list(["#05-123", "#05-124"]);
+    const read = units.data[0];
+    answerWith((path) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(active);
+      if (path === "/households/h0?limit=20&offset=0") {
+        return Promise.resolve({
+          household: read?.household,
+          block: B1.block,
+          visits: [
+            {
+              ...read?.latestVisit,
+              clientCreatedAt: "2026-03-14T10:00:00.000Z",
+              createdAt: "2026-03-14T10:00:00.000Z",
+              updatedAt: "2026-03-14T10:00:00.000Z",
+            },
+          ],
+          answered: true,
+          pagination: { limit: 20, offset: 0, total: 3, hasMore: false },
+          followUps: [],
+        });
+      }
+      if (path === "/households/h1?limit=20&offset=0") {
+        return Promise.reject(new TypeError("Load failed"));
+      }
+      return Promise.resolve(units);
+    });
+    const user = userEvent.setup();
+    render(<BlockScreen blockId="b1" />);
+    await screen.findByRole("tab", { name: "All units (2)" });
+    const unit = screen.getByLabelText("Unit number");
+    const line = () => document.getElementById("unit-history");
+
+    await user.type(unit, "#05-123");
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^3 visits · See history$/);
+    });
+
+    await user.clear(unit);
+    await user.type(unit, "#05-124");
+    await waitFor(() => {
+      expect(line()).toHaveTextContent(/^Could not read this unit's history\.$/);
+    });
+  });
+
   describe("on a block of more than one page (#127)", () => {
     /* A hundred units that sort first, then the real one they pushed off page one. */
     const junk = Array.from({ length: 100 }, (_, i) => `#00-${String(i).padStart(3, "0")}`);
@@ -275,6 +322,29 @@ describe("BlockScreen", () => {
 
       await user.type(screen.getByLabelText("Unit number"), "#09-999");
       expect(await screen.findByText("Asked us to come back in June.")).toBeInTheDocument();
+    });
+
+    /* Only a unit among the units read has a history to read, and one on a
+       page that has not arrived has its line once that page does (#196). */
+    it("draws a unit's history line only once the unit is among the block's units read", async () => {
+      servePages(() => Promise.reject(new TypeError("Load failed")));
+      const user = userEvent.setup();
+      const view = render(<BlockScreen blockId="b1" />);
+      await screen.findByRole("tab", { name: "All units (100)" });
+      const unit = screen.getByLabelText("Unit number");
+      const line = () => document.getElementById("unit-history");
+      await user.type(unit, "#09-999");
+      expect(line()).toBeNull();
+
+      servePages();
+      syncs(view, 1);
+      await screen.findByRole("tab", { name: "All units (101)" });
+      await waitFor(() => {
+        expect(line()).toHaveTextContent(/^1 visit · See history$/);
+      });
+      await user.clear(unit);
+      await user.type(unit, "#10-001");
+      expect(line()).toBeNull();
     });
 
     it("writes the offline copy once, from every page, never from the first alone", async () => {
@@ -1159,6 +1229,22 @@ describe("in a follow-up session", () => {
     ).toBeInTheDocument();
     const chips = within(await screen.findByRole("list", { name: "On the list in this block" }));
     expect(chips.getByRole("button", { name: "#05-123" })).toBeInTheDocument();
+  });
+
+  /* Said with the form, under its unit field: above the tabs, it moved the
+     form as the session answered (#200). The units need no such word. */
+  it("says it with the form, not above the views", async () => {
+    serveFollowUp();
+    const user = userEvent.setup();
+    render(<BlockScreen blockId="b1" />);
+    const notice = await screen.findByText(/Only units on the list can be recorded\.$/);
+    expect(screen.getByRole("tabpanel", { name: "Record" })).toContainElement(notice);
+    expect(notice.compareDocumentPosition(screen.getByRole("tablist"))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+
+    await user.click(await screen.findByRole("tab", { name: /^All units/ }));
+    expect(screen.queryByText(/Only units on the list/)).toBeNull();
   });
 
   it("keeps the list on the phone for the offline shell", async () => {

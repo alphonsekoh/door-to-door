@@ -635,7 +635,10 @@ describe("acting on a note", () => {
   it("lets an admin add a visit's household straight to the list", async () => {
     asViewer("admin", true);
     render(<Panel anchorVisits />);
-    fireEvent.click(screen.getByRole("button", { name: "Add to follow-up list" }));
+    const anchor = screen.getByRole("button", { name: "Add to follow-up list" });
+    // "follow-" over "up" read as two words at large text (#196).
+    expect(within(anchor).getByText("follow-up")).toHaveClass("whole-word");
+    fireEvent.click(anchor);
     const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" });
     fireEvent.change(within(sheet).getByLabelText("What should the next visit do?"), {
       target: { value: "Bring the flyer" },

@@ -79,6 +79,9 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   passes on macOS with the cause back (10 of 10, verifier), so it cannot guard it. At
   320px the stand-in wraps in every engine's font, as it did at 390px in CI's. Without
   the fix the unit field moves from 386 to 338 on both engines. _Research:_ R-192.
+  _Extended by D-200-2:_ a follow-up pass, now at `:904`, with the session and the
+  unit's history each held on a fresh route (`holdBack`, D-196-14). _Extended by
+  D-196-27:_ a door-to-door pass that checks the history line.
 
 ## Known limits
 
@@ -116,10 +119,11 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   - ~~On CI's Linux WebKit at 32px, "Record a visit" wraps onto two lines before the
     session loads, against D-111-54.~~ Resolved by D-181-6. This is #196's item 1, and
     the PR says `Refs #196`.
-  - In a follow-up session at 32px, the unit field drops 170px as the session answers
+  - ~~In a follow-up session at 32px, the unit field drops 170px as the session answers
     and ends half under the docked Save. The "Follow-up session" notice arrives with no
     room kept for it. This is D-181-7's mechanism with a bigger shift, older than #181
-    and not in #196. Filed as #200 (verifier).
+    and not in #196. Filed as #200 (verifier).~~ Resolved for the unit field by D-200-1:
+    the notice is under it. What is below the field still moves (D-200-3).
   - A block tapped before its route's prefetch lands can show an empty main instead of
     "Loading the block…" (Chromium, 2 of 11 probe runs; verifier).
 

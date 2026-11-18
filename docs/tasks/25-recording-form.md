@@ -15,7 +15,13 @@ The screen used at a door.
 - **D-25-2 · Interest is four large buttons, not a select.** _Refined by D-113-2:_ four
   native radios, each over its whole tile, so a pick before the page is live holds.
 - **D-25-3 · Known history and outstanding follow-ups show before knocking.** A failed
-  lookup never blocks recording.
+  lookup never blocks recording. _Refined by D-196-4 and D-196-18 (owner, 2026-11-18):_
+  the history panel is last in the form, after the interest picker and Add details, and
+  a held line under the unit field says its key facts (the follow-up list, Overdue, the
+  visit count) and leads down to it. At the default text that line is above Save on
+  every phone measured. _Refined by D-196-29 (owner):_ the line is there only for a unit
+  among the block's units read. _Refined by D-196-36 (owner):_ the offline page draws no
+  line; its panel stays.
 - **D-25-4 · Save is pinned above the bottom nav.** _Why:_ history pushed it below the fold.
   _Refined by D-111-20:_ `DockedActions`, glass only while pinned and meeting the nav edge
   to edge; `DockHost` holds it at the end of the block screen and the offline shell.

@@ -157,6 +157,7 @@ and a pop-up that tells a member or admin why a Save was refused.
   R-89. _Refined by D-119-33 (owner):_ that limit is deferred to #136. _Refined by
   D-113-2:_ a level's radio now has its tile as its `<label>`, which `labelOf` finds. It
   wraps the radio, so nothing more moves. _Known limit closed by D-136-1 and D-136-11._
+  _Extended by D-196-5:_ a sheet's focus scroll also brings a box's whole label tile.
 - ~~**D-119-23 · Fix round 2: the unit fields stop at the contract's 32 characters.**
   The recording form and Record for a member set `maxLength` from
   `MAX_UNIT_NUMBER_LENGTH` (`src/lib/units/unit-number.ts`). _Why:_ a unit the server

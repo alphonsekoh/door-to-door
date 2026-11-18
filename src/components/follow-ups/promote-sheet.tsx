@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { AlsoAddRow, useAlsoAdd } from "@/components/follow-ups/also-add";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
-import { FollowUpDoor } from "@/components/ui/unit-number";
+import { FollowUpDoor, WholeWords } from "@/components/ui/unit-number";
 import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import {
@@ -100,7 +100,7 @@ export function PromoteSheet({
       label={`${title}, ${suggestion.unitNumber}`}
       title={
         <>
-          {title}
+          <WholeWords text={title} />
           <span className="block text-body font-normal text-foreground-muted tabular-nums">
             <FollowUpDoor note={suggestion} />
           </span>

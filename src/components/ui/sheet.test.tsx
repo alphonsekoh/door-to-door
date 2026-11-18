@@ -290,6 +290,25 @@ describe("Sheet", () => {
     expect(scrolled.mock.contexts[0]).toBe(screen.getByLabelText("Name"));
   });
 
+  /* At large text a focused box cleared the docked Add, and its tile ran
+     on under it (#196). */
+  it("brings the whole tile into view for a box drawn inside its label", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(
+      <Sheet label="Add households" title="Add households" onClose={vi.fn()}>
+        <label>
+          <input type="checkbox" />
+          <span>Blk 123 · #05-123</span>
+          <span>Bring the pamphlet</span>
+        </label>
+      </Sheet>,
+    );
+    const box = screen.getByRole("checkbox", { name: /Blk 123/ });
+    await userEvent.setup().click(box);
+    expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: "nearest" });
+    expect(scrolled.mock.contexts[0]).toBe(box.closest("label"));
+  });
+
   it("opens at its top, though the control it focuses is at its foot", () => {
     /* As a browser does at large text: bringing OK into view scrolls the
        body down to it, past the heading. */

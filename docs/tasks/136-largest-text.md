@@ -44,11 +44,15 @@ only: no contract or schema change.
   reads. They are held only while nothing sits beside the words. Suggest, Add or Promote
   would be pushed onto a row of their own. _Why:_ at 32px the longer words wrapped one
   row taller just after Save, which dropped the unit field 48px. _Research:_ R-181.
+  _Refined by D-196-2:_ under 18.75 reader-rems the offer has a held row of its own, so
+  the words are held beside an offer too (`hold-text-narrow`). _Extended by D-196-22:_
+  `hold-text` also holds the history line under the unit field.
 - **D-136-5 · Non-breaking hyphens (U+2011) are used only in the held words.** The held
   copy is never drawn, copied or searched, so D-111-36's reason for rejecting them does
   not apply. The unit on screen stays in `UnitNumber`. Refines D-111-36. _Why:_ generated
   content has no element that can keep the unit on one line, so without them the hidden
-  copy wraps where the visible one cannot.
+  copy wraps where the visible one cannot. _Extended by D-196-2 and D-196-22:_ the held
+  offer label and the history line's hold too (`unbroken()`).
 - **D-136-6 · Undo follows the words it undoes, in their line.** The follow-up row is one
   paragraph: the marked-done text, then Undo inline on its baseline. The row is still
   there from "Sending…" on, and Undo is still at least 44×44 (`target-compact`,
@@ -59,14 +63,18 @@ only: no contract or schema change.
   sits in `unit-number.tsx` and passes every `\S+-\S+` through `UnitNumber`, including a
   server's reason, which may name a unit. It is used only in the Saved line's follow-up
   row and admin Records' marked line. _Why:_ "Follow-" over "up" read as two words. This
-  is D-111-36's no-wrap, not a changed character.
+  is D-111-36's no-wrap, not a changed character. _Extended by D-196-6:_ the app's
+  titles and labels that say "follow-up" too, so it is no longer used only here.
+  _Refined by D-196-26:_ it holds each word with `whole-word`, an inline-block, not
+  `UnitNumber`'s nowrap, so a word wider than its whole box breaks, at its hyphen first.
 - **D-136-8 · `target-compact`: a text action's target is 44px, or on a short screen
   44px or one line of body text, whichever is more.** It is a new utility, and
   `control-compact` now applies it with the same values. Undo, Back to the list and the
   Saved line's offers use it: 48px at 32px, not `min-h-11`'s 88px. Extends D-111-48's
   short-screen switches, and targets stay at least 44px (D-30-8). _Why:_ an 88px target
   on each row under the line pushed the unit field under Save, and at 320×568 Back to the
-  list too.
+  list too. _Extended by D-196-23:_ `leading-target` gives a line of words the same
+  least, so See history is a whole target among them.
 - **D-136-9 · The Saved line's rows touch and its sides are `px-2`, at every size.**
   `gap-x-2` replaces `gap-2` and `px-2` replaces `px-3`. _Why:_ each action already holds
   its own target's height, so a row gap was height taken from the field. With `px-3`,
@@ -98,7 +106,8 @@ only: no contract or schema change.
   and removed afterwards (D-37-7). The first send is held on a promise the test
   releases. Extends D-111-65. _Why:_ eleven direct saves used over a third of the admin's
   30-a-minute budget (D-126-8), so repeats were refused 429. A 1.5s timer let a slow run
-  take both readings after the switch. That would pass with nothing held.
+  take both readings after the switch. That would pass with nothing held. _Extended by
+  D-196-8 and D-196-15 (#196)._
 
 - **D-136-13 · #181 part 2 stays open, and `:613` never failed CI.** In CI run
   43375997037, `:613` on mobile-webkit has outcome `expected`. Its body failed with
@@ -139,16 +148,22 @@ only: no contract or schema change.
   _Research:_ R-184. Accepted as a known limit (owner, 2026-11-15).
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
-  sent." or a note's suffix can still grow the line.
-- In a door-to-door session at 32px, the unit field drops 48px when the send lands and
+  sent." or a note's suffix can still grow the line. _Extended by D-196-2:_ under 18.75
+  reader-rems, a direct save with an offer leaves it too, and a save that never sends
+  keeps a blank offer row.
+- ~~In a door-to-door session at 32px, the unit field drops 48px when the send lands and
   "Suggest a return visit" appears beside the words, since nothing is held then. On
   both engines the line grows from 114px to 162px. Main dropped it further. Filed as
-  #196's item 2.
-- `WholeWords` covers only the marked-done text. Other "follow-up" words, such as the
+  #196's item 2.~~ Closed by D-196-2 (#196): under 18.75 reader-rems the offer's row is
+  held from the save on.
+- ~~`WholeWords` covers only the marked-done text. Other "follow-up" words, such as the
   "Add to the follow-up list" and "Edit follow-up" sheet titles, can still break at the
-  hyphen, and no check covers them.
-- In Add households at 32px on WebKit, a focused checkbox clears the bar but its tile
-  runs about 64px under it. The scroll target is the input (D-119-22). Main was worse.
+  hyphen, and no check covers them.~~ Closed by D-196-6 and D-196-8 (#196); the words
+  still unheld are in D-196's known limits.
+- ~~In Add households at 32px on WebKit, a focused checkbox clears the bar but its tile
+  runs about 64px under it. The scroll target is the input (D-119-22). Main was worse.~~
+  Closed by D-196-5 (#196). The input was the target of D-111-31's focus scroll;
+  D-119-22 is OK's scroll.
 - Found outside #136 and not touched here; the PR should list them:
   - ~~On CI's Linux WebKit at 32px, "Record a visit" wraps before the session loads,
     against D-111-54.~~ Resolved by D-181-6 (#196's item 1).

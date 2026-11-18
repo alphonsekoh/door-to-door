@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import { type Back, type BackAction, BackButton, BackLink } from "@/components/ui/back-link";
 
 type PageHeaderProps = {
-  title: string;
+  /* A node, so the app's own words can keep a hyphenated one whole. */
+  title: ReactNode;
   subtitle?: string | undefined;
   /* The screen this one was reached from. An installed iPhone app has no
      browser back button, so a child screen must offer its own way out. */

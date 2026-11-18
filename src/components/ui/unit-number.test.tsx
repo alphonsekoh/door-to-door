@@ -26,10 +26,21 @@ describe("WholeWords", () => {
     expect(container).toHaveTextContent(
       /^Undone\. Follow-up reopened at #05-123, and 2 follow-ups\.$/,
     );
-    const kept = [...container.querySelectorAll(".whitespace-nowrap")].map(
-      (word) => word.textContent,
-    );
+    const kept = [...container.querySelectorAll(".whole-word")].map((word) => word.textContent);
     expect(kept).toEqual(["Follow-up", "#05-123,", "follow-ups."]);
+  });
+
+  /* Held with nowrap, "follow-ups?" ran 16px out of a hint's title at 32px,
+     320px wide, in CI's face (#196). */
+  it("never holds a word with nowrap, which would run it out of a line narrower than itself", () => {
+    const { container } = render(
+      <p>
+        <WholeWords text="What are follow-ups?" />
+      </p>,
+    );
+    const word = screen.getByText("follow-ups?");
+    expect(word).toHaveClass("whole-word");
+    expect(container.querySelector(".whitespace-nowrap")).toBeNull();
   });
 
   it("wraps nothing in text with no hyphen", () => {
@@ -38,7 +49,7 @@ describe("WholeWords", () => {
         <WholeWords text="Not undone. Check your signal and try again." />
       </p>,
     );
-    expect(container.querySelector(".whitespace-nowrap")).toBeNull();
+    expect(container.querySelector(".whole-word")).toBeNull();
     expect(container).toHaveTextContent("Not undone. Check your signal and try again.");
   });
 });

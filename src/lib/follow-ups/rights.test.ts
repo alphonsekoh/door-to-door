@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { ActiveSession, FollowUp, SessionKind } from "@/generated/types.gen";
 import {
   type FollowUpRights,
+  awaitsReview,
   followUpRights,
   householdAction,
+  isOwed,
   marksDoneOnSave,
+  offerLabel,
   onActiveList,
   waitingCaption,
   waitingLabel,
@@ -260,6 +263,22 @@ describe("followUpRights", () => {
   });
 });
 
+/* The one rule the header, the history panel and the line under the unit
+   field all read a household's follow-up state by. */
+describe("a household's follow-up state", () => {
+  it("is owed while a note on the list is not done", () => {
+    expect(isOwed(note())).toBe(true);
+    expect(isOwed(note({ doneAt: STARTED }))).toBe(false);
+    expect(isOwed(note({ status: "suggested" }))).toBe(false);
+  });
+
+  it("waits for review while a suggestion is undecided, and only then", () => {
+    expect(awaitsReview(note({ status: "suggested" }))).toBe(true);
+    expect(awaitsReview(note())).toBe(false);
+    expect(awaitsReview(note({ doneAt: STARTED }))).toBe(false);
+  });
+});
+
 describe("householdAction", () => {
   const member = { userId: BEN.id, isAdmin: false };
 
@@ -306,6 +325,30 @@ describe("householdAction", () => {
 
   it("reads as a sentence", () => {
     expect(waitingLabel("Alice Tan")).toBe("Suggested by Alice Tan, waiting for review");
+  });
+});
+
+describe("offerLabel", () => {
+  const suggestion = note({ id: "s9", status: "suggested" });
+
+  it("offers an admin the list, in a session of either kind", () => {
+    for (const inFollowUpSession of [false, true]) {
+      expect(offerLabel({ kind: "add_to_list" }, inFollowUpSession)).toBe("Add to follow-up list");
+      // Adding the waiting suggestion is the same words: one door, one note.
+      expect(offerLabel({ kind: "promote", suggestion }, inFollowUpSession)).toBe(
+        "Add to follow-up list",
+      );
+    }
+  });
+
+  it("offers a member a suggestion only in a door-to-door session", () => {
+    expect(offerLabel({ kind: "suggest" }, false)).toBe("Suggest a return visit");
+    expect(offerLabel({ kind: "suggest" }, true)).toBeNull();
+  });
+
+  it("offers nothing a second note would be refused for", () => {
+    expect(offerLabel({ kind: "listed" }, false)).toBeNull();
+    expect(offerLabel({ kind: "waiting", by: "you" }, false)).toBeNull();
   });
 });
 

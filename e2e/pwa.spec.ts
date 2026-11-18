@@ -3,6 +3,7 @@ import {
   SEED_BLOCK,
   SEED_LISTED_HOUSEHOLD,
   SEED_MEMBER,
+  SEED_MEMBER_ID,
   SEED_PARTNER,
   SEED_PASSWORD,
 } from "./accounts";
@@ -303,7 +304,7 @@ test.describe("the worker in charge", () => {
         }),
       unit,
     );
-    expect(saved).toEqual({ ownerId: "00000000-0000-4000-8000-000000000002", sessionId });
+    expect(saved).toEqual({ ownerId: SEED_MEMBER_ID, sessionId });
 
     // A pull while offline would be a cold reload; neither scroller lets it start.
     const overscroll = await page.evaluate(() => [

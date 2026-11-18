@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import { InterestChip } from "@/components/ui/interest-chip";
@@ -104,6 +104,16 @@ export function AdminRecords() {
   const online = useOnline();
   /* The record whose Undo is on its way, as on the member's Saved line. */
   const undoing = useRef<string | null>(null);
+  const markedLine = useRef<HTMLDivElement>(null);
+  const markedId = marked?.visitId ?? null;
+
+  /* At large text the line landed under the nav once the sheet had gone.
+     Each record that marks something done brings it into view, clear of the
+     nav, before it is painted, as the member's Saved line is; Undo, which
+     changes only its words, does not. */
+  useLayoutEffect(() => {
+    if (markedId !== null) markedLine.current?.scrollIntoView({ block: "nearest" });
+  }, [markedId]);
 
   const load = useCallback(async (current: RecordFilters) => {
     try {
@@ -234,8 +244,8 @@ export function AdminRecords() {
   const teams = state.teams ?? [];
   const visible = entries.filter((entry) => matchesSearch(entry, filters.q));
   const blocks = session.blocks.map((entry) => entry.block);
-  const markedLine = marked === null ? null : markedDoneLine(0, marked.ids, marked.undo);
-  const undoIds = markedLine?.undo ?? null;
+  const markedText = marked === null ? null : markedDoneLine(0, marked.ids, marked.undo);
+  const undoIds = markedText?.undo ?? null;
 
   return (
     <div className="space-y-4">
@@ -256,15 +266,16 @@ export function AdminRecords() {
         </button>
       </div>
 
-      {marked === null || markedLine === null ? null : (
+      {marked === null || markedText === null ? null : (
         <div
+          ref={markedLine}
           role="status"
-          className="flex min-h-14 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
+          className="flex min-h-14 scroll-clear-nav flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-border bg-surface-muted px-3 py-1 text-body"
         >
           <span className="min-w-0 flex-[1_1_16ch] break-words">
             Saved <UnitNumber value={marked.unitNumber} />
             {marked.memberName === null ? "" : ` for ${marked.memberName}`}.{" "}
-            <WholeWords text={markedLine.text} />
+            <WholeWords text={markedText.text} />
           </span>
           {undoIds === null ? null : (
             <UndoMarkedButton

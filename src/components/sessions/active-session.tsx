@@ -8,6 +8,7 @@ import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { OutingTeam } from "@/components/teams/outing-team";
 import { HintCard } from "@/components/ui/hint-card";
 import { PageHeader } from "@/components/ui/page-header";
+import { WholeWords } from "@/components/ui/unit-number";
 import type { ActiveSession } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
@@ -168,8 +169,10 @@ function SessionBody({
               first visit both above it pushed the first household below
               the fold. */}
           <p className="notice-info">
-            <span className="font-semibold">Follow-up session.</span> Visits can be recorded only at
-            the households below.
+            <span className="font-semibold">
+              <WholeWords text="Follow-up session." />
+            </span>{" "}
+            Visits can be recorded only at the households below.
             {isAdmin ? " As an admin you can record any unit in this session's blocks." : ""}
           </p>
           {/* The list stands in for the block cards: each group opens its block. */}

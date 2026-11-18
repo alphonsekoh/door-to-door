@@ -430,9 +430,12 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
     `target-compact` and `space-under-tabs`, so it holds on the first paint.
   - `hold-text` keeps an element as tall as the words in its `data-hold`, drawn by a
     hidden `::after`, so the words changing to them moves nothing below.
+  - The Saved line is a container (`saved-line`). Under 18.75 reader-rems its offer has
+    a row of its own (`offer-row`), held by `offer-pending` until the server has the
+    visit, and its words are held by `hold-text-narrow`.
 
-  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60, D-111-67
-  and D-136-1 to D-136-9.
+  See D-111-10, D-111-11, D-111-19, D-111-22, D-111-24, D-111-48, D-111-60, D-111-67,
+  D-136-1 to D-136-9 and D-196-2.
 
 - A page's primary action is `DockedActions`, pinned above the nav and glass while
   pinned. `DockHost` holds it at the end of the block screen and the offline shell, and
@@ -442,8 +445,11 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   the level typed into the server's HTML are adopted as the form mounts
   (`useEarlyInput`), and until then `useLive` keeps Enter from submitting the form
   natively (D-113-1 to D-113-4). Unit numbers are shown through `UnitNumber`, which
-  never splits them (D-111-36). `WholeWords`, beside it, does the same for each
-  hyphenated word in a follow-up's marked-done text (D-136-7).
+  never splits them (D-111-36). `WholeWords`, beside it, keeps each hyphenated word in
+  a follow-up's marked-done text, and in the app's own titles and labels that say
+  "follow-up", whole wherever it fits on its line (`whole-word`; D-136-7, D-196-6,
+  D-196-26). A unit number in such text breaks at its hyphen only where it alone is
+  wider than its line.
 - Child screens pass `back` to `PageHeader`: a link, or an in-page action (`BackButton`,
   the offline shell's way back to its blocks). A retracing `BackLink` uses
   `src/lib/session/screen-trail.ts`, fed by `ScreenTrailKeeper` in `AppShell` (D-111-28).
@@ -494,7 +500,12 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - A unit's history (`GET /households/{id}`) comes 20 visits a page, newest first. Both
   screens read the first page; `HouseholdHistoryPanel` reads older ones on "Show earlier
   visits" and holds them across re-reads of the first, each visit once by id
-  (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16).
+  (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16). On the recording
+  form the panel is last, and for a unit among the block's units read, a held line
+  under the unit field says its key facts and leads down to it
+  (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
+  page draws no line, though its form still reads the history for the panel
+  (`showHistoryLine`, D-196-36 to D-196-38).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
@@ -614,7 +625,7 @@ at the address that failed; `OfflineShell` then reads the local copy at runtime.
 online:  session / block screen ─► useLocalCopyWriter ─► door-to-door-local (copy)
 offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCopy (≤ 12 h)
            ─► "Continue as <name>" ─► shellState.continueAs ─► SyncProvider owner
-           ─► BlockViews (in-page, not amendable) ─► queue as usual
+           ─► BlockViews (in-page, not amendable, no history line) ─► queue as usual
 ```
 
 - The copy (`src/lib/offline/`, `v: 2`) holds the member, the session, each opened

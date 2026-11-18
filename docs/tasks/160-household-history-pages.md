@@ -145,13 +145,15 @@ here from #126 by the owner (D-126-13).
   newest first. Its "Last visit by" names the oldest visit on that page, and older
   visits are out of reach, until it updates (verifier r0).
 - Focus falls to `<body>` when the last page loads and the control goes (verifier).
-- iPhone (WebKit) only: an older page that lands late while a note is typed pushes the
+- ~~iPhone (WebKit) only: an older page that lands late while a note is typed pushes the
   focused Notes off the screen (408 to 1,768px on a 664px screen); the next keystroke
   scrolls back and nothing is lost. A late failure moves it 20px, or 130px at 32px on
   320px, under the docked Save. The Pixel 5 holds through scroll anchoring. Whether a
   real iPhone anchors at all is unconfirmed (verifier r2). Accepted as a known limit
   (owner, 2026-11-15); the verifier's suggested fix, a measured `scrollBy` when
-  `stillAt` is false, is not built.
+  `stillAt` is false, is not built.~~ Closed by D-196-4 (#196): the panel is last in
+  the form, so an older page, or its failure, lands below Notes. At 32px, Notes kept
+  its place and its focus as a late failure landed (verifier).
 - No route test pins `hasMore` on an exactly full last page; the UI reads `next < total`
   instead (verifier).
 

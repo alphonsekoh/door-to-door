@@ -775,9 +775,11 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
   query container's computed values, and `rem` there is still the root element's font
   size: the reader's text size (D-111-24). Resetting `--reader-rem` on an element does
   not change it, so a nav drawn at the 16px base needs a px threshold for its labels.
+  _Amended by R-202 (#196):_ the root's size is the reader's only from 16 to 32px, as
+  `--reader-rem` clamps it and the root does not.
 - **Source:** [CSS Containment 3, the `@container` rule](https://drafts.csswg.org/css-contain-3/#container-rule);
   seen in PR #112, fix round 8
-- **Used by:** D-111-60
+- **Used by:** D-111-60, D-196-2
 
 ### R-76 · What the chrome leaves once it stops growing (measured)
 
@@ -2341,3 +2343,186 @@ config`, parse only; #124 docs step, confirming the planner's check)
   and iPhone 13 projects, run natively on macOS by the #208 builder. It was a manual
   probe, not a spec, so no E2E pins it.
 - **Used by:** D-208-1, D-208-3, D-208-5, D-208-8
+
+### R-201 · The Saved line's widest pair is 18.71 rems in the system face and 20.68 in DejaVu Sans (measured)
+
+- **Finding:** at 16px, the pair is "Saved #12-1234A.", the line's 8px gap and the offer:
+
+  | Offer                    | System face, both engines | DejaVu Sans                                |
+  | ------------------------ | ------------------------- | ------------------------------------------ |
+  | "Suggest a return visit" | 18.71 rem (299.3px)       | 20.68 rem (330.8px) WebKit, 20.66 Chromium |
+  | "Add to follow-up list"  | 18.12 rem                 | 19.87 rem WebKit, 19.85 Chromium           |
+
+  The line's content box measures:
+  - 21.44 rems on the Pixel 5 and 21.25 on the iPhone 13 at 16px;
+  - 20.0 and 19.82 rems at 17px, the iPhone's default (R-62);
+  - 310px (19.38 rems) on a 360px phone at 16px;
+  - 322px (18.94 rems) on a 375pt iPhone at 17px;
+  - 270px (16.9 rems) on a 320px phone at 16px.
+
+  So a 21-rem threshold, sized for DejaVu, held a blank row at the default size on
+  360px phones and on 375pt and 390pt iPhones, where the pair fits in the phone's own
+  face. In the system face, a line of 18.75 rems or wider always fits the pair. At 16px,
+  only a screen under about 350px wide, such as a 320px one, is narrower than that.
+
+- **Source:** measured (#196 builder, Chromium and WebKit, with DejaVu Sans served from
+  a test origin and from the app's origin, R-182; verifier r0 and r1, at 5 widths and 7
+  text sizes)
+- **Used by:** D-196-2, D-196-15
+
+### R-202 · Below a 16px root, a container query measures in a smaller rem than the text (measured)
+
+- **Finding:** a container query's `rem` is the root's font size (R-75), while the text
+  follows `--reader-rem`, which is `clamp(16px, 1rem, 32px)`. The two agree only from a
+  16px root to 32px.
+  - At iOS's 14px body size (R-62) on a 320pt screen, the Saved line's 270px content box
+    measures 19.29 rems. It takes the wide layout, though its text is 16px and the pair
+    needs 299px.
+  - The offer then drops the unit field 22px when it turns up, on both engines, as on
+    main.
+  - Above a 32px root, the query measures fewer rems than the text needs, which errs
+    toward the held row. This follows from the clamp and was not measured.
+
+  Amends R-75, whose "the reader's text size" holds only within the clamp.
+
+- **Source:** `src/app/globals.css` (`--reader-rem`); measured (#196 verifier r1, the
+  `320-14px` case on both projects)
+- **Used by:** D-196-2 (known limit)
+
+### R-203 · An element's client rects are its boxes; a Range's are the lines of its text
+
+- **Finding:** `Element.getClientRects()` returns one rect per box fragment. An inline
+  element over two lines gives two. A blockified one, such as a flex item or one whose
+  display changed, gives one, whatever its text does. `Range.getClientRects()` over the
+  element's contents also includes a rect for each line fragment of the text in it,
+  whatever the element's display. So the distinct tops of a Range's rects count the
+  lines a word is drawn on. No bite reached this step: each failed earlier, on the
+  element count.
+- **Source:** [CSSOM View, `getClientRects()`](https://drafts.csswg.org/cssom-view/#dom-element-getclientrects)
+  and [`Range.getClientRects()`](https://drafts.csswg.org/cssom-view/#dom-range-getclientrects).
+  Cited, not fetched.
+- **Used by:** D-196-7
+
+### R-204 · A focused box inside its label tile: on WebKit only the box comes into view (measured)
+
+- **Finding:** at 32px in Add households, the last box was focused while the sheet body
+  called `scrollIntoView({ block: "nearest" })` on the input. On WebKit the label tile's
+  foot ended 64px under the docked Add, both on main and with `wholeControl` reverted.
+  On Chromium the tile cleared the bar either way, by the browser's own focus scroll, so
+  the check bites on WebKit only. Scrolling the tile instead, it clears the bar by 16px
+  on WebKit and 17px on Chromium.
+- **Source:** measured (#196 builder; verifier r0 to r2, iPhone 13 and Pixel 5 profiles,
+  production builds of main 17e935b and the branch)
+- **Used by:** D-196-5, D-196-8
+
+### R-205 · What of a unit's history shows above the docked Save, with the panel last in the form (measured)
+
+- **Finding:** at `#05-123` in a door-to-door session, unscrolled, once the history
+  lands, this is how much of it is above the docked Save:
+
+  | Phone, root     | Main (panel above the picker) | Panel last (f1d02d3)      | With the line (5d85916)        |
+  | --------------- | ----------------------------- | ------------------------- | ------------------------------ |
+  | iPhone 13, 16px | 236px                         | 12px, the card's top edge | the whole line                 |
+  | iPhone 13, 17px | 222px                         | 0px                       | the whole line                 |
+  | Pixel 5, 16px   | 299px                         | 75px, its first line      | the whole line, and 31px of it |
+  | Pixel 5, 17px   | 285px                         | 47px                      | the whole line, and 3px of it  |
+
+  On main, the history held the household's name, "On the follow-up list" and an
+  Overdue note. As it landed at 32px, Medium dropped 1,494px (Chromium) and 1,582px
+  (WebKit) on main, and 0px on the branch. With the line, all four interest tiles are
+  above Save on an iPhone 13 at 16px and 17px once the history lands.
+
+- **Source:** measured (#196 verifier r0, r2 and fix-r1, production builds of main
+  17e935b, f1d02d3 and 5d85916)
+- **Used by:** D-196-4, D-196-18
+
+### R-206 · The history line's longest summary is one row from 360px to 393px at 16px and 17px, except 360px at 17px (measured)
+
+- **Finding:** "On the follow-up list · Overdue · 99 visits · See history", as wide as
+  it is held:
+
+  | Hold                                | 16px    | 17px    |
+  | ----------------------------------- | ------- | ------- |
+  | Medium, tabular figures (5d85916)   | 318.0px | 334.7px |
+  | The same in DejaVu Sans             | 330.7px | 351.4px |
+  | Semibold, "99 visits"               | 324.7px | 341.8px |
+  | Semibold, "No visits yet" (775137c) | 347.3px | 365.5px |
+
+  The line has 328px at 360px and 16px, 326px at 360px and 17px, 343px and 341px at
+  375pt, 356px at 390pt and 17px, 359px at 393px and 17px, and 288px at 320px. Page
+  gutters grow with the text, so a 375pt iPhone has 341px at 17px, not 343px.
+  - In the system face the hold is one 44px row at every width from 360px to 393px at
+    16px and 17px, except 360px at 17px, where its words take two rows too.
+  - In DejaVu it is two rows at 360px and 16px, where its words take one, and at 375pt
+    and 17px. A Pixel 5 at 17px has 7.6px to spare.
+  - "100 visits" is 7.8px wider at 16px and 8.2px at 17px. Tabular figures make every
+    two-figure count as wide as "99 visits".
+  - After Save and next, at a new unit, Medium shows 4 of its 60px above the docked
+    Save on an iPhone 13 at 17px, and 4 of 56px on a 360×640 screen at 16px. Before the
+    line it showed 48px at both. A Pixel 5 shows all of it. With no line at a new unit
+    (30853ff), all of Low, Medium and High is above Save on an iPhone 13 at 16px and
+    17px, and 10 to 11px of them at 360×640 and 17px, where main showed none.
+
+- **Source:** measured (#196 builder r3 and r4; verifier fix-r0 and fix-r1, both
+  engines, production builds of f1d02d3, 6be1c93, 5d85916 and 30853ff; DejaVu Sans from
+  its font file). Roboto was not measured.
+- **Used by:** D-196-18, D-196-22, D-196-29 (Known limits)
+
+### R-207 · On WebKit, a tap on a button inside a focusable panel focuses the panel, and the page scrolls to it
+
+- **Finding:** Safari does not focus a `<button>` on a click or tap, so focus goes to
+  its nearest focusable ancestor. With the history panel at `tabIndex -1` (775137c), a
+  tap on a button in it focused the panel and scrolled the page to it, so "Could not
+  load earlier visits." sat under the docked Save. `record-visit.spec.ts:998` failed on
+  WebKit in both full runs, and passed once only the panel's first line was focusable
+  (6be1c93).
+- **Source:** measured (#196 builder, 775137c and 6be1c93);
+  [MDN, `<button>`: clicking and focus](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#clicking_and_focus).
+  Cited, not fetched.
+- **Used by:** D-196-24
+
+### R-208 · A word held whole in an inline-block: where it breaks, what it draws, and how its spill is seen
+
+- **Finding:**
+  - An inline-block with `max-width: 100%` and `overflow-wrap: break-word` goes whole
+    onto the next line where it fits on one, and wraps inside, at its hyphen first, only
+    where it alone is wider than its line. Nowrap ran "follow-ups?" 16px out of the
+    "What are follow-ups?" hint at 320px and 32px in DejaVu Sans, on both engines.
+    `whole-word` leaves it 0px past. The system face has 18px to spare there.
+  - Text decoration is not propagated into an atomic inline such as an inline-block, so
+    the word must inherit its own underline.
+  - An inline element's box goes wherever its words go, so its words never spill past
+    it. Measured against the nearest non-inline box, the nowrap spill is caught; the old
+    measure passed it.
+  - Among words in another weight, an action on its baseline made WebKit's line 1/64px
+    taller than its held words at 32px. Aligned to the top, it is not.
+- **Source:** measured (#196 builder, 775137c; verifier fix-r0 and fix-r1, with DejaVu
+  Sans injected); [CSS Text Decoration 3, line decoration](https://drafts.csswg.org/css-text-decor-3/#line-decoration).
+  Cited, not fetched.
+- **Used by:** D-196-23, D-196-26, D-196-28
+
+### R-209 · A block's units land before a member can type a unit, except on weak signal (measured)
+
+- **Finding:** fresh block opens, JS cached, service worker blocked, 3 runs each; ms
+  from the start of navigation. Typing `#05-123` began the moment the unit field existed.
+
+  | Network                      | Units read land | Last key, 150ms a key | Last key, 250ms a key |
+  | ---------------------------- | --------------- | --------------------- | --------------------- |
+  | Local, Chromium              | 62–205          | 988–1003              | 1597–1602             |
+  | Local, WebKit                | 70–224          | 1014–1030             | 1602–1618             |
+  | 4G-like: 100ms RTT, 9 Mbps   | 264–280         | 1087–1093             | 1694–1707             |
+  | 3G-like: 300ms RTT, 1.6 Mbps | 760–783         | 1310–1314             | 1902–1918             |
+  | Weak: 800ms RTT, 400 kbps    | 2166–2194       | 1874–1935             | 2469–2521             |
+
+  The line came 2 to 6ms after the last key in every cell but one: on weak signal at
+  150ms a key, the units landed after the last key, and the line came 259 to 296ms after
+  it.
+
+  - The read starts once the page is live, and is one 3.5 KB page for the seeded block
+    of 6 units. Each further 100 units is another round trip.
+  - Not measured: a block of 100 or more units, client-side navigation from the Session
+    screen, a cold cache, and WebKit throttled.
+
+- **Source:** measured (#196 builder r4, production build; Chromium throttled through
+  CDP).
+- **Used by:** D-196-29 (Known limits), D-200-3 (Known limits)

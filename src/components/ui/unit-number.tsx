@@ -12,13 +12,21 @@ export function UnitNumber({ value }: { value: string }) {
 /*
  * Words, each one holding a hyphen kept on one line as a unit number is: at
  * large text "Follow-" over "up" beside Undo read as two words. For text
- * built elsewhere, a server's reason among it, that may name a unit.
+ * built elsewhere, a server's reason among it, that may name a unit. Unlike
+ * a unit number, one wider than the whole line still breaks (whole-word):
+ * these words are longer, and a title's are larger.
  */
 export function WholeWords({ text }: { text: string }) {
   /* Split on a capturing group, so the hyphenated words are the odd parts. */
-  return text
-    .split(/(\S+-\S+)/)
-    .map((part, index) => (index % 2 === 1 ? <UnitNumber key={index} value={part} /> : part));
+  return text.split(/(\S+-\S+)/).map((part, index) =>
+    index % 2 === 1 ? (
+      <span key={index} className="whole-word">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
 }
 
 /* The door a follow-up is for: "Blk 123 · #05-123". */

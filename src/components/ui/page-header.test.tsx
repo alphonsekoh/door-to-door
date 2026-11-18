@@ -14,6 +14,20 @@ describe("PageHeader", () => {
     expect(screen.getByText("Sessions you have recorded.")).toBeInTheDocument();
   });
 
+  it("takes its title as words in elements of their own", () => {
+    render(
+      <PageHeader
+        title={
+          <>
+            <span className="whole-word">Follow-up</span> list
+          </>
+        }
+      />,
+    );
+    const heading = screen.getByRole("heading", { level: 1, name: "Follow-up list" });
+    expect(heading.firstElementChild).toHaveTextContent("Follow-up");
+  });
+
   it("omits the subtitle element entirely when not given", () => {
     const { container } = render(<PageHeader title="History" />);
     expect(container.querySelector("p")).toBeNull();

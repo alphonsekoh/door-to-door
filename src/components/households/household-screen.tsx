@@ -20,7 +20,7 @@ import { historyPath } from "@/lib/households/history-pages";
 import { useActiveSession } from "@/lib/hooks/use-active-session";
 import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
-import { UnitNumber } from "@/components/ui/unit-number";
+import { UnitNumber, WholeWords } from "@/components/ui/unit-number";
 
 type State =
   | { status: "loading" }
@@ -125,7 +125,7 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
               }}
               className="min-h-11 btn-secondary rounded-lg px-3 text-body font-medium text-primary"
             >
-              {action.kind === "add_to_list" ? ADD_TO_LIST : SUGGEST}
+              <WholeWords text={action.kind === "add_to_list" ? ADD_TO_LIST : SUGGEST} />
             </button>
           ) : action.kind === "promote" ? (
             /* The same as Add to list on the suggestion below: one door, one
@@ -141,7 +141,15 @@ export function HouseholdScreen({ householdId }: { householdId: string }) {
           ) : (
             /* Said instead of offered: the server would refuse a second one. */
             <p className="inline-flex min-h-11 items-center rounded-lg bg-primary/10 px-3 text-caption font-medium">
-              {action.kind === "listed" ? ON_THE_LIST : waitingLabel(action.by)}
+              {/* One element, so the flex row keeps the spaces between the
+                  words; a member's name breaks as typed. */}
+              {action.kind === "listed" ? (
+                <span>
+                  <WholeWords text={ON_THE_LIST} />
+                </span>
+              ) : (
+                waitingLabel(action.by)
+              )}
             </p>
           )}
         </div>

@@ -109,6 +109,22 @@ export function waitingCaption(waiting: { by: string; mine: boolean }, isAdmin: 
   return waitingSentence({ name: waiting.by, mine: waiting.mine });
 }
 
+/*
+ * A household's follow-up state, one rule for every screen that says it:
+ * the header's action, the history panel and the line under the unit field.
+ */
+type Stated = Pick<FollowUp, "status" | "doneAt">;
+
+/* On the follow-up list and still owed. */
+export function isOwed(note: Stated): boolean {
+  return note.status === "listed" && note.doneAt === null;
+}
+
+/* A suggestion waiting for an admin to add or dismiss it. */
+export function awaitsReview(note: Stated): boolean {
+  return note.status === "suggested";
+}
+
 export type HouseholdAction =
   | { kind: "add_to_list" }
   /* An admin, at a household a member has suggested: listing it is adding
@@ -125,10 +141,8 @@ export type HouseholdAction =
  * Nothing is offered that the server would refuse.
  */
 export function householdAction(notes: readonly FollowUp[], viewer: Viewer): HouseholdAction {
-  if (notes.some((note) => note.status === "listed" && note.doneAt === null)) {
-    return { kind: "listed" };
-  }
-  const waiting = notes.find((note) => note.status === "suggested");
+  if (notes.some(isOwed)) return { kind: "listed" };
+  const waiting = notes.find(awaitsReview);
   if (waiting === undefined) return { kind: viewer.isAdmin ? "add_to_list" : "suggest" };
   if (viewer.isAdmin) return { kind: "promote", suggestion: waiting };
   const own = viewer.userId !== undefined && waiting.author.id === viewer.userId;
@@ -139,7 +153,21 @@ export function householdAction(notes: readonly FollowUp[], viewer: Viewer): Hou
 export const ADD_TO_LIST = "Add to follow-up list";
 export const SUGGEST = "Suggest a return visit";
 export const ON_THE_LIST = "On the follow-up list";
+/* A suggestion an admin has yet to decide. */
+export const WAITING_FOR_REVIEW = "Waiting for review";
 
 export function waitingLabel(by: string): string {
   return `Suggested by ${by}, waiting for review`;
+}
+
+/*
+ * What the Saved line offers once the server has the visit: the list to an
+ * admin, by adding a waiting suggestion where there is one, and a suggestion
+ * to a member outside a follow-up session, where a member records only doors
+ * already listed. Known from the save on, so the line can keep its room.
+ */
+export function offerLabel(action: HouseholdAction, inFollowUpSession: boolean): string | null {
+  if (action.kind === "add_to_list" || action.kind === "promote") return ADD_TO_LIST;
+  if (action.kind === "suggest" && !inFollowUpSession) return SUGGEST;
+  return null;
 }
