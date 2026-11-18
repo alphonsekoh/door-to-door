@@ -1069,12 +1069,17 @@ test.describe("without signal", () => {
      * these words and the offer still share a row, so the line stays one
      * row with nothing held, as it always was. Each send waits for the test,
      * so the field is measured while it is still on its way.
+     *
+     * Only the batch with this unit is held. The queue's own retry of the
+     * earlier saves can go out first, and held, it would keep this save
+     * from ever being sent.
      */
-    const holdSend = async (): Promise<() => void> => {
+    const holdSend = async (number: string): Promise<() => void> => {
       await page.unroute("**/api/visits/sync");
       const sent = Promise.withResolvers<undefined>();
       await page.route("**/api/visits/sync", async (route) => {
-        await sent.promise;
+        const { items } = route.request().postDataJSON() as VisitSyncRequest;
+        if (items.some((item) => item.unitNumber === number)) await sent.promise;
         await route.continue();
       });
       return () => {
@@ -1096,7 +1101,7 @@ test.describe("without signal", () => {
       const base = size === "16px";
       await page.setViewportSize(base ? { width: 360, height: phone.height } : phone);
       await atSize(page, size);
-      const send = await holdSend();
+      const send = await holdSend(number);
       await unit.fill(number);
       if (!base) {
         await high.evaluate((element) => {
