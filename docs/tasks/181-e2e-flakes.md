@@ -79,8 +79,9 @@ or retries. Part 1 was built with #171 in commit 071adad, part 2 in 4e8063c.
   passes on macOS with the cause back (10 of 10, verifier), so it cannot guard it. At
   320px the stand-in wraps in every engine's font, as it did at 390px in CI's. Without
   the fix the unit field moves from 386 to 338 on both engines. _Research:_ R-192.
-  _Extended by D-200-2:_ a follow-up pass, now at `:888`, with the session and the
-  unit's history each held on a fresh route (`holdBack`, D-196-14).
+  _Extended by D-200-2:_ a follow-up pass, now at `:904`, with the session and the
+  unit's history each held on a fresh route (`holdBack`, D-196-14). _Extended by
+  D-196-27:_ a door-to-door pass that checks the history line.
 
 ## Known limits
 

@@ -1,7 +1,8 @@
 # #200 · Follow-up session at the largest text: the unit field drops 170px when the session answers
 
-- **Status:** In progress (branch `fix/196-200-largest-text`, with #196; not yet a PR).
-  Built in a0470ad. Whether the PR closes #200 is the owner's call (Open questions).
+- **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #196). Built
+  in a0470ad. The PR closes #196 only: #200 stays open until the owner rules on D-200-3
+  and the 320×568 overlap (owner, ruling 3, 2026-11-18; Open questions).
 - **Phase:** 7 - Hardening
 - **Depends on:** #117, #181
 
@@ -23,27 +24,29 @@ change.
     longer shows it.
 
   As the session answers, the field now stays at y 320 on both engines, for a member and
-  an admin. Main moved it to 490, or 522 for an admin. _Why:_ the notice arrives with the
-  session's answer, and nothing above the unit field may arrive late (D-181-7).
+  an admin. Main moved it to 490, or 522 for an admin. Since D-196-18 the unit's history
+  line sits between the field and the notice; the field still moves 0px (verifier
+  fix-r1). _Why:_ the notice arrives with the session's answer, and nothing above the
+  unit field may arrive late (D-181-7).
   _Rejected:_
   - holding room for it, which is a 170px gap at 32px in every door-to-door block,
-    against D-111-65 and `:888`;
+    against D-111-65 and `:904`;
   - drawing it from the kind another screen heard (`knownSessionKind`, D-117-19), since a
     reload would still move it;
   - reading the kind on the server, which is a database read on every block page.
 
-- **D-200-2 · `:888` ("the recording form holds still as the block's name arrives") is
+- **D-200-2 · `:904` ("the recording form holds still as the block's name arrives") is
   extended to a follow-up session. The follow-up sweep checks that the unit field is in
   view, unscrolled, once the session answers.**
-  - `:888`'s second pass runs at 320×568 and 32px. It holds the session's answer and the
-    unit's history, each on its own route (D-196-14).
+  - `:904`'s follow-up pass runs at 320×568 and 32px. It holds the session's answer and
+    the unit's history, each on its own route (D-196-14).
   - The unit field must not move as the notice arrives, and Medium and Add details must
     not move as the history lands (D-196-4).
   - The sweep calls `expectInView` before `expectFits`, which scrolls.
 
   Extends D-181-8. _Why:_ `expectFits` scrolls each control to the centre first, so it
-  missed this, and the issue asks for `:888` to be extended rather than a spec added.
-  With the notice back above the tabs, `:888` saw the field move from y 338 to 540, and
+  missed this, and the issue asks for `:904` to be extended rather than a spec added.
+  With the notice back above the tabs, `:904` saw the field move from y 338 to 540, and
   the sweep found it covered, on both projects.
 
 - **D-200-3 · No room is held for the notice, so on a cold load what is below the unit
@@ -86,8 +89,12 @@ D-181-8, D-196-4, D-196-14.
 
 ## Open questions
 
+No ruling yet on either (owner, 2026-11-18). Until there is, #200 stays open and PR #217
+says `Closes #196` only.
+
 - **#200's first criterion (D-200-3).** It is met for the unit field only: on a cold
   load the notice and the chips still push the interest picker and Add details down.
-  Accept that knowingly before the PR says `Closes #200`. Otherwise #200 stays open for
-  what is below the field. Either way, the PR body should not tick that criterion
-  without saying so.
+  Accept that knowingly, or keep #200 open for what is below the field. Either way, the
+  PR body should not tick that criterion without saying so.
+- **The 320×568 overlap at 32px (Known limits).** The unit field's foot is about 6px
+  under the docked Save's glass, short of the second criterion at that size.

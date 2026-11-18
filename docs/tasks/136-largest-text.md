@@ -45,13 +45,14 @@ only: no contract or schema change.
   would be pushed onto a row of their own. _Why:_ at 32px the longer words wrapped one
   row taller just after Save, which dropped the unit field 48px. _Research:_ R-181.
   _Refined by D-196-2:_ under 18.75 reader-rems the offer has a held row of its own, so
-  the words are held beside an offer too (`hold-text-narrow`).
+  the words are held beside an offer too (`hold-text-narrow`). _Extended by D-196-22:_
+  `hold-text` also holds the history line under the unit field.
 - **D-136-5 · Non-breaking hyphens (U+2011) are used only in the held words.** The held
   copy is never drawn, copied or searched, so D-111-36's reason for rejecting them does
   not apply. The unit on screen stays in `UnitNumber`. Refines D-111-36. _Why:_ generated
   content has no element that can keep the unit on one line, so without them the hidden
-  copy wraps where the visible one cannot. _Extended by D-196-2:_ the held offer label
-  too (`unbroken()`).
+  copy wraps where the visible one cannot. _Extended by D-196-2 and D-196-22:_ the held
+  offer label and the history line's hold too (`unbroken()`).
 - **D-136-6 · Undo follows the words it undoes, in their line.** The follow-up row is one
   paragraph: the marked-done text, then Undo inline on its baseline. The row is still
   there from "Sending…" on, and Undo is still at least 44×44 (`target-compact`,
@@ -64,13 +65,16 @@ only: no contract or schema change.
   row and admin Records' marked line. _Why:_ "Follow-" over "up" read as two words. This
   is D-111-36's no-wrap, not a changed character. _Extended by D-196-6:_ the app's
   titles and labels that say "follow-up" too, so it is no longer used only here.
+  _Refined by D-196-26:_ it holds each word with `whole-word`, an inline-block, not
+  `UnitNumber`'s nowrap, so a word wider than its whole box breaks, at its hyphen first.
 - **D-136-8 · `target-compact`: a text action's target is 44px, or on a short screen
   44px or one line of body text, whichever is more.** It is a new utility, and
   `control-compact` now applies it with the same values. Undo, Back to the list and the
   Saved line's offers use it: 48px at 32px, not `min-h-11`'s 88px. Extends D-111-48's
   short-screen switches, and targets stay at least 44px (D-30-8). _Why:_ an 88px target
   on each row under the line pushed the unit field under Save, and at 320×568 Back to the
-  list too.
+  list too. _Extended by D-196-23:_ `leading-target` gives a line of words the same
+  least, so See history is a whole target among them.
 - **D-136-9 · The Saved line's rows touch and its sides are `px-2`, at every size.**
   `gap-x-2` replaces `gap-2` and `px-2` replaces `px-3`. _Why:_ each action already holds
   its own target's height, so a row gap was height taken from the field. With `px-3`,

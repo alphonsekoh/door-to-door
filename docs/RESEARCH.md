@@ -2420,17 +2420,81 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Finding:** at `#05-123` in a door-to-door session, unscrolled, once the history
   lands, this is how much of it is above the docked Save:
 
-  | Phone, root     | Main (panel above the picker) | Branch (panel last)       |
-  | --------------- | ----------------------------- | ------------------------- |
-  | iPhone 13, 16px | 236px                         | 12px, the card's top edge |
-  | iPhone 13, 17px | 222px                         | 0px                       |
-  | Pixel 5, 16px   | 299px                         | 75px, its first line      |
-  | Pixel 5, 17px   | 285px                         | 47px                      |
+  | Phone, root     | Main (panel above the picker) | Panel last (f1d02d3)      | With the line (5d85916)        |
+  | --------------- | ----------------------------- | ------------------------- | ------------------------------ |
+  | iPhone 13, 16px | 236px                         | 12px, the card's top edge | the whole line                 |
+  | iPhone 13, 17px | 222px                         | 0px                       | the whole line                 |
+  | Pixel 5, 16px   | 299px                         | 75px, its first line      | the whole line, and 31px of it |
+  | Pixel 5, 17px   | 285px                         | 47px                      | the whole line, and 3px of it  |
 
   On main, the history held the household's name, "On the follow-up list" and an
   Overdue note. As it landed at 32px, Medium dropped 1,494px (Chromium) and 1,582px
-  (WebKit) on main, and 0px on the branch.
+  (WebKit) on main, and 0px on the branch. With the line, all four interest tiles are
+  above Save on an iPhone 13 at 16px and 17px once the history lands.
 
-- **Source:** measured (#196 verifier r0 and r2, production builds of main 17e935b and
-  f1d02d3)
-- **Used by:** D-196-4 (Open questions)
+- **Source:** measured (#196 verifier r0, r2 and fix-r1, production builds of main
+  17e935b, f1d02d3 and 5d85916)
+- **Used by:** D-196-4, D-196-18
+
+### R-206 · The history line's longest summary is one row from 360px to 393px at 16px and 17px, except 360px at 17px (measured)
+
+- **Finding:** "On the follow-up list · Overdue · 99 visits · See history", as wide as
+  it is held:
+
+  | Hold                                | 16px    | 17px    |
+  | ----------------------------------- | ------- | ------- |
+  | Medium, tabular figures (5d85916)   | 318.0px | 334.7px |
+  | The same in DejaVu Sans             | 330.7px | 351.4px |
+  | Semibold, "99 visits"               | 324.7px | 341.8px |
+  | Semibold, "No visits yet" (775137c) | 347.3px | 365.5px |
+
+  The line has 328px at 360px and 16px, 326px at 360px and 17px, 343px and 341px at
+  375pt, 356px at 390pt and 17px, 359px at 393px and 17px, and 288px at 320px. Page
+  gutters grow with the text, so a 375pt iPhone has 341px at 17px, not 343px.
+  - In the system face the hold is one 44px row at every width from 360px to 393px at
+    16px and 17px, except 360px at 17px, where its words take two rows too.
+  - In DejaVu it is two rows at 360px and 16px, where its words take one, and at 375pt
+    and 17px. A Pixel 5 at 17px has 7.6px to spare.
+  - "100 visits" is 7.8px wider at 16px and 8.2px at 17px. Tabular figures make every
+    two-figure count as wide as "99 visits".
+  - After Save and next, at a new unit, Medium shows 4 of its 60px above the docked
+    Save on an iPhone 13 at 17px, and 4 of 56px on a 360×640 screen at 16px. Before the
+    line it showed 48px at both. A Pixel 5 shows all of it.
+
+- **Source:** measured (#196 builder r3; verifier fix-r0 and fix-r1, both engines,
+  production builds of f1d02d3, 6be1c93 and 5d85916; DejaVu Sans from its font file).
+  Roboto was not measured.
+- **Used by:** D-196-18, D-196-22 (Known limits, Open questions)
+
+### R-207 · On WebKit, a tap on a button inside a focusable panel focuses the panel, and the page scrolls to it
+
+- **Finding:** Safari does not focus a `<button>` on a click or tap, so focus goes to
+  its nearest focusable ancestor. With the history panel at `tabIndex -1` (775137c), a
+  tap on a button in it focused the panel and scrolled the page to it, so "Could not
+  load earlier visits." sat under the docked Save. `record-visit.spec.ts:998` failed on
+  WebKit in both full runs, and passed once only the panel's first line was focusable
+  (6be1c93).
+- **Source:** measured (#196 builder, 775137c and 6be1c93);
+  [MDN, `<button>`: clicking and focus](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/button#clicking_and_focus).
+  Cited, not fetched.
+- **Used by:** D-196-24
+
+### R-208 · A word held whole in an inline-block: where it breaks, what it draws, and how its spill is seen
+
+- **Finding:**
+  - An inline-block with `max-width: 100%` and `overflow-wrap: break-word` goes whole
+    onto the next line where it fits on one, and wraps inside, at its hyphen first, only
+    where it alone is wider than its line. Nowrap ran "follow-ups?" 16px out of the
+    "What are follow-ups?" hint at 320px and 32px in DejaVu Sans, on both engines.
+    `whole-word` leaves it 0px past. The system face has 18px to spare there.
+  - Text decoration is not propagated into an atomic inline such as an inline-block, so
+    the word must inherit its own underline.
+  - An inline element's box goes wherever its words go, so its words never spill past
+    it. Measured against the nearest non-inline box, the nowrap spill is caught; the old
+    measure passed it.
+  - Among words in another weight, an action on its baseline made WebKit's line 1/64px
+    taller than its held words at 32px. Aligned to the top, it is not.
+- **Source:** measured (#196 builder, 775137c; verifier fix-r0 and fix-r1, with DejaVu
+  Sans injected); [CSS Text Decoration 3, line decoration](https://drafts.csswg.org/css-text-decor-3/#line-decoration).
+  Cited, not fetched.
+- **Used by:** D-196-23, D-196-26, D-196-28

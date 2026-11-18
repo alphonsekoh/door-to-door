@@ -327,7 +327,8 @@ round 8, and they are in the PR #112 body too.
   _Refined by D-111-59:_ it also checks every size up to the cap, records waiting and the
   offline shell. _Refined by D-111-65:_ the chrome's own size, and the form after a save.
   _Excepted by D-181-6 (owner, 2026-11-15):_ the block screen's stand-in title may be
-  cut under 12ch until the session answers.
+  cut under 12ch until the session answers. _Refined by D-196-28:_ a spill is measured
+  against the text's nearest non-inline box.
 - **D-111-38 · Every per-session unit count reads "N visited".** The admin session
   detail's block card and the history card now match the home card; `admin-session.png`
   and `history.png` were retaken (D-38-14). Refines D-111-7. _Why:_ "N units" read as
