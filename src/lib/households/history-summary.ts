@@ -1,5 +1,5 @@
 import type { HouseholdHistory } from "@/generated/types.gen";
-import { ON_THE_LIST } from "@/lib/follow-ups/rights";
+import { ON_THE_LIST, WAITING_FOR_REVIEW, awaitsReview, isOwed } from "@/lib/follow-ups/rights";
 import { isOverdue } from "@/lib/history/follow-ups";
 
 /*
@@ -9,8 +9,6 @@ import { isOverdue } from "@/lib/history/follow-ups";
  * landing moves nothing a member taps.
  */
 
-/* The panel's own heading for a suggestion an admin has yet to decide. */
-export const WAITING_FOR_REVIEW = "Waiting for review";
 export const OVERDUE = "Overdue";
 export const SEE_HISTORY = "See history";
 export const NO_EARLIER_VISITS = "No earlier visits";
@@ -36,8 +34,8 @@ export function historySummary(
   history: Pick<HouseholdHistory, "followUps" | "pagination">,
   now: Date,
 ): HistorySummary {
-  const owed = history.followUps.filter((note) => note.status === "listed" && note.doneAt === null);
-  const waiting = history.followUps.some((note) => note.status === "suggested");
+  const owed = history.followUps.filter(isOwed);
+  const waiting = history.followUps.some(awaitsReview);
   return {
     followUp: owed.length > 0 ? ON_THE_LIST : waiting ? WAITING_FOR_REVIEW : null,
     overdue: owed.some((note) => isOverdue(note, now)),

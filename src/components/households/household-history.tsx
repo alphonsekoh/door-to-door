@@ -17,7 +17,10 @@ import {
   ADD_TO_LIST,
   ON_THE_LIST,
   SUGGEST,
+  WAITING_FOR_REVIEW,
+  awaitsReview,
   householdAction,
+  isOwed,
   marksDoneOnSave,
 } from "@/lib/follow-ups/rights";
 import { buildTimeline, sortOutstanding } from "@/lib/history/follow-ups";
@@ -124,9 +127,9 @@ export function HouseholdHistoryPanel({
     setShownFirst(history);
     setEarlier((current) => keepFirstPage(current, shownFirst));
   }
-  const owed = sortOutstanding(followUps.filter((note) => note.status === "listed"));
+  const owed = sortOutstanding(followUps.filter(isOwed));
   const markedOnSave = atDoor ? owed.filter((note) => marksDoneOnSave(note, active)).length : 0;
-  const waiting = followUps.filter((note) => note.status === "suggested");
+  const waiting = followUps.filter(awaitsReview);
   const held = holdVisits(history, earlier);
   /* Still oldest first, so the trajectory reads down to the newest knock. */
   const timeline = buildTimeline(
@@ -227,7 +230,7 @@ export function HouseholdHistoryPanel({
           <p className="text-caption font-semibold tracking-wide uppercase">
             <WholeWords text={ON_THE_LIST} />
           </p>
-          <ul aria-label="On the follow-up list" className="mt-1 space-y-2">
+          <ul aria-label={ON_THE_LIST} className="mt-1 space-y-2">
             {owed.map((note) => (
               <li key={note.id}>{item(note)}</li>
             ))}
@@ -244,8 +247,8 @@ export function HouseholdHistoryPanel({
 
       {waiting.length > 0 ? (
         <div className="mt-3">
-          <p className="text-caption font-semibold tracking-wide uppercase">Waiting for review</p>
-          <ul aria-label="Waiting for review" className="mt-1 space-y-2">
+          <p className="text-caption font-semibold tracking-wide uppercase">{WAITING_FOR_REVIEW}</p>
+          <ul aria-label={WAITING_FOR_REVIEW} className="mt-1 space-y-2">
             {waiting.map((note) => (
               <li key={note.id}>{item(note)}</li>
             ))}

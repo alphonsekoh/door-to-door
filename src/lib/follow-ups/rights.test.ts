@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { ActiveSession, FollowUp, SessionKind } from "@/generated/types.gen";
 import {
   type FollowUpRights,
+  awaitsReview,
   followUpRights,
   householdAction,
+  isOwed,
   marksDoneOnSave,
   offerLabel,
   onActiveList,
@@ -258,6 +260,22 @@ describe("followUpRights", () => {
     ],
   ])("%s", (_case, subject, viewer, active, expected) => {
     expect(followUpRights(subject, viewer, active)).toEqual(expected);
+  });
+});
+
+/* The one rule the header, the history panel and the line under the unit
+   field all read a household's follow-up state by. */
+describe("a household's follow-up state", () => {
+  it("is owed while a note on the list is not done", () => {
+    expect(isOwed(note())).toBe(true);
+    expect(isOwed(note({ doneAt: STARTED }))).toBe(false);
+    expect(isOwed(note({ status: "suggested" }))).toBe(false);
+  });
+
+  it("waits for review while a suggestion is undecided, and only then", () => {
+    expect(awaitsReview(note({ status: "suggested" }))).toBe(true);
+    expect(awaitsReview(note())).toBe(false);
+    expect(awaitsReview(note({ doneAt: STARTED }))).toBe(false);
   });
 });
 
