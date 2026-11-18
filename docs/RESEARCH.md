@@ -2525,4 +2525,4 @@ config`, parse only; #124 docs step, confirming the planner's check)
 
 - **Source:** measured (#196 builder r4, production build; Chromium throttled through
   CDP).
-- **Used by:** D-196-29 (Known limits), D-200-3 (Open questions)
+- **Used by:** D-196-29 (Known limits), D-200-3 (Known limits)

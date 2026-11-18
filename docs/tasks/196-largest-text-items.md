@@ -4,11 +4,10 @@
   owner ruled Q1 and Q2 on 2026-11-18, then rulings 1 and 2 (D-196-2, D-196-18), then
   (c), the `WholeWords` narrowing and one follow-up state rule (D-196-29, D-196-26,
   D-196-30), all the same day. One point is with the owner (Open questions).
-  - The PR closes #196 only; #200 stays open (owner ruling 3, kept 2026-11-18).
+  - The PR closes #196 and #200: the owner accepted #200's two limits on 2026-11-18,
+    after ruling 3 had kept it open (D-200-3).
   - The PR body and the squash message must say 18.75, not 21 (a0470ad's message says
-    21), and must describe the history line as D-196-29 has it. The body still describes
-    "No earlier visits", `unitsRead`, five states and two open questions: the publish
-    step rewrites it, keeping `Closes #196` only.
+    21), and must describe the history line as D-196-29 has it.
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #160, #181
 
@@ -480,8 +479,9 @@ none` where the offer sits beside the words.
       listed household always has a history. So the line is inserted when the units
       land, about 0.3s after the block is opened on 4G and 2s on weak signal. The
       notice, the chips, the picker and Add details then drop 44px after the page has
-      opened, at any signal. This adds to D-200-3's cold-load movement (#200, Open
-      questions). It is untested: `:904` waits for the line before it measures.
+      opened, at any signal. This adds to D-200-3's cold-load movement (#200, Known
+      limits), and was found after the owner accepted D-200-3; it was reported to the
+      owner the same day. It is untested: `:904` waits for the line before it measures.
   - **A unit first visited since the block's units were read**, by a teammate or only
     on this phone, has no line until they are read again, though it has a history.
   - **Some screen readers may not announce the line as it appears**, since it is
