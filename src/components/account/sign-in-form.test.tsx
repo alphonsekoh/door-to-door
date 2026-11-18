@@ -645,6 +645,13 @@ describe("SignInForm with Google (#14)", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toHaveClass("btn-secondary");
   });
 
+  it("is drawn as Google's light button: outlined on the surface, with its G", () => {
+    render(<SignInForm googleDomains={DOMAINS} />);
+    expect(google()).toHaveClass("btn-secondary", "bg-surface");
+    expect(google()).not.toHaveClass("btn-primary");
+    expect(google().querySelector(".google-mark")).toHaveAttribute("aria-hidden", "true");
+  });
+
   it("is not offered while the server has no Google sign-in", () => {
     render(<SignInForm />);
     expect(screen.queryByRole("button", { name: "Sign in with Google" })).not.toBeInTheDocument();

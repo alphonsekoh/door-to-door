@@ -126,9 +126,10 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   _Research:_ R-152, R-157.
 
 - **D-14-15 · The Google G is Google's own mark.** It is kept as `public/google-g.svg`,
-  drawn by the `google-mark` utility on a chip in the button's text colour. The button
-  itself is `btn-primary`. _Why:_ a brand image, like the app icons, is not one of the
-  app's colours, so D-111-5 still holds.
+  drawn by the `google-mark` utility ~~on a chip in the button's text colour. The button
+  itself is `btn-primary`~~. _Superseded in part by D-14-26 (owner, 2026-11-18): the
+  button is Google's light style, with no chip._ _Why:_ a brand image, like the app
+  icons, is not one of the app's colours, so D-111-5 still holds.
 - ~~**D-14-16 · Google's code is `src/server/auth/google.ts`,** with the rest of the auth
   logic. `src/auth/` stays the thin entrypoint.~~ Superseded by D-14-17 (owner,
   2026-11-12).
@@ -191,6 +192,26 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
 - **D-14-25 · The `jwt` callback no longer handles a `signUp` trigger.** _Why:_ it cannot
   happen, because linking by email never creates a user (D-14-3).
 
+### Owner ruling of 2026-11-18, and the image's public URL
+
+- **D-14-26 · "Sign in with Google" is Google's light button (owner, 2026-11-18).** It is
+  `btn-secondary` on `bg-surface`: white with the strong control edge and the body text
+  colour in light mode, the dark surface in dark mode. The G sits on it directly at
+  20px, with no chip. Supersedes D-14-15's `btn-primary` and chip. _Why:_ the owner found
+  the app-blue button with a white chip looked off. Google's branding guidelines offer a
+  light, a dark and a neutral button, and the light one is the one people know. Every
+  colour still comes from the app's tokens (D-111-5): the dark surface stands in for
+  Google's dark style. _Trade-off:_ the Google button and the email form's "Sign in"
+  are both outlined; the G and the order tell them apart.
+- **D-14-27 · In the image, set `AUTH_URL` to the public origin whenever Google sign-in
+  is on.** Measured on the production image (2026-11-18): Auth.js built Google's
+  `redirect_uri` from the server's own address, `http://0.0.0.0:3000`, whatever `Host`
+  or `X-Forwarded-Host` the request carried (only `X-Forwarded-Proto` was honoured), so
+  Google refused the sign-in. With `AUTH_URL` set it is `<AUTH_URL>/api/auth/callback/google`,
+  and email sign-in and sign-out still work. _Why:_ the deployment needs a working
+  Google sign-in today; why `trustHost` does not reach the redirect is left open (Open
+  questions). Refines the README's "only needed with `auth.trustHost: false`".
+
 ## Known limits
 
 - Before the page is live, the Google button is drawn but ignores a tap (verifier round
@@ -225,5 +246,9 @@ D-105-5, D-111-5, D-115-3, D-129-5, D-150-1, D-150-2.
 
 ## Open questions
 
-None. The owner settled both conflicts on 2026-11-12: D-14-10 supersedes D-150-4, and
-D-115-3 stands (D-14-17 supersedes D-14-16).
+The owner settled both conflicts on 2026-11-12: D-14-10 supersedes D-150-4, and D-115-3
+stands (D-14-17 supersedes D-14-16). One is open:
+
+- **Why `auth.trustHost` does not reach Google's `redirect_uri` in the image (D-14-27).**
+  Next copies `Host` into `X-Forwarded-Host`, yet Auth.js used the server's `0.0.0.0`.
+  Until that is found, `AUTH_URL` is required with Google sign-in in the image.
