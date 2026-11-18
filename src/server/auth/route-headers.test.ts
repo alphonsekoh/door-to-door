@@ -42,24 +42,13 @@ describe("Auth.js's routes", () => {
 });
 
 describe("signing out", () => {
-  it('clears the HTTP cache, and only that: never "storage", which holds the queue', async () => {
-    const { response } = call("/api/auth/signout", "POST");
-    expect((await response).headers.get("clear-site-data")).toBe('"cache"');
-  });
-
-  it("clears it on a refused sign-out too, where Auth.js redirects to its error page", async () => {
-    const { response } = call("/api/auth/signout", "POST", () =>
-      Response.redirect(`${ORIGIN}/sign-in?error=MissingCSRF`, 302),
-    );
-    expect((await response).headers.get("clear-site-data")).toBe('"cache"');
-  });
-
+  /* Chrome holds an answer carrying Clear-Site-Data until its whole HTTP
+     cache is cleared, which kept a member on "Signing out…" (D-218-1). */
   it.each([
-    ["/api/auth/signout", "GET"],
-    ["/api/auth/callback/credentials", "POST"],
-    ["/api/auth/signout/extra", "POST"],
-  ] as const)("is the only answer that clears anything: not %s (%s)", async (path, method) => {
-    const { response } = call(path, method);
+    ["a sign-out", () => Response.json({ url: "/sign-in" })],
+    ["a refused sign-out", () => Response.redirect(`${ORIGIN}/sign-in?error=MissingCSRF`, 302)],
+  ] as const)("asks the browser to clear nothing on %s", async (_name, respond) => {
+    const { response } = call("/api/auth/signout", "POST", respond);
     expect((await response).headers.has("clear-site-data")).toBe(false);
   });
 });

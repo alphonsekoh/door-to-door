@@ -118,7 +118,6 @@ test.describe("a refused sign-out", () => {
         headers: {
           "content-type": "application/json",
           "cache-control": "no-store",
-          "clear-site-data": '"cache"',
         },
         body: JSON.stringify({ url: "/sign-in?error=SignOutError" }),
       }),

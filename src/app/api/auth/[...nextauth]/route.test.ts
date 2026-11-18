@@ -58,10 +58,10 @@ describe("auth catch-all route", () => {
     expect(cookies.filter((cookie) => !/; Secure(;|$)/.test(cookie))).toEqual([]);
   });
 
-  it("clears the HTTP cache on a sign-out POST, even one Auth.js refuses", async () => {
-    // No CSRF token, so Auth.js refuses it; the cache is cleared anyway (D-122-10).
+  it("answers a sign-out POST no-store, and asks the browser to clear nothing", async () => {
+    // No CSRF token, so Auth.js refuses it. No Clear-Site-Data either way (D-218-1).
     const response = await POST(new NextRequest(`${ORIGIN}/api/auth/signout`, { method: "POST" }));
-    expect(response.headers.get("clear-site-data")).toBe('"cache"');
+    expect(response.headers.has("clear-site-data")).toBe(false);
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 });

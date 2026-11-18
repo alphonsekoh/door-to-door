@@ -84,15 +84,16 @@ HSTS `includeSubDomains` wait for the first deployment (#146).
   _Refined by D-150-1:_ the proxy also sets `no-store` on an API answer it passes through
   when that answer carries `Set-Cookie`, which is a refreshed session cookie.
 - **D-122-10 · Auth.js's route is wrapped in `withAuthRouteHeaders`.** Every
-  `/api/auth/*` answer is `no-store`. A `POST` to exactly `/api/auth/signout` (not a
-  sub-path) also gets `Clear-Site-Data: "cache"`, never `storage`, `cookies` or `*`.
-  _Why:_ the CSRF and session answers are API answers too. `"cache"` drops the HTTP
+  `/api/auth/*` answer is `no-store`. ~~A `POST` to exactly `/api/auth/signout` (not a
+  sub-path) also gets `Clear-Site-Data: "cache"`, never `storage`, `cookies` or `*`.~~
+  _Superseded in part by D-218-1 (2026-11-18): no answer sends `Clear-Site-Data`._
+  _Why:_ the CSRF and session answers are API answers too. ~~`"cache"` drops the HTTP
   cache, and bfcache where the engine does so. Cache Storage holds the precache
   (D-32-4) and the block cache, which D-74-9 still clears itself. IndexedDB holds the
   queue (D-33-1). Both fall under `"storage"`, which is never sent. _Trade-off:_ the
   header is also sent on a refused sign-out, so a cross-site form POST can make a
   browser drop this origin's HTTP cache and bfcache. That is harmless, because nothing
-  the app needs offline lives there. Keeps D-74-9, D-74-10, D-83-12 (the wrapper does
+  the app needs offline lives there.~~ Keeps D-74-9, D-74-10, D-83-12 (the wrapper does
   not import `@/auth`) and D-121-1 (Auth.js's routes get no same-origin check). The
   route test runs real Auth.js with only the config mocked. This does not close #129.
   _Research:_ R-116.
@@ -149,8 +150,8 @@ HSTS `includeSubDomains` wait for the first deployment (#146).
 - **Not yet tested on a real phone over https.** The Secure-cookie path has run only in
   Chromium, over loopback http. The first https deployment (#146) still needs checks on
   a real iPhone and Android phone: sign-in, sign-out (the `__Host-` CSRF cookie), Back
-  after sign-out, the WebKit worker update check (D-32-19), HSTS, and that
-  `Clear-Site-Data` spares the queue and the offline shell.
+  after sign-out, the WebKit worker update check (D-32-19) and HSTS. `Clear-Site-Data`
+  is no longer sent (D-218-1).
 
 ## Relies on
 

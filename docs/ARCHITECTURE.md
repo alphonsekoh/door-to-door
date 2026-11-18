@@ -276,9 +276,10 @@ per 5 s burst. The sync catch uses the same helpers.
   the policy (D-122-7).
 - API answers are `Cache-Control: no-store`, set in three places: `jsonResponse` in
   `withContract`, the `401` the proxy writes, and `withAuthRouteHeaders`
-  (`src/server/auth/route-headers.ts`) around Auth.js's route. A sign-out `POST` also
-  gets `Clear-Site-Data: "cache"` there (D-122-9, D-122-10). Next's own bodiless
-  `405`, `OPTIONS` and trailing-slash `308` answers are the exceptions.
+  (`src/server/auth/route-headers.ts`) around Auth.js's route (D-122-9, D-122-10).
+  Next's own bodiless `405`, `OPTIONS` and trailing-slash `308` answers are the
+  exceptions. No answer sends `Clear-Site-Data`: Chrome held a sign-out until its whole
+  HTTP cache was cleared (D-218-1).
 - The proxy marks `no-store` on every response that carries `Set-Cookie`, once Auth.js
   has added its cookies. It always marks `/sign-in` (D-150-1, D-150-2), which renders per
   request (D-14-10, superseding D-150-4). `/offline` is a prerender, sent with
@@ -538,8 +539,7 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - The proxy sets `Cache-Control: no-store` on signed-in page responses and `/sign-in`,
   so Back after sign-out revalidates instead of restoring the page from bfcache. API
   answers get theirs from their handlers, and also from the proxy when they carry a
-  cookie (see Response headers). The sign-out `POST`'s `Clear-Site-Data: "cache"` never
-  touches Cache Storage or IndexedDB. Where an engine restores a page anyway, and for
+  cookie (see Response headers). Where an engine restores a page anyway, and for
   `/offline`, which is not `no-store`, `RestoreGuard` (in `AppShell`, outside
   `AccountGate`, so on every document) hides and reloads it (`reloadWhenRestored` in
   `src/lib/session/navigate.ts`, D-129-1).

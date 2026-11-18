@@ -45,7 +45,8 @@ PR #161. Client only: no contract or schema change.
   blocked.** In `e2e/account.spec.ts`, beside the other sign-out tests (D-37-6),
   `/api/auth/signout` answers D-125-20's `500` with `{url: "/sign-in?error=SignOutError"}`,
   `no-store` and `Clear-Site-Data: "cache"`, as the real route does (checked by the
-  reviewer). _Why:_ on WebKit, `page.route` does not see what the worker fetches (R-138);
+  reviewer). _Refined by D-218-2:_ the real route no longer sends `Clear-Site-Data`, so
+  the mock does not either. _Why:_ on WebKit, `page.route` does not see what the worker fetches (R-138);
   the request-held test in the same file blocks it for the same reason.
 - **D-164-6 · The E2E measures real boxes at the default text and at 32px (D-111-24).**
   The alert's top is on screen, Sign out's bottom is at or above the nav's top, and focus
