@@ -1250,7 +1250,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [W3C Clear Site Data](https://w3c.github.io/webappsec-clear-site-data/);
   [MDN, Clear-Site-Data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data);
   measured (#122 verifier, round 1)
-- **Used by:** D-122-10
+- **Used by:** D-122-10; no longer sent since D-218-1 (R-210)
 
 ### R-117 · What a Report-Only CSP cannot do, and how policies combine
 
@@ -2526,3 +2526,17 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#196 builder r4, production build; Chromium throttled through
   CDP).
 - **Used by:** D-196-29 (Known limits), D-200-3 (Known limits)
+
+### R-210 · Chrome holds an answer carrying `Clear-Site-Data: "cache"` until its whole HTTP cache is cleared (measured)
+
+- **Finding:** in Playwright's Chromium with a persistent profile, the production image's
+  sign-out `POST` (which then sent `"cache"`) was answered after 44ms with an empty HTTP
+  cache, and after 4,079ms once another origin had filled the cache with 4,000 cacheable
+  100 KB files (400 MB). The page reached `/sign-in` 139ms and 4,160ms after the tap. So
+  the wait grows with the whole cache, every site's entries included, not this origin's
+  share. Real profiles hold several GB. A fresh Playwright profile has an empty cache,
+  which is why the E2E suite never saw it. Every signed-in page, its RSC payload and every
+  API answer was `no-store` on the same build, so the cache held nothing signed-in.
+- **Source:** measured (#218, 2026-11-18; production image against postgres:17-alpine on
+  a private Docker network).
+- **Used by:** D-218-1
