@@ -62,7 +62,9 @@ authorization code changed.
   _Why:_ there it was drawn above the screen once the member had scrolled down to Sign
   in. That happened on an iPhone 13 at 30 and 32px text, and on a short screen on both
   phones. It affected "This page expired" and, already on main, "Email or password is
-  incorrect.". _Research:_ R-163.
+  incorrect.". _Research:_ R-163. _Refined by D-208-3:_ in a browser, focus never stayed
+  on Sign in for a refusal held past a frame (R-200). It now goes back to the button the
+  press focused, only if it fell to the page, so after an iPhone tap it stays on the page.
 - **D-151-8 · The E2E makes the server refuse for real.** It is in `e2e/auth.spec.ts`,
   not `sign-ins.spec.ts`, on both phone projects, with service workers blocked (R-138,
   as D-164-5). A `page.route` on `/api/auth/csrf` fetches the real answer. It then swaps

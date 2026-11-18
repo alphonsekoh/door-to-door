@@ -55,6 +55,11 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
   const [stillSignedIn, setStillSignedIn] = useState(false);
   const finishing = useRef<Promise<void>>(Promise.resolve());
   const failureNotice = useRef<HTMLParagraphElement>(null);
+  /* The button a press left focus on, if any: it is disabled until the answer
+     comes, and a browser moves focus off a disabled control to the page and
+     leaves it there, so a refusal puts it back (D-85-15). A tap on an iPhone
+     focuses no button. */
+  const pressed = useRef<HTMLButtonElement | null>(null);
 
   /* A sign-out that just brought the member here is checked once more, as the
      answer to a request the page before sent can have signed them back in. */
@@ -78,14 +83,25 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
      brought into view as it is drawn, before paint, no further than it was
      hidden. Not Google's message from ?error=: the page opens at its top. */
   useLayoutEffect(() => {
-    if (failure !== null) failureNotice.current?.scrollIntoView({ block: "nearest" });
+    if (failure === null) return;
+    /* Not if the member has put focus somewhere since, and without moving
+       the page off the message. */
+    if (document.activeElement === document.body) pressed.current?.focus({ preventScroll: true });
+    failureNotice.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
+
+  /* Before the press disables anything. */
+  function notePress() {
+    const focused = document.activeElement;
+    pressed.current = focused instanceof HTMLButtonElement ? focused : null;
+  }
 
   /*
    * Everything the email form does before it leaves happens before leaving
    * for Google instead: the way back from Google lands on the app, not here.
    */
   async function onGoogle() {
+    notePress();
     setFreshVisit(false);
     setFailure(null);
     setLeaving(true);
@@ -108,6 +124,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
       return;
     }
 
+    notePress();
     setFreshVisit(false);
     setFailure(null);
     setSubmitting(true);

@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
@@ -35,6 +35,21 @@ vi.mock("next/navigation", () => ({
 
 const ok = { error: undefined, code: undefined, status: 200, ok: true, url: null };
 const failed = { error: "CredentialsSignin", code: undefined, status: 401, ok: false, url: null };
+
+/*
+ * Like a browser, jsdom moves focus from a control that has become disabled
+ * to the page at its next rendering update, which runs the animation frames
+ * too (R-199). An attempt held past one frame loses focus every time, as a
+ * real one does; an answer within a frame kept it, unless a busy runner drew
+ * the answer late (#208).
+ */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      resolve();
+    });
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -263,13 +278,23 @@ describe("SignInForm", () => {
     it("scrolls to it as it is drawn, no further than it is hidden, leaving focus where it was", async () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
-        signIn.mockResolvedValue(failed);
+        let refuse: (value: typeof failed) => void = () => undefined;
+        signIn.mockReturnValue(
+          new Promise<typeof failed>((resolve) => {
+            refuse = resolve;
+          }),
+        );
         const user = userEvent.setup();
         render(<SignInForm />);
         // The page opens at its top.
         expect(scrolled).not.toHaveBeenCalled();
         await submit(user);
+        // Disabled while the attempt is out, Sign in loses focus to the page.
+        await screen.findByRole("button", { name: "Signing in…" });
+        await nextFrame();
+        expect(document.body).toHaveFocus();
 
+        refuse(failed);
         const alert = await screen.findByRole("alert");
         expect(scrolled.mock.contexts).toEqual([alert]);
         expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
@@ -325,6 +350,56 @@ describe("SignInForm", () => {
       } finally {
         scrolled.mockRestore();
       }
+    });
+  });
+
+  /* A refusal puts focus back only where the browser took it from. */
+  describe("where focus is once an attempt is refused (#208)", () => {
+    it("stays in the password field the keyboard's Go sent it from", async () => {
+      signIn.mockResolvedValue(failed);
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password{Enter}");
+
+      await screen.findByRole("alert");
+      expect(screen.getByLabelText("Password")).toHaveFocus();
+    });
+
+    it("stays on the page when the press focused no button, as a tap on an iPhone does", async () => {
+      signIn.mockResolvedValue(failed);
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      const password = screen.getByLabelText("Password");
+      await user.type(password, "wrong-password");
+      // WebKit takes focus from the field and gives the button none.
+      password.blur();
+      fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+      await screen.findByRole("alert");
+      expect(document.body).toHaveFocus();
+    });
+
+    it("stays where the member put it while the attempt was out", async () => {
+      let refuse: (value: typeof failed) => void = () => undefined;
+      signIn.mockReturnValue(
+        new Promise<typeof failed>((resolve) => {
+          refuse = resolve;
+        }),
+      );
+      const user = userEvent.setup();
+      render(<SignInForm />);
+      await user.type(screen.getByLabelText("Email"), "a@b.c");
+      await user.type(screen.getByLabelText("Password"), "wrong-password");
+      await user.click(screen.getByRole("button", { name: "Sign in" }));
+      await screen.findByRole("button", { name: "Signing in…" });
+      // Back to fix a typo, keyboard up, before the answer comes.
+      await user.click(screen.getByLabelText("Password"));
+
+      refuse(failed);
+      await screen.findByRole("alert");
+      expect(screen.getByLabelText("Password")).toHaveFocus();
     });
   });
 
@@ -646,6 +721,26 @@ describe("SignInForm with Google (#14)", () => {
       "Google sign-in didn't finish. Try again, or sign in with your email and password.",
     );
     expect(google()).toBeEnabled();
+  });
+
+  it("puts focus back on Sign in with Google when it cannot leave", async () => {
+    let fail: (reason: Error) => void = () => undefined;
+    signIn.mockReturnValue(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<SignInForm googleDomains={DOMAINS} />);
+    await user.click(google());
+    await screen.findByRole("button", { name: "Opening Google…" });
+    await nextFrame();
+    expect(signIn).toHaveBeenCalledOnce();
+    expect(document.body).toHaveFocus();
+
+    fail(new Error("Failed to fetch"));
+    await screen.findByRole("alert");
+    expect(google()).toHaveFocus();
   });
 
   describe("back from Google with ?error=", () => {
