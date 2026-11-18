@@ -123,7 +123,9 @@ describe("PromoteButton", () => {
   it("is not offered for a tap without signal, as no follow-up change is", () => {
     useOnline.mockReturnValue(false);
     render(<PromoteButton suggestion={SUGGESTION} onPromoted={vi.fn()} className="" />);
-    expect(screen.getByRole("button", { name: "Add to follow-up list" })).toBeDisabled();
+    const add = screen.getByRole("button", { name: "Add to follow-up list" });
+    expect(add).toBeDisabled();
+    expect(within(add).getByText("follow-up")).toHaveClass("whitespace-nowrap");
   });
 });
 
@@ -131,6 +133,8 @@ describe("PromoteSheet", () => {
   it("shows the door, the suggestion and who made it before it is listed", () => {
     render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
     const dialog = screen.getByRole("dialog");
+    // The title keeps the word whole: "follow-" over "up" read as two (#196).
+    expect(within(dialog).getByText("follow-up")).toHaveClass("whitespace-nowrap");
     expect(dialog).toHaveTextContent("Blk 123 · #05-123");
     expect(dialog).toHaveTextContent("Asked us back after 7pm");
     expect(dialog).toHaveTextContent("Go back by 1 Nov 2026");

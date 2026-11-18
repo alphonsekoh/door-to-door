@@ -499,6 +499,35 @@ describe("AdminRecords", () => {
       expect(apiFetch.mock.calls.filter(([path]) => path === "/visits")).toHaveLength(1);
     });
 
+    /* At large text the line landed under the nav once the sheet had gone
+       (#196). */
+    it("brings the line into view once for each record that marks something, not on Undo", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      const user = userEvent.setup();
+      serveRecords([recorded("v1", ["n1"]), recorded("v2", ["n2"])]);
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+      const linesScrolled = () =>
+        scrolled.mock.contexts.filter(
+          (element) => element instanceof Element && element.getAttribute("role") === "status",
+        );
+
+      await recordFor(user, "#05-123");
+      const status = await screen.findByRole("status");
+      expect(linesScrolled()).toEqual([status]);
+      expect(scrolled).toHaveBeenLastCalledWith({ block: "nearest" });
+      // Clear of the nav and any floating banner, which the line scrolls to.
+      expect(status).toHaveClass("scroll-clear-nav");
+
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      expect(status).toHaveTextContent("Undone. Follow-up reopened.");
+      expect(linesScrolled()).toHaveLength(1);
+
+      await recordFor(user, "#05-124");
+      expect(screen.getByRole("status")).toHaveTextContent(/^Saved #05-124 for Alice\./);
+      expect(linesScrolled()).toHaveLength(2);
+    });
+
     it("cannot undo without signal", async () => {
       /* The browser losing and finding its signal, as useOnline hears it. */
       const onLine = vi.spyOn(window.navigator, "onLine", "get").mockReturnValue(true);

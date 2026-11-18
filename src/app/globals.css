@@ -342,6 +342,45 @@
   }
 }
 
+/*
+ * The Saved line after a save, as a container. Under 21 reader-rems its
+ * words and the widest offer, "Saved #12-1234A." and "Suggest a return
+ * visit", no longer share a row in CI's DejaVu Sans (20.7 rems). There the
+ * offer turning up as the send landed dropped the unit field a row, so it
+ * has a row of its own from the save on (offer-row, offer-pending) and the
+ * words are held (hold-text-narrow). Wider, the offer sits beside the words
+ * and nothing is held. A container query's rem is the reader's (D-111-60).
+ */
+@utility saved-line {
+  container: saved-line / inline-size;
+}
+
+@utility offer-row {
+  @container saved-line (width < 21rem) {
+    flex-basis: 100%;
+  }
+}
+
+/* The offer's room until the server has the visit: its words, unseen, so
+   the row is as tall as the button that replaces it. None where the offer
+   will sit beside the words. */
+@utility offer-pending {
+  &::after {
+    content: attr(data-hold);
+    visibility: hidden;
+  }
+  @container saved-line (width >= 21rem) {
+    display: none;
+  }
+}
+
+/* hold-text, where the offer has a row of its own. */
+@utility hold-text-narrow {
+  @container saved-line (width < 21rem) {
+    @apply hold-text;
+  }
+}
+
 /* The space under the block's tabs: mb-5, or mb-2 on a short screen. */
 @utility space-under-tabs {
   margin-bottom: clamp(

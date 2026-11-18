@@ -6,7 +6,13 @@ import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/f
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
-import { ADD_TO_LIST, SUGGEST, householdAction, marksDoneOnSave } from "@/lib/follow-ups/rights";
+import {
+  ADD_TO_LIST,
+  ON_THE_LIST,
+  SUGGEST,
+  householdAction,
+  marksDoneOnSave,
+} from "@/lib/follow-ups/rights";
 import { buildTimeline, sortOutstanding } from "@/lib/history/follow-ups";
 import {
   type EarlierVisits,
@@ -20,6 +26,7 @@ import { formatDay } from "@/lib/history/dates";
 import { useRole } from "@/lib/hooks/use-role";
 import { stillAt } from "@/lib/still-at";
 import { SheetPresence } from "@/components/ui/sheet";
+import { WholeWords } from "@/components/ui/unit-number";
 
 const INTEREST_LABEL: Record<string, string> = {
   no_response: "No response",
@@ -36,13 +43,12 @@ const INTEREST_LABEL: Record<string, string> = {
  * owed sits on top, then any suggestion waiting for an admin, which every
  * member sees so nobody suggests the door twice. Below, visits and resolved
  * notes read in one line, oldest first. An outstanding note appears only on
- * top: repeating it in the timeline pushed the interest picker below the
- * fold at the door.
+ * top: repeated in the timeline, it was read twice at the door.
  *
  * At the door (`atDoor`) a resolved note shrinks to one line with no
- * controls: resolved notes accumulate without limit, and full cards pushed
- * the required interest picker far below the fold. Reopening and editing
- * stay on the unit's own screen. In a follow-up session, saving the visit
+ * controls: resolved notes accumulate without limit, and full cards ran the
+ * panel on for screen after screen. Reopening and editing stay on the unit's
+ * own screen. In a follow-up session, saving the visit
  * marks what is owed on the session's list done, so those notes offer no
  * Mark done there, and one line says why.
  *
@@ -185,7 +191,7 @@ export function HouseholdHistoryPanel({
       {owed.length > 0 ? (
         <div className="mt-3">
           <p className="text-caption font-semibold tracking-wide uppercase">
-            On the follow-up list
+            <WholeWords text={ON_THE_LIST} />
           </p>
           <ul aria-label="On the follow-up list" className="mt-1 space-y-2">
             {owed.map((note) => (
@@ -262,7 +268,7 @@ export function HouseholdHistoryPanel({
                     }}
                     className="min-h-11 text-body font-medium btn-text"
                   >
-                    {anchorLabel}
+                    <WholeWords text={anchorLabel} />
                   </button>
                 ) : null}
               </li>

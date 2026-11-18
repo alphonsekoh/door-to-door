@@ -120,6 +120,13 @@ const serve = (unit: (call: number) => HouseholdHistory | Promise<HouseholdHisto
   );
 };
 
+/* Where the screen says the door is on the list, with "follow-up" held
+   whole in a span of its own: the innermost element holding all the words. */
+const saysOnTheList = (_: string, element: Element | null): boolean =>
+  element?.textContent === "On the follow-up list" &&
+  [...element.children].every((child) => child.textContent !== element.textContent) &&
+  element.querySelector(".whitespace-nowrap")?.textContent === "follow-up";
+
 describe("HouseholdScreen", () => {
   it("names the unit and its block", async () => {
     apiFetch.mockResolvedValue(history);
@@ -256,6 +263,8 @@ describe("HouseholdScreen", () => {
     render(<HouseholdScreen householdId="h1" />);
     const [header] = await screen.findAllByRole("button", { name: "Add to follow-up list" });
     if (header === undefined) throw new Error("expected the header action");
+    // "follow-" over "up" read as two words at large text (#196).
+    expect(within(header).getByText("follow-up")).toHaveClass("whitespace-nowrap");
     fireEvent.click(header);
     const sheet = within(
       screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
@@ -291,6 +300,7 @@ describe("HouseholdScreen", () => {
     expect(add).toHaveLength(1);
     const [header] = add;
     if (header === undefined) throw new Error("expected the header action");
+    expect(within(header).getByText("follow-up")).toHaveClass("whitespace-nowrap");
     fireEvent.click(header);
     // The suggestion is read in a sheet before it goes on the list.
     const sheet = within(
@@ -315,7 +325,7 @@ describe("HouseholdScreen", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
     // Re-read: the door is now on the list, and says so instead.
-    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(await screen.findAllByText(saysOnTheList)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Add to follow-up list" })).toBeNull();
   });
 
@@ -323,7 +333,7 @@ describe("HouseholdScreen", () => {
     useRole.mockReturnValue({ userId: "admin", isAdmin: true });
     serve(() => ({ ...history, followUps: [owed] }));
     render(<HouseholdScreen householdId="h1" />);
-    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(await screen.findAllByText(saysOnTheList)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Add to follow-up list" })).toBeNull();
   });
 
@@ -331,7 +341,7 @@ describe("HouseholdScreen", () => {
     serve(() => ({ ...history, followUps: [owed] }));
     render(<HouseholdScreen householdId="h1" />);
     // The header says it, and so does the section holding the note.
-    expect(await screen.findAllByText("On the follow-up list")).toHaveLength(2);
+    expect(await screen.findAllByText(saysOnTheList)).toHaveLength(2);
     expect(screen.queryByRole("button", { name: "Suggest a return visit" })).toBeNull();
   });
 

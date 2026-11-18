@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import AccountPage from "@/app/account/page";
@@ -191,7 +191,9 @@ describe("admin screens", () => {
   it("guards the follow-up list before rendering it", async () => {
     render(await AdminFollowUpsPage());
     expect(requireAdminPage).toHaveBeenCalled();
-    expect(screen.getByRole("heading", { level: 1, name: "Follow-up list" })).toBeInTheDocument();
+    const heading = screen.getByRole("heading", { level: 1, name: "Follow-up list" });
+    // At large text "Follow-" over "up" read as two words (#196).
+    expect(within(heading).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
     expect(screen.getByRole("link", { name: "Back to Sessions" })).toHaveAttribute(
       "href",
       "/admin/sessions",

@@ -1161,6 +1161,22 @@ describe("in a follow-up session", () => {
     expect(chips.getByRole("button", { name: "#05-123" })).toBeInTheDocument();
   });
 
+  /* Said with the form, under its unit field: above the tabs, it moved the
+     form as the session answered (#200). The units need no such word. */
+  it("says it with the form, not above the views", async () => {
+    serveFollowUp();
+    const user = userEvent.setup();
+    render(<BlockScreen blockId="b1" />);
+    const notice = await screen.findByText(/Only units on the list can be recorded\.$/);
+    expect(screen.getByRole("tabpanel", { name: "Record" })).toContainElement(notice);
+    expect(notice.compareDocumentPosition(screen.getByRole("tablist"))).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
+    );
+
+    await user.click(await screen.findByRole("tab", { name: /^All units/ }));
+    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+  });
+
   it("keeps the list on the phone for the offline shell", async () => {
     serveFollowUp();
     render(<BlockScreen blockId="b1" />);

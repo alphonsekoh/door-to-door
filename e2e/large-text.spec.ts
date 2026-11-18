@@ -351,6 +351,25 @@ async function expectWhole(target: Locator, what: string): Promise<void> {
     .toBe(true);
 }
 
+/*
+ * Drawn on one line, as a word held whole is. One element first, so a word
+ * no longer held, and so no longer an element of its own, fails at once
+ * rather than when the test runs out of time and its clean-up with it. Its
+ * lines are read from a Range over its contents, which an inline element's
+ * own boxes and a change of display both leave whole.
+ */
+async function expectOnOneLine(word: Locator, what: string): Promise<void> {
+  await expect(word, `${what}, as one element`).toHaveCount(1);
+  expect(
+    await word.evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return new Set([...range.getClientRects()].map((line) => Math.round(line.top))).size;
+    }),
+    `the lines ${what} is drawn on`,
+  ).toBe(1);
+}
+
 async function expectFits(page: Page, screen: string, ready: Locator): Promise<void> {
   await expect(ready).toBeVisible();
   await expect.poll(() => screenFaults(page), { message: screen }).toEqual([]);
@@ -372,6 +391,9 @@ const LISTED_UNIT = "#05-123";
 
 /* #06-201 in the seed: never answered, and nothing asked for. */
 const QUIET_HOUSEHOLD = "00000000-0000-4000-8003-000000000003";
+
+/* alice@example.com in the seed, chosen by id: another spec may rename her. */
+const SEED_MEMBER_ID = "00000000-0000-4000-8000-000000000002";
 
 test("a member's screens fit at the largest text", async ({ memberPage: page, adminApi }) => {
   const running = await ensureActiveSession(adminApi);
@@ -493,6 +515,11 @@ test("an admin's screens fit at the largest text", async ({ adminPage: page, adm
   await page.goto("/admin/follow-ups?tab=list");
   await atCap(page);
   await expectFits(page, "the follow-up list", page.getByRole("button", { name: /^To review/ }));
+  /* Its title, as "Follow-" over "up", read as two words (#196). */
+  await expectOnOneLine(
+    page.getByRole("heading", { level: 1 }).getByText("Follow-up", { exact: true }),
+    "Follow-up in the follow-up list's title",
+  );
   await expectFits(
     page,
     "a note on the follow-up list",
@@ -562,6 +589,9 @@ type NoteSheet = {
   title: RegExp;
   note: string;
   send: string;
+  /* A hyphenated word in its title, held whole: "follow-" over "up" read
+     as two words (#196). */
+  whole?: string;
 };
 
 const SUGGESTING: NoteSheet = {
@@ -669,6 +699,7 @@ test("OK brings the note back with its top edge in view, on every follow-up shee
         title: /^Add to the follow-up list/,
         note: "What should the next visit do?",
         send: "Add to list",
+        whole: "follow-up",
       },
     ],
     [
@@ -679,13 +710,20 @@ test("OK brings the note back with its top edge in view, on every follow-up shee
         title: /^Edit follow-up/,
         note: "What should the next visit do?",
         send: "Save changes",
+        whole: "follow-up",
       },
     ],
   ];
   try {
     for (const [page, sheet] of sheets) {
-      const { note } = await refuseBlankNote(page, sheet);
+      const { sheet: open, note } = await refuseBlankNote(page, sheet);
       await expectInView(note, `the note's top edge after OK, ${sheet.open}`, "top edge");
+      if (sheet.whole !== undefined) {
+        await expectOnOneLine(
+          open.getByText(sheet.whole, { exact: true }),
+          `${sheet.whole} in the title of ${sheet.title.source}`,
+        );
+      }
     }
   } finally {
     /* Left as it found the door: nothing asked for. */
@@ -841,18 +879,30 @@ test.describe("as the session answers", () => {
    * 48px up under a press already on its way: on CI's Linux WebKit, Add
    * details was pressed and never opened (#181). 320px wide, the generic
    * title wraps in every engine's font, as it did 390px wide in CI's.
+   *
+   * In a follow-up session the screen then says what the session allows,
+   * and drawn above the form that dropped the unit field 170px (#200). The
+   * unit's history lands later still, and above the interest level it pushed
+   * the picker down under a thumb (#196).
    */
   test("the recording form holds still as the block's name arrives", async ({
     memberPage: page,
+    adminApi,
   }) => {
-    let answer: () => void = () => undefined;
-    const answered = new Promise<void>((resolve) => {
-      answer = resolve;
-    });
-    await page.route("**/api/sessions/active", async (route) => {
-      await answered;
-      await route.continue();
-    });
+    /* Each answer waits for the test: a route that let one through lets
+       every later one through too. */
+    const holdBack = async (url: string): Promise<() => void> => {
+      await page.unroute(url);
+      const held = Promise.withResolvers<undefined>();
+      await page.route(url, async (route) => {
+        await held.promise;
+        await route.continue();
+      });
+      return () => {
+        held.resolve(undefined);
+      };
+    };
+    let answer = await holdBack("**/api/sessions/active");
     await page.setViewportSize({ width: 320, height: 568 });
     await page.goto(`/blocks/${SEED_BLOCK}`);
     await atCap(page);
@@ -862,6 +912,41 @@ test.describe("as the session answers", () => {
     answer();
     await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
     expect(await unit.boundingBox(), "the unit field as the name arrives").toEqual(before);
+
+    await startFollowUpSession(adminApi);
+    try {
+      answer = await holdBack("**/api/sessions/active");
+      const history = await holdBack("**/api/households/*");
+      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+      await atCap(page);
+      await untilLive(page);
+      const opened = await unit.boundingBox();
+      expect(opened, "the unit field as the screen opens").not.toBeNull();
+      answer();
+      await expect(page.getByText(/Only units on the list can be recorded/)).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+      expect(await unit.boundingBox(), "the unit field as a follow-up session answers").toEqual(
+        opened,
+      );
+
+      await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      const tapped = [
+        page.getByRole("radio", { name: "Medium" }),
+        page.getByRole("button", { name: "Add details" }),
+      ];
+      const boxes = await Promise.all(tapped.map((target) => target.boundingBox()));
+      expect(boxes, "Medium and Add details before the unit's history").not.toContain(null);
+      history();
+      await expect(
+        page.getByRole("region", { name: "What we know about this unit" }),
+      ).toBeVisible();
+      expect(
+        await Promise.all(tapped.map((target) => target.boundingBox())),
+        "Medium and Add details as the unit's history lands",
+      ).toEqual(boxes);
+    } finally {
+      await endActiveSession(adminApi);
+    }
   });
 });
 
@@ -974,6 +1059,41 @@ test.describe("without signal", () => {
       await expectInView(status, `the Saved line after a save at ${size}`);
       await expectInView(unit, `the next unit after a save at ${size}`);
     }
+
+    /*
+     * Then signal comes back with a save, and the line offers a suggestion
+     * once the server has the visit. Beside the words, at the cap it was
+     * pushed onto a row of its own as it turned up, and the next unit
+     * dropped 48px under a thumb about to type it (#196). Its row is held
+     * from the save on. The send waits for the test, so the field is
+     * measured while it is still on its way.
+     */
+    const sent = Promise.withResolvers<undefined>();
+    await page.unroute("**/api/visits/sync");
+    await page.route("**/api/visits/sync", async (route) => {
+      await sent.promise;
+      await route.continue();
+    });
+    await unit.fill("#86-04");
+    await high.evaluate((element) => {
+      element.scrollIntoView({ block: "center" });
+    });
+    await high.click();
+    await page.getByRole("button", { name: "Save and next" }).click();
+    const sending = status.filter({ hasText: "Sending #86-04" });
+    await expect(sending).toBeVisible();
+    const whileSending = await unit.boundingBox();
+    expect(whileSending, "the next unit while sending").not.toBeNull();
+    await expect(sending).toBeVisible();
+    sent.resolve(undefined);
+    await expect(
+      status
+        .filter({ hasText: "Saved #86-04." })
+        .getByRole("button", { name: "Suggest a return visit" }),
+    ).toBeVisible();
+    expect(await unit.boundingBox(), "the next unit as the suggestion is offered").toEqual(
+      whileSending,
+    );
   });
 
   test("the offline shell's recording form opens with its unit number in view, at every text size", async ({
@@ -1055,10 +1175,10 @@ test.describe("a follow-up session", () => {
     await endActiveSession(adminApi);
   });
 
-  /* As a thumb does: once the door's history has loaded, down to the
-     interest level. A tap made as it lands meets what it pushed down. */
+  /* As a thumb does: down to the interest level. The door's history lands
+     after it, at the end of the form, so a tap made as it lands meets what
+     it aimed at (#196). */
   async function pickMedium(page: Page): Promise<void> {
-    await expect(page.getByRole("region", { name: "What we know about this unit" })).toBeVisible();
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
     });
@@ -1086,6 +1206,15 @@ test.describe("a follow-up session", () => {
       .getByRole("list", { name: "On the list in this block" })
       .getByRole("button")
       .first();
+    /* Where it opened, unscrolled, once the session has answered: the line
+       saying what the session allows comes with the answer, and drawn above
+       the form it left the field half under the docked Save (#200). Before
+       expectFits, which scrolls. */
+    await expect(chip).toBeVisible();
+    await expectInView(
+      memberPage.getByLabel("Unit number"),
+      "the unit field once the session has answered",
+    );
     await expectFits(memberPage, "the follow-up list's units", chip);
     await memberPage.getByLabel("Unit number").fill("#09-999");
     await expectFits(
@@ -1111,7 +1240,49 @@ test.describe("a follow-up session", () => {
     const adding = adminPage.getByRole("dialog", { name: "Add households" });
     await expect(adding.getByRole("button", { name: /^Add \d+ household/ })).toBeVisible();
     await expectFits(adminPage, "adding households", adding);
+    /* A box taking focus brings its whole tile clear of the bar holding
+       Add: the box alone left the tile running about 64px under it (#196).
+       Read from the boxes: the list's rounded corners clip the tile's own,
+       so a tap there finds the sheet. */
+    const box = adding.getByRole("checkbox").last();
+    await box.focus();
+    await expect
+      .poll(
+        () =>
+          box.evaluate((input) => {
+            const body = input.closest("[data-sheet-body]");
+            const tile = input.closest("label")?.getBoundingClientRect();
+            const bar = body?.lastElementChild?.getBoundingClientRect();
+            const top = body?.getBoundingClientRect().top;
+            if (tile === undefined || bar === undefined || top === undefined) return "no tile";
+            if (tile.top < top) return "its top cut off";
+            const under = Math.round(tile.bottom - bar.top);
+            return under > 0 ? `its foot ${String(under)}px under the bar` : "in view";
+          }),
+        { message: "a household's tile once its box has focus" },
+      )
+      .toBe("in view");
     await adminPage.keyboard.press("Escape");
+
+    /* Recorded for a member at a door on the list, the line saying it was
+       marked done is in view with its Undo as the sheet goes, unscrolled and
+       clear of the nav, where it had landed under it (#196). Undo leaves the
+       note owed, as it was. */
+    await adminPage.goto("/admin/records");
+    await atCap(adminPage);
+    await adminPage.getByRole("button", { name: "Record for a member" }).click();
+    const record = adminPage.getByRole("dialog", { name: "Record on behalf of a member" });
+    await record.getByLabel("Recorded by").selectOption(SEED_MEMBER_ID);
+    await record.getByLabel("Block").selectOption(SEED_BLOCK);
+    await record.getByLabel("Unit number").fill(LISTED_UNIT);
+    await record.getByRole("radio", { name: "Medium" }).click();
+    await record.getByRole("button", { name: "Save the record" }).click();
+    const marked = adminPage.getByRole("status").filter({ hasText: `Saved ${LISTED_UNIT} for` });
+    const undo = marked.getByRole("button", { name: /^Undo/ });
+    await expectInView(marked, "the line saying what a record for a member marked done");
+    await expectInView(undo, "Undo on that line");
+    await undo.click();
+    await expect(marked).toContainText("Undone.");
   });
 
   /*
@@ -1192,12 +1363,10 @@ test.describe("a follow-up session", () => {
       await expectInView(back, "Back to the list after a save");
       await expectInView(unit, "the next unit after a save");
       await expect.poll(() => screenFaults(page), { message: "the Saved line" }).toEqual([]);
-      expect(
-        await status
-          .getByText("Follow-up", { exact: true })
-          .evaluate((word) => new Set([...word.getClientRects()].map((line) => line.top)).size),
-        "the lines Follow-up is drawn on",
-      ).toBe(1);
+      await expectOnOneLine(
+        status.getByText("Follow-up", { exact: true }),
+        "Follow-up in the Saved line",
+      );
 
       /* The smallest phone screen: there the line and the next unit cannot
          both fit at the cap, but the way back to the list always does. */

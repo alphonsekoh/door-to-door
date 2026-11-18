@@ -37,6 +37,7 @@ import {
   unresist,
 } from "@/lib/session/sheet-motion";
 import { useModal } from "@/lib/hooks/use-modal";
+import { wholeControl } from "@/lib/whole-control";
 
 /*
  * Every sheet and confirmation in the app, so they rise, leave and drag the
@@ -318,12 +319,13 @@ export function Sheet({
 
           {/* A field that takes focus is brought fully into view, clear of
               the sticky Save: WebKit leaves one that is partly visible where
-              it is, half under the header, with the keyboard up. */}
+              it is, half under the header, with the keyboard up. A box
+              drawn as a tile brings its whole tile. */}
           <div
             ref={body}
             data-sheet-body=""
             onFocus={(event) => {
-              event.target.scrollIntoView({ block: "nearest" });
+              wholeControl(event.target).scrollIntoView({ block: "nearest" });
             }}
             className={`min-h-0 flex-1 scroll-pt-2 scroll-clear-sheet-actions overflow-y-auto overscroll-contain px-4 inset-safe-bottom ${bodyClassName}`}
           >

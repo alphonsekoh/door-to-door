@@ -30,7 +30,7 @@ import {
 } from "@/lib/not-saved";
 import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
-import { UnitNumber } from "@/components/ui/unit-number";
+import { UnitNumber, WholeWords } from "@/components/ui/unit-number";
 
 export type FollowUpSheetMode =
   | {
@@ -242,7 +242,7 @@ export function FollowUpSheet({
         label={`${copy.title}, ${unit}`}
         title={
           <>
-            {copy.title}
+            <WholeWords text={copy.title} />
             <span className="block text-body font-normal text-foreground-muted tabular-nums">
               <UnitNumber value={unit} />
             </span>

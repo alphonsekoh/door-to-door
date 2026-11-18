@@ -45,10 +45,10 @@ import {
   unitGate,
 } from "@/lib/follow-ups/revisits";
 import {
-  ADD_TO_LIST,
   type HouseholdAction,
   SUGGEST,
   householdAction,
+  offerLabel,
 } from "@/lib/follow-ups/rights";
 import { historyPath } from "@/lib/households/history-pages";
 import { useOnline } from "@/lib/hooks/use-online";
@@ -209,14 +209,22 @@ function queuedStatus(unitNumber: string, record: QueuedVisit | undefined, sendi
 }
 
 /*
+ * Words the line keeps room for, unseen, with their hyphens held as the
+ * words on screen are (UnitNumber, WholeWords). Never drawn, copied or
+ * searched, so only these may be non-breaking (D-111-36).
+ */
+function unbroken(words: string): string {
+  return words.replaceAll("-", "\u2011");
+}
+
+/*
  * The words the line keeps room for from the save on (hold-text): "Saved …
  * on this phone." is longer than "Sending …" or "Saved …", and at large
  * text it wrapped a row taller just after Save, dropping the unit field
- * 48px. Its hyphens hold as the unit's on screen do (UnitNumber); never
- * drawn, copied or searched, only these may be non-breaking (D-111-36).
+ * 48px.
  */
 function heldWords(unitNumber: string): string {
-  return `Saved ${unitNumber.replaceAll("-", "\u2011")} on this phone.`;
+  return `Saved ${unbroken(unitNumber)} on this phone.`;
 }
 
 const OUTING_UNKNOWN =
@@ -609,15 +617,18 @@ export function RecordVisitForm({
   /* Only what the household offered: a door already listed, or waiting for
      review, gets nothing a second note would be refused for. A member in a
      follow-up session records only listed doors, which have their follow-up. */
-  const offer = saved?.action.kind;
-  const noteLabel =
-    offer === "add_to_list"
-      ? ADD_TO_LIST
-      : offer === "suggest" && followUp === null
-        ? SUGGEST
-        : null;
-  const besideLine =
-    saved === null || householdId === null || saved.noted !== null ? null : noteLabel !== null ? (
+  const offer = saved?.noted === null ? offerLabel(saved.action, followUp !== null) : null;
+  const offerFor = (current: Saved, label: string) =>
+    current.action.kind === "promote" ? (
+      <PromoteButton
+        suggestion={current.action.suggestion}
+        onPromoted={(message) => {
+          setSaved({ ...current, noted: message });
+          setReloadKey((key) => key + 1);
+        }}
+        className="target-compact font-medium btn-text"
+      />
+    ) : (
       <button
         type="button"
         onClick={() => {
@@ -625,23 +636,12 @@ export function RecordVisitForm({
         }}
         className="target-compact font-medium btn-text"
       >
-        {noteLabel}
+        <WholeWords text={label} />
       </button>
-    ) : saved.action.kind === "promote" ? (
-      <PromoteButton
-        suggestion={saved.action.suggestion}
-        onPromoted={(message) => {
-          setSaved({ ...saved, noted: message });
-          setReloadKey((key) => key + 1);
-        }}
-        className="target-compact font-medium btn-text"
-      />
-    ) : null;
-  /* Only with nothing beside the words: the held words would widen them,
-     and push what is beside them onto a row of its own. That is offered
-     once the server has the visit, after which they never grow by
-     themselves. */
-  const held = saved === null || besideLine !== null ? null : heldWords(saved.unitNumber);
+    );
+  /* Offered once the server has the visit, which the note is anchored to. */
+  const offered =
+    saved === null || householdId === null || offer === null ? null : offerFor(saved, offer);
 
   return (
     <form
@@ -657,7 +657,7 @@ export function RecordVisitForm({
           form natively, reloading the page without the unit (R-68). A form
           whose first submit button is disabled is not submitted by Enter. */}
       {live ? null : <button type="submit" disabled hidden />}
-      {status === null ? null : (
+      {saved === null ? null : (
         /* Kept short enough at 32px on an iPhone 13 to leave the unit field
            under it in view. Its rows touch: each action holds its own
            target's height, so a gap between them was height the field gave
@@ -666,20 +666,36 @@ export function RecordVisitForm({
         <div
           ref={savedLine}
           role="status"
-          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-surface-muted px-2 py-1 text-body"
+          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-surface-muted px-2 py-1 text-body saved-line"
         >
+          {/* Held from the save on, so the line never grows as the words
+              change. With an offer coming, only where it has a row of its
+              own: beside the words, the held ones would push it there. */}
           <span
-            data-hold={held ?? undefined}
-            className={held === null ? "break-words" : "hold-text break-words"}
+            data-hold={heldWords(saved.unitNumber)}
+            className={`${offer === null ? "hold-text" : "hold-text-narrow"} break-words`}
           >
             <span>{status}</span>
           </span>
-          {besideLine}
+          {/* Where the offer and the words cannot share a row, it has its
+                own from the save on, held at the offer's height until the
+                server has the visit: turning up as the send landed, it
+                dropped the unit field a row at large text. */}
+          {offer === null ? null : (
+            <div className="flex offer-row">
+              {offered ?? (
+                <span
+                  data-hold={unbroken(offer)}
+                  className="offer-pending target-compact font-medium"
+                />
+              )}
+            </div>
+          )}
           {/* A row of its own from "Sending…" on, so the line keeps its
                 height as the words change, as Back to the list's does.
                 Undo follows the words in their line: beside them, at large
                 text it squeezed them to a word a line. */}
-          {saved === null || markedLine === null ? null : (
+          {markedLine === null ? null : (
             <div className="flex target-compact basis-full items-center">
               <p className="min-w-0 break-words">
                 <WholeWords text={markedLine.text} />
@@ -822,6 +838,20 @@ export function RecordVisitForm({
         ) : null}
       </div>
 
+      {/* Online and in the offline shell alike, so the chips below never
+          turn up unexplained. Under the unit field, not above it: it comes
+          with the session's answer, and drawn above, it dropped the field
+          under a tap (#200). */}
+      {followUp === null ? null : (
+        <p className="notice-info text-caption">
+          <span className="font-semibold">
+            <WholeWords text="Follow-up session" />
+          </span>{" "}
+          · Only units on the list can be recorded.
+          {isAdmin ? " As an admin you can record any unit." : ""}
+        </p>
+      )}
+
       {chips.length === 0 ? null : (
         <div>
           <p className="mb-1 text-caption font-medium text-foreground-muted">
@@ -855,21 +885,6 @@ export function RecordVisitForm({
             ))}
           </ul>
         </div>
-      )}
-
-      {history === null ? null : (
-        <HouseholdHistoryPanel
-          key={history.household.id}
-          history={history}
-          active={active}
-          atDoor
-          onChanged={() => {
-            /* Mark done answers while the next unit may be typed (#155). */
-            startTransition(() => {
-              setReloadKey((key) => key + 1);
-            });
-          }}
-        />
       )}
 
       <SheetPresence>
@@ -1016,6 +1031,24 @@ export function RecordVisitForm({
           </div>
         </div>
       ) : null}
+
+      {/* Last, after everything a member taps: it lands once the unit's
+          history is read, and above the interest level it pushed the picker
+          down under a thumb on its way to it (#196). */}
+      {history === null ? null : (
+        <HouseholdHistoryPanel
+          key={history.household.id}
+          history={history}
+          active={active}
+          atDoor
+          onChanged={() => {
+            /* Mark done answers while the next unit may be typed (#155). */
+            startTransition(() => {
+              setReloadKey((key) => key + 1);
+            });
+          }}
+        />
+      )}
 
       <SheetPresence>
         {notSaved === null ? null : (

@@ -543,6 +543,32 @@ describe("history before knocking", () => {
     expect(screen.getByText("Listened for a while.")).toBeInTheDocument();
   });
 
+  /* It lands once the unit's history is read. Above the interest level it
+     pushed the picker down under a thumb on its way to it (#196). */
+  it("shows it after the interest level and the details, so its landing moves nothing tapped", async () => {
+    apiFetch.mockResolvedValue(history());
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[summary("#05-123")]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Add details" }));
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    const panel = await screen.findByRole("region", { name: "What we know about this unit" });
+    for (const tapped of [
+      screen.getByRole("radio", { name: "Medium" }),
+      screen.getByRole("button", { name: "Hide details" }),
+      screen.getByLabelText("Notes"),
+    ]) {
+      expect(tapped.compareDocumentPosition(panel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  });
+
   it("surfaces outstanding follow-ups prominently", async () => {
     apiFetch.mockResolvedValue(history({ followUps: [owed] }));
     const user = userEvent.setup();
@@ -606,7 +632,7 @@ describe("history before knocking", () => {
     ).toHaveLength(2);
   });
 
-  it("keeps a resolved note to one line with no controls, so the picker stays near", async () => {
+  it("keeps a resolved note to one line with no controls at the door", async () => {
     const done = {
       ...owed,
       doneAt: "2026-01-02T00:00:00.000Z",
@@ -962,10 +988,13 @@ describe("a follow-up after saving", () => {
     const user = await saveVisit();
     const status = await screen.findByRole("status");
     expect(status).toHaveTextContent("Saved #06-201.");
-    // Held words would widen the line's own and push the offer off its row.
-    expect(status.firstElementChild).not.toHaveAttribute("data-hold");
+    // Its words are held only where the offer has a row of its own: beside
+    // them, the held words would widen them and push it there (#196).
+    expect(status.firstElementChild).toHaveClass("hold-text-narrow");
     expect(status.firstElementChild).not.toHaveClass("hold-text");
-    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
+    const suggest = within(status).getByRole("button", { name: "Suggest a return visit" });
+    expect(suggest.parentElement).toHaveClass("offer-row");
+    await user.click(suggest);
 
     const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
     await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
@@ -982,18 +1011,22 @@ describe("a follow-up after saving", () => {
         }),
       });
     });
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Saved #06-201. Suggestion sent. An admin will review it.",
-    );
+    expect(status).toHaveTextContent("Saved #06-201. Suggestion sent. An admin will review it.");
     expect(
       screen.queryByRole("button", { name: "Suggest a return visit" }),
     ).not.toBeInTheDocument();
+    // Nothing more is offered, so no row is kept for it.
+    expect(status.querySelector(".offer-row")).toBeNull();
+    expect(status.firstElementChild).toHaveClass("hold-text");
   });
 
   it("offers an admin the follow-up list itself", async () => {
     useRole.mockReturnValue({ userId: "a1", isAdmin: true });
     const user = await saveVisit();
-    await user.click(await screen.findByRole("button", { name: "Add to follow-up list" }));
+    const add = await screen.findByRole("button", { name: "Add to follow-up list" });
+    // "Follow-" over "up" read as two words at large text (#196).
+    expect(within(add).getByText("follow-up")).toHaveClass("whitespace-nowrap");
+    await user.click(add);
     const sheet = screen.getByRole("dialog", { name: "Add to the follow-up list, #06-201" });
     await user.type(within(sheet).getByLabelText("What should the next visit do?"), "Flyer");
     await user.click(within(sheet).getByRole("button", { name: "Add to list" }));
@@ -1649,8 +1682,9 @@ describe("saving into the offline queue", () => {
     const status = await screen.findByRole("status");
     const words = status.firstElementChild;
     // Held from CSS, so in no text a reader or a test reads, with the unit's
-    // hyphen as unbreakable as it is on screen.
-    expect(words).toHaveClass("hold-text");
+    // hyphen as unbreakable as it is on screen. A member is offered a
+    // suggestion once it is sent, so only where that has a row of its own.
+    expect(words).toHaveClass("hold-text-narrow");
     expect(words?.getAttribute("data-hold")?.replaceAll("\u2011", "-")).toBe(status.textContent);
     expect(status).toHaveTextContent(/^Saved #06-201 on this phone\.$/);
 
@@ -1658,6 +1692,17 @@ describe("saving into the offline queue", () => {
     rerenderForm(view);
     expect(status).toHaveTextContent(/^Sending #06-201…$/);
     expect(words).toHaveAttribute("data-hold", "Saved #06\u2011201 on this phone.");
+  });
+
+  it("keeps an admin's offer of the list its room, the hyphen held as on screen", async () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    withQueue();
+    await fill();
+    const status = await screen.findByRole("status");
+    expect(status.querySelector(".offer-row > .offer-pending")).toHaveAttribute(
+      "data-hold",
+      "Add to follow\u2011up list",
+    );
   });
 
   it("says plainly when the server would not take it", async () => {
@@ -1672,7 +1717,16 @@ describe("saving into the offline queue", () => {
   it("offers a follow-up once sent, anchored to the server's row", async () => {
     const queue = withQueue();
     const { user, view } = await fill();
-    await screen.findByRole("status");
+    const status = await screen.findByRole("status");
+    /* The offer's row is there from the save on, as tall as the offer's
+       words, with nothing to tap until the server has the visit: turning up
+       with the send, it dropped the unit field a row at large text (#196). */
+    const row = status.querySelector(".offer-row");
+    expect(row?.children).toHaveLength(1);
+    expect(row?.firstElementChild).toHaveClass("offer-pending");
+    expect(row?.firstElementChild).toHaveAttribute("data-hold", "Suggest a return visit");
+    expect(row?.textContent).toBe("");
+    expect(within(status).queryByRole("button")).toBeNull();
 
     queue.records = [
       {
@@ -1682,9 +1736,17 @@ describe("saving into the offline queue", () => {
       },
     ];
     rerenderForm(view);
-    expect(screen.getByRole("status")).toHaveTextContent("Saved #06-201.");
+    expect(status).toHaveTextContent("Saved #06-201.");
 
-    await user.click(screen.getByRole("button", { name: "Suggest a return visit" }));
+    const suggest = within(status).getByRole("button", { name: "Suggest a return visit" });
+    // In the row kept for it, which holds nothing else now.
+    expect(suggest.parentElement).toBe(row);
+    expect(row?.children).toHaveLength(1);
+    expect(status.firstElementChild).toHaveAttribute(
+      "data-hold",
+      "Saved #06\u2011201 on this phone.",
+    );
+    await user.click(suggest);
     const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
     await user.type(within(sheet).getByLabelText("Why should we go back?"), "Call on Sunday");
     await user.click(within(sheet).getByRole("button", { name: "Send suggestion" }));
@@ -2024,6 +2086,29 @@ describe("in a follow-up session", () => {
         {...(initialUnit === undefined ? {} : { initialUnit })}
       />,
     );
+
+  /* It comes with the session's answer. Above the form it dropped the unit
+     field 170px at large text, under a tap (#200). */
+  it("says what the session allows under the unit field, above the chips it explains", () => {
+    mount();
+    const notice = screen.getByText(/Only units on the list can be recorded\.$/);
+    expect(notice).toHaveTextContent(
+      /^Follow-up session · Only units on the list can be recorded\.$/,
+    );
+    expect(within(notice).getByText("Follow-up")).toHaveClass("whitespace-nowrap");
+    const field = screen.getByLabelText("Unit number");
+    const chips = screen.getByRole("list", { name: "On the list in this block" });
+    expect(field.compareDocumentPosition(notice)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(notice.compareDocumentPosition(chips)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("tells an admin they can record any unit", () => {
+    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+    mount();
+    expect(screen.getByText(/Only units on the list can be recorded\./)).toHaveTextContent(
+      /\. As an admin you can record any unit\.$/,
+    );
+  });
 
   it("offers the block's listed units as chips that fill in the unit", async () => {
     const user = userEvent.setup();
@@ -2585,6 +2670,9 @@ describe("in a follow-up session", () => {
           "data-hold",
           "Saved #05\u2011123 on this phone.",
         );
+        // At every width: nothing is offered beside the words at a listed door.
+        expect(status.firstElementChild).toHaveClass("hold-text");
+        expect(status.querySelector(".offer-row")).toBeNull();
       });
 
       /* Beside Undo, at large text the words were squeezed to one a line

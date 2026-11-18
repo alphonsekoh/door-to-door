@@ -7,7 +7,7 @@ import { reasonNote, reasonProblem, removalCopy } from "@/lib/follow-ups/removal
 import { FOLLOW_UP_OFFLINE_NOTE, describeFollowUpFailure } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
-import { FollowUpDoor } from "@/components/ui/unit-number";
+import { FollowUpDoor, WholeWords } from "@/components/ui/unit-number";
 
 /*
  * Taking a note away: an admin dismisses a suggestion or removes a listed
@@ -64,7 +64,7 @@ export function RemoveFollowUpSheet({
   return (
     <Sheet
       label={copy.title}
-      title={copy.title}
+      title={<WholeWords text={copy.title} />}
       closeLabel="Keep it"
       onClose={onClose}
       discard={

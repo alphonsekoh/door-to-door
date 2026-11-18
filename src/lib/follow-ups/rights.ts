@@ -143,3 +143,15 @@ export const ON_THE_LIST = "On the follow-up list";
 export function waitingLabel(by: string): string {
   return `Suggested by ${by}, waiting for review`;
 }
+
+/*
+ * What the Saved line offers once the server has the visit: the list to an
+ * admin, by adding a waiting suggestion where there is one, and a suggestion
+ * to a member outside a follow-up session, where a member records only doors
+ * already listed. Known from the save on, so the line can keep its room.
+ */
+export function offerLabel(action: HouseholdAction, inFollowUpSession: boolean): string | null {
+  if (action.kind === "add_to_list" || action.kind === "promote") return ADD_TO_LIST;
+  if (action.kind === "suggest" && !inFollowUpSession) return SUGGEST;
+  return null;
+}

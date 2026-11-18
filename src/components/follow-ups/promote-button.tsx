@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import { SheetPresence } from "@/components/ui/sheet";
+import { WholeWords } from "@/components/ui/unit-number";
 import type { FollowUp } from "@/generated/types.gen";
 import { ADD_TO_LIST } from "@/lib/follow-ups/rights";
 import { useOnline } from "@/lib/hooks/use-online";
@@ -36,7 +37,7 @@ export function PromoteButton({
         }}
         className={className}
       >
-        {ADD_TO_LIST}
+        <WholeWords text={ADD_TO_LIST} />
       </button>
       <SheetPresence>
         {open ? (

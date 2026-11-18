@@ -176,6 +176,8 @@ describe("an admin removing a listed note", () => {
       />,
     );
     const sheet = dialog("Remove from the follow-up list?");
+    // The title keeps the word whole: "follow-" over "up" read as two (#196).
+    expect(sheet.getByText("follow-up")).toHaveClass("whitespace-nowrap");
     expect(
       sheet.getByText(
         "It leaves the list and every follow-up session's list. Ann will be told, with your reason.",

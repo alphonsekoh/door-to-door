@@ -7,7 +7,6 @@ import { UnitList } from "@/components/ui/unit-list";
 import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { UnitRow } from "@/lib/sync/unit-overlay";
-import { useRole } from "@/lib/hooks/use-role";
 
 type Tab = "record" | "units";
 
@@ -51,20 +50,10 @@ export function BlockViews({
   unitsNote = null,
 }: Props) {
   const { inFlight } = useSyncQueue();
-  const { isAdmin } = useRole();
   const [tab, setTab] = useState<Tab>("record");
 
   return (
     <>
-      {/* Online and in the offline shell alike, so the chips below never
-          turn up unexplained. */}
-      {followUp === null ? null : (
-        <p className="notice-info text-caption">
-          <span className="font-semibold">Follow-up session</span> · Only units on the list can be
-          recorded.{isAdmin ? " As an admin you can record any unit." : ""}
-        </p>
-      )}
-
       {/*
         Two views, one tap apart. The list must not push the recording form
         down the page: at a door the form is the whole job, and the list is

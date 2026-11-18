@@ -272,6 +272,7 @@ describe("an admin adding to the follow-up list", () => {
     expect(
       screen.getByRole("dialog", { name: "Add to the follow-up list, #05-123" }),
     ).not.toHaveTextContent("An admin reviews");
+    expect(sheet().getByText("follow-up")).toHaveClass("whitespace-nowrap");
     type(WHAT, "Bring the flyer");
     await waitFor(() => {
       expect(addButton()).toBeEnabled();
@@ -476,6 +477,8 @@ describe("editing a note", () => {
   it("starts from what is there", () => {
     render(<FollowUpSheet mode={edit} onClose={vi.fn()} onSaved={vi.fn()} />);
     expect(screen.getByRole("dialog", { name: "Edit follow-up, #05-123" })).toBeInTheDocument();
+    // Its title keeps the word whole: "follow-" over "up" read as two (#196).
+    expect(sheet().getByText("follow-up")).toHaveClass("whitespace-nowrap");
     expect(sheet().getByLabelText(WHAT)).toHaveValue("Bring the flyer.");
     expect(sheet().getByLabelText("Due (optional)")).toHaveValue("2026-11-01");
   });
