@@ -120,7 +120,10 @@ export async function listHistory(
      */
     .innerJoin(sessionCreator, eq(sessionCreator.id, outingSessions.createdBy))
     .where(filter)
-    .orderBy(desc(visits.createdAt))
+    /* The id keeps records stored at one instant in one order from page to
+       page, so the CSV export, which reads this a page at a time, neither
+       drops nor repeats one at a page edge (#212). */
+    .orderBy(desc(visits.createdAt), desc(visits.id))
     .limit(filters.limit)
     .offset(filters.offset);
 
@@ -228,8 +231,9 @@ export async function listOwnSessionHistory(
     .where(mine)
     .groupBy(outingSessions.id, sessionCreator.id)
     /* By the member's own last record, not the session's dates: a draft or
-       reopened outing has no useful startedAt to sort on. */
-    .orderBy(desc(sql`max(${visits.createdAt})`))
+       reopened outing has no useful startedAt to sort on. The session id,
+       grouped on, settles two outings whose last records tie (#212). */
+    .orderBy(desc(sql`max(${visits.createdAt})`), desc(outingSessions.id))
     .limit(options.limit)
     .offset(options.offset);
 

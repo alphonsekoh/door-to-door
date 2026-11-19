@@ -1512,7 +1512,10 @@ paths:
       tags: [Sessions]
       operationId: listSessions
       summary: List sessions
-      description: "**Requires: admin.** Newest first."
+      description: |
+        **Requires: admin.** Newest first: by `createdAt`, then `id`, both
+        descending, so sessions created at the same instant keep one order
+        across pages.
       parameters:
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -2959,6 +2962,10 @@ paths:
         One row per outing the member recorded in, with the blocks they worked
         and how it went. Scoped to the authenticated user by the server, like
         `/history/mine`.
+
+        Newest first: by `lastRecordedAt`, then the session's `id`, both
+        descending, so outings whose last records share an instant keep one
+        order across pages.
 
         The counts are the member's own, not the outing's: two members on the
         same block see different numbers here, and that is the intent — this is

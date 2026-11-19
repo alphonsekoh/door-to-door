@@ -182,6 +182,32 @@ describe("filters", () => {
     expect(body.data).toHaveLength(2);
     expect(body.pagination).toMatchObject({ total: 3, hasMore: true });
   });
+
+  it("lists every record once, in id order, across a page edge inside a tie (#212)", async () => {
+    const tied = (n: number) => `01960000-0000-7000-8000-00000000f00${String(n)}`;
+    // Stored neither in id order nor its reverse, so only the id puts them
+    // 3, 2, 1, and a page of three ends between the first and the second.
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       VALUES ($1,$4,$5,$6,'low',$7), ($2,$4,$5,$6,'low',$7), ($3,$4,$5,$6,'low',$7)`,
+      [tied(2), tied(3), tied(1), H_B, JUNE, BEN, "2026-05-01T10:00:00Z"],
+    );
+
+    const ids = async (offset: string) => {
+      const body = (await (await all(`?limit=3&offset=${offset}`)).json()) as {
+        data: { visit: { id: string } }[];
+      };
+      return body.data.map((entry) => entry.visit.id);
+    };
+    expect([...(await ids("0")), ...(await ids("3"))]).toEqual([
+      "01960000-0000-7000-8000-00000000d003",
+      "01960000-0000-7000-8000-00000000d002",
+      tied(3),
+      tied(2),
+      tied(1),
+      "01960000-0000-7000-8000-00000000d001",
+    ]);
+  });
 });
 
 describe("filters on /history/mine", () => {

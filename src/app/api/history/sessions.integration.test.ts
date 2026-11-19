@@ -157,6 +157,41 @@ describe("the outings a member worked", () => {
     expect(body.pagination.hasMore).toBe(false);
   });
 
+  it("keeps outings whose last records tie in one order from page to page (#212)", async () => {
+    const outing = (n: number) => `badbadba-0000-4000-8014-00000000000${String(n)}`;
+    const visit = (n: number) => `01960000-0000-7000-8010-00000000f00${String(n)}`;
+    // Stored neither in session id order nor its reverse, so only the
+    // session id lists them 3, 2, 1.
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, status, created_by) VALUES
+        ($1,'Two','ended',$4), ($2,'Three','ended',$4), ($3,'One','ended',$4)`,
+      [outing(2), outing(3), outing(1), ADMIN],
+    );
+    await pool.query(
+      `INSERT INTO visits (id, household_id, session_id, member_id, interest_level, created_at)
+       VALUES ($1,$4,$5,$8,'low',$9), ($2,$4,$6,$8,'low',$9), ($3,$4,$7,$8,'low',$9)`,
+      [
+        visit(2),
+        visit(3),
+        visit(1),
+        H_A1,
+        outing(2),
+        outing(3),
+        outing(1),
+        ALICE,
+        "2026-09-01T10:00:00Z",
+      ],
+    );
+    asAlice();
+
+    const read: string[] = [];
+    for (const offset of ["0", "1", "2"]) {
+      const page = await summaries(await call(`?limit=1&offset=${offset}`));
+      read.push(...page.map((row) => row.session.title));
+    }
+    expect(read).toEqual(["Three", "Two", "One"]);
+  });
+
   it("rejects a limit outside the contract", async () => {
     asAlice();
     expect((await call("?limit=500")).status).toBe(400);

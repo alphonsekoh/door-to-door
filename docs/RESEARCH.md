@@ -2305,7 +2305,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   its reverse.
 - **Source:** [PostgreSQL, SELECT, ORDER BY](https://www.postgresql.org/docs/current/sql-select.html#SQL-ORDERBY).
   Cited, not fetched. Measured (#207: the issue, the builder and the reviewer).
-- **Used by:** D-207-1, D-207-5, D-207-7
+- **Used by:** D-207-1, D-207-5, D-207-7, D-212-1, D-212-5
 
 ### R-199 · jsdom 31 moves focus off a control that became disabled, at its next rendering update
 
@@ -2542,3 +2542,24 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#218, 2026-11-18; production image against postgres:17-alpine on
   a private Docker network).
 - **Used by:** D-218-1
+
+### R-211 · A bounded sort orders a tie by its bound, so two pages can disagree (measured)
+
+- **Finding:** with `LIMIT` and `OFFSET`, PostgreSQL 17.11 sorts by top-N heapsort once
+  the rows the filter matches exceed twice the bound (`offset + limit`), and by quicksort
+  below that (`EXPLAIN ANALYZE`: 401 matched rows at bound 200 used the heap, 400 used
+  quicksort). The heap orders a tie by its bound, so a tie at a page edge can read
+  differently on the two pages. What triggers it is how many rows match, not how long the
+  tie is. Reviewer, temp table: 500 rows at distinct instants but five (ids 98 to 102)
+  tied across the first edge, read 100 a page by the timestamp alone. Id 100 came on pages
+  1 and 2 and id 102 on neither (499 distinct); with `id desc` added, all 500 once. With
+  250 rows and a three-row tie at the same edge nothing was lost: page 2 (bound 200) used
+  quicksort. So a drop needs both pages on the heap: for the export, 100 a page, a tie at
+  the edge after page _k_ needs more than 200(_k_ + 1) matching records. The builder's
+  psql case (30 rows at one instant, five a page) also used the heap on both pages, and
+  repeated id 1 and dropped id 6.
+- **Source:** measured (#212: builder, reviewer, docs agent; PostgreSQL 17.11).
+  [PostgreSQL, LIMIT and OFFSET](https://www.postgresql.org/docs/current/queries-limit.html)
+  warns that without an `ORDER BY` that fixes the order, offset pages are unpredictable.
+  Cited, not fetched.
+- **Used by:** D-212-1
