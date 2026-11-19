@@ -2303,7 +2303,10 @@ describe("saving into the offline queue", () => {
     await user.type(screen.getByLabelText("Unit number"), "#06-201");
     await user.click(screen.getByRole("radio", { name: "High" }));
 
-    vi.useFakeTimers();
+    /* Only the ask's own timer. jsdom runs frames and its focus fixup on a
+       setInterval (R-199): started under a fake clock and left behind by it,
+       neither ran again for the rest of the file. */
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       fireEvent.click(screen.getByRole("button", { name: "Save and next" }));
       await act(() => vi.advanceTimersByTimeAsync(OUTING_ASK_TIMEOUT_MS - 1));
