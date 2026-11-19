@@ -5,6 +5,7 @@ import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import type { Block } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({
   apiFetch: vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(),
@@ -295,6 +296,61 @@ describe("BlockAttachSheet", () => {
     await user.click(screen.getByRole("button", { name: "Attach 1 block" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("That session has ended.");
+  });
+
+  /* Disabled while their request is out, both lose focus to the page,
+     outside the sheet (#221). Each holds the refusal until focus has
+     dropped, as a real one is (D-208-6). */
+  describe("focus after a refusal", () => {
+    function held(): { promise: Promise<never>; refuse: (reason: unknown) => void } {
+      let refuse: (reason: unknown) => void = () => undefined;
+      const promise = new Promise<never>((_, reject) => {
+        refuse = reject;
+      });
+      return { promise, refuse };
+    }
+
+    it("goes back to Attach, inside the sheet", async () => {
+      const attach = held();
+      const user = userEvent.setup();
+      apiFetch.mockResolvedValue(page([block("b1", "123")]));
+      render(
+        <BlockAttachSheet attachedIds={[]} onAttach={() => attach.promise} onClose={vi.fn()} />,
+      );
+      const dialog = screen.getByRole("dialog", { name: "Add blocks" });
+      await user.click(await screen.findByRole("button", { name: /Blk 123/ }));
+      const button = screen.getByRole("button", { name: "Attach 1 block" });
+      await user.click(button);
+      expect(button).toBeDisabled();
+      await focusDropped();
+
+      attach.refuse(new TypeError("Failed to fetch"));
+      const alert = await screen.findByRole("alert");
+      expect(button).toHaveFocus();
+      expect(dialog).toContainElement(button);
+      expect(alert).not.toHaveFocus();
+    });
+
+    it("goes back to Add to the registry", async () => {
+      const create = held();
+      const user = userEvent.setup();
+      apiFetch.mockImplementation((_path, init) =>
+        init?.method === "POST" ? create.promise : Promise.resolve(page([block("b1", "125")])),
+      );
+      render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("Blk 125");
+      await user.click(screen.getByRole("button", { name: "Block not listed?" }));
+      await user.type(screen.getByLabelText("Block number"), "123");
+      await user.type(screen.getByLabelText("Street"), "Test Ave");
+      const button = screen.getByRole("button", { name: "Add to the registry" });
+      await user.click(button);
+      await screen.findByRole("button", { name: "Adding…" });
+      await focusDropped();
+
+      create.refuse(new TypeError("Failed to fetch"));
+      await screen.findByRole("alert");
+      expect(button).toHaveFocus();
+    });
   });
 
   it("reports a registry that will not load in its own words, not the browser's (#194)", async () => {

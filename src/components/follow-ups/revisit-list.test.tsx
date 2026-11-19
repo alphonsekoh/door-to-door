@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RevisitList } from "@/components/follow-ups/revisit-list";
 import type { ActiveSession, FollowUp, RevisitEntry } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -247,6 +249,30 @@ describe("RevisitList", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "You can mark this done during a follow-up session that includes this household.",
     );
+  });
+
+  /* Disabled while it saves, the row's button loses focus to the page
+     (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to the row's Mark done after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockImplementation((_path: string, init?: { method?: string }) =>
+      init?.method === "PATCH"
+        ? new Promise((_, reject) => {
+            refuse = reject;
+          })
+        : Promise.resolve(list([entry("#05-123")])),
+    );
+    const user = userEvent.setup();
+    render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
+    const button = await screen.findByRole("button", { name: "Mark done, #05-123" });
+    await user.click(button);
+    await screen.findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 
   it("re-reads the list when one of a household's notes closes and the next is refused", async () => {

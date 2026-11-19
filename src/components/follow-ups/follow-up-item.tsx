@@ -16,6 +16,7 @@ import {
   listedByline,
 } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { formatDay } from "@/lib/history/dates";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -137,10 +138,12 @@ function FollowUpControls({
   const [promoting, setPromoting] = useState(false);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  const { notePress, refused } = useRefusalFocus();
   const done = note.doneAt !== null;
 
   async function change(body: { done: boolean }): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
@@ -149,6 +152,7 @@ function FollowUpControls({
       onChanged?.();
     } catch (error) {
       setFailure(describeFollowUpFailure(error, body.done ? "save" : "reopen"));
+      refused();
       /* A 409 means the note's door changed under this screen: read it again,
          so what is offered matches what the server would now allow. */
       if (error instanceof ApiRequestError && error.status === 409) onChanged?.();

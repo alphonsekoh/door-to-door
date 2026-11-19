@@ -16,6 +16,7 @@ import {
   pickerCandidates,
 } from "@/lib/teams/team-ui";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { loadCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -52,6 +53,10 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
   /* Set synchronously: state is not updated between two taps in one frame. */
   const inFlight = useRef(false);
   const wasOnline = useRef(online);
+  /* Join, and Leave, which is noted on the card, never on its confirm: a
+     refusal ends on it, where D-90-9 returns focus too. A sheet's refusal
+     keeps the sheet open, and the sheet gives focus back itself. */
+  const { notePress, refused } = useRefusalFocus();
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -169,6 +174,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       await change(() => apiFetch<Team>(`/teams/${teamId}/members/${me.id}`, { method: "DELETE" }));
     } catch {
       /* change() has already put the reason on screen. */
+      refused();
     }
     setLeaving(false);
   }
@@ -178,6 +184,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
       await change(() => apiFetch<Participant>(`/sessions/${sessionId}/join`, { method: "POST" }));
     } catch {
       /* change() has already put the reason on screen. */
+      refused();
     }
   }
 
@@ -193,7 +200,10 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
           <button
             type="button"
             disabled={busy || !canChange}
-            onClick={() => void join()}
+            onClick={() => {
+              notePress();
+              void join();
+            }}
             className="min-h-12 w-full btn-primary rounded-xl text-body font-semibold"
           >
             Join this session
@@ -241,6 +251,7 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
               type="button"
               disabled={busy || !canChange}
               onClick={() => {
+                notePress();
                 setLeaving(true);
               }}
               className={BUTTON}

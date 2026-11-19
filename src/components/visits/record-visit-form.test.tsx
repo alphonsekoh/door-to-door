@@ -17,6 +17,7 @@ import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
+import { focusDropped } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 import { nextFrame } from "../../../test/next-frame";
 
@@ -2925,6 +2926,28 @@ describe("in a follow-up session", () => {
       expect(attempts).toBe(2);
     });
 
+    /* Disabled while it reopens, Undo loses focus to the page (#221). Held
+       until it has, as a real failure is (D-208-6). */
+    it("gives focus back to Undo when it gets no answer", async () => {
+      let refuse: (reason: unknown) => void = () => undefined;
+      server(
+        ["n#05-123"],
+        () =>
+          new Promise((_, reject) => {
+            refuse = reject;
+          }),
+      );
+      const { user, status } = await saveAt();
+      const undo = within(status).getByRole("button", { name: UNDO });
+      await user.click(undo);
+      await within(status).findByRole("button", { name: "Undoing…" });
+      await focusDropped();
+
+      refuse(new TypeError("Failed to fetch"));
+      await within(status).findByText("Not undone. Check your signal and try again.");
+      expect(undo).toHaveFocus();
+    });
+
     it("sends one undo for two taps, and says it is working", async () => {
       let finish: (value: unknown) => void = () => undefined;
       server(["n#05-123"], () => new Promise((resolve) => (finish = resolve)));
@@ -3038,6 +3061,44 @@ describe("in a follow-up session", () => {
       expect(next).toHaveTextContent("Saved #06-201.Follow-up marked done.");
       expect(next).not.toHaveTextContent(/Undone/);
       expect(within(next).getByRole("button", { name: UNDO })).toBeInTheDocument();
+    });
+
+    it("gives focus back to the newest Undo, which an older one's late failure does not spend", async () => {
+      const fails: ((reason: unknown) => void)[] = [];
+      let saves = 0;
+      apiFetch.mockImplementation((path: string, init?: { method?: string }) => {
+        if (path === "/visits") {
+          saves += 1;
+          return Promise.resolve({
+            id: `v${String(saves)}`,
+            householdId: `h${String(saves)}`,
+            followUpsMarkedDone: [`n${String(saves)}`],
+          });
+        }
+        return init?.method === "PATCH"
+          ? new Promise((_, reject) => fails.push(reject))
+          : Promise.resolve(history());
+      });
+      const { user, status } = await saveAt();
+      await user.click(within(status).getByRole("button", { name: UNDO }));
+      await user.type(screen.getByLabelText("Unit number"), "#06-201");
+      await user.click(screen.getByRole("radio", { name: "Medium" }));
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      const next = await screen.findByRole("status");
+      const undo = within(next).getByRole("button", { name: UNDO });
+      await user.click(undo);
+      await within(next).findByRole("button", { name: "Undoing…" });
+      await focusDropped();
+
+      fails[0]?.(new TypeError("Failed to fetch"));
+      // The first undo has finished: it re-read the list and the block.
+      await waitFor(() => {
+        expect(onRecorded).toHaveBeenCalledTimes(3);
+      });
+      expect(document.body).toHaveFocus();
+      fails[1]?.(new TypeError("Failed to fetch"));
+      await within(next).findByText("Not undone. Check your signal and try again.");
+      expect(undo).toHaveFocus();
     });
 
     it("never holds up the next save's Undo behind one still on its way", async () => {

@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutingTeam } from "@/components/teams/outing-team";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -107,6 +108,27 @@ describe("joining the outing", () => {
     await userEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveTextContent(/not running/);
     expect(screen.getByRole("button", { name: "Join this session" })).toBeInTheDocument();
+  });
+
+  /* Disabled while it joins, Join loses focus to the page (#221). Held
+     until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Join after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    writes = () =>
+      new Promise((_, reject) => {
+        refuse = reject;
+      });
+    const user = userEvent.setup();
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    const button = await screen.findByRole("button", { name: "Join this session" });
+    await user.click(button);
+    expect(button).toBeDisabled();
+    await focusDropped();
+
+    refuse(new ApiRequestError(409, { error: { code: "session_not_active", message: "x" } }));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 });
 
@@ -427,6 +449,31 @@ describe("on a team", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(/not allowed/);
     expect(screen.getByText("Ann & Ben")).toBeInTheDocument();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  /* Disabled while it leaves, as Leave is behind it, the confirm's button
+     loses focus to the page (#221). Held until it has (D-208-6). */
+  it("ends on Leave after its confirm is refused, once the dialog has gone", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    writes = () =>
+      new Promise((_, reject) => {
+        refuse = reject;
+      });
+    const user = userEvent.setup();
+    render(<OutingTeam sessionId="s1" tick={0} />);
+    const button = await screen.findByRole("button", { name: "Leave" });
+    await user.click(button);
+    const dialog = screen.getByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Leave team" }));
+    await within(dialog).findByRole("button", { name: "Working…" });
+    await focusDropped();
+
+    refuse(new ApiRequestError(403, { error: { code: "forbidden", message: "x" } }));
+    await screen.findByRole("alert");
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(button).toHaveFocus();
   });
 
   it("drops the leave prompt if the team disappears underneath it", async () => {

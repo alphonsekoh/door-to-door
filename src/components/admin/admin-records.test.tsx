@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRecords } from "@/components/admin/admin-records";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
+import { focusDropped } from "../../../test/focus-dropped";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch, ApiRequestError } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -586,6 +588,60 @@ describe("AdminRecords", () => {
         "/follow-ups/n2",
         "/follow-ups/n2",
       ]);
+    });
+
+    /* Disabled while it reopens, Undo loses focus to the page (#221). Each
+       holds the failure until it has, as a real one is (D-208-6). */
+    it("gives focus back to Undo when it gets no answer", async () => {
+      const user = userEvent.setup();
+      const fails: ((reason: unknown) => void)[] = [];
+      serveRecords([recorded("v1", ["n1"])], () => new Promise((_, reject) => fails.push(reject)));
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+      await recordFor(user, "#05-123");
+      const status = await screen.findByRole("status");
+      const undo = within(status).getByRole("button", { name: UNDO });
+      await user.click(undo);
+      await within(status).findByRole("button", { name: "Undoing…" });
+      await focusDropped();
+
+      fails[0]?.(new TypeError("Failed to fetch"));
+      await waitFor(() => {
+        expect(status).toHaveTextContent("Not undone. Check your signal and try again.");
+      });
+      expect(undo).toHaveFocus();
+    });
+
+    it("gives focus back to the newest Undo, which an older one's late failure does not spend", async () => {
+      const user = userEvent.setup();
+      const fails: ((reason: unknown) => void)[] = [];
+      serveRecords(
+        [recorded("v1", ["n1"]), recorded("v2", ["n2"])],
+        () => new Promise((_, reject) => fails.push(reject)),
+      );
+      render(<AdminRecords />);
+      await screen.findByText(/Nothing has been recorded/);
+      await recordFor(user, "#05-123");
+      await user.click(
+        within(await screen.findByRole("status")).getByRole("button", { name: UNDO }),
+      );
+      await recordFor(user, "#05-124");
+      const status = screen.getByRole("status");
+      const undo = within(status).getByRole("button", { name: UNDO });
+      await user.click(undo);
+      await within(status).findByRole("button", { name: "Undoing…" });
+      await focusDropped();
+
+      await act(async () => {
+        fails[0]?.(new TypeError("Failed to fetch"));
+        await nextFrame();
+      });
+      expect(document.body).toHaveFocus();
+      fails[1]?.(new TypeError("Failed to fetch"));
+      await waitFor(() => {
+        expect(status).toHaveTextContent("Not undone. Check your signal and try again.");
+      });
+      expect(undo).toHaveFocus();
     });
 
     it("moves on to the next record, and drops a late answer for the last", async () => {

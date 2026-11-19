@@ -6,6 +6,7 @@ import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { dueDayToInstant } from "@/lib/history/follow-ups";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -73,6 +74,14 @@ const invalid = (path: string, message = "Invalid string: must match pattern /\\
 const type = (label: string, value: string) => {
   fireEvent.change(sheet().getByLabelText(label), { target: { value } });
 };
+/* A request the test refuses by hand, once focus has had time to drop. */
+function held(): { promise: Promise<never>; refuse: (reason: unknown) => void } {
+  let refuse: (reason: unknown) => void = () => undefined;
+  const promise = new Promise<never>((_, reject) => {
+    refuse = reject;
+  });
+  return { promise, refuse };
+}
 
 describe("a member suggesting a return visit", () => {
   it("says an admin reviews it, and names the unit", () => {
@@ -182,6 +191,26 @@ describe("a member suggesting a return visit", () => {
     );
     expect(sheet().getByLabelText(WHY)).toHaveValue("Call back");
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  /* Disabled while it sends, the action loses focus to the page, outside
+     the sheet (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Send suggestion, inside the sheet, after a refusal", async () => {
+    const request = held();
+    apiFetch.mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, "Call back");
+    const button = sheet().getByRole("button", { name: "Send suggestion" });
+    await user.click(button);
+    await sheet().findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    request.refuse(new TypeError("Failed to fetch"));
+    const alert = await sheet().findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(screen.getByRole("dialog")).toContainElement(button);
+    expect(alert).not.toHaveFocus();
   });
 
   it("says plainly when the household is already listed or suggested", async () => {
@@ -445,6 +474,37 @@ describe("an admin adding to the follow-up list", () => {
       expect(sheet().queryByRole("button", { name: "Add to Saturday revisits" })).toBeNull();
       fireEvent.click(sheet().getByRole("button", { name: "Done" }));
       expect(onSaved).toHaveBeenCalledWith("Added to the follow-up list.");
+    });
+
+    /* The action is disabled while it sends, and a half done add leaves it
+       in place as the retry: focus goes back to it from the page (#221). */
+    it("gives focus back to the retry where Add to list was, and to it again when the retry fails", async () => {
+      asAdmin();
+      let step = held();
+      server({ running: [SESSION], addToSession: () => step.promise });
+      const user = userEvent.setup();
+      render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+      await sheet().findByRole("checkbox", { name: /Also add to/ });
+      type(WHAT, "Bring the flyer");
+      const button = addButton();
+      await user.click(button);
+      await sheet().findByRole("button", { name: "Saving…" });
+      await focusDropped();
+
+      step.refuse(new TypeError("Failed to fetch"));
+      await sheet().findByRole("alert");
+      expect(sheet().getByRole("button", { name: "Add to Saturday revisits" })).toBe(button);
+      expect(button).toHaveFocus();
+
+      step = held();
+      await user.click(button);
+      await sheet().findByRole("button", { name: "Saving…" });
+      await focusDropped();
+      step.refuse(new TypeError("Failed to fetch"));
+      await waitFor(() => {
+        expect(button).toBeEnabled();
+      });
+      expect(button).toHaveFocus();
     });
 
     it("closes without asking, since the note is saved", async () => {
@@ -722,6 +782,25 @@ describe("the Not saved pop-up (#119)", () => {
     expect(sheet().getByRole("button", { name: "Send suggestion" })).toHaveFocus();
     // Nothing on the sheet marks the due date, so the banner still says why.
     expect(sheet().getByRole("alert")).toHaveTextContent("Not saved. Invalid ISO datetime");
+  });
+
+  /* Held until Send suggestion has dropped focus to the page (D-208-6): the
+     pop-up then opened from the page, and OK sent focus nowhere (#221). */
+  it("opens from Send suggestion for a refusal held past a frame, so OK goes back to it", async () => {
+    const request = held();
+    apiFetch.mockReturnValueOnce(request.promise);
+    const user = userEvent.setup();
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, "Call back");
+    const button = sheet().getByRole("button", { name: "Send suggestion" });
+    await user.click(button);
+    await sheet().findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    request.refuse(invalid("/dueDate", "Invalid ISO datetime"));
+    await screen.findByRole("alertdialog", { name: "Not saved" });
+    await user.click(notSaved().getByRole("button", { name: "OK" }));
+    expect(button).toHaveFocus();
   });
 });
 

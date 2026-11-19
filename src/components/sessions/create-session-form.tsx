@@ -7,6 +7,7 @@ import type { FollowUp, OutingSession, SessionKind } from "@/generated/types.gen
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { loadAllListed } from "@/lib/follow-ups/listed";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import {
   type ListLoad,
   createBlocker,
@@ -45,6 +46,9 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
   const [failure, setFailure] = useState<string | null>(null);
   /* A retry and a reload after a refusal can overlap; the newest answer wins. */
   const generation = useRef(0);
+  /* Create draft is disabled while it saves. A refusal gives focus back,
+     unless the list is read again, which keeps it disabled meanwhile. */
+  const { notePress, refused } = useRefusalFocus();
 
   /* The answer lands as a transition, as the block screen's do (#155): WebKit
      can run it inside the input event of text landing in the name, and set
@@ -77,6 +81,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       return;
     }
 
+    notePress();
     setFailure(null);
     setSaving(true);
     try {
@@ -95,6 +100,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       onCreated(session);
     } catch (error) {
       setFailure(failureLine(error, "Could not create the session."));
+      refused();
       /* A household left the list since it was read: read it again, keeping
          what was unticked. */
       if (error instanceof ApiRequestError && error.code === "not_on_follow_up_list") {

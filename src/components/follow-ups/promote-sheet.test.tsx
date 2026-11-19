@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -283,6 +285,56 @@ describe("PromoteSheet", () => {
     fireEvent.click(sheet().getByRole("button", { name: "Done" }));
     expect(onPromoted).toHaveBeenCalledWith("Added to the follow-up list.");
     expect(writes().map(([path]) => path)).toEqual(["/follow-ups/s1", "/sessions/fu1/households"]);
+  });
+
+  /* Disabled while it sends, the action loses focus to the page, outside
+     the sheet (#221). Each holds the refusal until it has, as a real one is
+     (D-208-6). */
+  describe("focus after a refusal", () => {
+    function held(): { promise: Promise<never>; refuse: (reason: unknown) => void } {
+      let refuse: (reason: unknown) => void = () => undefined;
+      const promise = new Promise<never>((_, reject) => {
+        refuse = reject;
+      });
+      return { promise, refuse };
+    }
+
+    it("goes back to Add to list, inside the sheet", async () => {
+      const request = held();
+      server({ promote: () => request.promise });
+      const user = userEvent.setup();
+      render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
+      await waitFor(() => {
+        expect(addButton()).toBeEnabled();
+      });
+      const button = addButton();
+      await user.click(button);
+      await sheet().findByRole("button", { name: "Saving…" });
+      await focusDropped();
+
+      request.refuse(new TypeError("Failed to fetch"));
+      const alert = await sheet().findByRole("alert");
+      expect(button).toHaveFocus();
+      expect(screen.getByRole("dialog")).toContainElement(button);
+      expect(alert).not.toHaveFocus();
+    });
+
+    it("goes back to the retry where Add to list was, when the session step fails", async () => {
+      const step = held();
+      server({ drafts: [SESSION], addToSession: () => step.promise });
+      const user = userEvent.setup();
+      render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
+      await sheet().findByRole("checkbox", { name: /Also add to/ });
+      const button = addButton();
+      await user.click(button);
+      await sheet().findByRole("button", { name: "Saving…" });
+      await focusDropped();
+
+      step.refuse(new TypeError("Failed to fetch"));
+      await sheet().findByRole("alert");
+      expect(sheet().getByRole("button", { name: "Add to Saturday revisits" })).toBe(button);
+      expect(button).toHaveFocus();
+    });
   });
 
   it("is disabled offline and says why", async () => {

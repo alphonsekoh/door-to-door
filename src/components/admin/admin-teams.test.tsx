@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminTeams } from "@/components/admin/admin-teams";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -356,6 +357,38 @@ describe("refusals and failures", () => {
     expect(screen.getByText("Connect to change teams")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "New team" })).toBeDisabled();
   });
+
+  /* Disabled while the change is out, Remove and Delete team lose focus to
+     the page, and a refusal ends on them (#221). Each holds it until focus
+     has dropped, as a real one is (D-208-6). */
+  it.each([
+    ["Remove Ben Lim from Alice & Ben", "Remove from team"],
+    ["Delete team", "Delete team"],
+  ])(
+    "ends on %s after its confirm is refused, once the dialog has gone",
+    async (label, confirm) => {
+      let refuse: (reason: unknown) => void = () => undefined;
+      writes = () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        });
+      const user = userEvent.setup();
+      render(<AdminTeams sessionId="s1" status="active" tick={0} />);
+      const button = within(await teamCard("Alice & Ben")).getByRole("button", { name: label });
+      await user.click(button);
+      const dialog = screen.getByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: confirm }));
+      await within(dialog).findByRole("button", { name: "Working…" });
+      await focusDropped();
+
+      refuse(error(500, "internal"));
+      await screen.findByRole("alert");
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(button).toHaveFocus();
+    },
+  );
 
   it("disables every change while offline", async () => {
     useOnline.mockReturnValue(false);

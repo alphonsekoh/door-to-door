@@ -5,6 +5,7 @@ import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -163,6 +164,29 @@ describe("CreateSessionForm", () => {
     await user.click(create());
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not create the session.");
     expect(screen.getByLabelText("Name this session")).toHaveValue("Saturday morning");
+  });
+
+  /* Disabled while it saves, Create draft loses focus to the page (#221).
+     Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Create draft after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    server({
+      create: () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    const user = await open();
+    await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
+    const button = create();
+    await user.click(button);
+    await screen.findByRole("button", { name: "Creating…" });
+    await focusDropped();
+
+    refuse(new TypeError("Load failed"));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 
   it("copes with a non-Error failure", async () => {

@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history/history";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { loadAllUsers } from "@/lib/session/users";
 import { formatDay } from "@/lib/history/dates";
@@ -86,6 +87,7 @@ export function ConsolidatedHistory() {
   const [amending, setAmending] = useState<HistoryEntry | null>(null);
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const exportFocus = useRefusalFocus();
 
   const load = useCallback(async (current: HistoryFilters, at: number) => {
     try {
@@ -192,6 +194,7 @@ export function ConsolidatedHistory() {
    * file that quietly held the first hundred rows would break it.
    */
   async function exportCsv(): Promise<void> {
+    exportFocus.notePress();
     setExporting(true);
     setNotice(null);
     try {
@@ -223,6 +226,7 @@ export function ConsolidatedHistory() {
       );
     } catch (error) {
       setNotice(failureLine(error, "Could not export those records."));
+      exportFocus.refused();
     } finally {
       setExporting(false);
     }

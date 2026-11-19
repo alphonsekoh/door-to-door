@@ -14,6 +14,7 @@ import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
 import { describeFollowUpFailure, isOverdue } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 
 type State =
@@ -159,6 +160,7 @@ function RevisitRow({
   const [failure, setFailure] = useState<string | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  const { notePress, refused } = useRefusalFocus();
   const state = revisitState(entry);
   const owed = entry.notes.filter((note) => note.doneAt === null);
   const first = owed[0] ?? entry.notes[0];
@@ -178,6 +180,7 @@ function RevisitRow({
      knows what is still owed. */
   async function change(done: boolean): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
@@ -190,6 +193,7 @@ function RevisitRow({
       }
     } catch (error) {
       setFailure(describeFollowUpFailure(error, done ? "save" : "reopen"));
+      refused();
     } finally {
       sending.current = false;
       setBusy(false);

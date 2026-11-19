@@ -6,6 +6,7 @@ import type { User } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 import type * as SignOutModule from "@/lib/session/sign-out";
+import { focusDropped } from "../../../test/focus-dropped";
 import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget, role, sync } = vi.hoisted(() => ({
@@ -261,6 +262,28 @@ describe("AccountScreen: renaming", () => {
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "Save name" })).toBeEnabled();
     });
+  });
+
+  /* Disabled while it saves, Save name loses focus to the page (#221). Held
+     until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Save name after the save is refused", async () => {
+    const user = userEvent.setup();
+    await loaded();
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const button = screen.getByRole("button", { name: "Save name" });
+    await user.click(button);
+    expect(button).toBeDisabled();
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 
   it("puts the save button above the bottom nav and tall enough to tap", async () => {

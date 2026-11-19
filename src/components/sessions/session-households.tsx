@@ -25,6 +25,7 @@ import {
   removeBlocker,
   stateLabel,
 } from "@/lib/follow-ups/session-households";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 
 type State =
   { status: "loading" } | { status: "ready"; entries: SessionHousehold[] } | { status: "error" };
@@ -62,6 +63,9 @@ export function SessionHouseholds({
   const generation = useRef(0);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const removingNow = useRef(false);
+  /* Noted on the row's Remove, never on its confirm: a refusal ends there,
+     where D-90-9 returns focus too. */
+  const { notePress, refused } = useRefusalFocus();
   const sessionId = session.id;
   const ended = session.status === "ended";
 
@@ -97,6 +101,7 @@ export function SessionHouseholds({
       setNotice("Removed from this session. It is still on the follow-up list.");
     } catch (error) {
       setFailure(failureLine(error, "Could not remove that household."));
+      refused();
     } finally {
       removingNow.current = false;
       setRemoving(null);
@@ -176,6 +181,7 @@ export function SessionHouseholds({
                   session={session}
                   blocks={blocks}
                   onRemove={() => {
+                    notePress();
                     setRemoving(entry);
                   }}
                 />
@@ -312,6 +318,8 @@ function AddHouseholdsSheet({
   const generation = useRef(0);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  /* Back on Add, inside the sheet, from the page it fell to. */
+  const { notePress, refused } = useRefusalFocus();
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -342,6 +350,7 @@ function AddHouseholdsSheet({
 
   async function add(): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
@@ -357,6 +366,7 @@ function AddHouseholdsSheet({
       );
     } catch (error) {
       setFailure(failureLine(error, "Could not add those households."));
+      refused();
       // One may have left the list since it was read.
       void load();
     } finally {

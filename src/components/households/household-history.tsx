@@ -33,6 +33,7 @@ import {
   timelineNotes,
 } from "@/lib/households/history-pages";
 import { formatDay } from "@/lib/history/dates";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { stillAt } from "@/lib/still-at";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -107,6 +108,9 @@ export function HouseholdHistoryPanel({
   const [loadingEarlier, setLoadingEarlier] = useState(false);
   const [earlierFailed, setEarlierFailed] = useState(false);
   const earlierControl = useRef<HTMLButtonElement>(null);
+  /* Show earlier visits is disabled while it reads. A failed read gives it
+     focus back, before the line is brought into view (D-208-4). */
+  const earlierFocus = useRefusalFocus();
   const panel = useRef<HTMLElement>(null);
   const firstLine = useRef<HTMLParagraphElement>(null);
   useImperativeHandle(
@@ -168,6 +172,7 @@ export function HouseholdHistoryPanel({
      A failure keeps what is shown and never stands between the member and
      Save. */
   const showEarlier = () => {
+    earlierFocus.notePress();
     setLoadingEarlier(true);
     setEarlierFailed(false);
     apiFetch<HouseholdHistory>(historyPath(household.id, held.next)).then(
@@ -178,9 +183,11 @@ export function HouseholdHistoryPanel({
         });
       },
       () => {
+        /* In the same transition, so focus goes back as it is enabled. */
         startTransition(() => {
           setEarlierFailed(true);
           setLoadingEarlier(false);
+          earlierFocus.refused();
         });
       },
     );
