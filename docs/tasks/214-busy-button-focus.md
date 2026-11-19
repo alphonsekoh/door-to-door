@@ -1,7 +1,6 @@
 # #214 · A failed press on a busy-disabled button gives focus back
 
-- **Status:** In progress (PR #224, branch `fix/214-busy-button-focus`). The owner ruled
-  option B on 2026-11-19 (D-214-2).
+- **Status:** Done (PR #224). The owner ruled option B on 2026-11-19 (D-214-2).
 - **Phase:** 7 - Hardening
 - **Depends on:** #208, #213
 
@@ -40,6 +39,8 @@ in 9828c3c, 210bf9b and 99c37d0.
   that awaited between them would focus a disabled button and lose the press. _Why:_
   D-208-2 to D-208-4 and D-208-7 in one place, not six copies. A counter, not the
   message, because the record form's off-list refusal can repeat with nothing changed.
+  _Refined by D-221-5 and D-221-6:_ one `await` on a settled promise may sit between
+  them, never I/O, and a button re-enabled in a transition is refused inside it.
 - **D-214-4 · `<body>` is the only check, in a sheet too.** _Why:_ everything outside the
   top modal is inert (D-90-7), so the page is the only place outside one that focus can
   fall to. The check never pulls focus out of a pop-up opened on top, and leaves a WebKit
@@ -55,6 +56,8 @@ in 9828c3c, 210bf9b and 99c37d0.
   OK still sends focus to the field (D-119-15). The record form names the hook's
   `refused` `saveRefused`; Account keeps the result whole as `signOutFocus`, since Save
   name (#221) will want its own. _Why:_ a confirm's button leaves with its dialog.
+  _Refined by D-221-4:_ on a member's Sign out everywhere, D-90-9's return finds the
+  button still disabled, and the hook gives focus back once the list is read again.
 - **D-214-6 · An E2E pins sign-in's refocus with a key press, refused by the server for
   real.** Supersedes D-208-8. In `e2e/auth.spec.ts`, "with a wrong password" (service
   workers blocked) presses Sign in with Enter and holds the request until "Signing in…"
@@ -134,7 +137,8 @@ To file or fold into #221:
   `block-attach-sheet.test.tsx` (lines 51 and 65), `outing-team.test.tsx:656`,
   `active-session`, `session-detail`, `admin-records` and `offline-shell`. A D-208-6
   test placed after one of them hangs (R-214). `block-attach-sheet` and `outing-team`
-  are on #221's list, so #221 should narrow `toFake` there first.
+  are on #221's list, so #221 should narrow `toFake` there first. Done there by #221
+  (D-221-3); the other four are #215's.
 - A successful press can drop focus the same way (D-214-8).
 - Already on main, seen by the verifier: the amend sheet's failure is drawn at the top
   of the form and nothing brings it into view, so at 32px, or with Add details open, it

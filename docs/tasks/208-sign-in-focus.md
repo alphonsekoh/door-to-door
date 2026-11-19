@@ -41,7 +41,8 @@ the page. The form now gives it back after a refusal. Built in 70d0622 and 13600
   so it waits for an event, not a time. No retries, sleeps or longer timeouts (D-88-4,
   D-192-1). _Why:_ the issue's test passed or failed by timing. With the premise asserted,
   it fails every time without the fix, and it shows the drop is real. `nextFrame()` is
-  in `test/next-frame.ts` since D-214-7.
+  in `test/next-frame.ts` since D-214-7. _Refined by D-221-12:_ #221's tests poll for the
+  drop with `focusDropped()` instead of waiting one frame.
 - **D-208-7 · Focus the member moves while the attempt is out stays where they put it
   (13600f6).** "stays where the member put it while the attempt was out" pins it. It is
   the only test that fails when the `activeElement === body` check is dropped. _Why:_ a
