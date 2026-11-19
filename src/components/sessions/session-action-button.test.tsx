@@ -148,6 +148,153 @@ describe("SessionActionButton", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
   });
 
+  /* On the list a failure is drawn under the row, and near the foot of the
+     screen it landed under the nav (#213). jsdom lays nothing out: the
+     verifier measures on both phones. */
+  describe("a failure, brought into view", () => {
+    it("brings the failure into view with the button as it is drawn, leaving focus where it was", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+        const user = userEvent.setup();
+        render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
+        // The list and a session open where they are, not scrolled to a button.
+        expect(scrolled).not.toHaveBeenCalled();
+        const button = screen.getByRole("button", { name: "Start session" });
+        await user.click(button);
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("Could not do that.");
+        const both = alert.parentElement;
+        expect(both).toContainElement(button);
+        /* Clear of the nav and a floating banner, and no further: no Save
+           bar docks on the Sessions list or a session's page. */
+        expect(both).toHaveClass("scroll-clear-nav");
+        expect(both).not.toHaveClass("scroll-clear-chrome");
+        expect(scrolled.mock.contexts).toEqual([both]);
+        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+        expect(button).toHaveFocus();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("brings a failed End into view once its confirm has closed", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockRejectedValue(
+          new ApiRequestError(409, { error: { code: "conflict", message: "Already ended." } }),
+        );
+        render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
+        await user.click(screen.getByRole("button", { name: "End session" }));
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+        );
+
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent("Already ended.");
+        const both = alert.parentElement;
+        expect(both).toContainElement(screen.getByRole("button", { name: "End session" }));
+        expect(both).toHaveClass("scroll-clear-nav");
+        expect(scrolled.mock.contexts).toContain(both);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("scrolls nothing when the action works", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const onDone = vi.fn();
+        apiFetch.mockResolvedValue({ id: "s1" });
+        render(<SessionActionButton sessionId="s1" spec={start} onDone={onDone} />);
+        await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
+        await waitFor(() => {
+          expect(onDone).toHaveBeenCalled();
+        });
+        expect(scrolled).not.toHaveBeenCalled();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("leaves the page where it is as a second try clears the failure", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+        render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
+        await user.click(screen.getByRole("button", { name: "Start session" }));
+        await screen.findByRole("alert");
+        expect(scrolled).toHaveBeenCalledOnce();
+
+        // The button is under the thumb that just pressed it again.
+        apiFetch.mockReturnValue(new Promise(() => undefined));
+        await user.click(screen.getByRole("button", { name: "Start session" }));
+        await screen.findByRole("button", { name: "Working…" });
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(scrolled).toHaveBeenCalledOnce();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("brings the failure into view again when a second try fails too", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+        render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
+        await user.click(screen.getByRole("button", { name: "Start session" }));
+        await screen.findByRole("alert");
+        await waitFor(() => {
+          expect(screen.getByRole("button", { name: "Start session" })).toBeEnabled();
+        });
+
+        await user.click(screen.getByRole("button", { name: "Start session" }));
+        await waitFor(() => {
+          expect(scrolled).toHaveBeenCalledTimes(2);
+        });
+        expect(screen.getByRole("alert")).toHaveTextContent("Could not do that.");
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("lays out what it is given before the button, in the block it brings into view", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+        render(
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            primary={false}
+            onDone={vi.fn()}
+            className="flex flex-wrap"
+          >
+            <span>June outing</span>
+          </SessionActionButton>,
+        );
+        const title = screen.getByText("June outing");
+        const button = screen.getByRole("button", { name: "Start session" });
+        const block = button.parentElement;
+        expect(block).toHaveClass("scroll-clear-nav", "flex", "flex-wrap");
+        expect(title.nextElementSibling).toBe(button);
+
+        await userEvent.setup().click(button);
+        const alert = await screen.findByRole("alert");
+        // Under both, a row of its own.
+        expect(button.nextElementSibling).toBe(alert);
+        expect(alert).toHaveClass("basis-full");
+        expect(scrolled.mock.contexts).toEqual([block]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+  });
+
   it("closes the dialog when the confirmed action fails, so the error is readable", async () => {
     const user = userEvent.setup();
     apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));

@@ -92,6 +92,41 @@ describe("AdminSessions", () => {
     expect(await screen.findByText("Running now")).toBeInTheDocument();
   });
 
+  /* Near the foot of the list, a failure under its row landed under the nav
+     (#213). jsdom lays nothing out: the verifier measures on both phones. */
+  it("says a failed action under its row, brought into view with the title and button", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      const user = userEvent.setup();
+      apiFetch.mockResolvedValue(
+        page([session("s1", "June outing", "ended"), session("s2", "Draft outing", "draft")]),
+      );
+      render(<AdminSessions />);
+      await screen.findByText("Draft outing");
+      const clash =
+        "Another session is already active. End it before starting or reopening this one.";
+      apiFetch.mockRejectedValue(
+        new ApiRequestError(409, { error: { code: "session_already_active", message: clash } }),
+      );
+
+      await user.click(screen.getByRole("button", { name: "Start session" }));
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(clash);
+      const row = screen.getByText("Draft outing").closest("li");
+      if (row === null) throw new Error("no row for Draft outing");
+      const block = alert.parentElement;
+      expect(row).toContainElement(block);
+      expect(block).toContainElement(screen.getByRole("link", { name: /Draft outing/ }));
+      expect(block).toContainElement(screen.getByRole("button", { name: "Start session" }));
+      expect(block).toHaveClass("scroll-clear-nav", "flex", "flex-wrap");
+      expect(scrolled.mock.contexts).toEqual([block]);
+      expect(screen.getByText("June outing").closest("li")).not.toContainElement(alert);
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
+
   it("tells an admin with no outings what to do first", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<AdminSessions />);

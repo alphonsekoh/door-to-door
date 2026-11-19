@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AddMemberForm } from "@/components/admin/add-member-form";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -29,7 +29,11 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
   const [state, setState] = useState<State>({ status: "loading" });
   const [deactivating, setDeactivating] = useState<User | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  /* Said in the row whose change failed, just above its controls: said once
+     above the list, it was off the screen for a row further down (#213). */
+  const [failure, setFailure] = useState<{ at: string; message: string } | null>(null);
+  /* The failure and the controls it is about, scrolled into view together. */
+  const failureBlock = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +58,13 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     };
   }, [load]);
 
+  /* Brought into view before it is painted, clear of the nav and a banner
+     floating on it, and no further: no Save bar docks here (as on the member
+     page, D-195-1). Focus stays put. */
+  useLayoutEffect(() => {
+    if (failure !== null) failureBlock.current?.scrollIntoView({ block: "nearest" });
+  }, [failure]);
+
   async function change(user: User, body: Record<string, unknown>): Promise<void> {
     setFailure(null);
     setBusy(true);
@@ -64,7 +75,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     } catch (error) {
       /* The server refuses self-demotion and self-deactivation. Showing its
          message keeps one rule in one place rather than two that can drift. */
-      setFailure(failureLine(error, "Could not make that change."));
+      setFailure({ at: user.id, message: failureLine(error, "Could not make that change.") });
       setDeactivating(null);
     } finally {
       setBusy(false);
@@ -94,16 +105,11 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     <div className="space-y-4">
       <AddMemberForm onAdded={() => void load()} googleDomains={googleDomains} />
 
-      {failure === null ? null : (
-        <p role="alert" className="notice-danger">
-          {failure}
-        </p>
-      )}
-
       <ul className="space-y-2">
         {state.users.map((user) => {
           const isSelf = user.id === userId;
           const deactivated = user.deactivatedAt !== null;
+          const failed = failure?.at === user.id;
           return (
             <li key={user.id} className="rounded-xl border border-border bg-surface p-4">
               {/* At large text the role drops under the name rather than cut
@@ -154,41 +160,48 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
                   You cannot change your own role or deactivate yourself.
                 </p>
               ) : (
-                /* Side by side while both labels fit on a line; at large text
-                   they stack rather than wrap a word a line. */
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      void change(user, { role: user.role === "admin" ? "member" : "admin" })
-                    }
-                    className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
-                  >
-                    {user.role === "admin" ? "Make a member" : "Make an admin"}
-                  </button>
+                <div ref={failed ? failureBlock : null} className="mt-3 scroll-clear-nav space-y-3">
+                  {failed ? (
+                    <p role="alert" className="notice-danger">
+                      {failure.message}
+                    </p>
+                  ) : null}
+                  {/* Side by side while both labels fit on a line; at large
+                      text they stack rather than wrap a word a line. */}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void change(user, { role: user.role === "admin" ? "member" : "admin" })
+                      }
+                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
+                    >
+                      {user.role === "admin" ? "Make a member" : "Make an admin"}
+                    </button>
 
-                  {deactivated ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void change(user, { deactivated: false })}
-                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
-                    >
-                      Reactivate
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => {
-                        setDeactivating(user);
-                      }}
-                      className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
-                    >
-                      Deactivate
-                    </button>
-                  )}
+                    {deactivated ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void change(user, { deactivated: false })}
+                        className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
+                      >
+                        Reactivate
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setDeactivating(user);
+                        }}
+                        className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
+                      >
+                        Deactivate
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
             </li>
