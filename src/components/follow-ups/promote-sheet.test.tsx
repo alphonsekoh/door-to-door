@@ -6,7 +6,7 @@ import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -308,7 +308,7 @@ describe("PromoteSheet", () => {
         expect(addButton()).toBeEnabled();
       });
       const button = addButton();
-      await user.click(button);
+      await pressByKey(user, button);
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
 
@@ -326,7 +326,7 @@ describe("PromoteSheet", () => {
       render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
       await sheet().findByRole("checkbox", { name: /Also add to/ });
       const button = addButton();
-      await user.click(button);
+      await pressByKey(user, button);
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
 

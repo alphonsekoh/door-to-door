@@ -6,7 +6,7 @@ import type { User } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 import type * as SignOutModule from "@/lib/session/sign-out";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget, role, sync } = vi.hoisted(() => ({
@@ -276,7 +276,7 @@ describe("AccountScreen: renaming", () => {
       }),
     );
     const button = screen.getByRole("button", { name: "Save name" });
-    await user.click(button);
+    await pressByKey(user, button);
     expect(button).toBeDisabled();
     await focusDropped();
 

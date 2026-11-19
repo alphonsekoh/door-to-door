@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsolidatedHistory } from "@/components/history/consolidated-history";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 /* A door's label, drawn in pieces so its unit number never breaks: the
    innermost element holding the whole of it. */
@@ -491,7 +491,7 @@ describe("ConsolidatedHistory", () => {
       }),
     );
     const button = screen.getByRole("button", { name: "Export CSV" });
-    await user.click(button);
+    await pressByKey(user, button);
     await screen.findByRole("button", { name: "Exporting…" });
     await focusDropped();
 

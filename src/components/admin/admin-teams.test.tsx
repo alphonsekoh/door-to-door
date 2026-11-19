@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminTeams } from "@/components/admin/admin-teams";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -375,7 +375,7 @@ describe("refusals and failures", () => {
       const user = userEvent.setup();
       render(<AdminTeams sessionId="s1" status="active" tick={0} />);
       const button = within(await teamCard("Alice & Ben")).getByRole("button", { name: label });
-      await user.click(button);
+      await pressByKey(user, button);
       const dialog = screen.getByRole("alertdialog");
       await user.click(within(dialog).getByRole("button", { name: confirm }));
       await within(dialog).findByRole("button", { name: "Working…" });

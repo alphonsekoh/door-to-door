@@ -5,7 +5,7 @@ import { RecordOnBehalfForm } from "@/components/visits/record-on-behalf-form";
 import type { Block, User } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 import { ApiRequestError } from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -345,7 +345,7 @@ describe("RecordOnBehalfForm", () => {
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
     await user.click(screen.getByRole("radio", { name: "High" }));
     const save = screen.getByRole("button", { name: "Save the record" });
-    await user.click(save);
+    await pressByKey(user, save);
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 

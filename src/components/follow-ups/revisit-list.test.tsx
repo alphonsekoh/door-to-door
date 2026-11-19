@@ -5,7 +5,7 @@ import { RevisitList } from "@/components/follow-ups/revisit-list";
 import type { ActiveSession, FollowUp, RevisitEntry } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -265,7 +265,7 @@ describe("RevisitList", () => {
     const user = userEvent.setup();
     render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
     const button = await screen.findByRole("button", { name: "Mark done, #05-123" });
-    await user.click(button);
+    await pressByKey(user, button);
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 

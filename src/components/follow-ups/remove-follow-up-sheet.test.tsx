@@ -5,7 +5,7 @@ import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sh
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -156,7 +156,7 @@ describe("an admin dismissing a suggestion", () => {
     const sheet = open();
     write(sheet, "Why not add it?", "Moved away");
     const button = sheet.getByRole("button", { name: "Dismiss suggestion" });
-    await user.click(button);
+    await pressByKey(user, button);
     await sheet.findByRole("button", { name: "Working…" });
     await focusDropped();
 

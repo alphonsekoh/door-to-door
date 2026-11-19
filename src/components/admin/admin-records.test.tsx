@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminRecords } from "@/components/admin/admin-records";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch, ApiRequestError } = vi.hoisted(() => ({
@@ -601,7 +601,7 @@ describe("AdminRecords", () => {
       await recordFor(user, "#05-123");
       const status = await screen.findByRole("status");
       const undo = within(status).getByRole("button", { name: UNDO });
-      await user.click(undo);
+      await pressByKey(user, undo);
       await within(status).findByRole("button", { name: "Undoing…" });
       await focusDropped();
 
@@ -628,7 +628,7 @@ describe("AdminRecords", () => {
       await recordFor(user, "#05-124");
       const status = screen.getByRole("status");
       const undo = within(status).getByRole("button", { name: UNDO });
-      await user.click(undo);
+      await pressByKey(user, undo);
       await within(status).findByRole("button", { name: "Undoing…" });
       await focusDropped();
 

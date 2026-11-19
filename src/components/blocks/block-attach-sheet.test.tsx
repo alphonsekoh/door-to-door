@@ -5,7 +5,7 @@ import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import type { Block } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({
   apiFetch: vi.fn<(path: string, init?: RequestInit) => Promise<unknown>>(),
@@ -320,7 +320,7 @@ describe("BlockAttachSheet", () => {
       const dialog = screen.getByRole("dialog", { name: "Add blocks" });
       await user.click(await screen.findByRole("button", { name: /Blk 123/ }));
       const button = screen.getByRole("button", { name: "Attach 1 block" });
-      await user.click(button);
+      await pressByKey(user, button);
       expect(button).toBeDisabled();
       await focusDropped();
 
@@ -343,7 +343,7 @@ describe("BlockAttachSheet", () => {
       await user.type(screen.getByLabelText("Block number"), "123");
       await user.type(screen.getByLabelText("Street"), "Test Ave");
       const button = screen.getByRole("button", { name: "Add to the registry" });
-      await user.click(button);
+      await pressByKey(user, button);
       await screen.findByRole("button", { name: "Adding…" });
       await focusDropped();
 

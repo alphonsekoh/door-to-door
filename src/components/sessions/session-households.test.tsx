@@ -11,7 +11,7 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -476,7 +476,7 @@ describe("taking a household out", () => {
     const button = await screen.findByRole("button", {
       name: "Remove Blk 125 · #h3 from this session",
     });
-    await user.click(button);
+    await pressByKey(user, button);
     const dialog = screen.getByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Remove from session" }));
     await within(dialog).findByRole("button", { name: "Working…" });
@@ -677,7 +677,7 @@ describe("adding households", () => {
     const sheet = await openSheet();
     await user.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
     const button = sheet.getByRole("button", { name: "Add 1 household" });
-    await user.click(button);
+    await pressByKey(user, button);
     await sheet.findByRole("button", { name: "Adding…" });
     await focusDropped();
 

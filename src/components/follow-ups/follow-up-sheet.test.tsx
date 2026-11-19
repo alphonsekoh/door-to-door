@@ -6,7 +6,7 @@ import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { dueDayToInstant } from "@/lib/history/follow-ups";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -202,7 +202,7 @@ describe("a member suggesting a return visit", () => {
     render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
     type(WHY, "Call back");
     const button = sheet().getByRole("button", { name: "Send suggestion" });
-    await user.click(button);
+    await pressByKey(user, button);
     await sheet().findByRole("button", { name: "Saving…" });
     await focusDropped();
 
@@ -487,7 +487,7 @@ describe("an admin adding to the follow-up list", () => {
       await sheet().findByRole("checkbox", { name: /Also add to/ });
       type(WHAT, "Bring the flyer");
       const button = addButton();
-      await user.click(button);
+      await pressByKey(user, button);
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
 
@@ -497,7 +497,7 @@ describe("an admin adding to the follow-up list", () => {
       expect(button).toHaveFocus();
 
       step = held();
-      await user.click(button);
+      await pressByKey(user, button);
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
       step.refuse(new TypeError("Failed to fetch"));
@@ -793,7 +793,7 @@ describe("the Not saved pop-up (#119)", () => {
     render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
     type(WHY, "Call back");
     const button = sheet().getByRole("button", { name: "Send suggestion" });
-    await user.click(button);
+    await pressByKey(user, button);
     await sheet().findByRole("button", { name: "Saving…" });
     await focusDropped();
 

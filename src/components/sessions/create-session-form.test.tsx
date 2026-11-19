@@ -5,7 +5,7 @@ import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -179,7 +179,7 @@ describe("CreateSessionForm", () => {
     const user = await open();
     await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
     const button = create();
-    await user.click(button);
+    await pressByKey(user, button);
     await screen.findByRole("button", { name: "Creating…" });
     await focusDropped();
 

@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { TeamSheet } from "@/components/teams/team-sheet";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 /* The card's own in-flight guard also stops a repeat, so the sheet's guard is
    tested alone here: two taps before React re-renders, one submit. */
@@ -61,7 +61,7 @@ describe("TeamSheet", () => {
     );
     const user = userEvent.setup();
     const save = screen.getByRole("button", { name: "Save name" });
-    await user.click(save);
+    await pressByKey(user, save);
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 

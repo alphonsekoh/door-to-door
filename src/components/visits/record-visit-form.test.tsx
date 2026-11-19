@@ -17,7 +17,7 @@ import { shellState } from "@/lib/offline/shell-state";
 import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 import { nextFrame } from "../../../test/next-frame";
 
@@ -2939,7 +2939,7 @@ describe("in a follow-up session", () => {
       );
       const { user, status } = await saveAt();
       const undo = within(status).getByRole("button", { name: UNDO });
-      await user.click(undo);
+      await pressByKey(user, undo);
       await within(status).findByRole("button", { name: "Undoing…" });
       await focusDropped();
 
@@ -3086,7 +3086,7 @@ describe("in a follow-up session", () => {
       await user.click(screen.getByRole("button", { name: "Save" }));
       const next = await screen.findByRole("status");
       const undo = within(next).getByRole("button", { name: UNDO });
-      await user.click(undo);
+      await pressByKey(user, undo);
       await within(next).findByRole("button", { name: "Undoing…" });
       await focusDropped();
 

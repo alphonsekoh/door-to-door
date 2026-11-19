@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AdminTeamSheet } from "@/components/admin/admin-team-sheet";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const people = [
   { id: "admin", name: "Ada Admin" },
@@ -119,7 +119,7 @@ describe("AdminTeamSheet", () => {
     sheet({ mode: "rename", initialName: "North", onSubmit });
     const dialog = screen.getByRole("dialog", { name: "Rename team" });
     const save = screen.getByRole("button", { name: "Save name" });
-    await user.click(save);
+    await pressByKey(user, save);
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 

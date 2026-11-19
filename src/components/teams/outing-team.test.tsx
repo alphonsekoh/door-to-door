@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutingTeam } from "@/components/teams/outing-team";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -121,7 +121,7 @@ describe("joining the outing", () => {
     const user = userEvent.setup();
     render(<OutingTeam sessionId="s1" tick={0} />);
     const button = await screen.findByRole("button", { name: "Join this session" });
-    await user.click(button);
+    await pressByKey(user, button);
     expect(button).toBeDisabled();
     await focusDropped();
 
@@ -462,7 +462,7 @@ describe("on a team", () => {
     const user = userEvent.setup();
     render(<OutingTeam sessionId="s1" tick={0} />);
     const button = await screen.findByRole("button", { name: "Leave" });
-    await user.click(button);
+    await pressByKey(user, button);
     const dialog = screen.getByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Leave team" }));
     await within(dialog).findByRole("button", { name: "Working…" });

@@ -6,7 +6,7 @@ import type { SignIn, User } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { formatDayTime } from "@/lib/history/dates";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -368,7 +368,7 @@ describe("MemberDetail (#125)", () => {
         const button = within(card("Safari on iPhone")).getByRole("button", {
           name: /^Sign out/,
         });
-        await user.click(button);
+        await pressByKey(user, button);
         expect(button).toBeDisabled();
         await focusDropped();
 
@@ -395,7 +395,7 @@ describe("MemberDetail (#125)", () => {
         render(<MemberDetail userId="u1" />);
         await screen.findByText("Chrome on Android");
         const button = screen.getByRole("button", { name: "Sign out everywhere" });
-        await user.click(button);
+        await pressByKey(user, button);
         const dialog = screen.getByRole("alertdialog");
         await user.click(within(dialog).getByRole("button", { name: "Sign out everywhere" }));
         await within(dialog).findByRole("button", { name: "Working…" });

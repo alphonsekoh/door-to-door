@@ -6,7 +6,7 @@ import { HouseholdHistoryPanel } from "@/components/households/household-history
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
-import { focusDropped } from "../../../test/focus-dropped";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -505,7 +505,7 @@ describe("acting on a note", () => {
     const user = userEvent.setup();
     render(<Panel over={{ followUps: [shown] }} />);
     const button = screen.getByRole("button", { name: label });
-    await user.click(button);
+    await pressByKey(user, button);
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 
@@ -959,7 +959,7 @@ describe("older visits (#160)", () => {
     render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
     placeControl();
     const button = showEarlier();
-    await user.click(button);
+    await pressByKey(user, button);
     expect(button).toBeDisabled();
     await focusDropped();
 
