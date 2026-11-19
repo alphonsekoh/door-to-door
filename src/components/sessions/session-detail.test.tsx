@@ -436,6 +436,90 @@ describe("SessionDetail", () => {
       expect(reads()).toBe(1);
       expect(screen.getByText("Draft")).toBeInTheDocument();
     });
+
+    /* The session moves again while the page is open: what was said or
+       opened for the action before belongs to it, not to the one the poll
+       now draws. */
+    describe("and moves again before the poll", () => {
+      async function poll(): Promise<void> {
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(30_000);
+        });
+      }
+
+      it("drops the sentence once it no longer names what is shown, scrolling nothing", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+        try {
+          const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+          let status: SessionStatus = "active";
+          apiFetch.mockImplementation((path: string) =>
+            path === "/sessions/s1/end"
+              ? Promise.reject(
+                  new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+                )
+              : Promise.resolve(path.endsWith("/blocks") ? BLOCKS : session(status)),
+          );
+          render(<SessionDetail sessionId="s1" />);
+          const end = await screen.findByRole("button", { name: "End session" });
+
+          // Ended by another admin while this page was open.
+          status = "ended";
+          await user.click(end);
+          await user.click(
+            within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+          );
+          expect(await screen.findByText("Ended")).toBeInTheDocument();
+          expect(screen.getByRole("alert")).toHaveTextContent(ENDED);
+          const before = scrolled.mock.calls.length;
+
+          // And reopened by them.
+          status = "active";
+          await poll();
+
+          expect(screen.getByText("Running now")).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: "End session" })).toBe(end);
+          expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+          // Left wherever the admin had scrolled to (D-213-3).
+          expect(scrolled).toHaveBeenCalledTimes(before);
+        } finally {
+          scrolled.mockRestore();
+          vi.useRealTimers();
+        }
+      });
+
+      it("never opens End's confirm unasked when the session runs again", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+          const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+          let status: SessionStatus = "active";
+          apiFetch.mockImplementation((path: string) =>
+            Promise.resolve(path.endsWith("/blocks") ? BLOCKS : session(status)),
+          );
+          render(<SessionDetail sessionId="s1" />);
+          await user.click(await screen.findByRole("button", { name: "End session" }));
+          expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+          // Ended elsewhere with the confirm left open: the poll closes it.
+          status = "ended";
+          await poll();
+          expect(screen.getByRole("button", { name: "Reopen session" })).toBeInTheDocument();
+          await waitFor(() => {
+            expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+          });
+
+          // Reopened elsewhere.
+          status = "active";
+          await poll();
+
+          expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+          expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/end", { method: "POST" });
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+    });
   });
 
   it("does not offer a block the outing already has", async () => {

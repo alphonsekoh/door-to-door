@@ -541,5 +541,127 @@ describe("SessionActionButton", () => {
         scrolled.mockRestore();
       }
     });
+
+    /* Only the change its own re-read brings: past that, the sentence no
+       longer names what the screen shows, as when it was keyed by action. */
+    it("drops the failure, scrolling nothing, when the action changes again", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockRejectedValue(
+          new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+        );
+        const { rerender } = render(
+          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+        );
+        const button = screen.getByRole("button", { name: "End session" });
+        await user.click(button);
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+        );
+        await screen.findByRole("alert");
+        await waitFor(() => {
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        rerender(
+          <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+        );
+        expect(screen.getByRole("alert")).toHaveTextContent(ENDED);
+        const before = scrolled.mock.calls.length;
+
+        // Reopened by another admin, then read again by a poll.
+        rerender(
+          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+        );
+
+        expect(screen.getByRole("button")).toBe(button);
+        expect(button).toHaveAccessibleName("End session");
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(scrolled).toHaveBeenCalledTimes(before);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    /* Nothing re-read it, so whatever changed the action was not this
+       press's refusal: a lost answer to an End that went through, say. */
+    it.each([
+      ["a network failure", new TypeError("Failed to fetch")],
+      [
+        "a 403",
+        new ApiRequestError(403, { error: { code: "forbidden", message: "Admins only." } }),
+      ],
+    ])(
+      "drops the failure after %s, scrolling nothing, when the action changes",
+      async (_, failure) => {
+        const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+        try {
+          apiFetch.mockRejectedValue(failure);
+          const { rerender } = render(
+            <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+          );
+          await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
+          await screen.findByRole("alert");
+          expect(scrolled).toHaveBeenCalledTimes(2);
+
+          rerender(
+            <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          );
+
+          expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
+          expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+          expect(scrolled).toHaveBeenCalledTimes(2);
+        } finally {
+          scrolled.mockRestore();
+        }
+      },
+    );
+
+    /* A poll that read it ended closed End's confirm, and one that read it
+       reopened brought the confirm back unasked. */
+    it("closes End's confirm when the action changes, and leaves it closed when End comes back", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+      );
+      const button = screen.getByRole("button", { name: "End session" });
+      await user.click(button);
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+      rerender(
+        <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      // Given back to the button it was opened from, not left on the page.
+      expect(button).toHaveFocus();
+
+      rerender(
+        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+      );
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(apiFetch).not.toHaveBeenCalled();
+    });
+
+    it("says Reopen is working once End's confirm has gone with End", async () => {
+      const user = userEvent.setup();
+      const { rerender } = render(
+        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+      );
+      await user.click(screen.getByRole("button", { name: "End session" }));
+      rerender(
+        <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+
+      apiFetch.mockReturnValue(new Promise(() => undefined));
+      await user.click(screen.getByRole("button", { name: "Reopen session" }));
+
+      expect(await screen.findByRole("button", { name: "Working…" })).toBeDisabled();
+      expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/reopen", { method: "POST" });
+    });
   });
 });

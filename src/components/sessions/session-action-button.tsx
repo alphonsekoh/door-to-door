@@ -8,6 +8,13 @@ import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import type { ActionSpec } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
+type Failure = {
+  line: string;
+  /* Said for a 409, until the re-read it set off turns the button into
+     another action: the one change the failure is kept through. */
+  awaitsMove: boolean;
+};
+
 /*
  * Start, end or reopen, with the refusal spelled out.
  *
@@ -20,8 +27,9 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
  *
  * A 409 means the session moved under this screen, ended or started by
  * another admin, so the screen reads it again through `onStale` rather than
- * go on offering End beside "has already ended" (#226). The sentence stays,
- * since it names the state the screen now shows.
+ * go on offering End beside "has already ended" (#226). The sentence stays
+ * through the change that re-read brings, since it names the state the
+ * screen then shows.
  */
 export function SessionActionButton({
   sessionId,
@@ -42,13 +50,25 @@ export function SessionActionButton({
   const blockedId = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const pressed = useRef<HTMLButtonElement>(null);
   const said = useRef<HTMLParagraphElement>(null);
   /* Noted on this button, never on End's confirm, which leaves with its
      dialog: End then ends here too, where D-90-9 returns focus. Above the
      scrolls, which come after focus is back (D-208-4). */
   const { notePress, refused } = useRefusalFocus();
+
+  /* The button outlives a change of its action (D-226-2); what it said or
+     opened for the old one does not, as when it was keyed by its action. A
+     poll that turned Reopen back into End brought back End's confirm, and
+     "has already ended" under it. Only the 409's own re-read keeps the
+     failure, once: that sentence names the state it shows. */
+  const [actionShown, setActionShown] = useState(spec.action);
+  if (actionShown !== spec.action) {
+    setActionShown(spec.action);
+    setConfirming(false);
+    setFailure(failure?.awaitsMove === true ? { line: failure.line, awaitsMove: false } : null);
+  }
 
   /*
    * Before it is painted, clear of the nav and a banner floating on it, and
@@ -59,15 +79,16 @@ export function SessionActionButton({
    * end, then the button's top, land where a block of just the two would,
    * the button winning where even they cannot fit.
    *
-   * Again when the button turns into another action under a failure still
-   * said: the re-read after a 409 redraws the row or page around it, and on a
-   * session's page an ended summary lands above it (D-226-4).
+   * Again when a 409's re-read turns the button into another action, which
+   * keeps the failure as a new one: the re-read redraws the row or page
+   * around it, and on a session's page an ended summary lands above it
+   * (D-226-4).
    */
   useLayoutEffect(() => {
     if (failure === null) return;
     said.current?.scrollIntoView({ block: "nearest" });
     pressed.current?.scrollIntoView({ block: "nearest" });
-  }, [failure, spec.action]);
+  }, [failure]);
 
   async function run(): Promise<void> {
     setFailure(null);
@@ -81,13 +102,14 @@ export function SessionActionButton({
     } catch (error) {
       /* ApiRequestError carries the contract's message, which for a clash
          says how to clear it - keep it rather than a generic apology. */
-      setFailure(failureLine(error, "Could not do that."));
-      setConfirming(false);
-      refused();
       /* Only a 409 says the session moved. After a network failure the
          re-read would most likely fail too, swapping the screen for its load
          error. */
-      if (error instanceof ApiRequestError && error.status === 409) onStale();
+      const moved = error instanceof ApiRequestError && error.status === 409;
+      setFailure({ line: failureLine(error, "Could not do that."), awaitsMove: moved });
+      setConfirming(false);
+      refused();
+      if (moved) onStale();
     } finally {
       setBusy(false);
     }
@@ -125,7 +147,7 @@ export function SessionActionButton({
       {/* A row of its own when the button sits beside a title. */}
       {failure === null ? null : (
         <p ref={said} role="alert" className="mt-2 basis-full scroll-clear-nav notice-danger">
-          {failure}
+          {failure.line}
         </p>
       )}
 
