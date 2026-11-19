@@ -75,7 +75,9 @@ export async function listSessions(
     .from(outingSessions)
     .innerJoin(users, eq(users.id, outingSessions.createdBy))
     .where(filter)
-    .orderBy(desc(outingSessions.createdAt))
+    /* The id keeps sessions created at one instant in one order from page to
+       page (#212). */
+    .orderBy(desc(outingSessions.createdAt), desc(outingSessions.id))
     .limit(options.limit)
     .offset(options.offset);
 

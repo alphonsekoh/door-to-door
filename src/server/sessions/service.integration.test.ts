@@ -241,6 +241,23 @@ describe("listSessions", () => {
   it("returns nothing when there are no sessions", async () => {
     expect(await listSessions(db, { limit: 10, offset: 0 })).toEqual({ rows: [], total: 0 });
   });
+
+  it("keeps sessions created at one instant in one order from page to page (#212)", async () => {
+    const session = (n: number) => `dddddddd-0000-4000-8003-00000000000${String(n)}`;
+    // Stored neither in id order nor its reverse, so only the id lists them 3, 2, 1.
+    await pool.query(
+      `INSERT INTO outing_sessions (id, title, created_by, created_at) VALUES
+        ($1,'Two',$4,$5), ($2,'Three',$4,$5), ($3,'One',$4,$5)`,
+      [session(2), session(3), session(1), ADMIN, "2026-03-01T10:00:00Z"],
+    );
+
+    const read: string[] = [];
+    for (const offset of [0, 1, 2]) {
+      const page = await listSessions(db, { limit: 1, offset });
+      read.push(...page.rows.map((row) => row.title));
+    }
+    expect(read).toEqual(["Three", "Two", "One"]);
+  });
 });
 
 describe("getSession", () => {
