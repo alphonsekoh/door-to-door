@@ -146,7 +146,8 @@ only: no contract or schema change.
   edge. With a 34px inset, `--sheet-actions` plus 16px leaves the field 18px short.
   `scroll-clear-chrome` adds `env(safe-area-inset-bottom)` for the page. On main the
   shortfall was about 2px at 32px. Playwright draws no inset, so no E2E sees it.
-  _Research:_ R-184. Accepted as a known limit (owner, 2026-11-15).
+  _Research:_ R-184. Accepted as a known limit (owner, 2026-11-15). _Fixed for the amend
+  sheet's failure only by D-225-7_, with its own scroll margin; fields keep the limit.
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
   sent." or a note's suffix can still grow the line. _Extended by D-196-2:_ under 18.75
