@@ -1,6 +1,6 @@
 # #194 · Screens say their own sentence, not the browser's, when a request fails
 
-- **Status:** In progress (branch `fix/194-failure-line`)
+- **Status:** Done (PR #210)
 - **Phase:** 7 - Hardening
 - **Depends on:** #74, #165
 
@@ -82,10 +82,11 @@ contract or schema change.
   save, admin-records, member-list, block-attach-sheet's load, attention-list,
   consolidated-history (two) and session-records. Each is guarded against the browser's
   words.
-- Already on `main`, admins only, only the text changed: a failed Start, End or Reopen
+- ~~Already on `main`, admins only, only the text changed: a failed Start, End or Reopen
   on the Sessions list can land under the nav (`session-action-button.tsx`), and a
   failed role change on Team is said above the list, off screen (`member-list.tsx`). The
-  verifier suggests a separate issue.
+  verifier suggests a separate issue.~~ Fixed by D-213-1 and D-213-2
+  ([#213](213-admin-failure-in-view.md)).
 - Playwright cannot run an iPhone with the service worker in charge offline (D-32-18).
   One look on a real iPhone is worth it: open a block, turn on airplane mode, then wait
   for a sync re-read.

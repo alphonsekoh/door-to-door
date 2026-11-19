@@ -1860,7 +1860,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#propdef-scroll-margin);
   [CSS Overflow 3, `hidden`](https://drafts.csswg.org/css-overflow-3/#valdef-overflow-hidden);
   measured (#164 builder and verifier, Pixel 5 and iPhone 13)
-- **Used by:** D-164-1, D-164-3, D-164-7, D-164-8, D-151-7
+- **Used by:** D-164-1, D-164-3, D-164-7, D-164-8, D-151-7, D-213-1, D-213-2
 
 ### R-164 · Playwright 1.64 fires `online` for a document loaded offline; 1.62 does not (measured)
 
@@ -2542,3 +2542,18 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#218, 2026-11-18; production image against postgres:17-alpine on
   a private Docker network).
 - **Used by:** D-218-1
+
+### R-212 · `nearest` lines up the top of a box taller than its room, leaving its foot under the nav (measured)
+
+- **Finding:** with `scrollIntoView({ block: "nearest" })`, a box taller than the room
+  between its scroll margins, whose foot is below the view, is aligned by its top, so
+  its foot stays under the nav. The mirror of R-89. At 32px a Sessions row's block of
+  title, badges, Start and its alert was 608 to 774px tall, against 607px of room above
+  the nav on a Pixel 5 and 544px on an iPhone 13, and the alert ended 61 to 460px under
+  the nav. Calling `nearest` on the alert and then on the button brings the alert's foot
+  onto the nav, then moves the page back only if the button's top went past the top
+  margin. On both phones every alert then ended exactly on the nav or the floating
+  banner.
+- **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
+  measured (#213 verifier r0 and r1, Pixel 5 on Chromium and iPhone 13 on WebKit).
+- **Used by:** D-213-1
