@@ -1,6 +1,6 @@
 # #207 · Rows stored at one instant come back in one order
 
-- **Status:** In progress (branch `fix/207-note-order`, not yet a PR)
+- **Status:** Done (PR #209)
 - **Phase:** 7 - Hardening
 - **Depends on:** #160
 
@@ -67,7 +67,8 @@ only a tie, which had no defined order, gains one.
   descending for `listHistory` and `listSessions`. Sign-in eviction and `listSignIns`
   (`src/server/auth/sign-ins.ts:79`, `:228`) are safe: at most `MAX_SIGN_INS` are kept,
   so the limit never splits a tie, and a tie only swaps two equally old rows. _Why:_ the
-  task's scope; the reviewer found no others under `src/server`.
+  task's scope; the reviewer found no others under `src/server`. _Done by D-212-1 to
+  D-212-3 (#212)._
 
 ## Relies on
 
@@ -83,7 +84,7 @@ D-22-1, D-30-1, D-30-3, D-35-6, D-117-40, D-117-51, D-117-54, D-126-1, D-160-1, 
 | #126's `max` known limit | Stands: a door with tied latest visits can show twice      | D-207-2 |
 | D-117-40, D-117-54       | Kept: one rule, the owner's note order; a tie by id        | D-207-3 |
 | D-126-1, D-160-2         | Followed: the revisits list's latest is the same visit     | D-207-4 |
-| D-30-3                   | At risk from `listHistory`'s ties until the issue is fixed | D-207-8 |
+| D-30-3                   | At risk from `listHistory`'s ties; fixed by D-212-1 (#212) | D-207-8 |
 
 ## Known limits
 
@@ -94,5 +95,4 @@ D-22-1, D-30-1, D-30-3, D-35-6, D-117-40, D-117-51, D-117-54, D-126-1, D-160-1, 
 
 ## Open questions
 
-- File one issue for `listHistory`, `listOwnSessionHistory` and `listSessions`
-  (D-207-8)? It should say the CSV export can drop or repeat a record at a tie.
+None. The three lists were filed as #212 (D-207-8).
