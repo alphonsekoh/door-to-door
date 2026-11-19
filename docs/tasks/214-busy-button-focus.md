@@ -1,7 +1,7 @@
 # #214 · A failed press on a busy-disabled button gives focus back
 
-- **Status:** In progress (branch `fix/214-busy-button-focus`, not yet a PR). The owner
-  ruled option B on 2026-11-19 (D-214-2).
+- **Status:** In progress (PR #224, branch `fix/214-busy-button-focus`). The owner ruled
+  option B on 2026-11-19 (D-214-2).
 - **Phase:** 7 - Hardening
 - **Depends on:** #208, #213
 
