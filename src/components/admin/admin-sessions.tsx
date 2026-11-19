@@ -8,7 +8,7 @@ import { SessionActionButton } from "@/components/sessions/session-action-button
 import type { OutingSession, SessionList, SessionStatus } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
-import { availableActions, statusLabel } from "@/lib/session/sessions";
+import { sessionAction, statusLabel } from "@/lib/session/sessions";
 
 const PAGE_SIZE = 25;
 
@@ -142,16 +142,17 @@ function SessionRows({
               The action sits on the row, not behind the detail screen.
               Reopening a session ended by mistake has to be two taps from
               here, because a member mid-amendment is locked out until it is.
+              One slot, keyed by nothing that changes with the status: when a
+              refused End reads the session back as ended, the same button
+              turns into Reopen, keeping its failure and its focus.
             */}
-            {availableActions(session.status).map((spec) => (
-              <SessionActionButton
-                key={spec.action}
-                sessionId={session.id}
-                spec={spec}
-                primary={false}
-                onDone={onChanged}
-              />
-            ))}
+            <SessionActionButton
+              sessionId={session.id}
+              spec={sessionAction(session.status)}
+              primary={false}
+              onDone={onChanged}
+              onStale={onChanged}
+            />
           </div>
         </li>
       ))}

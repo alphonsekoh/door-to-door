@@ -188,16 +188,37 @@ test("a second outing cannot be started while one is running", async ({
   }
 });
 
-test("reopening is two taps from the outing list", async ({ adminPage, playwright, baseURL }) => {
-  const api = await adminRequest(playwright, baseURL);
-  await endActiveSession(api);
-  await api.dispose();
-
+/*
+ * Ended by another admin while this list was open, it went on showing
+ * "Running now" and End beside "has already ended" (#226). Read again, the
+ * row's End turns into Reopen in place, keeping the sentence and the focus
+ * End's confirm gave back.
+ */
+test("an End refused because the session ended elsewhere shows it ended, and reopening is two taps from the list", async ({
+  adminPage,
+  adminApi,
+}) => {
   await adminPage.goto("/admin/sessions");
   const row = adminPage.getByRole("listitem").filter({ hasText: TITLE });
+  const end = row.getByRole("button", { name: "End session" });
+  await expect(end).toBeVisible();
+  await endActiveSession(adminApi);
+
+  await end.press("Enter");
+  await adminPage
+    .getByRole("alertdialog", { name: "End session" })
+    .getByRole("button", { name: "End session" })
+    .press("Enter");
+
+  await expect(row.getByRole("alert")).toContainText("has already ended");
+  await expect(row.getByText("Ended", { exact: true })).toBeVisible();
+  await expect(end).toHaveCount(0);
+  const reopen = row.getByRole("button", { name: "Reopen session" });
+  await expect(reopen).toBeFocused();
 
   /* One tap. Ending by mistake is the failure this guards against, and an
      admin should not have to hunt through a detail screen to undo it. */
-  await row.getByRole("button", { name: "Reopen session" }).click();
+  await reopen.click();
   await expect(row).toContainText("Running now");
+  await expect(row.getByRole("alert")).toHaveCount(0);
 });

@@ -1,44 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { availableActions, statusLabel } from "@/lib/session/sessions";
+import { sessionAction, statusLabel } from "@/lib/session/sessions";
 
-describe("availableActions", () => {
+describe("sessionAction", () => {
   it("marks only ending as destructive", () => {
-    expect(availableActions("active")[0]?.destructive).toBe(true);
-    expect(availableActions("draft")[0]?.destructive).toBe(false);
-    expect(availableActions("ended")[0]?.destructive).toBe(false);
+    expect(sessionAction("active").destructive).toBe(true);
+    expect(sessionAction("draft").destructive).toBe(false);
+    expect(sessionAction("ended").destructive).toBe(false);
   });
 
-  it("offers only start on a draft", () => {
-    expect(availableActions("draft").map((spec) => spec.action)).toEqual(["start"]);
+  it("offers start on a draft", () => {
+    expect(sessionAction("draft").action).toBe("start");
   });
 
-  it("offers only end while it runs", () => {
-    expect(availableActions("active").map((spec) => spec.action)).toEqual(["end"]);
+  it("offers end while it runs", () => {
+    expect(sessionAction("active").action).toBe("end");
   });
 
   it("always offers reopen on an ended outing", () => {
     // The failure this guards against is ending by mistake, which locks a
     // member out mid-amendment. Reopen must never be missing.
-    expect(availableActions("ended").map((spec) => spec.action)).toEqual(["reopen"]);
+    expect(sessionAction("ended").action).toBe("reopen");
   });
 
   it("asks before ending, because members lose access until it is reopened", () => {
-    expect(availableActions("active")[0]?.confirm).toContain("reopened");
+    expect(sessionAction("active").confirm).toContain("reopened");
   });
 
   it("does not stand between an admin and reopening", () => {
-    expect(availableActions("ended")[0]?.confirm).toBeNull();
+    expect(sessionAction("ended").confirm).toBeNull();
   });
 
   it("does not stand between an admin and starting", () => {
-    expect(availableActions("draft")[0]?.confirm).toBeNull();
+    expect(sessionAction("draft").confirm).toBeNull();
   });
 
   it("labels every action", () => {
     for (const status of ["draft", "active", "ended"] as const) {
-      for (const spec of availableActions(status)) {
-        expect(spec.label).not.toBe("");
-      }
+      expect(sessionAction(status).label).not.toBe("");
     }
   });
 });

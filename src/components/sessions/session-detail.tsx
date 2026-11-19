@@ -12,7 +12,7 @@ import type { OutingSession, SessionBlock } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { startBlocker } from "@/lib/follow-ups/session-households";
-import { availableActions, statusLabel } from "@/lib/session/sessions";
+import { sessionAction, statusLabel } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 /* While a session runs the numbers move, so they refresh on their own. Long
@@ -130,6 +130,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const recorded = blocks.reduce((sum, entry) => sum + entry.visitCount, 0);
   /* A follow-up session's blocks follow its households: read-only here. */
   const byHand = session.kind === "regular";
+  const action = sessionAction(session.status);
 
   return (
     <div className="space-y-5">
@@ -165,17 +166,20 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         </Link>
       ) : null}
 
-      {availableActions(session.status).map((spec) => (
-        <SessionActionButton
-          key={spec.action}
-          sessionId={session.id}
-          spec={spec}
-          blocked={
-            spec.action === "start" && session.kind === "follow_up" ? startBlocker(onList) : null
-          }
-          onDone={() => void load()}
-        />
-      ))}
+      {/* Keyed by nothing that changes with the status, as on the list: a
+          refused End read back as ended turns the same button into Reopen.
+          Only the session and its blocks are read again, not the panels'
+          tick: the households read could disable a follow-up Start just
+          given focus back. */}
+      <SessionActionButton
+        sessionId={session.id}
+        spec={action}
+        blocked={
+          action.action === "start" && session.kind === "follow_up" ? startBlocker(onList) : null
+        }
+        onDone={() => void load()}
+        onStale={() => void load()}
+      />
 
       <div>
         <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-2">

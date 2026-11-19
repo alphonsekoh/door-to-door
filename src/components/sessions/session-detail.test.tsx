@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionDetail } from "@/components/sessions/session-detail";
@@ -337,6 +337,105 @@ describe("SessionDetail", () => {
     await user.click(screen.getByRole("button", { name: "Reopen session" }));
 
     expect(await screen.findByText("Running now")).toBeInTheDocument();
+  });
+
+  /* Ended or started by another admin, the session moved under the page,
+     which went on offering End beside "has already ended" (#226). */
+  describe("a press refused because the session moved elsewhere", () => {
+    const ENDED = "This session has already ended, so it cannot be ended.";
+    const BLOCKS = [sessionBlock("b1", "123", { visitCount: 2, householdCount: 2 })];
+    const reads = () => apiFetch.mock.calls.filter(([path]) => path === "/sessions/s1").length;
+
+    it("reads it again, and turns End into Reopen in place, still saying why", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        serve("active", BLOCKS);
+        render(<SessionDetail sessionId="s1" />);
+        const end = await screen.findByRole("button", { name: "End session" });
+        let reread: (value: unknown) => void = () => undefined;
+        apiFetch.mockImplementation((path: string) => {
+          if (path === "/sessions/s1/end") {
+            return Promise.reject(
+              new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+            );
+          }
+          if (path.endsWith("/blocks")) return Promise.resolve(BLOCKS);
+          return new Promise((resolve) => {
+            reread = resolve;
+          });
+        });
+
+        await user.click(end);
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+        );
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(ENDED);
+        await waitFor(() => {
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        expect(reads()).toBe(2);
+        const before = scrolled.mock.calls.length;
+
+        reread(session("ended"));
+
+        expect(await screen.findByText("Ended")).toBeInTheDocument();
+        expect(screen.getByText("2 visits recorded across 1 block.")).toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "End session" })).toBeNull();
+        /* The very button End was, so the focus End's confirm gave back
+           stays on it (D-90-9), and so does the failure under it. */
+        const reopen = screen.getByRole("button", { name: "Reopen session" });
+        expect(reopen).toBe(end);
+        expect(reopen).toHaveFocus();
+        expect(screen.getByRole("alert")).toBe(alert);
+        expect(alert).toHaveTextContent(ENDED);
+        // The summary drawn above it moved both down.
+        expect(scrolled.mock.contexts.slice(before)).toEqual([alert, reopen]);
+        // Only the session and its blocks: the panels keep their own beat.
+        expect(screen.getByText("Teams panel: ended, read 0")).toBeInTheDocument();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("reads a refused Reopen back as running, offering End", async () => {
+      const refusal = "This session is already running, so it cannot be reopened.";
+      const user = userEvent.setup();
+      serve("ended", BLOCKS);
+      render(<SessionDetail sessionId="s1" />);
+      const reopen = await screen.findByRole("button", { name: "Reopen session" });
+      apiFetch.mockImplementation((path: string) => {
+        if (path === "/sessions/s1/reopen") {
+          return Promise.reject(
+            new ApiRequestError(409, { error: { code: "conflict", message: refusal } }),
+          );
+        }
+        return Promise.resolve(path.endsWith("/blocks") ? BLOCKS : session("active"));
+      });
+
+      await user.click(reopen);
+
+      expect(await screen.findByText("Running now")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "End session" })).toBe(reopen);
+      expect(screen.queryByText(/visits recorded across/)).toBeNull();
+      expect(screen.getByRole("alert")).toHaveTextContent(refusal);
+      expect(screen.getByText("Teams panel: active, read 0")).toBeInTheDocument();
+    });
+
+    it("leaves the page as it is when the press never reached the server", async () => {
+      const user = userEvent.setup();
+      serve("draft", BLOCKS);
+      render(<SessionDetail sessionId="s1" />);
+      const start = await screen.findByRole("button", { name: "Start session" });
+      apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+
+      await user.click(start);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
+      expect(reads()).toBe(1);
+      expect(screen.getByText("Draft")).toBeInTheDocument();
+    });
   });
 
   it("does not offer a block the outing already has", async () => {

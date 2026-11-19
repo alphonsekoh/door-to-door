@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import type { ActionSpec } from "@/lib/session/sessions";
@@ -17,6 +17,11 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
  *
  * A failure is said under the button and brought into view with it: near the
  * foot of the Sessions list it landed under the nav (#213).
+ *
+ * A 409 means the session moved under this screen, ended or started by
+ * another admin, so the screen reads it again through `onStale` rather than
+ * go on offering End beside "has already ended" (#226). The sentence stays,
+ * since it names the state the screen now shows.
  */
 export function SessionActionButton({
   sessionId,
@@ -24,6 +29,7 @@ export function SessionActionButton({
   primary = true,
   blocked = null,
   onDone,
+  onStale,
 }: {
   sessionId: string;
   spec: ActionSpec;
@@ -31,6 +37,7 @@ export function SessionActionButton({
   /* Why the server would refuse it now, said beside it instead of offered. */
   blocked?: string | null;
   onDone: (session: OutingSession) => void;
+  onStale: () => void;
 }) {
   const blockedId = useId();
   const [confirming, setConfirming] = useState(false);
@@ -51,12 +58,16 @@ export function SessionActionButton({
    * outgrew the screen and left the alert's end under the nav. The alert's
    * end, then the button's top, land where a block of just the two would,
    * the button winning where even they cannot fit.
+   *
+   * Again when the button turns into another action under a failure still
+   * said: the re-read after a 409 redraws the row or page around it, and on a
+   * session's page an ended summary lands above it (D-226-4).
    */
   useLayoutEffect(() => {
     if (failure === null) return;
     said.current?.scrollIntoView({ block: "nearest" });
     pressed.current?.scrollIntoView({ block: "nearest" });
-  }, [failure]);
+  }, [failure, spec.action]);
 
   async function run(): Promise<void> {
     setFailure(null);
@@ -73,6 +84,10 @@ export function SessionActionButton({
       setFailure(failureLine(error, "Could not do that."));
       setConfirming(false);
       refused();
+      /* Only a 409 says the session moved. After a network failure the
+         re-read would most likely fail too, swapping the screen for its load
+         error. */
+      if (error instanceof ApiRequestError && error.status === 409) onStale();
     } finally {
       setBusy(false);
     }
