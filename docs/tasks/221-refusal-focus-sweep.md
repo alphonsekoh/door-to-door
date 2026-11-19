@@ -1,6 +1,6 @@
 # #221 · Give focus back after a failed press at the remaining busy-disabled buttons
 
-- **Status:** In progress (branch `fix/221-refusal-focus-sweep`, not pushed, no PR yet)
+- **Status:** In progress (PR #229, branch `fix/221-refusal-focus-sweep`)
 - **Phase:** 7 - Hardening
 - **Depends on:** #214
 
