@@ -1,6 +1,6 @@
 # #192 · Four block-screen tests read state before it lands
 
-- **Status:** In progress (branch `test/192-block-screen-waits`, not yet a PR)
+- **Status:** Done (PR #203)
 - **Phase:** 7 - Hardening
 - **Depends on:** #186, #160
 

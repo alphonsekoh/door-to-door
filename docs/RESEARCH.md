@@ -2018,8 +2018,9 @@ config`, parse only; #124 docs step, confirming the planner's check)
   open shadow root holding a `div` with `role="alert"` and `aria-live="assertive"`.
   Playwright's `getByRole("alert")` pierces open shadow roots, so a page-wide lookup can
   find it beside the app's own alert. It sits outside `main`.
-- **Source:** `next` 16.4.3 `dist/client/components/app-router-announcer.js`
-- **Used by:** D-151-9
+- **Source:** `next` 16.4.3 `dist/client/components/app-router-announcer.js`; unchanged
+  in 16.4.5 (#214).
+- **Used by:** D-151-9, D-214-6
 
 ### R-178 · `vi.clearAllMocks` keeps queued once-answers; `mockReset` drops them
 
@@ -2321,7 +2322,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** jsdom 31.0.0, `living/nodes/Document-impl.js:288-293`,
   `browser/Window.js:628-637` and `living/helpers/focusing.js:212`, read by the #208
   builder and both reviewers. Measured by the #208 builder.
-- **Used by:** D-208-1, D-208-6
+- **Used by:** D-208-1, D-208-6, D-214-7
 
 ### R-200 · On the phone profiles, a press on a disabled sign-in button ends with focus on the page
 
@@ -2341,8 +2342,9 @@ config`, parse only; #124 docs step, confirming the planner's check)
 
 - **Source:** Playwright on a production build with the `e2e` config, on the Pixel 5
   and iPhone 13 projects, run natively on macOS by the #208 builder. It was a manual
-  probe, not a spec, so no E2E pins it.
-- **Used by:** D-208-1, D-208-3, D-208-5, D-208-8
+  probe, not a spec. _Amended by #214:_ `e2e/auth.spec.ts` now pins the refocus after a
+  key press on both projects (D-214-6), and R-213 found the same drop elsewhere.
+- **Used by:** D-208-1, D-208-3, D-208-5, D-208-8 (superseded by D-214-6)
 
 ### R-201 · The Saved line's widest pair is 18.71 rems in the system face and 20.68 in DejaVu Sans (measured)
 
@@ -2578,3 +2580,80 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
   measured (#213 verifier r0 and r1, Pixel 5 on Chromium and iPhone 13 on WebKit).
 - **Used by:** D-213-1
+
+### R-213 · A failed press on a busy-disabled button ends with focus on the page, wherever measured (measured)
+
+- **Finding:** at 679fa56, before #214's fix, each refusal was held until focus had been
+  read, then failed. Each cell reads "where the press left focus → where focus was after
+  the refusal":
+
+  | Place                                | Pixel 5: tap, click, key | iPhone 13: tap, click | iPhone 13: key  |
+  | ------------------------------------ | ------------------------ | --------------------- | --------------- |
+  | Sign in (#211's fix)                 | button → button          | no button → body      | button → button |
+  | Account's Sign out                   | button → body            | no button → body      | button → body   |
+  | Record form's Save (session unknown) | button → body            | no button → body      | button → body   |
+  | Amend sheet's Save changes           | button → body            | no button → panel     | button → body   |
+  | Start session on `/admin/sessions`   | button → body            | no button → body      | button → body   |
+  | Make an admin on `/admin/team`       | button → body            | no button → body      | button → body   |
+  - Chromium focuses the button on every press, WebKit only on a key press. Disabled, the
+    button loses focus to `<body>`, and the refusal leaves it there. Inside a sheet, a
+    WebKit tap leaves focus on the panel, inside the modal; `<body>` is outside it.
+  - The drop's timing varies. Sign in sometimes still had focus three frames after it
+    was disabled, while every other place had lost it. A bare button disabled by hand
+    lost it within five frames on both engines. So a test must wait for the drop.
+  - After the fix (verifier r0, r1), every place in scope ended on its button after a
+    press that had focused it, and focus the member had moved stayed put. On End's,
+    Deactivate's and Sign out anyway's confirms, the hook's focus landed on a still-inert
+    button and did nothing; D-90-9's return put focus there. A Pixel 5 tap leaves no
+    `:focus-visible` ring, a key press does.
+
+- **Source:** Playwright 1.65 on a production build with the `e2e` config, Pixel 5
+  (Chromium) and iPhone 13 (WebKit), run natively with service workers blocked: two full
+  runs of 36 readings, every "after" reading the same (#214 planner). The verifier's
+  device passes, 67 cases a phone. Extends R-200 from sign-in to the rest of the app.
+- **Used by:** D-214-1, D-214-2, D-214-4, D-214-5, D-214-6
+
+### R-214 · A Vitest fake clock can leave jsdom 31 drawing no frame and moving no focus for the rest of a file (measured)
+
+- **Finding:** `vi.useFakeTimers()` with nothing passed fakes every timer but `nextTick`
+  and `queueMicrotask`, `setInterval` included. jsdom 31 runs animation-frame callbacks
+  and its focus fixup on one Node `setInterval`, started when first needed and cleared
+  only from its own callback once idle (R-199). Started while the fake clock is on, it is
+  a fake interval: after `vi.useRealTimers()` it never fires and is never cleared, and
+  jsdom starts no other while it holds one. For the rest of the test file no frame is
+  drawn and no disabled control loses focus, so `nextFrame()` (D-208-6) waits forever and
+  a focus test asserts nothing real. Faking only `setTimeout` and `clearTimeout` leaves
+  the interval real.
+- **Source:** jsdom 31.0.0 `lib/jsdom/browser/Window.js:620-645`
+  (`scheduleRenderingUpdate`, `stopRenderingUpdatesIfIdle`); Vitest 5.1.0's default
+  `toFake` (`dist/chunks/index.CZzC1gGg.js:6648-6650`). Measured by the #214 builder
+  (9828c3c): a focus test after `record-visit-form.test.tsx`'s stalled-outing test hung
+  on its frame.
+- **Used by:** D-214-10
+
+### R-215 · A sheet's focus scroll moved its form by the bar's height when the bar's button took focus, even with `preventScroll` (measured)
+
+- **Finding:** `focus({ preventScroll: true })` stops the browser's own scroll, but the
+  sheet body's `onFocus` still ran `scrollIntoView({ block: "nearest" })` on the target.
+  The body's scroll padding (`scroll-clear-sheet-actions`) counts the sticky bar as
+  covered, so `nearest` on a control inside the bar scrolled the content by up to the
+  bar's height. At 32px a bare `save.focus({ preventScroll: true })` in the amend sheet
+  moved its scroller from 200 to 284 on both engines. `overflow-anchor: none` changed
+  nothing, and stopping `focusin` at the button kept it at 200. With #214's refocus the
+  amend form moved 84px at 32px on both phones, and 61px on an iPhone with a keyboard at
+  the default text, which hid the failure under the header. With the bar skipped
+  (99c37d0), all 16 A/B cases a phone read the same with and without the refocus. In
+  "Suggest a return visit" a tap or Tab onto Send moved nothing, and the date field still
+  came clear of the bar.
+- **Source:** measured (#214 verifier r0 and r1, production build, Pixel 5 on Chromium
+  and iPhone 13 on WebKit).
+- **Used by:** D-214-9
+
+### R-216 · Auth.js posts a credentials sign-in with a query string
+
+- **Finding:** `signIn` from `next-auth/react` posts a credentials sign-in to
+  `{basePath}/callback/credentials?{params}`, so the URL ends in `?` even with no
+  params. A Playwright route glob `**/api/auth/callback/credentials` does not match it;
+  a predicate on `url.pathname` does.
+- **Source:** `next-auth` 5.0.0-beta.32 `react.js:151-153`; found by the #214 builder.
+- **Used by:** D-214-6

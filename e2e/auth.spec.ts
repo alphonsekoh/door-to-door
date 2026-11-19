@@ -39,14 +39,48 @@ test.describe("signing in", () => {
     await expect(memberPage.getByRole("heading", { level: 1, name: "Sessions" })).toBeHidden();
   });
 
-  test("a wrong password is refused, and says so", async ({ page }) => {
-    await page.goto("/sign-in");
-    await page.getByLabel("Email").fill(SEED_ADMIN);
-    await page.getByLabel("Password").fill("not-the-password");
-    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  test.describe("with a wrong password", () => {
+    /* page.route misses requests the service worker makes in WebKit. */
+    test.use({ serviceWorkers: "block" });
 
-    await expect(page.getByRole("alert")).toBeVisible();
-    await expect(page).toHaveURL(/sign-in/);
+    /*
+     * Disabled while the attempt is out, Sign in loses focus to the page,
+     * and the refusal gives it back (D-208-3). A key press is the one press
+     * that focuses the button on both engines. The attempt is held until the
+     * drop has happened, which can take more than a few frames, then refused
+     * by the server for real.
+     */
+    test("is refused, says so, and gives focus back to Sign in", async ({ page }) => {
+      let release: () => void = () => undefined;
+      const dropped = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      // By path: Auth.js adds a query string, which a glob would have to match.
+      await page.route(
+        (url) => url.pathname === "/api/auth/callback/credentials",
+        async (route) => {
+          await dropped;
+          await route.continue();
+        },
+      );
+      await page.goto("/sign-in");
+      await page.getByLabel("Email").fill(SEED_ADMIN);
+      await page.getByLabel("Password").fill("not-the-password");
+      const button = page.getByRole("button", { name: "Sign in", exact: true });
+      await button.focus();
+      await page.keyboard.press("Enter");
+      await expect(page.getByRole("button", { name: "Signing in…" })).toBeDisabled();
+      await expect
+        .poll(() => page.evaluate(() => document.activeElement === document.body))
+        .toBe(true);
+      release();
+
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(
+        "Email or password is incorrect.",
+      );
+      await expect(page).toHaveURL(/sign-in/);
+      await expect(button).toBeFocused();
+    });
   });
 
   test("a signed-out visitor is sent to sign in", async ({ page }) => {

@@ -6,6 +6,7 @@ import type { Role, User } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { formatDay } from "@/lib/history/dates";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -295,8 +296,7 @@ describe("MemberList", () => {
         expect(both).not.toHaveClass("scroll-clear-chrome");
         expect(scrolled.mock.contexts).toEqual([both]);
         expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
-        /* Heard, not focused (D-164-1). Where focus lands after a press on a
-           button disabled while busy is #214's. */
+        // Heard, not focused (D-164-1); where focus goes is pinned below.
         expect(alert).not.toHaveFocus();
       } finally {
         scrolled.mockRestore();
@@ -371,6 +371,74 @@ describe("MemberList", () => {
       } finally {
         scrolled.mockRestore();
       }
+    });
+  });
+
+  /* Every row's buttons are disabled while a change is out, and the pressed
+     one loses focus to the page: a keyboard admin was left at the top of it
+     (#214). Each holds the refusal past a frame, as a real one is (D-208-6). */
+  describe("focus after a refused change", () => {
+    async function listed() {
+      apiFetch.mockResolvedValue(
+        page([member("u1", "Alice"), member("u2", "Ben", { deactivated: true })]),
+      );
+      render(<MemberList googleDomains={null} />);
+      await screen.findByText(/^Ben/);
+      let refuse: (reason: unknown) => void = () => undefined;
+      apiFetch.mockReturnValueOnce(
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+      );
+      return (reason: unknown) => {
+        refuse(reason);
+      };
+    }
+
+    it.each(["Make an admin", "Reactivate"])(
+      "goes back to %s in the row pressed, before the row is brought into view",
+      async (label) => {
+        const focusAtScroll: (Element | null)[] = [];
+        const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+          focusAtScroll.push(document.activeElement);
+        });
+        try {
+          const refuse = await listed();
+          const user = userEvent.setup();
+          const button = within(row("Ben")).getByRole("button", { name: label });
+          await user.click(button);
+          expect(button).toBeDisabled();
+          await nextFrame();
+          expect(document.body).toHaveFocus();
+
+          refuse(new TypeError("Failed to fetch"));
+          const alert = await within(row("Ben")).findByRole("alert");
+          expect(button).toHaveFocus();
+          expect(alert).not.toHaveFocus();
+          expect(focusAtScroll).toEqual([button]);
+        } finally {
+          scrolled.mockRestore();
+        }
+      },
+    );
+
+    it("ends on that row's Deactivate after its confirm, once the dialog has gone", async () => {
+      const refuse = await listed();
+      const user = userEvent.setup();
+      const button = within(row("Alice")).getByRole("button", { name: "Deactivate" });
+      await user.click(button);
+      const dialog = screen.getByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Deactivate" }));
+      await within(dialog).findByRole("button", { name: "Working…" });
+      await nextFrame();
+      expect(document.body).toHaveFocus();
+
+      refuse(new TypeError("Failed to fetch"));
+      await within(row("Alice")).findByRole("alert");
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(button).toHaveFocus();
     });
   });
 

@@ -76,6 +76,7 @@ import {
 } from "@/lib/not-saved";
 import { useEarlyInput } from "@/lib/hooks/use-early-input";
 import { useLive } from "@/lib/hooks/use-live";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
@@ -310,6 +311,10 @@ export function RecordVisitForm({
   /* The save whose Undo is on its way: a second tap on it sends nothing,
      but the next save's Undo is not held up by it. */
   const undoing = useRef<string | null>(null);
+  /* Save is disabled while it saves, which drops focus to the page. A
+     refusal gives it back (#214); the Not saved pop-up opens after, and
+     still sends it to the field (D-119-15). */
+  const { notePress, refused: saveRefused } = useRefusalFocus();
   const savedId = saved?.visitId ?? null;
   const live = useLive();
 
@@ -489,6 +494,7 @@ export function RecordVisitForm({
       return;
     }
 
+    notePress();
     sending.current = true;
     setFailure(null);
     setSaving(true);
@@ -500,6 +506,7 @@ export function RecordVisitForm({
       setRefused(true);
       setOffList(true);
       setSaving(false);
+      saveRefused();
       sending.current = false;
       return;
     }
@@ -543,6 +550,7 @@ export function RecordVisitForm({
       if (outing.kind !== "running") {
         setFailure(outing.kind === "none" ? NO_OUTING : OUTING_UNKNOWN);
         setSaving(false);
+        saveRefused();
         sending.current = false;
         return;
       }
@@ -606,6 +614,7 @@ export function RecordVisitForm({
         setFailure(notSavedLine(refused));
         setNotSaved(refused);
       }
+      saveRefused();
     } finally {
       setSaving(false);
       sending.current = false;

@@ -10,6 +10,7 @@ import { PAGE_EXPIRED, signInWithPassword } from "@/lib/session/password-sign-in
 import { clearLocalCopy } from "@/lib/offline/local-copy-store";
 import { clearServiceWorkerCaches } from "@/lib/pwa/sw-client";
 import { useLive } from "@/lib/hooks/use-live";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 
 /* Derived from the JSX prop: React 19 deprecates the standalone FormEvent type. */
 type SubmitEvent = Parameters<NonNullable<ComponentProps<"form">["onSubmit"]>>[0];
@@ -55,11 +56,8 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
   const [stillSignedIn, setStillSignedIn] = useState(false);
   const finishing = useRef<Promise<void>>(Promise.resolve());
   const failureNotice = useRef<HTMLParagraphElement>(null);
-  /* The button a press left focus on, if any: it is disabled until the answer
-     comes, and a browser moves focus off a disabled control to the page and
-     leaves it there, so a refusal puts it back (D-85-15). A tap on an iPhone
-     focuses no button. */
-  const pressed = useRef<HTMLButtonElement | null>(null);
+  /* Both buttons are disabled until the answer comes (D-208-2). */
+  const { notePress, refused } = useRefusalFocus();
 
   /* A sign-out that just brought the member here is checked once more, as the
      answer to a request the page before sent can have signed them back in. */
@@ -84,17 +82,8 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
      hidden. Not Google's message from ?error=: the page opens at its top. */
   useLayoutEffect(() => {
     if (failure === null) return;
-    /* Not if the member has put focus somewhere since, and without moving
-       the page off the message. */
-    if (document.activeElement === document.body) pressed.current?.focus({ preventScroll: true });
     failureNotice.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
-
-  /* Before the press disables anything. */
-  function notePress() {
-    const focused = document.activeElement;
-    pressed.current = focused instanceof HTMLButtonElement ? focused : null;
-  }
 
   /*
    * Everything the email form does before it leaves happens before leaving
@@ -113,6 +102,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
     } catch {
       setLeaving(false);
       setFailure(GOOGLE_UNFINISHED);
+      refused();
     }
   }
 
@@ -137,6 +127,7 @@ export function SignInForm({ googleDomains = null }: { googleDomains?: readonly 
       // Never distinguish unknown email from wrong password. An expired page
       // is the CSRF check alone, which reads no credentials.
       setFailure(outcome === "expired" ? PAGE_EXPIRED : GENERIC_FAILURE);
+      refused();
       return;
     }
     /* A second member signing in on a shared phone must not read the first

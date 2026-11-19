@@ -1,6 +1,6 @@
 # #201 · CI's E2E job in a local Linux container, and a pre-push gate
 
-- **Status:** In progress
+- **Status:** Done (PR #202)
 - **Phase:** 7 - Hardening
 - **Depends on:** #131, #181
 

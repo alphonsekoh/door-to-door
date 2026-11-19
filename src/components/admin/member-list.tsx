@@ -6,6 +6,7 @@ import { AddMemberForm } from "@/components/admin/add-member-form";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { formatDay } from "@/lib/history/dates";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
@@ -34,6 +35,10 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
   const [failure, setFailure] = useState<{ at: string; message: string } | null>(null);
   /* The failure and the controls it is about, scrolled into view together. */
   const failureBlock = useRef<HTMLDivElement>(null);
+  /* Every row's buttons are disabled while a change is out. A refusal gives
+     focus back to the one pressed, in its row, before the scroll (D-208-4);
+     Deactivate's is noted on the row, never on its confirm. */
+  const { notePress, refused } = useRefusalFocus();
 
   const load = useCallback(async () => {
     try {
@@ -60,7 +65,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
 
   /* Brought into view before it is painted, clear of the nav and a banner
      floating on it, and no further: no Save bar docks here (as on the member
-     page, D-195-1). Focus stays put. */
+     page, D-195-1). The alert takes no focus. */
   useLayoutEffect(() => {
     if (failure !== null) failureBlock.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
@@ -77,6 +82,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
          message keeps one rule in one place rather than two that can drift. */
       setFailure({ at: user.id, message: failureLine(error, "Could not make that change.") });
       setDeactivating(null);
+      refused();
     } finally {
       setBusy(false);
     }
@@ -172,9 +178,10 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() =>
-                        void change(user, { role: user.role === "admin" ? "member" : "admin" })
-                      }
+                      onClick={() => {
+                        notePress();
+                        void change(user, { role: user.role === "admin" ? "member" : "admin" });
+                      }}
                       className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                     >
                       {user.role === "admin" ? "Make a member" : "Make an admin"}
@@ -184,7 +191,10 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() => void change(user, { deactivated: false })}
+                        onClick={() => {
+                          notePress();
+                          void change(user, { deactivated: false });
+                        }}
                         className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"
                       >
                         Reactivate
@@ -194,6 +204,7 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
                         type="button"
                         disabled={busy}
                         onClick={() => {
+                          notePress();
                           setDeactivating(user);
                         }}
                         className="min-h-11 min-w-fit flex-1 btn-secondary rounded-lg px-3 text-body font-medium"

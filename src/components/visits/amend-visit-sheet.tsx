@@ -6,6 +6,7 @@ import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generated/types.gen";
 import { amendRoute, describeAmendFailure } from "@/lib/history/amend";
 import { apiFetch } from "@/lib/api-client";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
@@ -86,6 +87,8 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
   const [failure, setFailure] = useState<string | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  /* Back on Save changes, inside the sheet, from the page it fell to. */
+  const { notePress, refused } = useRefusalFocus();
 
   const visit = entry.latestVisit;
   /*
@@ -117,6 +120,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
       return;
     }
 
+    notePress();
     sending.current = true;
     setFailure(null);
     setSaving(true);
@@ -128,6 +132,7 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
       onSaved();
     } catch (error) {
       setFailure(describeAmendFailure(error, route));
+      refused();
     } finally {
       sending.current = false;
       setSaving(false);
