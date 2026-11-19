@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { HouseholdSummary, InterestLevel, Religion, Visit } from "@/generated/types.gen";
@@ -87,8 +87,21 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
   const [failure, setFailure] = useState<string | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
-  /* Back on Save changes, inside the sheet, from the page it fell to. */
+  /* Back on Save changes, inside the sheet, from the page it fell to. Above
+     the failure's scroll, which comes after focus is back (D-208-4). */
   const { notePress, refused } = useRefusalFocus();
+  const said = useRef<HTMLParagraphElement>(null);
+
+  /*
+   * Before it is painted, and clear of the bar Save changes is pinned in:
+   * the body's scroll padding counts the bar as covered. Drawn at the top of
+   * the form, a failure was said above the view, and bringing it there would
+   * pull the form back from Notes or the details by up to its whole length
+   * (#225). The alert takes no focus.
+   */
+  useLayoutEffect(() => {
+    if (failure !== null) said.current?.scrollIntoView({ block: "nearest" });
+  }, [failure]);
 
   const visit = entry.latestVisit;
   /*
@@ -156,21 +169,19 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
           <p className="text-body">Only they, their current teammates or an admin can amend it.</p>
         </div>
       ) : (
+        /* Nothing under the bar, as in the other sheets: padding there let
+           the pinned bar rest a rem higher at the end of the scroll than
+           anywhere else, so bringing a failure into view dropped Save
+           changes by that rem under the thumb. */
         <form
           onSubmit={(event) => {
             event.preventDefault();
             void save(visit);
           }}
           noValidate
-          className="space-y-4 py-4"
+          className="space-y-4 pt-4"
         >
           {othersRecord ? <VisitByline visit={visit} prefix="Recorded by " /> : null}
-
-          {failure === null ? null : (
-            <p role="alert" className="notice-danger">
-              {failure}
-            </p>
-          )}
 
           {/* Interest first: a mistap on the picker is the correction this
                 screen exists for, and it should need no scrolling. */}
@@ -263,6 +274,17 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
               className="field py-2"
             />
           </div>
+
+          {/* Beside Save changes rather than atop the form, as on the record
+              form: with the details open or the text large, the top is
+              scrolled away from where Save is pressed. Out of the bar, which
+              is chrome-sized and pinned: a reader-sized failure in it could
+              outgrow a small phone's sheet and lose its top. */}
+          {failure === null ? null : (
+            <p ref={said} role="alert" className="notice-danger">
+              {failure}
+            </p>
+          )}
 
           {/* Sticky inside the sheet: with details open the form runs past
                 the sheet's height, and a Save you have to scroll for is a Save
