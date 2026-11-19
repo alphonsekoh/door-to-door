@@ -401,7 +401,13 @@ describe("AmendVisitSheet", () => {
       expect(bar).toContainElement(save);
       expect(bar).not.toContainElement(alert);
       // The body's room for the bar as drawn is what `nearest` keeps it clear of.
-      expect(alert.closest("[data-sheet-body]")).toHaveClass("scroll-clear-sheet-actions");
+      const body = alert.closest("[data-sheet-body]");
+      expect(body).toHaveClass("scroll-clear-sheet-actions");
+      /* That room is counted from the body's edge, but the bar rests above
+         the body's inset padding, so the failure adds the inset itself: on an
+         installed iPhone it ended 18px under the bar (R-184). */
+      expect(body).toHaveClass("inset-safe-bottom");
+      expect(alert).toHaveClass("scroll-mb-[env(safe-area-inset-bottom)]");
       expect(scrolled.mock.contexts).toEqual([alert]);
       expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
       // Heard, not focused (D-164-1, D-214-2).
