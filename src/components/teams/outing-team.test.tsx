@@ -653,7 +653,10 @@ describe("refreshing", () => {
   });
 
   it("stops re-reading once unmounted", async () => {
-    vi.useFakeTimers();
+    /* Only the read's timer: jsdom's frames and focus fixup run on a
+       setInterval, which a fake clock would stop for the rest of the file
+       (R-214). */
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const view = render(<OutingTeam sessionId="s1" tick={0} />);
     view.unmount();
     await vi.advanceTimersByTimeAsync(10);

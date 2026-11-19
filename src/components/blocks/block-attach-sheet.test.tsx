@@ -47,8 +47,11 @@ describe("BlockAttachSheet", () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  /* Each fakes only the debounce's timers. jsdom runs frames and its focus
+     fixup on a setInterval (R-214): started under a fake clock, neither ran
+     again for the rest of the file. */
   it("lists the registry at once on opening, without waiting out the typing debounce", () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       apiFetch.mockResolvedValue(page([]));
       render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
@@ -62,7 +65,7 @@ describe("BlockAttachSheet", () => {
   });
 
   it("waits for a pause in typing before searching", () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     try {
       apiFetch.mockResolvedValue(page([]));
       render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
