@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -328,8 +328,10 @@ describe("AmendVisitSheet", () => {
   });
 
   /* Disabled while it saves, Save changes loses focus to the page, which is
-     outside the sheet (#214). Held past a frame, as a real one is (D-208-6). */
-  it("gives focus back to Save changes, inside the sheet, after a refusal", async () => {
+     outside the sheet (#214). Held past a frame, as a real one is (D-208-6).
+     Given back without a scroll (D-208-4): the sheet scrolling to its own
+     pinned bar moved the form by the bar's height. */
+  it("gives focus back to Save changes, inside the sheet and without a scroll, after a refusal", async () => {
     let refuse: (reason: unknown) => void = () => undefined;
     apiFetch.mockReturnValueOnce(
       new Promise((_, reject) => {
@@ -346,9 +348,16 @@ describe("AmendVisitSheet", () => {
     await nextFrame();
     expect(document.body).toHaveFocus();
 
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
+    const focused = vi.spyOn(button, "focus");
     refuse(new TypeError("Failed to fetch"));
     const alert = await screen.findByRole("alert");
     expect(button).toHaveFocus();
+    expect(focused).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+    expect(scrolled).not.toHaveBeenCalled();
     expect(dialog).toContainElement(button);
     expect(alert).not.toHaveFocus();
   });

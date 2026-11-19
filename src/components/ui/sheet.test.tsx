@@ -309,6 +309,29 @@ describe("Sheet", () => {
     expect(scrolled.mock.contexts[0]).toBe(box.closest("label"));
   });
 
+  /* The bar is pinned in view, and its padding counts it as covered: scrolled
+     to, Save moved the form by the bar's height (#214). */
+  it("leaves the body where it is when its pinned actions take focus", async () => {
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    render(
+      <Sheet label="Amend" title="Amend" onClose={vi.fn()}>
+        <form>
+          <input aria-label="Name" />
+          <SheetActions>
+            <button type="button">Save changes</button>
+          </SheetActions>
+        </form>
+      </Sheet>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toHaveFocus();
+    expect(scrolled).not.toHaveBeenCalled();
+    // A field in the same form still comes into view.
+    await user.click(screen.getByLabelText("Name"));
+    expect(scrolled).toHaveBeenCalledExactlyOnceWith({ block: "nearest" });
+  });
+
   it("opens at its top, though the control it focuses is at its foot", () => {
     /* As a browser does at large text: bringing OK into view scrolls the
        body down to it, past the heading. */
