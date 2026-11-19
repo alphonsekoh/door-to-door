@@ -1,6 +1,6 @@
 # #213 · A failed action on Admin Sessions or Team is said in view
 
-- **Status:** In progress (branch `fix/213-admin-failure-in-view`)
+- **Status:** In progress (PR #223, branch `fix/213-admin-failure-in-view`)
 - **Phase:** 7 - Hardening
 - **Depends on:** #164, #194, #195
 
@@ -100,7 +100,5 @@ D-164-9, D-194-2, D-194-4, D-195-1, D-195-6, D-208-4.
 
 ## Open questions
 
-- **Sessions: two scrolls, not the single block the issue asked for (D-213-1).** They
-  land where a block of just the alert and the button would, and keep main's layout. A
-  real block of the two would put the alert beside the title instead of on a full row
-  under both. Accept D-213-1, or ask for the block?
+None. On 2026-11-19 the owner accepted D-213-1: Sessions scrolls the alert, then the
+button, into view rather than one block around both.
