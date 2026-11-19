@@ -1,6 +1,6 @@
 # #208 · A refused sign-in drops focus to the page
 
-- **Status:** In progress (branch `test/208-sign-in-focus`, not yet a PR)
+- **Status:** Done (PR #211)
 - **Phase:** 7 - Hardening
 - **Depends on:** #151, #187
 
@@ -26,7 +26,8 @@ the page. The form now gives it back after a refusal. Built in 70d0622 and 13600
   on `<body>` when the refusal is drawn.** The press notes `document.activeElement`, if
   it is a button, before anything is disabled. Go from the password field keeps focus
   there. An iPhone tap focuses no button, so focus stays on the page as before. _Why:_
-  give back only what the browser took.
+  give back only what the browser took. _Extended by D-214-2 and D-214-3 (owner,
+  2026-11-19):_ the app-wide rule for a busy-disabled button, through `useRefusalFocus`.
 - **D-208-4 · The refocus uses `focus({ preventScroll: true })`, in the refusal's layout
   effect, before its `scrollIntoView`.** _Why:_ a plain `focus()` scrolls to the button,
   and the page must move only as far as the message needs (D-151-7, D-151-10).
@@ -39,15 +40,16 @@ the page. The form now gives it back after a refusal. Built in 70d0622 and 13600
   `requestAnimationFrame`, which jsdom runs in the same tick as its focus fixup (R-199),
   so it waits for an event, not a time. No retries, sleeps or longer timeouts (D-88-4,
   D-192-1). _Why:_ the issue's test passed or failed by timing. With the premise asserted,
-  it fails every time without the fix, and it shows the drop is real.
+  it fails every time without the fix, and it shows the drop is real. `nextFrame()` is
+  in `test/next-frame.ts` since D-214-7.
 - **D-208-7 · Focus the member moves while the attempt is out stays where they put it
   (13600f6).** "stays where the member put it while the attempt was out" pins it. It is
   the only test that fails when the `activeElement === body` check is dropped. _Why:_ a
   member who goes back to fix a typo keeps the keyboard. Without this test, the check
   could be dropped and all 49 tests still passed (reviewer r0).
-- **D-208-8 · Scope cut: no E2E pins the refocus.** The browser check was a manual
+- ~~**D-208-8 · Scope cut: no E2E pins the refocus.** The browser check was a manual
   Playwright probe on a production build (R-200). _Why:_ `e2e/` was outside this issue's
-  files.
+  files.~~ Superseded by D-214-6.
 
 ## Cause
 
@@ -99,12 +101,12 @@ Outside this issue's files, so not changed here:
   focus on a disabled control") is false under jsdom 31 (R-199).
 - 15 other test files assert `toHaveFocus`. Any that reads focus on a control that stays
   disabled across an async gap can flake the same way. They have not been audited.
-- D-33's known limit (Save drops focus to `<body>`) can now be pinned in jsdom the same
-  way.
-- Account's Sign out is also disabled while signing out, and D-164-1 moves no focus, so a
+- ~~D-33's known limit (Save drops focus to `<body>`) can now be pinned in jsdom the same
+  way.~~ Fixed and pinned by #214 (D-214-2, D-214-7).
+- ~~Account's Sign out is also disabled while signing out, and D-164-1 moves no focus, so a
   refused sign-out there likely ends on the page too. This is read from the code, not
-  measured.
-- An E2E for the refocus (D-208-8).
+  measured.~~ Measured and fixed by #214 (R-213, D-214-2).
+- ~~An E2E for the refocus (D-208-8).~~ Added by #214 (D-214-6).
 
 ## Relies on
 

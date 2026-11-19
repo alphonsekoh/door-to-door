@@ -1,6 +1,6 @@
 # #193 · One id in two letter cases, wherever a request id meets a stored one
 
-- **Status:** In progress
+- **Status:** Done (PR #204)
 - **Phase:** 7 - Hardening
 - **Depends on:** #125, #180
 

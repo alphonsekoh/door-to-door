@@ -168,14 +168,17 @@ Owner decisions are marked **(owner)**.
   (outing unknown, no outing running, direct `POST /visits` failed). ~~Chosen over
   scroll-and-focus.~~ _Why:_ the bar is always on screen, so no scroll offsets or
   reduced-motion handling; at the top of a long form it could be off screen. Trade-off:
-  a two-line message makes the bar taller until the next attempt. Focus stays where the
-  disabled button dropped it (see known limits). _Extended by D-111-26:_ the same slot says why a Save was
+  a two-line message makes the bar taller until the next attempt. ~~Focus stays where the
+  disabled button dropped it (see known limits).~~ _Extended by D-111-26:_ the same slot says why a Save was
   refused for validation. _Refined by D-119-13 (owner):_ a Save refused for a blank unit
   number or note, or a unit too long (D-119-26), also opens a Not saved pop-up listing
   every reason; the line stays.
   _The struck clauses are superseded by D-119-15 (owner, 2026-11-03) for a refusal the
   pop-up shows:_ its OK moves focus to the field at fault and scrolls it into view. Every
   other failure still leaves focus where it is, with no scroll.
+  _The focus clauses are superseded in part by D-214-2 (owner, 2026-11-19):_ a failure
+  gives focus back to Save, without a scroll, when the disabled button dropped it to the
+  page.
 - **D-33-30 · Only a `404` means "no outing running".** Refines D-33-25: asking for the
   outing answers running (with id), none, or unknown; a network error, `5xx` or the 4 s
   timeout is unknown. None says "No outing is running"; unknown keeps "Could not load
@@ -212,11 +215,11 @@ D-76-7, D-83-4, D-85-9, D-85-10, D-87-2.
 - A record whose request fails as a whole every time, even sent alone (a `5xx` or an
   all-`internal_error` reply), is never quarantined; it retries at most every 5 min
   behind the others (D-33-27). Only the server log shows it.
-- After a failed save focus falls to `<body>`, because Save is disabled while saving
+- ~~After a failed save focus falls to `<body>`, because Save is disabled while saving
   (D-33-29). The alert is announced, but a keyboard user starts again from the top.
   D-85-15 returns focus to the button in the same situation on sign-out; doing the same
   here is a small follow-up. A refusal the Not saved pop-up shows is the exception: OK
-  puts focus on the field at fault (D-119-15).
+  puts focus on the field at fault (D-119-15).~~ Superseded by D-214-2: fixed by #214.
 
 ## Open questions
 

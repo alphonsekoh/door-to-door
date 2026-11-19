@@ -21,6 +21,9 @@ PR #161. Client only: no contract or schema change.
   moved, so D-90-9's return after "Sign out anyway" stands. _Why:_ one pattern for a
   failure told beside the control pressed; the member hears it and their thumb stays on
   Sign out. _Research:_ R-163. _Refined by D-164-7:_ the block is `scroll-clear-nav`.
+  _Refined by D-214-2 and D-214-5 (owner, 2026-11-19):_ "focus is not moved" now reads
+  "the alert takes no focus". A refused sign-out gives focus back to Sign out if the
+  browser dropped it to the page; after "Sign out anyway" D-90-9's return still does it.
 - **D-164-2 · Only a failure appearing scrolls the page.** Not on opening Account, and
   not when a second try clears the alert. _Why:_ Account opens at its top, and on a
   second try Sign out is under the thumb that just pressed it.

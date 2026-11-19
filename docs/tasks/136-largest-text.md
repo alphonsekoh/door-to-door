@@ -37,7 +37,8 @@ only: no contract or schema change.
   `scroll-pb-24`. A sheet with no bar keeps only the 16px. Refines D-111-31. _Why:_ the
   bar is 80px, or 104 to 128px with a note, so a fixed padding left a field under the
   note. A `ResizeObserver` keeps the height current, so it does not go stale as D-111-40's
-  measured offset did.
+  measured offset did. _Refined by D-214-9:_ a control inside the bar is not scrolled
+  to, since the padding counts the bar as covered and moved the form by its height.
 - **D-136-4 · The Saved line keeps room for "Saved {unit} on this phone." from the save
   on (`hold-text`).** The held words come from `data-hold` as a `visibility: hidden`
   `::after` in the same grid cell, so they are in no text a test locator or screen reader

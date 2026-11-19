@@ -1,6 +1,6 @@
 # #213 · A failed action on Admin Sessions or Team is said in view
 
-- **Status:** In progress (PR #223, branch `fix/213-admin-failure-in-view`)
+- **Status:** Done (PR #223)
 - **Phase:** 7 - Hardening
 - **Depends on:** #164, #194, #195
 
@@ -40,7 +40,10 @@ wording is kept, and focus after a failed press is left to #214.
   checks that focus stayed on the pressed button held only because the mock failed within
   one jsdom frame, and #214 measured real browsers dropping it to the page (reviewer r0,
   verifier r0). A refocus that #214 adds here goes before these scrolls, with
-  `preventScroll` (D-208-4).
+  `preventScroll` (D-208-4). _Refined by D-214-2 and D-214-5 (owner, 2026-11-19):_ a
+  failed Start, Reopen, End, role change, Reactivate or Deactivate gives focus back to
+  its button, before these scrolls, if the browser dropped it to the page. The alert
+  still takes none.
 - **D-213-5 · The Sessions E2E sets Start on the foot of the screen and bounds the move
   from both sides.** The existing clash test in `e2e/session-lifecycle.spec.ts` adds four
   newer drafts, sets Start on the nav or a floating banner, and presses it into a clash
@@ -90,8 +93,11 @@ wording is kept, and focus after a failed press is left to #214.
   role" note in place of the controls and the alert (reviewer r1).
 - The clash E2E finds a session running only because an earlier test in the file left
   one; run alone it fails. Already so on main (verifier r1).
-- After a failed Start or Reopen focus is on the page on both phones, and after End's
-  confirm Chromium returns it to End but WebKit does not (verifier r1). For #214.
+- ~~After a failed Start or Reopen focus is on the page on both phones, and after End's
+  confirm Chromium returns it to End but WebKit does not (verifier r1). For #214.~~
+  Resolved by D-214-2 and D-214-5: Start and Reopen get focus back, and End's confirm
+  ends on End after a key press on both phones. After an iPhone tap it ends on the page,
+  where focus was when the confirm opened (#214's known limits).
 
 ## Relies on
 

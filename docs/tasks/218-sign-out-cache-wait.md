@@ -1,7 +1,7 @@
 # #218 · Sign-out waits while Chrome clears its whole HTTP cache
 
-- **Status:** In progress (branch `fix/sign-out-cache-wait`). Found by the owner on the
-  production image run locally, 2026-11-18.
+- **Status:** Done (PR #219). Found by the owner on the production image run locally,
+  2026-11-18.
 - **Phase:** 7 - Hardening
 - **Depends on:** #122, #125
 

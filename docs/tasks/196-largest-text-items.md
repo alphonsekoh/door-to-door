@@ -1,15 +1,11 @@
 # #196 · Largest text: seven layout items left after #136
 
-- **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #200). The
-  owner ruled Q1 and Q2 on 2026-11-18, then rulings 1 and 2 (D-196-2, D-196-18), then
-  (c), the `WholeWords` narrowing and one follow-up state rule (D-196-29, D-196-26,
-  D-196-30), then no history line on the offline page (D-196-36) and the drop when a
-  door is opened from the follow-up list, accepted (Known limits), all the same day.
-  Nothing is with the owner.
-  - The PR closes #196 and #200: the owner accepted #200's two limits on 2026-11-18,
-    after ruling 3 had kept it open (D-200-3).
-  - The PR body and the squash message must say 18.75, not 21 (a0470ad's message says
-    21), and must describe the history line as D-196-29 and D-196-36 have it.
+- **Status:** Done (PR #217, with #200). The owner ruled Q1 and Q2 on 2026-11-18, then
+  rulings 1 and 2 (D-196-2, D-196-18), then (c), the `WholeWords` narrowing and one
+  follow-up state rule (D-196-29, D-196-26, D-196-30), then no history line on the
+  offline page (D-196-36) and the drop when a door is opened from the follow-up list,
+  accepted (Known limits), all the same day. The PR closed #196 and #200: the owner
+  accepted #200's two limits on 2026-11-18, after ruling 3 had kept it open (D-200-3).
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #160, #181
 
@@ -88,7 +84,8 @@ in 775137c, 6be1c93 and 5d85916, then the owner's later rulings in 22347db, 3085
 
   Refines D-111-31, and applies D-119-22's label rule to focus. Closes D-136's Add
   households limit. _Why:_ WebKit scrolled only the box, which left the tile's foot 64px
-  under the bar. _Research:_ R-204.
+  under the bar. _Research:_ R-204. _Refined by D-214-9:_ a target inside the sheet's
+  `SheetActions` bar is not scrolled to at all.
 
 - **D-196-6 · "follow-up" stays whole in the app's own titles and labels.** `WholeWords`
   now also wraps:

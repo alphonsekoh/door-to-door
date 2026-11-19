@@ -1,9 +1,8 @@
 # #200 · Follow-up session at the largest text: the unit field drops 170px when the session answers
 
-- **Status:** In progress (PR #217, branch `fix/196-200-largest-text`, with #196). Built
-  in a0470ad. The PR closes #196 and #200: the owner accepted D-200-3 and the 320×568
-  overlap as known limits on 2026-11-18, after rulings 3 and 4 that day had kept #200
-  open (Known limits).
+- **Status:** Done (PR #217, with #196). Built in a0470ad. The PR closed #196 and #200:
+  the owner accepted D-200-3 and the 320×568 overlap as known limits on 2026-11-18,
+  after rulings 3 and 4 that day had kept #200 open (Known limits).
 - **Phase:** 7 - Hardening
 - **Depends on:** #117, #181
 

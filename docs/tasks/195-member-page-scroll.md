@@ -1,6 +1,6 @@
 # #195 · A failure on the member page scrolls clear of the nav alone
 
-- **Status:** In progress (branch `fix/195-member-page-scroll`)
+- **Status:** Done (PR #205)
 - **Phase:** 7 - Hardening
 - **Depends on:** #125, #164
 
