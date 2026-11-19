@@ -395,6 +395,21 @@ export async function signInThroughForm(
   await page.waitForURL((url) => !url.pathname.startsWith("/sign-in"));
 }
 
+/* The top of what stays put at the foot of the screen: the nav, or the
+   install banner where it floats on the nav. */
+export function footTop(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Primary"]');
+    if (nav === null) throw new Error("the nav is not drawn");
+    const banner = document.querySelector('section[aria-label="Install the app"]');
+    const floats = banner !== null && getComputedStyle(banner).position === "fixed";
+    return Math.min(
+      nav.getBoundingClientRect().top,
+      floats ? banner.getBoundingClientRect().top : Infinity,
+    );
+  });
+}
+
 /*
  * Offers to install, as Chromium does once the app is installable: a fake
  * keeps it deterministic. WebKit shows its manual banner regardless.

@@ -1,6 +1,13 @@
 import type { APIRequestContext, Browser, Locator, Page } from "@playwright/test";
 import { SEED_MEMBER } from "./accounts";
-import { ensureActiveSession, expect, signInThroughForm, test, untilLive } from "./fixtures";
+import {
+  ensureActiveSession,
+  expect,
+  footTop,
+  signInThroughForm,
+  test,
+  untilLive,
+} from "./fixtures";
 
 /*
  * Sign-ins that can be ended (#125): an admin ends one of a member's, or all
@@ -104,21 +111,6 @@ test("an admin signs one of a member's phones out, and the other carries on", as
     await second.close();
   }
 });
-
-/* The top of what stays put at the foot of the screen: the nav, or the
-   install banner where it floats on the nav. */
-function footTop(page: Page): Promise<number> {
-  return page.evaluate(() => {
-    const nav = document.querySelector('nav[aria-label="Primary"]');
-    if (nav === null) throw new Error("the nav is not drawn");
-    const banner = document.querySelector('section[aria-label="Install the app"]');
-    const floats = banner !== null && getComputedStyle(banner).position === "fixed";
-    return Math.min(
-      nav.getBoundingClientRect().top,
-      floats ? banner.getBoundingClientRect().top : Infinity,
-    );
-  });
-}
 
 /*
  * A failed end is told just above the control pressed, and the two are

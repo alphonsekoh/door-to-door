@@ -1,6 +1,6 @@
 # #212 · Three paged lists settle a timestamp tie by id
 
-- **Status:** In progress (PR #222, branch `fix/212-paged-list-tie-break`)
+- **Status:** Done (PR #222)
 - **Phase:** 7 - Hardening
 - **Depends on:** #207
 

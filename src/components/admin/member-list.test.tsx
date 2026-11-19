@@ -264,6 +264,116 @@ describe("MemberList", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not make that change.");
   });
 
+  /* Said once above the list, a failure was off the screen for a row further
+     down (#213). jsdom lays nothing out: the verifier measures on both phones. */
+  describe("a failed change, said in its row", () => {
+    it("says it just above that row's controls and brings both into view, taking no focus", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockResolvedValue(page([member("u1", "Alice"), member("u2", "Ben")]));
+        render(<MemberList googleDomains={null} />);
+        await screen.findByText(/^Ben/);
+        // The list opens at its top, not scrolled down to a row.
+        expect(scrolled).not.toHaveBeenCalled();
+
+        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+        const button = within(row("Ben")).getByRole("button", { name: "Make an admin" });
+        await user.click(button);
+
+        const alert = await within(row("Ben")).findByRole("alert");
+        expect(alert).toHaveTextContent("Could not make that change.");
+        expect(within(row("Alice")).queryByRole("alert")).not.toBeInTheDocument();
+        const both = alert.parentElement;
+        expect(alert.nextElementSibling).toContainElement(button);
+        expect(both).toContainElement(
+          within(row("Ben")).getByRole("button", { name: "Deactivate" }),
+        );
+        /* Clear of the nav and a floating banner, and no further: no Save bar
+           docks on Team. */
+        expect(both).toHaveClass("scroll-clear-nav");
+        expect(both).not.toHaveClass("scroll-clear-chrome");
+        expect(scrolled.mock.contexts).toEqual([both]);
+        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
+        /* Heard, not focused (D-164-1). Where focus lands after a press on a
+           button disabled while busy is #214's. */
+        expect(alert).not.toHaveFocus();
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("says a failed deactivation in that row once the confirm has closed", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockResolvedValue(page([member("u1", "Alice"), member("u2", "Ben")]));
+        render(<MemberList googleDomains={null} />);
+        await screen.findByText(/^Ben/);
+
+        apiFetch.mockRejectedValue(
+          new ApiRequestError(409, {
+            error: { code: "conflict", message: "You cannot deactivate yourself." },
+          }),
+        );
+        await user.click(within(row("Ben")).getByRole("button", { name: "Deactivate" }));
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", { name: "Deactivate" }),
+        );
+
+        const alert = await within(row("Ben")).findByRole("alert");
+        expect(alert).toHaveTextContent("You cannot deactivate yourself.");
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        expect(within(row("Alice")).queryByRole("alert")).not.toBeInTheDocument();
+        expect(alert.parentElement).toHaveClass("scroll-clear-nav");
+        expect(scrolled.mock.contexts).toContain(alert.parentElement);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("moves to the row of the next change that fails, and clears for one that works", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const user = userEvent.setup();
+        apiFetch.mockResolvedValue(page([member("u1", "Alice"), member("u2", "Ben")]));
+        render(<MemberList googleDomains={null} />);
+        await screen.findByText(/^Ben/);
+
+        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+        await user.click(within(row("Ben")).getByRole("button", { name: "Make an admin" }));
+        await within(row("Ben")).findByRole("alert");
+        await waitFor(() => {
+          expect(within(row("Alice")).getByRole("button", { name: "Make an admin" })).toBeEnabled();
+        });
+
+        await user.click(within(row("Alice")).getByRole("button", { name: "Make an admin" }));
+        const alert = await within(row("Alice")).findByRole("alert");
+        expect(screen.getAllByRole("alert")).toEqual([alert]);
+        expect(scrolled.mock.contexts).toEqual([
+          within(row("Ben"))
+            .getByRole("button", { name: "Deactivate" })
+            .closest(".scroll-clear-nav"),
+          alert.parentElement,
+        ]);
+
+        apiFetch.mockImplementation((_path: string, init?: RequestInit) =>
+          init?.method === "PATCH"
+            ? Promise.resolve(member("u1", "Alice", { role: "admin" }))
+            : Promise.resolve(
+                page([member("u1", "Alice", { role: "admin" }), member("u2", "Ben")]),
+              ),
+        );
+        await user.click(within(row("Alice")).getByRole("button", { name: "Make an admin" }));
+        expect(await within(row("Alice")).findByText("Admin")).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+        expect(scrolled).toHaveBeenCalledTimes(2);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+  });
+
   it("shows the new person without a manual refresh", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
