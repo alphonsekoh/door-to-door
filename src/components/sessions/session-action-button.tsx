@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
@@ -14,9 +14,8 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
  * one fails at the server. The message it sends back says what to do about it,
  * and this shows that rather than a generic failure.
  *
- * A failure is said under the button, in one block with it and `children`,
- * and the block is brought into view: near the foot of the list it landed
- * under the nav (#213).
+ * A failure is said under the button and brought into view with it: near the
+ * foot of the Sessions list it landed under the nav (#213).
  */
 export function SessionActionButton({
   sessionId,
@@ -24,8 +23,6 @@ export function SessionActionButton({
   primary = true,
   blocked = null,
   onDone,
-  className = "",
-  children,
 }: {
   sessionId: string;
   spec: ActionSpec;
@@ -33,22 +30,27 @@ export function SessionActionButton({
   /* Why the server would refuse it now, said beside it instead of offered. */
   blocked?: string | null;
   onDone: (session: OutingSession) => void;
-  /* The block's layout, and what is laid out before the button in it: on the
-     list, the session's title, which the button sits beside. */
-  className?: string;
-  children?: ReactNode;
 }) {
   const blockedId = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const block = useRef<HTMLDivElement>(null);
+  const pressed = useRef<HTMLButtonElement>(null);
+  const said = useRef<HTMLParagraphElement>(null);
 
-  /* Before it is painted, clear of the nav and a banner floating on it, and no
-     further: no Save bar docks on either screen this is on (as on the member
-     page, D-195-1). Focus stays where it is. */
+  /*
+   * Before it is painted, clear of the nav and a banner floating on it, and
+   * no further: no Save docks where this is (D-195-1). Focus stays put
+   * (D-164-1). Not one block around both, as on the member page: on the list
+   * that block holds the title beside the button, and at the largest text it
+   * outgrew the screen and left the alert's end under the nav. The alert's
+   * end, then the button's top, land where a block of just the two would,
+   * the button winning where even they cannot fit.
+   */
   useLayoutEffect(() => {
-    if (failure !== null) block.current?.scrollIntoView({ block: "nearest" });
+    if (failure === null) return;
+    said.current?.scrollIntoView({ block: "nearest" });
+    pressed.current?.scrollIntoView({ block: "nearest" });
   }, [failure]);
 
   async function run(): Promise<void> {
@@ -72,40 +74,38 @@ export function SessionActionButton({
 
   return (
     <>
-      <div ref={block} className={`scroll-clear-nav ${className}`}>
-        {children}
-        <button
-          type="button"
-          disabled={busy || blocked !== null}
-          aria-describedby={blocked === null ? undefined : blockedId}
-          onClick={() => {
-            if (spec.confirm === null) {
-              void run();
-            } else {
-              setConfirming(true);
-            }
-          }}
-          className={`${spec.destructive ? "btn-danger-outline" : primary ? "btn-primary" : "btn-secondary"} ${
-            primary
-              ? "min-h-14 w-full rounded-xl text-title font-semibold"
-              : "min-h-11 rounded-lg px-3 text-body font-medium"
-          }`}
-        >
-          {busy && !confirming ? "Working…" : spec.label}
-        </button>
+      <button
+        ref={pressed}
+        type="button"
+        disabled={busy || blocked !== null}
+        aria-describedby={blocked === null ? undefined : blockedId}
+        onClick={() => {
+          if (spec.confirm === null) {
+            void run();
+          } else {
+            setConfirming(true);
+          }
+        }}
+        className={`scroll-clear-nav ${spec.destructive ? "btn-danger-outline" : primary ? "btn-primary" : "btn-secondary"} ${
+          primary
+            ? "min-h-14 w-full rounded-xl text-title font-semibold"
+            : "min-h-11 rounded-lg px-3 text-body font-medium"
+        }`}
+      >
+        {busy && !confirming ? "Working…" : spec.label}
+      </button>
 
-        {blocked === null ? null : (
-          <p id={blockedId} className="mt-2 basis-full text-caption text-foreground-muted">
-            {blocked}
-          </p>
-        )}
-        {/* A row of its own when the button sits beside a title. */}
-        {failure === null ? null : (
-          <p role="alert" className="mt-2 basis-full notice-danger">
-            {failure}
-          </p>
-        )}
-      </div>
+      {blocked === null ? null : (
+        <p id={blockedId} className="mt-2 basis-full text-caption text-foreground-muted">
+          {blocked}
+        </p>
+      )}
+      {/* A row of its own when the button sits beside a title. */}
+      {failure === null ? null : (
+        <p ref={said} role="alert" className="mt-2 basis-full scroll-clear-nav notice-danger">
+          {failure}
+        </p>
+      )}
 
       <SheetPresence>
         {confirming && spec.confirm !== null ? (

@@ -149,10 +149,10 @@ describe("SessionActionButton", () => {
   });
 
   /* On the list a failure is drawn under the row, and near the foot of the
-     screen it landed under the nav (#213). jsdom lays nothing out: the
-     verifier measures on both phones. */
+     screen it landed under the nav (#213). jsdom lays nothing out:
+     e2e/session-lifecycle.spec.ts measures it on both phones. */
   describe("a failure, brought into view", () => {
-    it("brings the failure into view with the button as it is drawn, leaving focus where it was", async () => {
+    it("brings the failure's end, then the button, into view as it is drawn, taking no focus", async () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
         apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
@@ -165,18 +165,32 @@ describe("SessionActionButton", () => {
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("Could not do that.");
-        const both = alert.parentElement;
-        expect(both).toContainElement(button);
         /* Clear of the nav and a floating banner, and no further: no Save
            bar docks on the Sessions list or a session's page. */
-        expect(both).toHaveClass("scroll-clear-nav");
-        expect(both).not.toHaveClass("scroll-clear-chrome");
-        expect(scrolled.mock.contexts).toEqual([both]);
-        expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
-        expect(button).toHaveFocus();
+        for (const each of [alert, button]) {
+          expect(each).toHaveClass("scroll-clear-nav");
+          expect(each).not.toHaveClass("scroll-clear-chrome");
+        }
+        /* In this order: where both cannot fit, the button's top is what is
+           kept, as it would be for one block around the two. */
+        expect(scrolled.mock.contexts).toEqual([alert, button]);
+        expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }], [{ block: "nearest" }]]);
+        // Heard, not focused (D-164-1); where focus lands is #214's.
+        expect(alert).not.toHaveFocus();
       } finally {
         scrolled.mockRestore();
       }
+    });
+
+    it("says it on a row of its own just under the button", async () => {
+      apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+      render(<SessionActionButton sessionId="s1" spec={start} primary={false} onDone={vi.fn()} />);
+      const button = screen.getByRole("button", { name: "Start session" });
+      await userEvent.setup().click(button);
+
+      const alert = await screen.findByRole("alert");
+      expect(button.nextElementSibling).toBe(alert);
+      expect(alert).toHaveClass("basis-full");
     });
 
     it("brings a failed End into view once its confirm has closed", async () => {
@@ -194,10 +208,14 @@ describe("SessionActionButton", () => {
 
         const alert = await screen.findByRole("alert");
         expect(alert).toHaveTextContent("Already ended.");
-        const both = alert.parentElement;
-        expect(both).toContainElement(screen.getByRole("button", { name: "End session" }));
-        expect(both).toHaveClass("scroll-clear-nav");
-        expect(scrolled.mock.contexts).toContain(both);
+        await waitFor(() => {
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        // The sheet brings its own buttons into view first.
+        expect(scrolled.mock.contexts.slice(-2)).toEqual([
+          alert,
+          screen.getByRole("button", { name: "End session" }),
+        ]);
       } finally {
         scrolled.mockRestore();
       }
@@ -227,14 +245,14 @@ describe("SessionActionButton", () => {
         render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} />);
         await user.click(screen.getByRole("button", { name: "Start session" }));
         await screen.findByRole("alert");
-        expect(scrolled).toHaveBeenCalledOnce();
+        expect(scrolled).toHaveBeenCalledTimes(2);
 
         // The button is under the thumb that just pressed it again.
         apiFetch.mockReturnValue(new Promise(() => undefined));
         await user.click(screen.getByRole("button", { name: "Start session" }));
         await screen.findByRole("button", { name: "Working…" });
         expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-        expect(scrolled).toHaveBeenCalledOnce();
+        expect(scrolled).toHaveBeenCalledTimes(2);
       } finally {
         scrolled.mockRestore();
       }
@@ -254,41 +272,9 @@ describe("SessionActionButton", () => {
 
         await user.click(screen.getByRole("button", { name: "Start session" }));
         await waitFor(() => {
-          expect(scrolled).toHaveBeenCalledTimes(2);
+          expect(scrolled).toHaveBeenCalledTimes(4);
         });
         expect(screen.getByRole("alert")).toHaveTextContent("Could not do that.");
-      } finally {
-        scrolled.mockRestore();
-      }
-    });
-
-    it("lays out what it is given before the button, in the block it brings into view", async () => {
-      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
-      try {
-        apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
-        render(
-          <SessionActionButton
-            sessionId="s1"
-            spec={start}
-            primary={false}
-            onDone={vi.fn()}
-            className="flex flex-wrap"
-          >
-            <span>June outing</span>
-          </SessionActionButton>,
-        );
-        const title = screen.getByText("June outing");
-        const button = screen.getByRole("button", { name: "Start session" });
-        const block = button.parentElement;
-        expect(block).toHaveClass("scroll-clear-nav", "flex", "flex-wrap");
-        expect(title.nextElementSibling).toBe(button);
-
-        await userEvent.setup().click(button);
-        const alert = await screen.findByRole("alert");
-        // Under both, a row of its own.
-        expect(button.nextElementSibling).toBe(alert);
-        expect(alert).toHaveClass("basis-full");
-        expect(scrolled.mock.contexts).toEqual([block]);
       } finally {
         scrolled.mockRestore();
       }

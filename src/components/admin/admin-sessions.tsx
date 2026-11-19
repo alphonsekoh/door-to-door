@@ -123,36 +123,36 @@ function SessionRows({
     <ul className="space-y-2">
       {sessions.map((session) => (
         <li key={session.id} className="rounded-xl border border-border bg-surface p-4">
-          {/*
-            The action sits on the row, not behind the detail screen.
-            Reopening a session ended by mistake has to be two taps from
-            here, because a member mid-amendment is locked out until it is.
-            One action a status, so the title is drawn once.
-          */}
-          {availableActions(session.status).map((spec) => (
-            <SessionActionButton
-              key={spec.action}
-              sessionId={session.id}
-              spec={spec}
-              primary={false}
-              onDone={onChanged}
-              /* At large text the action drops under the title rather than
-                 squeeze it to a sliver that paints over the button. */
-              className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2"
-            >
-              <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-[1_1_12ch]">
-                <span className="block text-title font-semibold break-words">{session.title}</span>
-                <span className="mt-1 flex flex-wrap gap-2">
-                  <span
-                    className={`inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
-                  >
-                    {statusLabel(session.status)}
-                  </span>
-                  <KindBadge kind={session.kind} />
+          {/* At large text the action drops under the title rather than
+              squeeze it to a sliver that paints over the button. */}
+          <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+            <Link href={`/admin/sessions/${session.id}`} className="min-w-0 flex-[1_1_12ch]">
+              <span className="block text-title font-semibold break-words">{session.title}</span>
+              <span className="mt-1 flex flex-wrap gap-2">
+                <span
+                  className={`inline-block rounded-md border px-2 py-0.5 text-caption font-medium ${STATUS_STYLE[session.status]}`}
+                >
+                  {statusLabel(session.status)}
                 </span>
-              </Link>
-            </SessionActionButton>
-          ))}
+                <KindBadge kind={session.kind} />
+              </span>
+            </Link>
+
+            {/*
+              The action sits on the row, not behind the detail screen.
+              Reopening a session ended by mistake has to be two taps from
+              here, because a member mid-amendment is locked out until it is.
+            */}
+            {availableActions(session.status).map((spec) => (
+              <SessionActionButton
+                key={spec.action}
+                sessionId={session.id}
+                spec={spec}
+                primary={false}
+                onDone={onChanged}
+              />
+            ))}
+          </div>
         </li>
       ))}
     </ul>

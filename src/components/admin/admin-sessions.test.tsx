@@ -93,8 +93,8 @@ describe("AdminSessions", () => {
   });
 
   /* Near the foot of the list, a failure under its row landed under the nav
-     (#213). jsdom lays nothing out: the verifier measures on both phones. */
-  it("says a failed action under its row, brought into view with the title and button", async () => {
+     (#213). jsdom lays nothing out: e2e/session-lifecycle.spec.ts measures. */
+  it("says a failed action under its row, bringing into view that and the button, not the title", async () => {
     const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     try {
       const user = userEvent.setup();
@@ -108,20 +108,21 @@ describe("AdminSessions", () => {
       apiFetch.mockRejectedValue(
         new ApiRequestError(409, { error: { code: "session_already_active", message: clash } }),
       );
+      const start = screen.getByRole("button", { name: "Start session" });
 
-      await user.click(screen.getByRole("button", { name: "Start session" }));
+      await user.click(start);
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent(clash);
       const row = screen.getByText("Draft outing").closest("li");
       if (row === null) throw new Error("no row for Draft outing");
-      const block = alert.parentElement;
-      expect(row).toContainElement(block);
-      expect(block).toContainElement(screen.getByRole("link", { name: /Draft outing/ }));
-      expect(block).toContainElement(screen.getByRole("button", { name: "Start session" }));
-      expect(block).toHaveClass("scroll-clear-nav", "flex", "flex-wrap");
-      expect(scrolled.mock.contexts).toEqual([block]);
+      expect(row).toContainElement(alert);
       expect(screen.getByText("June outing").closest("li")).not.toContainElement(alert);
+      expect(scrolled.mock.contexts).toEqual([alert, start]);
+      /* At the largest text the title alone is 100 to 200px over the button,
+         and with it the two no longer fit above the nav. */
+      const title = screen.getByRole("link", { name: /Draft outing/ });
+      for (const each of scrolled.mock.contexts) expect(each).not.toContainElement(title);
     } finally {
       scrolled.mockRestore();
     }

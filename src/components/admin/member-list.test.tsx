@@ -267,7 +267,7 @@ describe("MemberList", () => {
   /* Said once above the list, a failure was off the screen for a row further
      down (#213). jsdom lays nothing out: the verifier measures on both phones. */
   describe("a failed change, said in its row", () => {
-    it("says it just above that row's controls and brings both into view, leaving focus where it was", async () => {
+    it("says it just above that row's controls and brings both into view, taking no focus", async () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
         const user = userEvent.setup();
@@ -295,7 +295,9 @@ describe("MemberList", () => {
         expect(both).not.toHaveClass("scroll-clear-chrome");
         expect(scrolled.mock.contexts).toEqual([both]);
         expect(scrolled).toHaveBeenCalledWith({ block: "nearest" });
-        expect(button).toHaveFocus();
+        /* Heard, not focused (D-164-1). Where focus lands after a press on a
+           button disabled while busy is #214's. */
+        expect(alert).not.toHaveFocus();
       } finally {
         scrolled.mockRestore();
       }

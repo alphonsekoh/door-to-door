@@ -1,4 +1,4 @@
-import { adminRequest, endActiveSession, expect, test } from "./fixtures";
+import { adminRequest, endActiveSession, expect, footTop, test } from "./fixtures";
 
 /*
  * Flow 3: the whole life of an outing, as an admin drives it.
@@ -95,21 +95,97 @@ test("a member sees the block that was added while the outing ran", async ({ mem
   await expect(memberPage.getByRole("link", { name: /Blk 125/ })).toBeVisible();
 });
 
-test("a second outing cannot be started while one is running", async ({ adminPage }) => {
-  // Refused by a partial unique index in the database. The message has to say
-  // how to clear it, not surface a constraint name.
+/*
+ * Refused by a partial unique index in the database. The message has to say
+ * how to clear it, not surface a constraint name, and is seen: pressed with
+ * Start set on what covers the foot of the screen, it once ended under the
+ * nav, and at the largest text the row's title kept it there (#213).
+ */
+test("a second outing cannot be started while one is running", async ({
+  adminPage,
+  adminApi,
+  browserName,
+}) => {
   await adminPage.goto("/admin/sessions");
 
   await adminPage.getByRole("button", { name: "New session" }).click();
   await adminPage.getByLabel("Name this session").fill(CLASHING_TITLE);
   await adminPage.getByRole("button", { name: "Create draft" }).click();
 
-  const row = adminPage.getByRole("listitem").filter({ hasText: CLASHING_TITLE });
-  await row.getByRole("button", { name: "Start session" }).click();
-
   /* Scoped to the row: Next renders its own route announcer with role="alert",
      so an unscoped query is ambiguous the moment the app has navigated. */
-  await expect(row.getByRole("alert")).toContainText(/already active/);
+  const row = adminPage.getByRole("listitem").filter({ hasText: CLASHING_TITLE });
+  await expect(row).toBeVisible();
+  // Newer drafts above it, so its Start can be set on the nav at the default text.
+  for (let made = 0; made < 4; made += 1) {
+    const later = await adminApi.post("/api/sessions", {
+      data: { title: `E2E later draft ${String(made)}` },
+    });
+    expect(later.status()).toBe(201);
+  }
+  const start = row.getByRole("button", { name: "Start session" });
+
+  /* At the default text and at the largest (D-111-24); a full load starts
+     again at the default. An iPhone shows its install guide regardless,
+     floating on the nav at the default size: it is measured once it is there. */
+  for (const size of [null, "32px"]) {
+    const at = size ?? "the default text size";
+    await adminPage.goto("/admin/sessions");
+    await expect(start).toBeVisible();
+    if (browserName === "webkit") {
+      await expect(adminPage.getByRole("region", { name: "Install the app" })).toBeVisible();
+    }
+    if (size !== null) {
+      await adminPage.evaluate((root) => {
+        document.documentElement.style.fontSize = root;
+      }, size);
+    }
+    // Two frames for the banner to float or settle into the page at that size.
+    await adminPage.evaluate(
+      () =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        }),
+    );
+
+    const edge = await footTop(adminPage);
+    await start.evaluate((button, top) => {
+      window.scrollBy(0, button.getBoundingClientRect().bottom - top);
+    }, edge);
+    const placed = await start.boundingBox();
+    expect(
+      placed === null ? null : placed.y + placed.height,
+      `Start not set on the nav at ${at}: the list no longer runs past it`,
+    ).toBeCloseTo(edge, 0);
+    const before = await adminPage.evaluate(() => window.scrollY);
+    await start.click();
+    const alert = row.getByRole("alert");
+    await expect(alert).toContainText(/already active/);
+    await expect(start).toBeEnabled();
+    await expect(alert).not.toBeFocused();
+
+    const [alertBox, startBox, after, top] = await Promise.all([
+      alert.boundingBox(),
+      start.boundingBox(),
+      adminPage.evaluate(() => window.scrollY),
+      footTop(adminPage),
+    ]);
+    if (alertBox === null || startBox === null) {
+      throw new Error(`the message or Start is not drawn at ${at}`);
+    }
+    const bottom = alertBox.y + alertBox.height;
+    expect(startBox.y, `Start above the top of the screen at ${at}`).toBeGreaterThanOrEqual(0);
+    expect(bottom, `the message under the nav or its banner at ${at}`).toBeLessThanOrEqual(
+      top + 0.5,
+    );
+    // No further than the message was hidden: onto the nav, not clear of it.
+    const moved = after - before;
+    const hidden = Math.max(0, bottom + moved - top);
+    expect(
+      moved,
+      `the page moved further than the message was hidden at ${at}`,
+    ).toBeLessThanOrEqual(hidden + 1);
+  }
 });
 
 test("reopening is two taps from the outing list", async ({ adminPage, playwright, baseURL }) => {
