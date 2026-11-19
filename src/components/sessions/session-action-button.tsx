@@ -4,6 +4,7 @@ import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import type { ActionSpec } from "@/lib/session/sessions";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
@@ -37,11 +38,15 @@ export function SessionActionButton({
   const [failure, setFailure] = useState<string | null>(null);
   const pressed = useRef<HTMLButtonElement>(null);
   const said = useRef<HTMLParagraphElement>(null);
+  /* Noted on this button, never on End's confirm, which leaves with its
+     dialog: End then ends here too, where D-90-9 returns focus. Above the
+     scrolls, which come after focus is back (D-208-4). */
+  const { notePress, refused } = useRefusalFocus();
 
   /*
    * Before it is painted, clear of the nav and a banner floating on it, and
-   * no further: no Save docks where this is (D-195-1). Focus stays put
-   * (D-164-1). Not one block around both, as on the member page: on the list
+   * no further: no Save docks where this is (D-195-1). The alert takes no
+   * focus (D-164-1). Not one block around both, as on the member page: on the list
    * that block holds the title beside the button, and at the largest text it
    * outgrew the screen and left the alert's end under the nav. The alert's
    * end, then the button's top, land where a block of just the two would,
@@ -67,6 +72,7 @@ export function SessionActionButton({
          says how to clear it - keep it rather than a generic apology. */
       setFailure(failureLine(error, "Could not do that."));
       setConfirming(false);
+      refused();
     } finally {
       setBusy(false);
     }
@@ -80,6 +86,7 @@ export function SessionActionButton({
         disabled={busy || blocked !== null}
         aria-describedby={blocked === null ? undefined : blockedId}
         onClick={() => {
+          notePress();
           if (spec.confirm === null) {
             void run();
           } else {

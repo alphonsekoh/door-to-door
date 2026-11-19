@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountScreen } from "@/components/account/account-screen";
@@ -6,6 +6,7 @@ import type { User } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import type * as ApiClientModule from "@/lib/api-client";
 import type * as SignOutModule from "@/lib/session/sign-out";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch, update, signOut, hasUnsynced, signOutAndForget, role, sync } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -365,6 +366,60 @@ describe("AccountScreen: signing out", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not sign out");
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sign out" })).toBeEnabled();
+  });
+
+  /* Disabled while it signs out, Sign out loses focus to the page, and a
+     keyboard member was left at the top of it (#214). Each holds the refusal
+     past a frame, as a real one is (D-208-6). */
+  describe("focus after a refused sign-out", () => {
+    function held(): (reason: Error) => void {
+      let refuse: (reason: Error) => void = () => undefined;
+      signOutAndForget.mockReturnValueOnce(
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+      );
+      return (reason) => {
+        refuse(reason);
+      };
+    }
+
+    it("goes back to Sign out, not to the message", async () => {
+      const refuse = held();
+      const user = userEvent.setup();
+      await loaded();
+      const button = screen.getByRole("button", { name: "Sign out" });
+      await user.click(button);
+      await screen.findByRole("button", { name: "Signing out…" });
+      await nextFrame();
+      expect(document.body).toHaveFocus();
+
+      refuse(new Error("offline"));
+      const alert = await screen.findByRole("alert");
+      expect(button).toHaveFocus();
+      expect(alert).not.toHaveFocus();
+    });
+
+    it("ends on Sign out after Sign out anyway too, once its dialog has gone", async () => {
+      hasUnsynced.mockResolvedValue(true);
+      const refuse = held();
+      const user = userEvent.setup();
+      await loaded();
+      const button = screen.getByRole("button", { name: "Sign out" });
+      await user.click(button);
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Sign out anyway" }));
+      await within(dialog).findByRole("button", { name: "Working…" });
+      await nextFrame();
+      expect(document.body).toHaveFocus();
+
+      refuse(new Error("offline"));
+      await screen.findByRole("alert");
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(button).toHaveFocus();
+    });
   });
 
   /* Drawn above Sign out at the end of the page, the failure pushed it under

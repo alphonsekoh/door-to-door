@@ -5,6 +5,7 @@ import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import type { HouseholdSummary, InterestLevel } from "@/generated/types.gen";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -324,6 +325,32 @@ describe("AmendVisitSheet", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("That session has ended.");
     expect(onSaved).not.toHaveBeenCalled();
+  });
+
+  /* Disabled while it saves, Save changes loses focus to the page, which is
+     outside the sheet (#214). Held past a frame, as a real one is (D-208-6). */
+  it("gives focus back to Save changes, inside the sheet, after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Amend #05-123" });
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    const button = screen.getByRole("button", { name: "Save changes" });
+    await user.click(button);
+    await screen.findByRole("button", { name: "Saving…" });
+    await nextFrame();
+    expect(document.body).toHaveFocus();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(dialog).toContainElement(button);
+    expect(alert).not.toHaveFocus();
   });
 
   it("copes with a non-Error failure", async () => {

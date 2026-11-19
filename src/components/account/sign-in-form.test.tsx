@@ -8,6 +8,7 @@ import { SignInForm, validate } from "@/components/account/sign-in-form";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { sharedQueue } from "@/lib/sync/idb-queue";
 import type { QueuedVisit } from "@/lib/sync/types";
+import { nextFrame } from "../../../test/next-frame";
 
 const { signIn, signOut, finishSignOut, goTo, get, clearCaches, clearLocalCopy } = vi.hoisted(
   () => ({
@@ -35,21 +36,6 @@ vi.mock("next/navigation", () => ({
 
 const ok = { error: undefined, code: undefined, status: 200, ok: true, url: null };
 const failed = { error: "CredentialsSignin", code: undefined, status: 401, ok: false, url: null };
-
-/*
- * Like a browser, jsdom moves focus from a control that has become disabled
- * to the page at its next rendering update, which runs the animation frames
- * too (R-199). An attempt held past one frame loses focus every time, as a
- * real one does; an answer within a frame kept it, unless a busy runner drew
- * the answer late (#208).
- */
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => {
-      resolve();
-    });
-  });
-}
 
 beforeEach(() => {
   vi.clearAllMocks();

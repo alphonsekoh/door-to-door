@@ -5,6 +5,7 @@ import { SessionActionButton } from "@/components/sessions/session-action-button
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { availableActions } from "@/lib/session/sessions";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -175,7 +176,7 @@ describe("SessionActionButton", () => {
            kept, as it would be for one block around the two. */
         expect(scrolled.mock.contexts).toEqual([alert, button]);
         expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }], [{ block: "nearest" }]]);
-        // Heard, not focused (D-164-1); where focus lands is #214's.
+        // Heard, not focused (D-164-1); where focus goes is pinned below.
         expect(alert).not.toHaveFocus();
       } finally {
         scrolled.mockRestore();
@@ -278,6 +279,72 @@ describe("SessionActionButton", () => {
       } finally {
         scrolled.mockRestore();
       }
+    });
+  });
+
+  /* Disabled while its request is out, the button loses focus to the page,
+     and a keyboard admin was left at the top of it (#214). Each holds the
+     refusal past a frame, as a real one is (D-208-6). */
+  describe("focus after a refused press", () => {
+    function held(): (reason: unknown) => void {
+      let refuse: (reason: unknown) => void = () => undefined;
+      apiFetch.mockReturnValueOnce(
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+      );
+      return (reason) => {
+        refuse(reason);
+      };
+    }
+
+    it.each([
+      ["Start session", start],
+      ["Reopen session", reopen],
+    ])("goes back to %s before the failure is brought into view", async (label, spec) => {
+      const focusAtScroll: (Element | null)[] = [];
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+        focusAtScroll.push(document.activeElement);
+      });
+      try {
+        const refuse = held();
+        const user = userEvent.setup();
+        render(<SessionActionButton sessionId="s1" spec={spec} onDone={vi.fn()} />);
+        const button = screen.getByRole("button", { name: label });
+        await user.click(button);
+        await screen.findByRole("button", { name: "Working…" });
+        await nextFrame();
+        expect(document.body).toHaveFocus();
+
+        refuse(new TypeError("Failed to fetch"));
+        const alert = await screen.findByRole("alert");
+        expect(button).toHaveFocus();
+        expect(alert).not.toHaveFocus();
+        // Back without a scroll of its own, before the two that show the alert.
+        expect(focusAtScroll).toEqual([button, button]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("ends on End after its confirm, once the dialog has gone", async () => {
+      const refuse = held();
+      const user = userEvent.setup();
+      render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} />);
+      const button = screen.getByRole("button", { name: "End session" });
+      await user.click(button);
+      const dialog = screen.getByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "End session" }));
+      await within(dialog).findByRole("button", { name: "Working…" });
+      await nextFrame();
+      expect(document.body).toHaveFocus();
+
+      refuse(new TypeError("Failed to fetch"));
+      await screen.findByRole("alert");
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(button).toHaveFocus();
     });
   });
 

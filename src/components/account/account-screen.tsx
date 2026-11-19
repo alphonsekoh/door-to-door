@@ -10,6 +10,7 @@ import { accountStore } from "@/lib/session/account-state";
 import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/session/own-name";
 import { signOutAndForget } from "@/lib/session/sign-out";
 import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { loadCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
@@ -36,6 +37,9 @@ export function AccountScreen() {
   const [signOutFailure, setSignOutFailure] = useState<string | null>(null);
   /* The failure and Sign out, scrolled into view together. */
   const signOutBlock = useRef<HTMLDivElement>(null);
+  /* Noted on Sign out, never on Sign out anyway, which leaves with its
+     dialog: both paths end on Sign out, where D-90-9 returns focus too. */
+  const signOutFocus = useRefusalFocus();
 
   useEffect(() => {
     let cancelled = false;
@@ -105,6 +109,7 @@ export function AccountScreen() {
       setSignOutFailure("Could not sign out. Check your connection and try again.");
       setConfirmingSignOut(false);
       setSigningOut(false);
+      signOutFocus.refused();
     }
   }
 
@@ -131,6 +136,7 @@ export function AccountScreen() {
           type="button"
           disabled={signingOut}
           onClick={() => {
+            signOutFocus.notePress();
             void startSignOut();
           }}
           className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"

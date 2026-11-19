@@ -18,6 +18,7 @@ import { type VisitDraft, buildQueuedVisit } from "@/lib/sync/enqueue";
 import { OUTING_ASK_TIMEOUT_MS, type OutingAnswer } from "@/lib/sync/outing";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { landWhileTyping } from "../../../test/land-while-typing";
+import { nextFrame } from "../../../test/next-frame";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -1708,6 +1709,40 @@ describe("validation and failure", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not save this visit.");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
   });
+
+  /* Disabled while it saves, Save loses focus to the page, and a keyboard
+     member was left at the top of it (D-33-29, #214). Held past a frame, as
+     a real refusal is (D-208-6). */
+  it("gives focus back to Save after the server refuses it", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    const save = screen.getByRole("button", { name: "Save and next" });
+    await user.click(save);
+    await screen.findByRole("button", { name: "Saving…" });
+    await nextFrame();
+    expect(document.body).toHaveFocus();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await screen.findByRole("alert");
+    expect(save).toHaveFocus();
+    expect(alert).not.toHaveFocus();
+  });
 });
 
 describe("the Not saved pop-up (#119)", () => {
@@ -2236,6 +2271,38 @@ describe("saving into the offline queue", () => {
     expect(screen.getByLabelText("Unit number")).toHaveValue("#06-201");
     expect(screen.getByRole("radio", { name: "High" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Save and next" })).toBeEnabled();
+  });
+
+  it("gives focus back to Save when the session cannot be read", async () => {
+    withQueue();
+    let answer: (outing: OutingAnswer) => void = () => undefined;
+    const user = userEvent.setup();
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={() =>
+          new Promise<OutingAnswer>((resolve) => {
+            answer = resolve;
+          })
+        }
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={onRecorded}
+      />,
+    );
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    const save = screen.getByRole("button", { name: "Save and next" });
+    await user.click(save);
+    await screen.findByRole("button", { name: "Saving…" });
+    await nextFrame();
+    expect(document.body).toHaveFocus();
+
+    answer({ kind: "unknown" });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not load the session, so this visit is not saved yet.",
+    );
+    expect(save).toHaveFocus();
   });
 
   it("says so when no outing is running, rather than blaming the signal", async () => {
@@ -3235,6 +3302,38 @@ describe("in a follow-up session", () => {
       expect(recheck).toHaveBeenCalledTimes(1);
       expect(postedVisits()).toHaveLength(0);
       expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
+    });
+
+    it("gives focus back to Save each time the list read again refuses the unit", async () => {
+      const answers: ((list: ReturnType<typeof revisit>[]) => void)[] = [];
+      const recheck = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof revisit>[]>((resolve) => {
+            answers.push(resolve);
+          }),
+      );
+      const user = userEvent.setup();
+      mountWith(LIST, recheck);
+      await user.type(screen.getByLabelText("Unit number"), "#05-124");
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      const save = screen.getByRole("button", { name: "Save" });
+
+      // The second refusal is the first again: nothing on screen changes.
+      for (const attempt of [1, 2]) {
+        await user.click(save);
+        await screen.findByRole("button", { name: "Saving…" });
+        await nextFrame();
+        expect(document.body).toHaveFocus();
+
+        answers[attempt - 1]?.(LIST);
+        await waitFor(() => {
+          expect(save).toBeEnabled();
+        });
+        expect(screen.getByRole("alert")).toHaveTextContent(OFF_THE_LIST);
+        expect(save).toHaveFocus();
+      }
+      expect(recheck).toHaveBeenCalledTimes(2);
+      expect(postedVisits()).toHaveLength(0);
     });
 
     it("judges by the list on screen when it cannot be read again", async () => {
