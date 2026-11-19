@@ -1,7 +1,7 @@
 # #225 · A failed Save changes in the amend sheet is said in view
 
-- **Status:** In progress (branch `fix/225-amend-failure-in-view`, 7a97204 and 5a5ff04;
-  no PR yet)
+- **Status:** In progress (PR #228, branch `fix/225-amend-failure-in-view`, 7a97204 and
+  5a5ff04)
 - **Phase:** 7 - Hardening
 - **Depends on:** #213, #214
 
