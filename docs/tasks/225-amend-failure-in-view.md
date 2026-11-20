@@ -1,7 +1,6 @@
 # #225 · A failed Save changes in the amend sheet is said in view
 
-- **Status:** In progress (PR #228, branch `fix/225-amend-failure-in-view`, 7a97204 and
-  5a5ff04)
+- **Status:** Done (PR #228)
 - **Phase:** 7 - Hardening
 - **Depends on:** #213, #214
 
@@ -52,7 +51,7 @@ test; `sheet.tsx` is untouched.
   about 18px under the bar. _Why:_ the bar rests above the body's inset padding, which the
   scroll padding leaves out (R-184). So on an installed iPhone with details open the
   failure ended 17.6px under the bar; with the margin it ends 16px above. The margin is
-  zero without an inset. If the shared fix lands in `scroll-clear-sheet-actions` (Open
+  zero without an inset. If the shared fix lands in `scroll-clear-sheet-actions` (#230, Open
   questions), remove it: it would be redundant, though harmless at the end of the scroll.
   _Research:_ R-218.
 - **D-225-8 · No E2E.** Component tests and the verifier's device pass on both phones
@@ -124,10 +123,7 @@ D-208-4, D-213-1, D-213-3, D-213-6, D-214-2, D-214-3, D-214-5, D-214-9.
 
 ## Open questions
 
-- **The inset for every sheet.** Should `scroll-clear-sheet-actions` add
-  `env(safe-area-inset-bottom)`, refining D-136-3 and closing D-136's accepted limit for
-  every field, so D-225-7's margin comes off? Until then D-225-7 is a scroll offset in one
-  component, which sits uneasily with D-111-5 ("Shared tokens, not one-off tweaks") as
-  D-164-7 read it ("Shared, not a one-off offset"). If both stand nothing breaks: this
-  alert clears the bar on an installed iPhone, and every other sheet's fields keep the
-  18px limit.
+- ~~**The inset for every sheet.**~~ Settled by the owner on 2026-11-20: merge D-225-7 as
+  it is, and make the shared fix (`env(safe-area-inset-bottom)` in
+  `scroll-clear-sheet-actions`, which takes D-225-7's margin off) in #230. Until #230
+  lands, D-225-7 is a known one-off against D-111-5, accepted by the owner.
