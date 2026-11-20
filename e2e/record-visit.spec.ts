@@ -66,6 +66,36 @@ async function clearOfTheNav(
   return { width: Math.round(box.width), height: Math.round(box.height) };
 }
 
+/* The docked Save's top less the field's foot: below 0, it is under the bar. */
+function clearOfTheBar(field: Locator): Promise<number> {
+  return field.evaluate((element) => {
+    const bar = document.querySelector('[data-dock="nav"]');
+    if (bar === null) throw new Error("no docked Save");
+    return Math.round(bar.getBoundingClientRect().top - element.getBoundingClientRect().bottom);
+  });
+}
+
+/*
+ * Taps a field where a thumb scrolling down meets it, its top showing 24px
+ * above the docked Save, and says how far it was clear of the bar then. Not
+ * click(): that first scrolls a hidden field to the middle of the screen,
+ * which no member does, and Chromium counts its scroll margins in doing so.
+ */
+async function tapAboveTheBar(page: Page, field: Locator): Promise<number> {
+  await field.evaluate((element) => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    const bar = document.querySelector('[data-dock="nav"]');
+    if (bar === null) throw new Error("no docked Save");
+    const above = bar.getBoundingClientRect().top - element.getBoundingClientRect().top;
+    window.scrollBy(0, 24 - above);
+  });
+  const before = await clearOfTheBar(field);
+  const box = await field.boundingBox();
+  if (box === null) throw new Error("the field is not on screen");
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + 10);
+  return before;
+}
+
 test.beforeEach(async ({ adminApi }) => {
   await ensureActiveSession(adminApi);
 });
@@ -178,6 +208,29 @@ test("Save is on the first paint, above the nav, before any script has run", asy
       .evaluate((layer) => getComputedStyle(layer).opacity);
     expect(glass, `the Save bar's surface at ${size}`).toBe(size === "32px" ? "1" : "0");
     await context.close();
+  }
+});
+
+/*
+ * A tap scrolls nothing, so a field tapped where its top showed above the
+ * docked Save stayed under it, 66px for Notes, with what was typed hidden
+ * (#238). The form brings it up to the bar's top.
+ */
+test("a field tapped where it shows above the docked Save comes clear of it", async ({
+  memberPage,
+}) => {
+  await memberPage.goto(`/blocks/${SEED_BLOCK}`);
+  await untilLive(memberPage);
+  await memberPage.getByRole("button", { name: "Add details" }).click();
+  await expect(memberPage.locator('[data-dock="nav"]')).toHaveAttribute("data-docked", "");
+
+  /* Not Name: at the top of the page on a Pixel 5 it is under by 1px only. */
+  for (const label of ["Contact", "Notes"]) {
+    const field = memberPage.getByLabel(label, { exact: true });
+    /* Under the bar at the tap, so a pass is never a field already clear. */
+    expect(await tapAboveTheBar(memberPage, field), `${label} before the tap`).toBeLessThan(0);
+    await expect(field).toBeFocused();
+    await expect.poll(() => clearOfTheBar(field), `${label} after the tap`).toBe(0);
   }
 });
 
@@ -1103,7 +1156,7 @@ test.describe("without signal", () => {
       await memberPage.getByRole("radio", { name: "Low" }).click();
       await memberPage.getByRole("button", { name: "Add details" }).click();
       const notes = memberPage.getByLabel("Notes");
-      await notes.click();
+      await tapAboveTheBar(memberPage, notes);
       await notes.fill("Came to the door, asked us back.");
       await expect(loading).not.toBeInViewport();
       await expect(notes).toBeInViewport();

@@ -80,6 +80,7 @@ import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { useShellState } from "@/lib/offline/shell-state";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
+import { isEntryField } from "@/lib/whole-control";
 import {
   OUTING_ASK_TIMEOUT_MS,
   type OutingAnswer,
@@ -710,6 +711,16 @@ export function RecordVisitForm({
         event.preventDefault();
         void save();
       }}
+      /* A field taking focus comes clear of the docked Save and the nav, as
+         in a sheet: a tap scrolls nothing, and Tab reveals only a textarea's
+         caret, or in WebKit a text input's, so the field's scroll margins
+         went unread (#238). Only the form's own fields: React bubbles focus
+         through portals, and a sheet opened from here scrolls its own. A
+         tile or the docked Save is where the thumb already is (D-214-9). */
+      onFocus={(event) => {
+        if (!event.currentTarget.contains(event.target) || !isEntryField(event.target)) return;
+        event.target.scrollIntoView({ block: "nearest" });
+      }}
       noValidate
       className="space-y-4"
     >
@@ -1084,7 +1095,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setName(event.target.value);
               }}
-              className="min-h-12 field"
+              className="min-h-12 field scroll-clear-chrome"
             />
           </div>
 
@@ -1099,7 +1110,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setContact(event.target.value);
               }}
-              className="min-h-12 field"
+              className="min-h-12 field scroll-clear-chrome"
             />
           </div>
 
@@ -1113,7 +1124,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setReligion(event.target.value as Religion | "");
               }}
-              className="h-12 min-h-12 field"
+              className="h-12 min-h-12 field scroll-clear-chrome"
             >
               <option value="">Not known</option>
               {RELIGIONS.map((option) => (
@@ -1135,7 +1146,7 @@ export function RecordVisitForm({
               onChange={(event) => {
                 setDescription(event.target.value);
               }}
-              className="field py-2"
+              className="field scroll-clear-chrome py-2"
             />
           </div>
         </div>

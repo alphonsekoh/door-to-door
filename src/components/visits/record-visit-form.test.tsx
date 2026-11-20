@@ -436,7 +436,6 @@ describe("moving along a corridor", () => {
   });
 
   it("brings the Saved line back into view after each save, and only then", async () => {
-    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     const user = userEvent.setup();
     render(
       <RecordVisitForm
@@ -449,6 +448,8 @@ describe("moving along a corridor", () => {
     );
     const save = screen.getByRole("button", { name: "Save and next" });
     await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    // After typing, which brought the unit field into view as it took focus.
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
     // Refused: the reason is beside Save, where the member is looking.
     await user.click(save);
     expect(screen.getByRole("alert")).toHaveTextContent("Choose an interest level");
@@ -1293,6 +1294,8 @@ describe("the line under the unit field", () => {
       apiFetch.mockResolvedValue(history());
       mount();
       const user = await typeUnit("#05-123");
+      // Typing brought the unit field into view as it took focus.
+      scrolled.mockClear();
       const panel = await screen.findByRole("region", { name: "What we know about this unit" });
       expect(scrolled).not.toHaveBeenCalled();
 
@@ -2000,6 +2003,88 @@ describe("optional details", () => {
     await user.click(screen.getByRole("button", { name: "Add details" }));
     await user.click(screen.getByRole("button", { name: "Hide details" }));
     expect(screen.queryByLabelText("Name")).not.toBeInTheDocument();
+  });
+});
+
+/* A tap scrolls nothing, and Tab reveals only a caret, so a field left half
+   under the docked Save stayed there (#238). jsdom lays nothing out: the
+   E2E measures where it lands. */
+describe("a field taking focus", () => {
+  const mount = () =>
+    render(
+      <RecordVisitForm
+        sessionId={null}
+        loadSession={noSession}
+        blockId={BLOCK}
+        known={[]}
+        onRecorded={vi.fn()}
+      />,
+    );
+
+  it("is brought into view, nearest, for each field typed or picked in", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.click(screen.getByRole("button", { name: "Add details" }));
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      for (const label of ["Unit number", "Name", "Contact", "Religion", "Notes"]) {
+        scrolled.mockClear();
+        const field = screen.getByLabelText(label);
+        await user.click(field);
+        expect(field).toHaveFocus();
+        expect(scrolled, label).toHaveBeenCalledOnce();
+        expect(scrolled, label).toHaveBeenCalledWith({ block: "nearest" });
+        expect(scrolled.mock.contexts[0], label).toBe(field);
+      }
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
+
+  /* Where the thumb already is: brought nearer the bar, a pressed Save or
+     tile would move the form under it (D-214-9). */
+  it("never moves the form for a tile or a button", async () => {
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      await user.click(screen.getByRole("button", { name: "Add details" }));
+      expect(screen.getByRole("button", { name: "Hide details" })).toHaveFocus();
+      // Refused for the interest level alone, so no pop-up takes focus from Save.
+      const save = screen.getByRole("button", { name: "Save and next" });
+      await user.click(save);
+      expect(screen.getByRole("alert")).toHaveTextContent("Choose an interest level");
+      expect(save).toHaveFocus();
+      const high = screen.getByRole("radio", { name: "High" });
+      await user.click(high);
+      expect(high).toHaveFocus();
+      expect(scrolled).not.toHaveBeenCalled();
+    } finally {
+      scrolled.mockRestore();
+    }
+  });
+
+  /* React bubbles a sheet's focus up to the form it was opened from. */
+  it("leaves a field in a sheet opened from the form to the sheet, which scrolls it once", async () => {
+    apiFetch.mockResolvedValueOnce({ id: "v-new", householdId: "h-new" });
+    const user = userEvent.setup();
+    mount();
+    await user.type(screen.getByLabelText("Unit number"), "#06-201");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.click(screen.getByRole("button", { name: "Save and next" }));
+    await user.click(await screen.findByRole("button", { name: "Suggest a return visit" }));
+    const sheet = screen.getByRole("dialog", { name: "Suggest a return visit, #06-201" });
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    try {
+      const why = within(sheet).getByLabelText("Why should we go back?");
+      await user.click(why);
+      expect(why).toHaveFocus();
+      expect(scrolled).toHaveBeenCalledOnce();
+      expect(scrolled.mock.contexts[0]).toBe(why);
+    } finally {
+      scrolled.mockRestore();
+    }
   });
 });
 
