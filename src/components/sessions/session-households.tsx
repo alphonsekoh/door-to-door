@@ -321,16 +321,23 @@ function AddHouseholdsSheet({
   const sending = useRef(false);
   /* Back on Add, inside the sheet, from the page it fell to. */
   const { notePress, refused } = useRefusalFocus();
-  const said = useFailureInView<HTMLParagraphElement>(failure);
+  /* Counts the lists read again after a failure, as each is drawn: one that
+     empties the pick puts its note in Add's bar, which grows over the kept
+     failure, so it is brought into view again, as on Create draft (D-226-4). */
+  const [reread, setReread] = useState(0);
+  const said = useFailureInView<HTMLParagraphElement>(failure, reread);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ afterRefusal = false } = {}) => {
     const mine = ++generation.current;
+    let answer: Listed;
     try {
-      const notes = await loadAllListed();
-      if (mine === generation.current) setListed({ status: "ready", notes });
+      answer = { status: "ready", notes: await loadAllListed() };
     } catch {
-      if (mine === generation.current) setListed({ status: "error" });
+      answer = { status: "error" };
     }
+    if (mine !== generation.current) return;
+    setListed(answer);
+    if (afterRefusal) setReread((count) => count + 1);
   }, []);
 
   useEffect(() => {
@@ -370,7 +377,7 @@ function AddHouseholdsSheet({
       setFailure(failureLine(error, "Could not add those households."));
       refused();
       // One may have left the list since it was read.
-      void load();
+      void load({ afterRefusal: true });
     } finally {
       sending.current = false;
       setBusy(false);
