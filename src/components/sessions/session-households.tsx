@@ -14,6 +14,7 @@ import type {
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { loadAllListed } from "@/lib/follow-ups/listed";
 import { addBlocker, groupForPicking } from "@/lib/follow-ups/pick";
 import { groupByBlock } from "@/lib/follow-ups/revisits";
@@ -320,15 +321,23 @@ function AddHouseholdsSheet({
   const sending = useRef(false);
   /* Back on Add, inside the sheet, from the page it fell to. */
   const { notePress, refused } = useRefusalFocus();
+  /* Counts the lists read again after a failure, as each is drawn: one that
+     empties the pick puts its note in Add's bar, which grows over the kept
+     failure, so it is brought into view again, as on Create draft (D-226-4). */
+  const [reread, setReread] = useState(0);
+  const said = useFailureInView<HTMLParagraphElement>(failure, reread);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async ({ afterRefusal = false } = {}) => {
     const mine = ++generation.current;
+    let answer: Listed;
     try {
-      const notes = await loadAllListed();
-      if (mine === generation.current) setListed({ status: "ready", notes });
+      answer = { status: "ready", notes: await loadAllListed() };
     } catch {
-      if (mine === generation.current) setListed({ status: "error" });
+      answer = { status: "error" };
     }
+    if (mine !== generation.current) return;
+    setListed(answer);
+    if (afterRefusal) setReread((count) => count + 1);
   }, []);
 
   useEffect(() => {
@@ -368,7 +377,7 @@ function AddHouseholdsSheet({
       setFailure(failureLine(error, "Could not add those households."));
       refused();
       // One may have left the list since it was read.
-      void load();
+      void load({ afterRefusal: true });
     } finally {
       sending.current = false;
       setBusy(false);
@@ -382,12 +391,6 @@ function AddHouseholdsSheet({
       <p className="mt-1 text-body text-foreground-muted">
         On the follow-up list, not in this session yet.
       </p>
-
-      {failure === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
-          {failure}
-        </p>
-      )}
 
       <div className="mt-3">
         {listed.status === "loading" ? (
@@ -419,6 +422,14 @@ function AddHouseholdsSheet({
           <HouseholdPicker groups={groups} ticked={ticked} onChange={setTicked} />
         )}
       </div>
+
+      {/* Beside Add, out of its bar (D-225-1): said atop the list, it was
+          scrolled away from where Add is pressed (#232). */}
+      {failure === null ? null : (
+        <p ref={said} role="alert" className="mt-3 notice-danger">
+          {failure}
+        </p>
+      )}
 
       <SheetActions note={blocker} noteId="add-households-note">
         <button

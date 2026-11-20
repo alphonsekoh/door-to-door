@@ -110,12 +110,14 @@ test; `sheet.tsx` is untouched.
 
 Same class of bug as #225, out of its scope:
 
-- `record-on-behalf-form.tsx:142-146` draws its failure at the top of the form, and
-  nothing scrolls to it.
-- `follow-up-sheet`, `promote-sheet`, `remove-follow-up-sheet` and `team-sheet` draw their
-  alerts above the body with no scroll. #221's verifier saw failure lines out of view.
+- ~~`record-on-behalf-form.tsx:142-146` draws its failure at the top of the form, and
+  nothing scrolls to it.~~ Closed by D-232-1 (#232).
+- ~~`follow-up-sheet`, `promote-sheet`, `remove-follow-up-sheet` and `team-sheet` draw
+  their alerts above the body with no scroll. #221's verifier saw failure lines out of
+  view.~~ Closed by D-232-1 (#232).
 - A test that pins the effect's `[failure]` dependency (verifier nit 2): after a failure,
-  change the interest and expect no second scroll.
+  change the interest and expect no second scroll. Still open here; #232's hook pins it
+  for its own places only (D-232-3).
 
 ## Relies on
 

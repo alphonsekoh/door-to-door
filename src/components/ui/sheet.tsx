@@ -478,6 +478,16 @@ export function SheetActions({
       body.style.removeProperty("--sheet-actions");
     };
   }, []);
+  /* Again each time it is drawn, as its note comes or its action changes:
+     ahead of the sheet's own layout effects, where the observer answers
+     after them. A failure drawn with the note was brought clear of the bar
+     as it had been, and ended under it (#232). */
+  useLayoutEffect(() => {
+    const element = bar.current;
+    const body = element?.closest<HTMLElement>("[data-sheet-body]");
+    if (!element || !body) return;
+    body.style.setProperty("--sheet-actions", `${String(element.offsetHeight)}px`);
+  });
 
   return (
     <div

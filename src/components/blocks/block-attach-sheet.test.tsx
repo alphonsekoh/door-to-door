@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import type { Block } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -37,6 +37,18 @@ beforeEach(() => {
    about creating a block first wait for a listed row, then count creates
    rather than every request. */
 const creates = () => apiFetch.mock.calls.filter(([, init]) => init?.method === "POST");
+
+/* Each records where focus was at every scroll, from the press on. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 describe("BlockAttachSheet", () => {
   it("is a modal: focus moves in and Escape closes", async () => {
@@ -324,11 +336,15 @@ describe("BlockAttachSheet", () => {
       expect(button).toBeDisabled();
       await focusDropped();
 
+      const { scrolled, focusAtScroll } = watchScrolls();
       attach.refuse(new TypeError("Failed to fetch"));
       const alert = await screen.findByRole("alert");
       expect(button).toHaveFocus();
       expect(dialog).toContainElement(button);
       expect(alert).not.toHaveFocus();
+      // Back on Attach before the failure is brought into view (D-208-4).
+      expect(scrolled.mock.contexts).toEqual([alert]);
+      expect(focusAtScroll).toEqual([button]);
     });
 
     it("goes back to Add to the registry", async () => {
@@ -347,9 +363,73 @@ describe("BlockAttachSheet", () => {
       await screen.findByRole("button", { name: "Adding…" });
       await focusDropped();
 
+      const { scrolled, focusAtScroll } = watchScrolls();
       create.refuse(new TypeError("Failed to fetch"));
-      await screen.findByRole("alert");
+      const alert = await screen.findByRole("alert");
       expect(button).toHaveFocus();
+      /* The failure comes last, after the sheet brings the button it gave
+         focus back to into view, so it is what ends in view. */
+      expect(scrolled.mock.contexts.at(-1)).toBe(alert);
+      expect(focusAtScroll.at(-1)).toBe(button);
+    });
+  });
+
+  /* Said atop the sheet, a failed press was above the view once the list
+     or the new block's fields were scrolled past: Add to the registry at
+     every text size, Attach at the largest (#232). */
+  describe("a failed press, said beside the actions", () => {
+    it("says a failed Attach just above its bar, and brings it into view as it is drawn", async () => {
+      const user = userEvent.setup();
+      apiFetch.mockResolvedValue(page([block("b1", "123")]));
+      const onAttach = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+      render(<BlockAttachSheet attachedIds={[]} onAttach={onAttach} onClose={vi.fn()} />);
+      await user.click(await screen.findByRole("button", { name: /Blk 123/ }));
+      const attach = screen.getByRole("button", { name: "Attach 1 block" });
+      attach.focus();
+      const { scrolled } = watchScrolls();
+      await user.keyboard("{Enter}");
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not attach those blocks.");
+      const bar = alert.nextElementSibling;
+      expect(bar).toHaveAttribute("data-sheet-actions");
+      expect(bar).toContainElement(attach);
+      expect(scrolled.mock.contexts).toEqual([alert]);
+      expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
+      expect(alert).not.toHaveFocus();
+    });
+
+    it("says a refused Add to the registry under it, and brings it into view", async () => {
+      const user = userEvent.setup();
+      apiFetch.mockResolvedValue(page([block("b1", "125")]));
+      render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+      await screen.findByText("Blk 125");
+      await user.click(screen.getByRole("button", { name: "Block not listed?" }));
+      await user.type(screen.getByLabelText("Block number"), "127");
+      const add = screen.getByRole("button", { name: "Add to the registry" });
+      add.focus();
+      const { scrolled } = watchScrolls();
+      await user.keyboard("{Enter}");
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("number and a street");
+      expect(add.compareDocumentPosition(alert)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(alert.nextElementSibling).toHaveAttribute("data-sheet-actions");
+      expect(scrolled.mock.contexts).toEqual([alert]);
+    });
+
+    /* The sheet opens at its top (D-119-21), and a search is typed there. */
+    it("says a listing that failed by the search, and scrolls nothing", async () => {
+      const { scrolled } = watchScrolls();
+      apiFetch.mockRejectedValue(new TypeError("Load failed"));
+      render(<BlockAttachSheet attachedIds={[]} onAttach={vi.fn()} onClose={vi.fn()} />);
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not load the blocks.");
+      expect(
+        alert.compareDocumentPosition(screen.getByLabelText("Search the block registry")),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(scrolled).not.toHaveBeenCalled();
     });
   });
 

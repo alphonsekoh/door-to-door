@@ -1,8 +1,20 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { AdminTeamSheet } from "@/components/admin/admin-team-sheet";
 import { focusDropped, pressByKey } from "../../../test/focus-dropped";
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 const people = [
   { id: "admin", name: "Ada Admin" },
@@ -123,11 +135,37 @@ describe("AdminTeamSheet", () => {
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse("boom");
     const alert = await screen.findByRole("alert");
     expect(save).toHaveFocus();
     expect(dialog).toContainElement(save);
     expect(alert).not.toHaveFocus();
+    // Back on the action before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([save]);
+  });
+
+  /* Said atop the sheet, at the largest text it was scrolled away from
+     where the action is pressed, under the people to choose (#232). */
+  it("says a failure under the people, just above its bar, and brings it into view", async () => {
+    const user = userEvent.setup();
+    sheet({ onSubmit: vi.fn().mockRejectedValue("boom") });
+    await user.click(screen.getByRole("button", { name: /Cy Ong/ }));
+    const create = screen.getByRole("button", { name: "Create team" });
+    create.focus();
+    const { scrolled } = watchScrolls();
+    await user.keyboard("{Enter}");
+
+    const alert = await screen.findByRole("alert");
+    expect(screen.getByRole("list", { name: "People" }).compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(create);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
   });
 
   it("sends once for a double tap", async () => {

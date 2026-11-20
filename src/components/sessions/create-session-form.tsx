@@ -7,6 +7,7 @@ import type { FollowUp, OutingSession, SessionKind } from "@/generated/types.gen
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { loadAllListed } from "@/lib/follow-ups/listed";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import {
   type ListLoad,
@@ -50,6 +51,11 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
      the list again until that lands. The refusal gives focus back then, if
      the list leaves the button enabled: a disabled one cannot take it. */
   const { notePress, refused } = useRefusalFocus();
+  /* Counts the lists read again after a refusal, as each is drawn: the
+     households come back above Create draft and push its failure down, so
+     it is brought into view again, as on Sessions (D-226-4). */
+  const [reread, setReread] = useState(0);
+  const actions = useFailureInView<HTMLDivElement>(failure, reread);
 
   /* The answer lands as a transition, as the block screen's do (#155): WebKit
      can run it inside the input event of text landing in the name, and set
@@ -69,7 +75,10 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
     if (mine !== generation.current) return;
     startTransition(() => {
       setListed(answer);
-      if (afterRefusal) refused();
+      if (afterRefusal) {
+        setReread((count) => count + 1);
+        refused();
+      }
     });
   }
 
@@ -140,12 +149,6 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       noValidate
       className="rounded-xl border border-border bg-surface p-4"
     >
-      {failure === null ? null : (
-        <p role="alert" className="mb-3 notice-danger">
-          {failure}
-        </p>
-      )}
-
       <fieldset>
         <legend className="mb-1 text-body font-medium">What kind of session?</legend>
         {/* Cards stack, so a long hint reflows at large text rather than
@@ -226,43 +229,56 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
         </fieldset>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="submit"
-          disabled={saving || blocker !== null}
-          aria-describedby={blocker === null ? undefined : "create-blocker"}
-          className="min-h-12 flex-[1_1_12ch] btn-primary rounded-xl text-body font-semibold"
-        >
-          {saving ? "Creating…" : "Create draft"}
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            setOpen(false);
-            setFailure(null);
-          }}
-          className="min-h-12 btn-secondary rounded-xl px-4 text-body font-medium"
-        >
-          Cancel
-        </button>
-      </div>
-      {/* Why Create draft waits, beside it; a failed read is retried here. */}
-      {blocker === null ? null : (
-        <div className="mt-2 flex flex-wrap items-center gap-x-3">
-          <p id="create-blocker" className="text-caption text-foreground-muted">
-            {blocker}
-          </p>
-          {listed.load === "error" ? (
-            <button
-              type="button"
-              onClick={() => void loadList()}
-              className="min-h-11 text-body font-medium btn-text"
-            >
-              Try again
-            </button>
-          ) : null}
+      {/* Create draft, why it waits and why it failed, as one block brought
+          clear of the nav and a banner floating on it (D-195-1). Said atop
+          the form, a failure pushed Create draft under the install banner,
+          and at the largest text was above the screen (#232). Under the
+          button, as on the Sessions list below (D-213-1), so a second try
+          leaves Create draft where it was. */}
+      <div ref={actions} className="mt-3 scroll-clear-nav">
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            disabled={saving || blocker !== null}
+            aria-describedby={blocker === null ? undefined : "create-blocker"}
+            className="min-h-12 flex-[1_1_12ch] btn-primary rounded-xl text-body font-semibold"
+          >
+            {saving ? "Creating…" : "Create draft"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setOpen(false);
+              setFailure(null);
+            }}
+            className="min-h-12 btn-secondary rounded-xl px-4 text-body font-medium"
+          >
+            Cancel
+          </button>
         </div>
-      )}
+        {/* Why Create draft waits, beside it; a failed read is retried here. */}
+        {blocker === null ? null : (
+          <div className="mt-2 flex flex-wrap items-center gap-x-3">
+            <p id="create-blocker" className="text-caption text-foreground-muted">
+              {blocker}
+            </p>
+            {listed.load === "error" ? (
+              <button
+                type="button"
+                onClick={() => void loadList()}
+                className="min-h-11 text-body font-medium btn-text"
+              >
+                Try again
+              </button>
+            ) : null}
+          </div>
+        )}
+        {failure === null ? null : (
+          <p role="alert" className="mt-2 notice-danger">
+            {failure}
+          </p>
+        )}
+      </div>
     </form>
   );
 }

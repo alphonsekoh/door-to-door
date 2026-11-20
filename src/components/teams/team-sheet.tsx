@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Participant } from "@/generated/types.gen";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/teams/team-name";
 import { nameLength } from "@/lib/session/own-name";
@@ -49,6 +50,7 @@ export function TeamSheet({
   const sending = useRef(false);
   /* Back on the action, inside the sheet, from the page it fell to. */
   const { notePress, refused } = useRefusalFocus();
+  const said = useFailureInView<HTMLParagraphElement>(failure);
 
   const showPicker = mode !== "rename";
   const showName = mode !== "add";
@@ -92,12 +94,6 @@ export function TeamSheet({
 
   return (
     <Sheet label={TITLE[mode]} title={TITLE[mode]} onClose={onClose}>
-      {failure === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
-          {failure}
-        </p>
-      )}
-
       {showName ? (
         <div className="mt-3">
           <div className="mb-1 flex items-baseline justify-between gap-3">
@@ -155,6 +151,15 @@ export function TeamSheet({
           </ul>
         )
       ) : null}
+
+      {/* Beside the action, out of its bar (D-225-1): said atop the sheet,
+          at the largest text it was scrolled away from where the action is
+          pressed (#232). */}
+      {failure === null ? null : (
+        <p ref={said} role="alert" className="mt-3 notice-danger">
+          {failure}
+        </p>
+      )}
 
       <SheetActions note={canChange ? null : OFFLINE_NOTE}>
         <button

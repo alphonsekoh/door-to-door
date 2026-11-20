@@ -1,8 +1,20 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { TeamSheet } from "@/components/teams/team-sheet";
 import { focusDropped, pressByKey } from "../../../test/focus-dropped";
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 /* The card's own in-flight guard also stops a repeat, so the sheet's guard is
    tested alone here: two taps before React re-renders, one submit. */
@@ -65,11 +77,49 @@ describe("TeamSheet", () => {
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse(new TypeError("Failed to fetch"));
     const alert = await screen.findByRole("alert");
     expect(save).toHaveFocus();
     expect(screen.getByRole("dialog", { name: "Rename team" })).toContainElement(save);
     expect(alert).not.toHaveFocus();
+    // Back on the action before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([save]);
+  });
+
+  /* Said atop the sheet, at the largest text it was scrolled away from
+     where the action is pressed, under the people to choose (#232). */
+  it("says a failure under the people, just above its bar, and brings it into view", async () => {
+    render(
+      <TeamSheet
+        mode="create"
+        myName="Ann Tan"
+        initialName=""
+        candidates={[
+          { user: { id: "ben", name: "Ben Lim", image: null }, teamId: null, joinedAt: "" },
+        ]}
+        canChange
+        onSubmit={vi.fn().mockRejectedValue(new TypeError("Failed to fetch"))}
+        onClose={vi.fn()}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /Ben Lim/ }));
+    const create = screen.getByRole("button", { name: "Create team" });
+    create.focus();
+    const { scrolled } = watchScrolls();
+    await user.keyboard("{Enter}");
+
+    const alert = await screen.findByRole("alert");
+    expect(screen.getByRole("list").compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(create);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
   });
 
   it("is a modal: focus moves in and Escape closes", () => {

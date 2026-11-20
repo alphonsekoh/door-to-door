@@ -13,6 +13,7 @@ import { groupByBlock, progress, revisitState } from "@/lib/follow-ups/revisits"
 import { followUpRights, waitingCaption } from "@/lib/follow-ups/rights";
 import { describeFollowUpFailure, isOverdue } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
@@ -161,6 +162,10 @@ function RevisitRow({
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
   const { notePress, refused } = useRefusalFocus();
+  /* The failure and the button it pushed down, clear of the nav and a
+     banner floating on it, as on Team (D-213-2): it pushed Mark done under
+     the install banner (#232). */
+  const controls = useFailureInView<HTMLDivElement>(failure);
   const state = revisitState(entry);
   const owed = entry.notes.filter((note) => note.doneAt === null);
   const first = owed[0] ?? entry.notes[0];
@@ -235,7 +240,7 @@ function RevisitRow({
         )}
       </Link>
       {state === "done" && !canReopen && waiting === null && failure === null ? null : (
-        <div className="px-4 pb-3">
+        <div ref={controls} className="scroll-clear-nav px-4 pb-3">
           {failure === null ? null : (
             <p role="alert" className="mb-2 notice-danger">
               {failure}
