@@ -401,6 +401,7 @@ both is a startup error (D-75-2).
 | Variable                                   | Default                                                          | Meaning                                                                                                                                                                          |
 | ------------------------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `CONFIG_PATH`                              | `./config.yaml`; `/app/config.yaml` in the image                 | Where the settings file is                                                                                                                                                       |
+| `CONFIG_YAML`                              | unset                                                            | The settings themselves, as the same YAML, for a host with no file to read (Vercel). Set it or `CONFIG_PATH`, not both; an empty value counts as unset                           |
 | `AUTH_URL`                                 | unset                                                            | Public URL, read by Auth.js itself. Needed with Google sign-in in the image (D-14-27), and with `auth.trustHost: false`                                                          |
 | `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                                              |
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
@@ -456,39 +457,39 @@ to `medium` between March and June.
 
 ## Scripts
 
-| Script                     | What it does                                                                 |
-| -------------------------- | ---------------------------------------------------------------------------- |
-| `npm run dev`              | Dev server on loopback, for `localhost` only (`-- -p 4000` for another port) |
-| `npm run build`            | Standalone build free of `.env`/`config.yaml`; needs no config or database   |
-| `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default  |
-| `npm start`                | Alias for `npm run start:standalone`                                         |
-| `npm run lint`             | `next typegen`, then type-aware ESLint                                       |
-| `npm run lint:fix`         | The same, with autofix                                                       |
-| `npm run typecheck`        | `next typegen`, then `tsc --noEmit`                                          |
-| `npm run format`           | Prettier, writing                                                            |
-| `npm run format:check`     | Prettier, check only                                                         |
-| `npm test`                 | Unit and component tests; no database needed                                 |
-| `npm run test:watch`       | Vitest watch mode                                                            |
-| `npm run test:unit`        | Unit project only                                                            |
-| `npm run test:components`  | Component project only                                                       |
-| `npm run test:integration` | Integration project (**needs `TEST_DATABASE_URL`**)                          |
-| `npm run test:all`         | Every project (**needs `TEST_DATABASE_URL`**)                                |
-| `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)  |
-| `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433) |
-| `npm run test:e2e:ui`      | The same in Playwright's UI mode                                             |
-| `npm run test:e2e:linux`   | The same suite in a Linux container, as CI runs it (needs Docker)            |
-| `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)    |
-| `npm run db:migrate`       | Apply pending migrations                                                     |
-| `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users |
-| `npm run db:reset`         | Migrate, then seed: `npm run db:reset -- --demo`. Deletes nothing            |
-| `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))  |
-| `npm run db:check-blank`   | List blank units, notes, block names and streets; changes nothing (exit 1)   |
-| `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)     |
-| `npm run db:studio`        | Open Drizzle Studio                                                          |
-| `npm run spec:lint`        | Lint `openapi.yaml`                                                          |
-| `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                 |
-| `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                         |
-| `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                              |
+| Script                     | What it does                                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------- |
+| `npm run dev`              | Dev server on loopback, for `localhost` only (`-- -p 4000` for another port)                  |
+| `npm run build`            | Standalone build free of `.env`/`config.yaml`; needs no config or database                    |
+| `npm run start:standalone` | Serve the production build as Docker does; reads `./config.yaml` by default, or `CONFIG_YAML` |
+| `npm start`                | Alias for `npm run start:standalone`                                                          |
+| `npm run lint`             | `next typegen`, then type-aware ESLint                                                        |
+| `npm run lint:fix`         | The same, with autofix                                                                        |
+| `npm run typecheck`        | `next typegen`, then `tsc --noEmit`                                                           |
+| `npm run format`           | Prettier, writing                                                                             |
+| `npm run format:check`     | Prettier, check only                                                                          |
+| `npm test`                 | Unit and component tests; no database needed                                                  |
+| `npm run test:watch`       | Vitest watch mode                                                                             |
+| `npm run test:unit`        | Unit project only                                                                             |
+| `npm run test:components`  | Component project only                                                                        |
+| `npm run test:integration` | Integration project (**needs `TEST_DATABASE_URL`**)                                           |
+| `npm run test:all`         | Every project (**needs `TEST_DATABASE_URL`**)                                                 |
+| `npm run test:coverage`    | Every project, then the coverage thresholds (**needs `TEST_DATABASE_URL`**)                   |
+| `npm run test:e2e`         | Playwright at phone size against a production build (needs Postgres on 5433)                  |
+| `npm run test:e2e:ui`      | The same in Playwright's UI mode                                                              |
+| `npm run test:e2e:linux`   | The same suite in a Linux container, as CI runs it (needs Docker)                             |
+| `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)                     |
+| `npm run db:migrate`       | Apply pending migrations                                                                      |
+| `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users                  |
+| `npm run db:reset`         | Migrate, then seed: `npm run db:reset -- --demo`. Deletes nothing                             |
+| `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))                   |
+| `npm run db:check-blank`   | List blank units, notes, block names and streets; changes nothing (exit 1)                    |
+| `npm run db:push`          | Push the schema straight to the database, skipping migrations (dev only)                      |
+| `npm run db:studio`        | Open Drizzle Studio                                                                           |
+| `npm run spec:lint`        | Lint `openapi.yaml`                                                                           |
+| `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                                  |
+| `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                                          |
+| `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                                               |
 
 The `npm run build` check of the standalone output runs as an npm `postbuild` hook, so
 running `next build` directly skips it: always build with `npm run build`.
@@ -640,6 +641,11 @@ docker run -p 3000:3000 \
 - **Settings** are not in the image: mount `config.yaml` read-only at `/app/config.yaml`
   (or set `CONFIG_PATH`). It must be readable by uid 1001 (`chmod 644`). Change a value by
   editing the file and restarting.
+- **Settings without a file** (a host such as Vercel, where a file would be part of the
+  build): set `CONFIG_YAML` to the whole YAML text instead of mounting a file. It is read
+  and checked exactly as the file is (no credentials in it, unknown keys refused) and is
+  an error beside `CONFIG_PATH`. The build still holds no settings, and `db:migrate` and
+  `create-admin` read it too. Changing it needs a new deployment.
 - **Secrets** come from the environment or their `_FILE` variants. Generate a fresh
   `AUTH_SECRET`; the Compose development one is refused outside `next dev`.
 - **Startup is validated.** A bad file, a missing secret, or a placeholder or development

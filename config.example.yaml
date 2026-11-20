@@ -2,6 +2,8 @@
 #
 # Read when the server starts, never bundled into the build: change a value,
 # restart, no rebuild. Where the file lives: CONFIG_PATH, default ./config.yaml.
+# On a host with no file to read, put this same text in CONFIG_YAML instead (not
+# both).
 #
 # SECRETS ARE NOT IN THIS FILE. The database username and password, the
 # session-signing secret and the Google client secret come from environment

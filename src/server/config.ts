@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import {
   ConfigNotFoundError,
+  ConfigSourceError,
   ConfigUnreadableError,
   composeDatabaseUrl,
   parseConfig,
@@ -14,7 +15,9 @@ import {
 } from "@/lib/config";
 
 /*
- * Reads config.yaml at runtime. Nothing here may run at module scope: `next
+ * Reads config.yaml at runtime, or the same text from CONFIG_YAML for a host
+ * with no file to read (#241); the build holds neither (D-75-19). Nothing here
+ * may run at module scope: `next
  * build` needs neither the file nor a database (D-13-4), so every caller
  * reaches for the config inside a function.
  *
@@ -56,6 +59,13 @@ export function loadAppConfig({
   cwd = process.cwd(),
   readFile = readUtf8,
 }: LoadOptions = {}): AppConfig {
+  const inline = env["CONFIG_YAML"];
+  if (inline !== undefined && inline !== "") {
+    if (env["CONFIG_PATH"] !== undefined && env["CONFIG_PATH"] !== "") {
+      throw new ConfigSourceError();
+    }
+    return parseConfig(inline, "CONFIG_YAML");
+  }
   const path = resolveConfigPath(env, cwd);
   let text: string;
   try {
