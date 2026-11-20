@@ -1,6 +1,6 @@
 # #232 · A failure in the rest of the sheets and forms is said in view
 
-- **Status:** In review (PR #239)
+- **Status:** Done (PR #239)
 - **Phase:** 7 - Hardening
 - **Depends on:** #213, #221, #225, #226, #230
 
