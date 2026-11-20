@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { type ReactNode, startTransition, useCallback, useEffect, useState } from "react";
+import { type ReactNode, startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import { KindBadge } from "@/components/sessions/kind-badge";
 import { SessionActionButton } from "@/components/sessions/session-action-button";
@@ -40,14 +40,19 @@ const STATUS_STYLE: Record<SessionStatus, string> = {
  */
 export function AdminSessions({ notices }: { notices?: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
-  /* Every read of the list, counted with what it read: a row's action button
-     tells by it that the read its refusal set off has landed. */
+  /* Every read of the list drawn, counted with what it read: a row's action
+     button tells by it that a read since its refusal has landed. */
   const [reads, setReads] = useState(0);
+  /* A refusal's re-read, another row's reload and a new session's can cross;
+     only the newest answer may land (D-28-7). An older one drew "Running
+     now" over a session read since as ended. */
+  const generation = useRef(0);
 
   /* A transition: it draws New session's form again, and set urgently inside
      the input event of a name being typed it put the name back (#171). The
      count goes in the same one, so it lands with the rows it counts. */
   const load = useCallback(async () => {
+    const mine = ++generation.current;
     let next: State;
     try {
       const page = await apiFetch<SessionList>(`/sessions?limit=${String(PAGE_SIZE)}`);
@@ -58,6 +63,8 @@ export function AdminSessions({ notices }: { notices?: ReactNode }) {
         message: failureLine(error, "Could not load the sessions."),
       };
     }
+    /* Before the transition, so a dropped answer counts no read either. */
+    if (mine !== generation.current) return;
     startTransition(() => {
       setState(next);
       setReads((count) => count + 1);
