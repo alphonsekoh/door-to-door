@@ -46,15 +46,18 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
   const [failure, setFailure] = useState<string | null>(null);
   /* A retry and a reload after a refusal can overlap; the newest answer wins. */
   const generation = useRef(0);
-  /* Create draft is disabled while it saves. A refusal gives focus back,
-     unless the list is read again, which keeps it disabled meanwhile. */
+  /* Create draft is disabled while it saves, and after a refusal that reads
+     the list again until that lands. The refusal gives focus back then, if
+     the list leaves the button enabled: a disabled one cannot take it. */
   const { notePress, refused } = useRefusalFocus();
 
   /* The answer lands as a transition, as the block screen's do (#155): WebKit
      can run it inside the input event of text landing in the name, and set
      urgently it drew the form again with the name still empty, over what was
-     typed (#171). A transition is drawn after the event. */
-  async function loadList(): Promise<void> {
+     typed (#171). A transition is drawn after the event. A refusal that waited
+     for it is drawn inside it, or it would meet a button still disabled
+     (D-221-6). */
+  async function loadList({ afterRefusal = false } = {}): Promise<void> {
     const mine = ++generation.current;
     setListed({ load: "loading" });
     let answer: Listed;
@@ -66,6 +69,7 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
     if (mine !== generation.current) return;
     startTransition(() => {
       setListed(answer);
+      if (afterRefusal) refused();
     });
   }
 
@@ -100,11 +104,12 @@ export function CreateSessionForm({ onCreated }: { onCreated: (session: OutingSe
       onCreated(session);
     } catch (error) {
       setFailure(failureLine(error, "Could not create the session."));
-      refused();
       /* A household left the list since it was read: read it again, keeping
          what was unticked. */
       if (error instanceof ApiRequestError && error.code === "not_on_follow_up_list") {
-        void loadList();
+        void loadList({ afterRefusal: true });
+      } else {
+        refused();
       }
     } finally {
       setSaving(false);

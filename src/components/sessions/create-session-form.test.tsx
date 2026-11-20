@@ -91,6 +91,24 @@ async function followUp(onCreated = vi.fn()) {
 const create = () => screen.getByRole("button", { name: "Create draft" });
 const picker = () => within(screen.getByRole("group", { name: "Households to visit" }));
 
+const leftTheList = () =>
+  new ApiRequestError(409, {
+    error: {
+      code: "not_on_follow_up_list",
+      message:
+        "A household you picked is no longer on the follow-up list. Refresh the list and pick again.",
+    },
+  });
+
+/* The first read of the list answers at once; every later one is handed to `reread`. */
+function rereadList(reread: () => Promise<unknown>): () => Promise<unknown> {
+  let reads = 0;
+  return () => {
+    reads += 1;
+    return reads === 1 ? Promise.resolve(page(LIST)) : reread();
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   server();
@@ -356,32 +374,17 @@ describe("creating a follow-up session", () => {
   });
 
   it("reads the list again when a household left it, keeping what was unticked", async () => {
-    let reads = 0;
     server({
-      list: () => {
-        reads += 1;
-        // #01-01 in Blk 125 was resolved meanwhile; a new door was listed.
-        return Promise.resolve(
-          page(
-            reads === 1
-              ? LIST
-              : [
-                  ...LIST.filter((note) => note.householdId !== "h2"),
-                  listed("h4", "130", "#03-03", "New"),
-                ],
-          ),
-        );
-      },
-      create: () =>
-        Promise.reject(
-          new ApiRequestError(409, {
-            error: {
-              code: "not_on_follow_up_list",
-              message:
-                "A household you picked is no longer on the follow-up list. Refresh the list and pick again.",
-            },
-          }),
+      // #01-01 in Blk 125 was resolved meanwhile; a new door was listed.
+      list: rereadList(() =>
+        Promise.resolve(
+          page([
+            ...LIST.filter((note) => note.householdId !== "h2"),
+            listed("h4", "130", "#03-03", "New"),
+          ]),
         ),
+      ),
+      create: () => Promise.reject(leftTheList()),
     });
     const user = await followUp();
     await user.click(picker().getByRole("checkbox", { name: "Blk 123 · #02-201" }));
@@ -396,6 +399,70 @@ describe("creating a follow-up session", () => {
     expect(picker().getByRole("checkbox", { name: "Blk 123 · #02-201" })).not.toBeChecked();
     expect(picker().getByRole("checkbox", { name: "Blk 130 · #03-03" })).toBeChecked();
     expect(picker().queryByRole("checkbox", { name: "Blk 125 · #01-01" })).toBeNull();
+  });
+
+  /* Create draft stays disabled from the refused press until the list is read
+     again, so focus comes back only then (#221). Both are held, as real ones
+     are (D-208-6). */
+  it("gives focus back to Create draft once the list is read again after a household left it", async () => {
+    let reread: (value: unknown) => void = () => undefined;
+    let refuse: (reason: unknown) => void = () => undefined;
+    server({
+      list: rereadList(
+        () =>
+          new Promise((resolve) => {
+            reread = resolve;
+          }),
+      ),
+      create: () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    const user = await followUp();
+    const button = create();
+    await pressByKey(user, button);
+    await screen.findByRole("button", { name: "Creating…" });
+    await focusDropped();
+
+    refuse(leftTheList());
+    const alert = await screen.findByRole("alert");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("Loading the follow-up list…");
+    expect(document.body).toHaveFocus();
+
+    reread(page(LIST.filter((note) => note.householdId !== "h2")));
+    await waitFor(() => {
+      expect(button).toBeEnabled();
+    });
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
+    expect(picker().getByRole("status")).toHaveTextContent("2 of 2 households ticked");
+  });
+
+  /* A disabled button cannot take focus, so it is left on the page; the
+     admin's way on is Try again, beside Create draft. */
+  it("says when the list cannot be read again after a household left it, leaving focus on the page", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    server({
+      list: rereadList(() => Promise.reject(new TypeError("offline"))),
+      create: () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    const user = await followUp();
+    const button = create();
+    await pressByKey(user, button);
+    await screen.findByRole("button", { name: "Creating…" });
+    await focusDropped();
+
+    refuse(leftTheList());
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeVisible();
+    expect(screen.getByRole("alert")).toHaveTextContent("no longer on the follow-up list");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("Could not load the follow-up list.");
+    expect(document.body).toHaveFocus();
   });
 
   it("starts the next session as door-to-door again", async () => {
