@@ -1,6 +1,6 @@
 # #227 · The note in Suggest a return visit at 32px on an iPhone
 
-- **Status:** In progress (PR #235, branch `fix/227-follow-up-note-at-32px`)
+- **Status:** Done (PR #235)
 - **Phase:** 7 - Hardening
 - **Depends on:** #214, #221
 
