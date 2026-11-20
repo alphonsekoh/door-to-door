@@ -103,6 +103,13 @@ function serve(status: SessionStatus, blocks: SessionBlock[]) {
   );
 }
 
+/* The page's 30 s poll, on a fake clock. */
+async function poll(): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(30_000);
+  });
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -441,12 +448,6 @@ describe("SessionDetail", () => {
        opened for the action before belongs to it, not to the one the poll
        now draws. */
     describe("and moves again before the poll", () => {
-      async function poll(): Promise<void> {
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(30_000);
-        });
-      }
-
       it("drops the sentence once it no longer names what is shown, scrolling nothing", async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
@@ -565,6 +566,209 @@ describe("SessionDetail", () => {
           vi.useRealTimers();
         }
       });
+    });
+  });
+
+  /* The poll and a refusal's re-read can cross on a slow line: an older
+     answer landing last drew "Running now" over a session read since as
+     ended (#234). Only the newest read is drawn (D-28-7). */
+  describe("reads that cross", () => {
+    const ENDED = "This session has already ended, so it cannot be ended.";
+
+    /* Every read of the session is held until the test answers it, in any
+       order. Its block is read as it stands when it is sent, with `visits`
+       visits to as many units. */
+    function serveHeld(refusals: ReadonlyMap<string, string>) {
+      const sent: { resolve: (value: OutingSession) => void; reject: (reason: unknown) => void }[] =
+        [];
+      let visits = 1;
+      apiFetch.mockImplementation((path: string) => {
+        const refusal = refusals.get(path);
+        if (refusal !== undefined) {
+          return Promise.reject(
+            new ApiRequestError(409, { error: { code: "conflict", message: refusal } }),
+          );
+        }
+        if (path.endsWith("/blocks")) {
+          return Promise.resolve([
+            sessionBlock("b1", "123", { visitCount: visits, householdCount: visits }),
+          ]);
+        }
+        return new Promise((resolve, reject) => {
+          sent.push({ resolve, reject });
+        });
+      });
+      const read = (index: number) => {
+        const each = sent[index];
+        if (each === undefined) throw new Error(`read ${String(index)} was never sent`);
+        return each;
+      };
+      /* Lets an answer run its course, drawing whatever it sets before the
+         test looks. */
+      const settled = (answer: () => void) =>
+        act(async () => {
+          answer();
+          await vi.advanceTimersByTimeAsync(0);
+        });
+
+      return {
+        sent: () => sent.length,
+        visits: (count: number) => {
+          visits = count;
+        },
+        answer: (index: number, status: SessionStatus) =>
+          settled(() => {
+            read(index).resolve(session(status));
+          }),
+        fail: (index: number, error: unknown) =>
+          settled(() => {
+            read(index).reject(error);
+          }),
+      };
+    }
+
+    /* Read running with one visit; the poll reads it again with two, held;
+       then End is refused, as another admin ended it, and its re-read, with
+       three, is held too. */
+    async function endRefusedBehindAPoll() {
+      const reads = serveHeld(new Map([["/sessions/s1/end", ENDED]]));
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<SessionDetail sessionId="s1" />);
+      await waitFor(() => {
+        expect(reads.sent()).toBe(1);
+      });
+      await reads.answer(0, "active");
+      const end = screen.getByRole("button", { name: "End session" });
+      reads.visits(2);
+      await poll();
+      reads.visits(3);
+
+      await user.click(end);
+      await user.click(
+        within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+      );
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(ENDED);
+      await waitFor(() => {
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      });
+      expect(reads.sent()).toBe(3);
+      return { reads, end, alert };
+    }
+
+    it("keeps the session ended when the poll's older read of it running lands last", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { reads, end, alert } = await endRefusedBehindAPoll();
+        await reads.answer(2, "ended");
+        expect(screen.getByText("3 visits recorded across 1 block.")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Reopen session" })).toBe(end);
+
+        await reads.answer(1, "active");
+
+        expect(screen.getByText("Ended")).toBeInTheDocument();
+        expect(screen.queryByText("Running now")).toBeNull();
+        expect(screen.getByText("3 visited")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Reopen session" })).toBe(end);
+        expect(screen.getByRole("alert")).toBe(alert);
+        expect(alert).toHaveTextContent(ENDED);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /* Counted, the poll's answer ended End's wait for its re-read, and the
+       re-read's change to Reopen then dropped "has already ended". */
+    it("neither draws the poll's older read that lands first nor ends End's wait on it", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const { reads, end, alert } = await endRefusedBehindAPoll();
+        await reads.answer(1, "active");
+        expect(screen.getByText("1 visited")).toBeInTheDocument();
+        expect(screen.queryByText("2 visited")).toBeNull();
+        expect(screen.getByRole("alert")).toBe(alert);
+
+        await reads.answer(2, "ended");
+
+        expect(screen.getByText("Ended")).toBeInTheDocument();
+        expect(screen.getByText("3 visited")).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Reopen session" })).toBe(end);
+        expect(screen.getByRole("alert")).toBe(alert);
+        expect(alert).toHaveTextContent(ENDED);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    /* Sent after Reopen's refusal, the poll shows the state "already
+       running" names, or a later one: it ends Reopen's wait as Reopen's own
+       re-read would, keeping the sentence under End and in view. */
+    it("lets a poll sent after a refused Reopen's re-read end its wait", async () => {
+      const RUNNING = "This session is already running, so it cannot be reopened.";
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const reads = serveHeld(new Map([["/sessions/s1/reopen", RUNNING]]));
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        render(<SessionDetail sessionId="s1" />);
+        await waitFor(() => {
+          expect(reads.sent()).toBe(1);
+        });
+        await reads.answer(0, "ended");
+        const reopen = screen.getByRole("button", { name: "Reopen session" });
+        // Reopened by another admin, and members record again.
+        reads.visits(2);
+        await user.click(reopen);
+        const alert = await screen.findByRole("alert");
+        expect(alert).toHaveTextContent(RUNNING);
+        expect(reads.sent()).toBe(2);
+        reads.visits(3);
+        await poll();
+        expect(reads.sent()).toBe(3);
+        const before = scrolled.mock.calls.length;
+
+        await reads.answer(2, "active");
+
+        expect(screen.getByText("Running now")).toBeInTheDocument();
+        expect(screen.getByText("3 visited")).toBeInTheDocument();
+        const end = screen.getByRole("button", { name: "End session" });
+        expect(end).toBe(reopen);
+        expect(screen.getByRole("alert")).toBe(alert);
+        expect(alert).toHaveTextContent(RUNNING);
+        expect(scrolled.mock.contexts.slice(before)).toEqual([alert, end]);
+
+        await reads.answer(1, "active");
+
+        expect(screen.getByText("3 visited")).toBeInTheDocument();
+        expect(screen.queryByText("2 visited")).toBeNull();
+        expect(screen.getByRole("alert")).toBe(alert);
+        expect(scrolled.mock.contexts.slice(before)).toEqual([alert, end]);
+      } finally {
+        scrolled.mockRestore();
+        vi.useRealTimers();
+      }
+    });
+
+    it("drops the first read's failure once the poll, sent after it, has drawn the page", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const reads = serveHeld(new Map());
+        render(<SessionDetail sessionId="s1" />);
+        await waitFor(() => {
+          expect(reads.sent()).toBe(1);
+        });
+        await poll();
+        expect(reads.sent()).toBe(2);
+        await reads.answer(1, "active");
+        expect(screen.getByText("Running now")).toBeInTheDocument();
+
+        await reads.fail(0, new TypeError("Failed to fetch"));
+
+        expect(screen.queryByText("Could not load this session.")).toBeNull();
+        expect(screen.getByText("Running now")).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

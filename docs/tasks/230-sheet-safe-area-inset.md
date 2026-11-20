@@ -1,6 +1,6 @@
 # #230 · A sheet's room under its bar counts the home indicator
 
-- **Status:** In review (branch `fix/230-sheet-safe-area-inset`; PR not yet open)
+- **Status:** In review (PR #237)
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #225, #227
 
@@ -48,7 +48,7 @@ untouched.
   not by focusing it.** That is the call the sheet's focus handler and the amend failure
   make. _Why:_ focusing a field out of view scrolls it toward the middle first, which
   here reaches the end of the scroll, so a focus-based test passed without the fix.
-  WebKit did so for this date field even with `preventScroll`. _Research:_ R-222.
+  WebKit did so for this date field even with `preventScroll`. _Research:_ R-223.
 
 ## How existing decisions are handled
 

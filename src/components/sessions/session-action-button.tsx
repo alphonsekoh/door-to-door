@@ -35,9 +35,9 @@ export function SessionActionButton({
 }: {
   sessionId: string;
   spec: ActionSpec;
-  /* Bumped by the screen each time it reads the session, in the render that
-     draws what it read: `spec` is the same for a re-read that changed
-     nothing, which still ends the wait for one. */
+  /* Bumped by the screen each time it draws a read of the session, in the
+     render that draws it, and never for one it drops: `spec` is the same for
+     a re-read that changed nothing, which still ends the wait for one. */
   read: number;
   primary?: boolean;
   /* Why the server would refuse it now, said beside it instead of offered. */
@@ -49,10 +49,11 @@ export function SessionActionButton({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  /* From a 409 to the screen's next read, taken for the one it set off: a
-     poll already out can land first, and at worst the sentence then goes
-     with the change. Apart from the failure, so that ending the wait brings
-     nothing into view again. */
+  /* From a 409 to the screen's next read drawn. The screen draws only its
+     newest read (D-28-7), so that is the one the 409 set off or one sent
+     after it: either shows the state the sentence names, or a later one.
+     Apart from the failure, so that ending the wait brings nothing into
+     view again. */
   const [awaitsRead, setAwaitsRead] = useState(false);
   const pressed = useRef<HTMLButtonElement>(null);
   const said = useRef<HTMLParagraphElement>(null);

@@ -78,7 +78,8 @@ document their `409`s, so no contract, schema or server change.
   beside `setState`. The button keeps the last action and read it drew and compares them
   while rendering. _Why:_ a re-read that changed nothing leaves `spec` as it was, so the
   wait of D-226-3 never ended (verifier r1). Bumped outside the transition, the wait would
-  end before the rows change (5 tests fail). _Research:_ R-220.
+  end before the rows change (5 tests fail). _Research:_ R-220. _#234:_ a read dropped
+  under D-28-7 draws nothing, so it is not counted (D-234-2).
 - **D-226-10 · Component tests on the button, the list and the page.** They cover: any
   `409`, End's confirm included, calls `onStale` once; a `TypeError`, `403` or `404` reads
   nothing; the in-place change keeps the alert, the element and its focus; an unchanged
@@ -122,13 +123,15 @@ document their `409`s, so no contract, schema or server change.
   page for its load error. The sentence goes, and so does the button #214 just gave focus
   back to, so focus falls to the page. A successful press's re-read already does this on
   main. A re-read that kept the screen on failure was suggested (reviewer) and not taken.
-- The button takes the screen's next read after a `409` for the one it set off. A read
+- ~~The button takes the screen's next read after a `409` for the one it set off. A read
   already out can land first: the page's 30 s poll, or another row's reload on the list.
   If it read the old state it ends the wait, and the sentence goes when the real re-read
-  changes the action. The state shown ends right; only the why is lost (verifier r2 nit 1).
-- Neither screen's `load()` is ordered: D-28-7's generation counter is not on them, as on
-  main. A read sent before another admin's change that lands after the `409`'s re-read
-  shows the old action until the next read. Not measured.
+  changes the action. The state shown ends right; only the why is lost (verifier r2 nit
+  1).~~ Closed by D-234-1 and D-234-2 (#234), but for one render's window (#234's Known
+  limits).
+- ~~Neither screen's `load()` is ordered: D-28-7's generation counter is not on them, as
+  on main. A read sent before another admin's change that lands after the `409`'s re-read
+  shows the old action until the next read. Not measured.~~ Closed by D-234-2 (#234).
 - Newer rows read in above the refused one, such as the clash's running session, move it
   down with no re-scroll (D-226-4 scrolls only when the button changes).
 - A stale follow-up "nothing owed" refusal leaves Start enabled until the next poll
@@ -140,8 +143,9 @@ document their `409`s, so no contract, schema or server change.
 
 ## Follow-ups (owner)
 
-- D-28-7 says async lists guard against stale responses with a generation counter, but
-  the Sessions list and a session's page never had one. #226 adds one read per `409`.
+- ~~D-28-7 says async lists guard against stale responses with a generation counter, but
+  the Sessions list and a session's page never had one. #226 adds one read per `409`.~~
+  Filed as #234; closed by D-234-2.
 
 ## Relies on
 
