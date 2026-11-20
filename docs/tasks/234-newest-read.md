@@ -1,6 +1,6 @@
 # #234 · Admin Sessions and a session's page draw only their newest read
 
-- **Status:** In review (branch `fix/234-sessions-generation-counter`; PR not yet open)
+- **Status:** In review (PR #236)
 - **Phase:** 7 - Hardening
 - **Depends on:** #28, #226
 
