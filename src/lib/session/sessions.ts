@@ -19,7 +19,7 @@ export type ActionSpec = {
   destructive: boolean;
 };
 
-/* One a status: the list and a session's page keep one button for it, which
+/* One per status: the list and a session's page keep one button for it, which
    turns from End to Reopen in place when the session moves under it. */
 const SPECS: Record<SessionStatus, ActionSpec> = {
   draft: { action: "start", label: "Start session", confirm: null, destructive: false },

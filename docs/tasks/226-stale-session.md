@@ -1,7 +1,6 @@
 # #226 · A refused Start, End or Reopen shows the session's real state
 
-- **Status:** In progress (branch `fix/226-stale-session-after-conflict`: 409a0ee, aefc6e6,
-  c03833f)
+- **Status:** In progress (PR #231, branch `fix/226-stale-session-after-conflict`)
 - **Phase:** 7 - Hardening
 - **Depends on:** #213, #214
 
@@ -32,7 +31,7 @@ document their `409`s, so no contract, schema or server change.
   or D-90-9's return from End's confirm) stay on it. A follow-up's Start blocker is decided from
   `sessionAction(status).action === "start"`, as from the map's `spec.action` before.
   _Why:_ keyed by action, the re-read unmounted End with its failure, and focus fell to
-  the page. _Research:_ R-219.
+  the page. _Research:_ R-220.
 - **D-226-3 · The server's sentence stays, unchanged, until the next press or a later
   change of action.** A `409` starts a wait that the screen's next read ends, changed or
   not. If that read turns the button into another action, the sentence stays under it; if
@@ -79,7 +78,7 @@ document their `409`s, so no contract, schema or server change.
   beside `setState`. The button keeps the last action and read it drew and compares them
   while rendering. _Why:_ a re-read that changed nothing leaves `spec` as it was, so the
   wait of D-226-3 never ended (verifier r1). Bumped outside the transition, the wait would
-  end before the rows change (5 tests fail). _Research:_ R-219.
+  end before the rows change (5 tests fail). _Research:_ R-220.
 - **D-226-10 · Component tests on the button, the list and the page.** They cover: any
   `409`, End's confirm included, calls `onStale` once; a `TypeError`, `403` or `404` reads
   nothing; the in-place change keeps the alert, the element and its focus; an unchanged
