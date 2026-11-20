@@ -13,7 +13,8 @@ import { z } from "zod";
  * a mistake is most likely to be a pasted secret.
  */
 
-export const CONFIG_HINT = "Copy config.example.yaml to config.yaml, or set CONFIG_PATH.";
+export const CONFIG_HINT =
+  "Copy config.example.yaml to config.yaml, or set CONFIG_PATH (or CONFIG_YAML to the settings themselves).";
 
 const DEFAULT_SIGN_IN_ATTEMPTS = 10;
 const DEFAULT_SIGN_IN_ATTEMPTS_PER_CLIENT = 30;
@@ -153,6 +154,13 @@ export class ConfigUnreadableError extends Error {
   ) {
     super(`Configuration file ${path} could not be read (${code}). Check its permissions.`);
     this.name = "ConfigUnreadableError";
+  }
+}
+
+export class ConfigSourceError extends Error {
+  constructor() {
+    super("Set either CONFIG_YAML or CONFIG_PATH, not both.");
+    this.name = "ConfigSourceError";
   }
 }
 

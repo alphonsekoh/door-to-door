@@ -2,7 +2,12 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ConfigInvalidError, ConfigNotFoundError, ConfigUnreadableError } from "@/lib/config";
+import {
+  ConfigInvalidError,
+  ConfigNotFoundError,
+  ConfigSourceError,
+  ConfigUnreadableError,
+} from "@/lib/config";
 import {
   getConfig,
   loadAppConfig,
@@ -103,6 +108,42 @@ describe("loadAppConfig", () => {
     expect(() => loadAppConfig({ env: {}, cwd: dir, readFile })).toThrow(/unknown error/);
   });
 
+  it("reads the settings from CONFIG_YAML, with no file anywhere", () => {
+    const readFile = () => {
+      throw new Error("no file may be read");
+    };
+    const config = loadAppConfig({ env: { CONFIG_YAML: FILE }, cwd: dir, readFile });
+    expect(config.database.url).toBe("postgresql://db:5432/door_to_door");
+    expect(config.rateLimit.signInAttempts).toBe(4);
+  });
+
+  it("treats an empty CONFIG_YAML as unset", () => {
+    write(FILE);
+    expect(loadAppConfig({ env: { CONFIG_YAML: "" }, cwd: dir }).rateLimit.signInAttempts).toBe(4);
+  });
+
+  it("refuses CONFIG_YAML together with CONFIG_PATH, and says to set one", () => {
+    const both = { CONFIG_YAML: FILE, CONFIG_PATH: write(FILE) };
+    expect(() => loadAppConfig({ env: both })).toThrow(ConfigSourceError);
+    expect(() => loadAppConfig({ env: both })).toThrow(/either CONFIG_YAML or CONFIG_PATH/);
+  });
+
+  it("lets an empty CONFIG_PATH sit beside CONFIG_YAML", () => {
+    expect(loadAppConfig({ env: { CONFIG_YAML: FILE, CONFIG_PATH: "" } }).database.url).toContain(
+      "door_to_door",
+    );
+  });
+
+  it("holds CONFIG_YAML to the same schema, naming it, and still refuses credentials", () => {
+    const attempt = () => loadAppConfig({ env: { CONFIG_YAML: "database: {}\n" } });
+    expect(attempt).toThrow(ConfigInvalidError);
+    expect(attempt).toThrow(/CONFIG_YAML/);
+    const withCredentials = "database:\n  url: postgresql://user:secret@db:5432/door_to_door\n";
+    const refused = () => loadAppConfig({ env: { CONFIG_YAML: withCredentials } });
+    expect(refused).toThrow(ConfigInvalidError);
+    expect(refused).not.toThrow(/secret/);
+  });
+
   it("lets a parse error through, naming the file", () => {
     const path = write("database: {}\n");
     expect(() => loadAppConfig({ env: { CONFIG_PATH: path } })).toThrow(ConfigInvalidError);
@@ -113,6 +154,11 @@ describe("loadAppConfig", () => {
 describe("loadDatabaseUrl", () => {
   it("composes the URL from the file and the credential variables", () => {
     const url = loadDatabaseUrl({ env: { ...env, CONFIG_PATH: write(FILE) } });
+    expect(url).toBe("postgresql://app:pw@db:5432/door_to_door");
+  });
+
+  it("composes the URL from CONFIG_YAML too, so migrate needs no file", () => {
+    const url = loadDatabaseUrl({ env: { ...env, CONFIG_YAML: FILE } });
     expect(url).toBe("postgresql://app:pw@db:5432/door_to_door");
   });
 
