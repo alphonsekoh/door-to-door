@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminSessions } from "@/components/admin/admin-sessions";
@@ -334,6 +334,195 @@ describe("AdminSessions", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
       expect(listReads()).toBe(1);
       expect(screen.getByText("June outing")).toBeInTheDocument();
+    });
+  });
+
+  /* Two refusals each read the list again, and on a slow line the answers
+     can cross: an older one landing last drew "Running now" over a session
+     read since as ended (#234). Only the newest read is drawn (D-28-7). */
+  describe("two reads of the list that cross", () => {
+    const ENDED = "This session has already ended, so it cannot be ended.";
+    const CLASH =
+      "Another session is already active. End it before starting or reopening this one.";
+    const JULY = session("s3", "July outing", "draft");
+
+    /* June runs and Draft waits. Start on Draft and End on June are each
+       refused with a 409, and every read of the list after the first is
+       held until the test answers it. */
+    async function setUp() {
+      const user = userEvent.setup();
+      apiFetch.mockResolvedValue(
+        page([session("s1", "June outing", "active"), session("s2", "Draft outing", "draft")]),
+      );
+      render(<AdminSessions />);
+      await screen.findByText("Draft outing");
+      const held: { resolve: (value: unknown) => void; reject: (reason: unknown) => void }[] = [];
+      apiFetch.mockImplementation((path: string) => {
+        if (path === "/sessions/s1/end") {
+          return Promise.reject(
+            new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+          );
+        }
+        if (path === "/sessions/s2/start") {
+          return Promise.reject(
+            new ApiRequestError(409, { error: { code: "session_already_active", message: CLASH } }),
+          );
+        }
+        return new Promise((resolve, reject) => {
+          held.push({ resolve, reject });
+        });
+      });
+      const read = (index: number) => {
+        const each = held[index];
+        if (each === undefined) throw new Error(`read ${String(index)} was never sent`);
+        return each;
+      };
+      const june = rowOf("June outing");
+      const draft = rowOf("Draft outing");
+      const end = within(june).getByRole("button", { name: "End session" });
+
+      return {
+        june,
+        draft,
+        end,
+        refuseStart: async () => {
+          await user.click(within(draft).getByRole("button", { name: "Start session" }));
+          return within(draft).findByRole("alert");
+        },
+        refuseEnd: async () => {
+          await user.click(end);
+          await user.click(
+            within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+          );
+          const alert = await within(june).findByRole("alert");
+          await waitFor(() => {
+            expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+          });
+          return alert;
+        },
+        /* Answers a held read and lets it run its course, drawing whatever
+           it sets before the test looks. */
+        answer: (index: number, rows: OutingSession[]) =>
+          act(async () => {
+            read(index).resolve(page(rows));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }),
+        fail: (index: number, error: unknown) =>
+          act(async () => {
+            read(index).reject(error);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+          }),
+      };
+    }
+
+    it("keeps a session read as ended when an older read of it running lands last", async () => {
+      const { june, draft, end, refuseStart, refuseEnd, answer } = await setUp();
+      const clash = await refuseStart();
+      const ended = await refuseEnd();
+      expect(listReads()).toBe(3);
+
+      await answer(1, [
+        session("s1", "June outing", "ended"),
+        session("s2", "Draft outing", "draft"),
+      ]);
+      expect(within(june).getByText("Ended")).toBeInTheDocument();
+      expect(within(june).getByRole("button", { name: "Reopen session" })).toBe(end);
+
+      // Start's re-read, sent before another admin ended June.
+      await answer(0, [
+        session("s1", "June outing", "active"),
+        session("s2", "Draft outing", "draft"),
+      ]);
+
+      expect(within(june).getByText("Ended")).toBeInTheDocument();
+      expect(screen.queryByText("Running now")).toBeNull();
+      expect(within(june).getByRole("button", { name: "Reopen session" })).toBe(end);
+      expect(within(june).getByRole("alert")).toBe(ended);
+      expect(ended).toHaveTextContent(ENDED);
+      expect(within(draft).getByRole("alert")).toBe(clash);
+    });
+
+    /* Counted, the older answer ended End's wait for its re-read, and the
+       re-read's change to Reopen then dropped "has already ended". */
+    it("neither draws an older read that lands first nor ends a refused row's wait on it", async () => {
+      const { june, end, refuseStart, refuseEnd, answer } = await setUp();
+      await refuseStart();
+      const ended = await refuseEnd();
+
+      await answer(0, [
+        JULY,
+        session("s1", "June outing", "active"),
+        session("s2", "Draft outing", "draft"),
+      ]);
+      expect(screen.queryByText("July outing")).toBeNull();
+      expect(within(june).getByText("Running now")).toBeInTheDocument();
+      expect(within(june).getByRole("alert")).toBe(ended);
+
+      await answer(1, [
+        JULY,
+        session("s1", "June outing", "ended"),
+        session("s2", "Draft outing", "draft"),
+      ]);
+
+      expect(screen.getByText("July outing")).toBeInTheDocument();
+      expect(within(june).getByText("Ended")).toBeInTheDocument();
+      expect(within(june).getByRole("button", { name: "Reopen session" })).toBe(end);
+      expect(within(june).getByRole("alert")).toBe(ended);
+      expect(ended).toHaveTextContent(ENDED);
+    });
+
+    /* Sent after End's refusal, another row's re-read shows the state "has
+       already ended" names, or a later one: it ends End's wait as End's own
+       re-read would, keeping the sentence under Reopen and in view. */
+    it("lets a newer read set off by another row end a refused row's wait", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const { june, end, refuseStart, refuseEnd, answer } = await setUp();
+        const ended = await refuseEnd();
+        await refuseStart();
+        expect(listReads()).toBe(3);
+        const before = scrolled.mock.calls.length;
+
+        await answer(1, [
+          JULY,
+          session("s1", "June outing", "ended"),
+          session("s2", "Draft outing", "draft"),
+        ]);
+
+        const reopen = within(june).getByRole("button", { name: "Reopen session" });
+        expect(reopen).toBe(end);
+        expect(within(june).getByRole("alert")).toBe(ended);
+        expect(ended).toHaveTextContent(ENDED);
+        expect(scrolled.mock.contexts.slice(before)).toEqual([ended, reopen]);
+
+        // End's own re-read, sent before July was made.
+        await answer(0, [
+          session("s1", "June outing", "ended"),
+          session("s2", "Draft outing", "draft"),
+        ]);
+
+        expect(screen.getByText("July outing")).toBeInTheDocument();
+        expect(within(june).getByRole("alert")).toBe(ended);
+        expect(scrolled.mock.contexts.slice(before)).toEqual([ended, reopen]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
+    it("drops an older read that fails after a newer one has drawn the list", async () => {
+      const { june, refuseStart, refuseEnd, answer, fail } = await setUp();
+      await refuseStart();
+      await refuseEnd();
+      await answer(1, [
+        session("s1", "June outing", "ended"),
+        session("s2", "Draft outing", "draft"),
+      ]);
+
+      await fail(0, new TypeError("Failed to fetch"));
+
+      expect(screen.queryByText("Could not load the sessions.")).toBeNull();
+      expect(within(june).getByText("Ended")).toBeInTheDocument();
+      expect(screen.getByText("Draft outing")).toBeInTheDocument();
     });
   });
 

@@ -2712,7 +2712,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [`startTransition`](https://react.dev/reference/react/startTransition); react-dom
   19.3.1 in this repo; measured by the #221 builder, reviewer r1 and verifier (mutations
   RV2, HH1, OT1).
-- **Used by:** D-221-5, D-221-6, D-221-15
+- **Used by:** D-221-5, D-221-6, D-221-15, D-234-1
 
 ### R-220 · React keeps an unkeyed element in its slot as its props change, and a focused button keeps focus as its label does (measured)
 
@@ -2757,3 +2757,20 @@ config`, parse only; #124 docs step, confirming the planner's check)
   textarea, which matched its `scrollHeight` to 0px whenever the text overflowed.
   Re-measures R-184's shortfall while typing.
 - **Used by:** D-227-1, D-227-2, D-227-3
+
+### R-222 · App Router remounts a page when its dynamic segment's value changes, and React ignores a state set after unmount (read)
+
+- **Finding:** in the browser, Next's layout router keys each segment's subtree by its
+  cache key, which for a dynamic segment holds the param's value (`id|<value>|d`). So
+  going from one `/admin/sessions/[id]` to another mounts a new page and unmounts the old
+  one, running its effects' cleanups. Only with `cacheComponents` on is an old segment
+  kept, hidden in `<Activity>`; it is off here. Since React 18, a `setState` on an
+  unmounted component does nothing and no longer warns.
+- **Source:** next 16.4.5, `dist/client/components/layout-router.js` (each segment's
+  `TemplateContext.Provider` keyed by `stateKey`), `create-segment-key.browser.js` and
+  `bfcache-state-manager.js` (one entry without `cacheComponents`); Next's
+  `template.md` ("They remount when that segment (including its dynamic params)
+  changes"); [React 18 upgrade guide, other notable changes](https://react.dev/blog/2022/03/08/react-18-upgrade-guide#other-notable-changes);
+  react-dom 19.3.1, whose only such warning left is for a component not yet mounted.
+  Read, not measured (#234 docs).
+- **Used by:** D-234-3

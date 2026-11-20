@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminTeams } from "@/components/admin/admin-teams";
 import { BlockAttachSheet } from "@/components/blocks/block-attach-sheet";
 import { PageHeader } from "@/components/ui/page-header";
@@ -36,19 +36,26 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [tick, setTick] = useState(0);
   /* A follow-up session's households on members' list, once read. */
   const [onList, setOnList] = useState<number | null>(null);
-  /* Every read of the session, counted with what it read: the action button
-     tells by it that the read its refusal set off has landed. */
+  /* Every read of the session drawn, counted with what it read: the action
+     button tells by it that a read since its refusal has landed. */
   const [reads, setReads] = useState(0);
+  /* The poll, a refusal's re-read and each change's reload can cross; only
+     the newest answer may land (D-28-7). An older one drew "Running now"
+     over a session read since as ended. */
+  const generation = useRef(0);
 
   const load = useCallback(async () => {
+    const mine = ++generation.current;
     try {
       const [session, blocks] = await Promise.all([
         apiFetch<OutingSession>(`/sessions/${sessionId}`),
         apiFetch<SessionBlock[]>(`/sessions/${sessionId}/blocks`),
       ]);
+      if (mine !== generation.current) return;
       setState({ status: "ready", session, blocks });
       setReads((count) => count + 1);
     } catch (error) {
+      if (mine !== generation.current) return;
       setState({
         status: "error",
         message: failureLine(error, "Could not load this session."),
