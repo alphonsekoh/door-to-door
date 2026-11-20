@@ -329,9 +329,10 @@ describe("AmendVisitSheet", () => {
 
   /* Disabled while it saves, Save changes loses focus to the page, which is
      outside the sheet (#214). Held past a frame, as a real one is (D-208-6).
-     Given back without a scroll (D-208-4): the sheet scrolling to its own
-     pinned bar moved the form by the bar's height. */
-  it("gives focus back to Save changes, inside the sheet and without a scroll, after a refusal", async () => {
+     Given back without a scroll, before the failure's own (D-208-4): the
+     sheet scrolling to its own pinned bar moved the form by the bar's
+     height. */
+  it("gives focus back to Save changes, inside the sheet, before the failure is brought into view", async () => {
     let refuse: (reason: unknown) => void = () => undefined;
     apiFetch.mockReturnValueOnce(
       new Promise((_, reject) => {
@@ -348,7 +349,10 @@ describe("AmendVisitSheet", () => {
     await nextFrame();
     expect(document.body).toHaveFocus();
 
-    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    const focusAtScroll: (Element | null)[] = [];
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+      focusAtScroll.push(document.activeElement);
+    });
     onTestFinished(() => {
       scrolled.mockRestore();
     });
@@ -357,9 +361,118 @@ describe("AmendVisitSheet", () => {
     const alert = await screen.findByRole("alert");
     expect(button).toHaveFocus();
     expect(focused).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
-    expect(scrolled).not.toHaveBeenCalled();
+    // Only the failure is scrolled to, never the bar, and focus was back first.
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([button]);
     expect(dialog).toContainElement(button);
     expect(alert).not.toHaveFocus();
+  });
+
+  describe("a failure, brought into view beside Save changes", () => {
+    /* Each test watches only from after the fields it touches: the sheet
+       brings a field into view as it takes focus. */
+    function watchScrolls() {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      onTestFinished(() => {
+        scrolled.mockRestore();
+      });
+      return scrolled;
+    }
+
+    it("draws it just above the bar Save changes is pinned in, and brings it clear of that bar as it is drawn", async () => {
+      const user = userEvent.setup();
+      apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+      render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={vi.fn()} />);
+      await user.click(screen.getByRole("button", { name: "Add details" }));
+      await user.type(screen.getByLabelText("Notes"), " on Sunday");
+      const scrolled = watchScrolls();
+      const save = screen.getByRole("button", { name: "Save changes" });
+      await user.click(save);
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent("Could not confirm.");
+      /* Not at the top of the form, scrolled away from where Save was
+         pressed: after the last field, with the bar next. */
+      expect(screen.getByLabelText("Notes").compareDocumentPosition(alert)).toBe(
+        Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+      const bar = alert.nextElementSibling;
+      expect(bar).toHaveAttribute("data-sheet-actions");
+      expect(bar).toContainElement(save);
+      expect(bar).not.toContainElement(alert);
+      // The body's room for the bar as drawn is what `nearest` keeps it clear of.
+      const body = alert.closest("[data-sheet-body]");
+      expect(body).toHaveClass("scroll-clear-sheet-actions");
+      /* That room is counted from the body's edge, but the bar rests above
+         the body's inset padding, so the failure adds the inset itself: on an
+         installed iPhone it ended 18px under the bar (R-184). */
+      expect(body).toHaveClass("inset-safe-bottom");
+      expect(alert).toHaveClass("scroll-mb-[env(safe-area-inset-bottom)]");
+      expect(scrolled.mock.contexts).toEqual([alert]);
+      expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
+      // Heard, not focused (D-164-1, D-214-2).
+      expect(alert).not.toHaveFocus();
+    });
+
+    it("scrolls nothing as the sheet opens, or when the change is saved", async () => {
+      const scrolled = watchScrolls();
+      const onSaved = vi.fn();
+      apiFetch.mockResolvedValue({});
+      render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={onSaved} />);
+      // It opens at its top (D-119-21).
+      expect(scrolled).not.toHaveBeenCalled();
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      scrolled.mockClear();
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => {
+        expect(onSaved).toHaveBeenCalledOnce();
+      });
+      expect(scrolled).not.toHaveBeenCalled();
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("leaves the sheet where it is as a second try clears the failure", async () => {
+      const user = userEvent.setup();
+      apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={vi.fn()} />);
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      const scrolled = watchScrolls();
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await screen.findByRole("alert");
+      expect(scrolled).toHaveBeenCalledOnce();
+
+      // Save changes is under the thumb that just pressed it again.
+      apiFetch.mockReturnValue(new Promise(() => undefined));
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await screen.findByRole("button", { name: "Saving…" });
+      expect(screen.queryByRole("alert")).toBeNull();
+      expect(scrolled).toHaveBeenCalledOnce();
+    });
+
+    it("brings the failure into view again when a second try fails the same way", async () => {
+      const user = userEvent.setup();
+      apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+      render(<AmendVisitSheet entry={entryFor()} onClose={vi.fn()} onSaved={vi.fn()} />);
+      await user.click(screen.getByRole("radio", { name: "High" }));
+      const scrolled = watchScrolls();
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      const first = await screen.findByRole("alert");
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+      });
+
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() => {
+        expect(scrolled).toHaveBeenCalledTimes(2);
+      });
+      // Drawn anew, so it is heard again, and brought into view again.
+      const second = screen.getByRole("alert");
+      expect(second).not.toBe(first);
+      expect(second).toHaveTextContent("Could not confirm.");
+      expect(scrolled.mock.contexts).toEqual([first, second]);
+    });
   });
 
   it("copes with a non-Error failure", async () => {

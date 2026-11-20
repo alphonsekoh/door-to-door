@@ -140,9 +140,9 @@ To file or fold into #221:
   are on #221's list, so #221 should narrow `toFake` there first. Done there by #221
   (D-221-3); the other four are #215's.
 - A successful press can drop focus the same way (D-214-8).
-- Already on main, seen by the verifier: the amend sheet's failure is drawn at the top
+- ~~Already on main, seen by the verifier: the amend sheet's failure is drawn at the top
   of the form and nothing brings it into view, so at 32px, or with Add details open, it
-  can sit above the visible part of the sheet.
+  can sit above the visible part of the sheet.~~ Fixed by #225 (D-225-1 to D-225-5).
 - Already on main: after End is refused because the session ended elsewhere, Admin
   Sessions still shows "Running now" and End session beside "already ended" until a
   refresh.

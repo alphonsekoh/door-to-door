@@ -2114,7 +2114,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   indicator.
 - **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
   #136 reviewer r2, not re-measured by the docs step
-- **Used by:** D-136-3 (known limit)
+- **Used by:** D-136-3 (known limit), D-225-7
 
 ### R-185 · Vitest 5 clears every mock's calls before each test, including those made as a module loaded
 
@@ -2658,6 +2658,44 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** `next-auth` 5.0.0-beta.32 `react.js:151-153`; found by the #214 builder.
 - **Used by:** D-214-6
 
+### R-217 · Where the amend sheet draws its failure decides how far the form moves to show it (measured)
+
+- **Finding:** scrolled to with `nearest`, an alert at the top of the form pulls it back
+  by up to the form's whole length; beside Save, by the alert's height plus 16px. How far
+  Notes moved, Pixel 5 / iPhone 13:
+
+  | Case                              | At the top  | Beside Save           |
+  | --------------------------------- | ----------- | --------------------- |
+  | default, at the top (form fits)   | 0 / 45      | 82 / 82 (panel grows) |
+  | default, details open, at Notes   | 259 / 313   | 82 / 82               |
+  | default, details open, at the top | 82 / 82     | 267 / 321             |
+  | 32px, at Notes                    | 903 / 957   | 242 / 242             |
+  | 32px, picker mid-form             | 594 / 620   | 551 / 579             |
+  | 32px, details open, at Notes      | 1455 / 1509 | 242 / 242             |
+
+  Beside Save, Save changes moved 0px in all 14 cases once the form had no bottom
+  padding. With `py-4` it dropped 16px, or 32px at 32px text: a sticky bar stays inside
+  its form, so at the end of the scroll the form's bottom padding showed under it.
+
+- **Source:** measured (#225 builder, production build, Pixel 5 on Chromium and iPhone 13
+  on WebKit; the top case simulated with an alert-sized copy at the top of the form). The
+  built layout was confirmed by the #225 verifier.
+- **Used by:** D-225-1, D-225-6
+
+### R-218 · A target's `scroll-margin` adds to its scroller's `scroll-padding` in `scrollIntoView` (measured)
+
+- **Finding:** with a 34px inset and details open, the amend sheet's failure ended 17.6px
+  under the bar (17.7px on Chromium), as R-184 predicts. With
+  `scroll-margin-bottom: env(safe-area-inset-bottom)` on the alert it ends 16px above, on
+  both engines. The margin computes to 0 without an inset. No Playwright device draws an
+  inset; two ways of simulating one gave identical boxes. One serves the stylesheet with
+  every `env(safe-area-inset-bottom)` rewritten to 34px, with service workers blocked so
+  `page.route` sees the CSS. The other is Chromium's CDP
+  `Emulation.setSafeAreaInsetsOverride`. Re-measures R-184's shortfall.
+- **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin);
+  measured (#225 verifier r0 and r1, iPhone 13 at 390x844 on WebKit, 393x851 on Chromium)
+- **Used by:** D-225-7
+
 ### R-219 · React draws two updates made outside an event in one render, and an urgent update before a transition (measured)
 
 - **Finding:** in React 18 and later, state updates made outside a React event, after
@@ -2674,4 +2712,4 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [`startTransition`](https://react.dev/reference/react/startTransition); react-dom
   19.3.1 in this repo; measured by the #221 builder, reviewer r1 and verifier (mutations
   RV2, HH1, OT1).
-- **Used by:** D-221-5, D-221-6
+- **Used by:** D-221-5, D-221-6, D-221-15
