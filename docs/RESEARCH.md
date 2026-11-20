@@ -2657,3 +2657,21 @@ config`, parse only; #124 docs step, confirming the planner's check)
   a predicate on `url.pathname` does.
 - **Source:** `next-auth` 5.0.0-beta.32 `react.js:151-153`; found by the #214 builder.
 - **Used by:** D-214-6
+
+### R-219 · React keeps an unkeyed element in its slot as its props change, and a focused button keeps focus as its label does (measured)
+
+- **Finding:** React matches an element by its type and place, and by `key` where one is
+  given. The same component in the same place with the same key, or none, is updated in
+  place, keeping its state and its DOM node; a changed key mounts a new one, and the
+  browser drops focus from the removed node to the page. State that must change with a
+  prop can be set while rendering by comparing it with the previous value kept in state:
+  React draws the component again before its children and before committing. Updates set
+  in one `startTransition`, or in one continuation after an `await`, are batched into one
+  render. Measured: on a Pixel 5 (Chromium) and an iPhone 13 (WebKit), a focused
+  `<button>` whose label and class change (End to Reopen, Start or Reopen to End) keeps
+  focus, in 24 of 24 key-press cases.
+- **Source:** [React, Preserving and Resetting State](https://react.dev/learn/preserving-and-resetting-state);
+  [React, Adjusting some state when a prop changes](https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes);
+  [React 18, automatic batching](https://react.dev/blog/2022/03/29/react-v18#new-feature-automatic-batching);
+  measured (#226 verifier r0 to r2, production build).
+- **Used by:** D-226-2, D-226-8, D-226-9
