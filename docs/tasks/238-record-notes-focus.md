@@ -1,6 +1,6 @@
 # #238 · A focused field on the record page comes clear of the docked Save
 
-- **Status:** In progress (branch `fix/238-record-notes-focus`, no PR yet)
+- **Status:** In review (PR #240)
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #196, #214, #230
 
