@@ -488,6 +488,52 @@ describe("SessionDetail", () => {
         }
       });
 
+      /* Read back as it was, a draft, the clash was left armed for the next
+         change: the poll drew End under it and scrolled down to it. */
+      it("drops a clash's sentence once the session is started elsewhere, scrolling nothing", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+        try {
+          const clash =
+            "Another session is already active. End it before starting or reopening this one.";
+          const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+          let status: SessionStatus = "draft";
+          let blocks = BLOCKS;
+          apiFetch.mockImplementation((path: string) =>
+            path === "/sessions/s1/start"
+              ? Promise.reject(
+                  new ApiRequestError(409, {
+                    error: { code: "session_already_active", message: clash },
+                  }),
+                )
+              : Promise.resolve(path.endsWith("/blocks") ? blocks : session(status)),
+          );
+          render(<SessionDetail sessionId="s1" />);
+          const start = await screen.findByRole("button", { name: "Start session" });
+
+          // A visit recorded since, so its re-read can be seen to land.
+          blocks = [sessionBlock("b1", "123", { visitCount: 3, householdCount: 3 })];
+          await user.click(start);
+          expect(await screen.findByText("3 visited")).toBeInTheDocument();
+          // Its own re-read: still a draft, and still said.
+          expect(screen.getByText("Draft")).toBeInTheDocument();
+          expect(screen.getByRole("alert")).toHaveTextContent(clash);
+          const before = scrolled.mock.calls.length;
+
+          // The other session ended and this one started, by another admin.
+          status = "active";
+          await poll();
+
+          expect(screen.getByText("Running now")).toBeInTheDocument();
+          expect(screen.getByRole("button", { name: "End session" })).toBe(start);
+          expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+          expect(scrolled).toHaveBeenCalledTimes(before);
+        } finally {
+          scrolled.mockRestore();
+          vi.useRealTimers();
+        }
+      });
+
       it("never opens End's confirm unasked when the session runs again", async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         try {

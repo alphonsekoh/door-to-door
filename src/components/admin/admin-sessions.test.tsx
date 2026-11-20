@@ -243,6 +243,85 @@ describe("AdminSessions", () => {
       },
     );
 
+    /* Read back as it was, a draft, the clash was left armed for the next
+       change: the reload after another row's press drew End under it, and
+       scrolled the screen away from the row just pressed. */
+    it("drops a clash's sentence once a later reload finds that session started elsewhere", async () => {
+      const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+      try {
+        const clash =
+          "Another session is already active. End it before starting or reopening this one.";
+        const user = userEvent.setup();
+        apiFetch.mockResolvedValue(
+          page([session("s1", "June outing", "active"), session("s2", "Draft outing", "draft")]),
+        );
+        render(<AdminSessions />);
+        await screen.findByText("Draft outing");
+        apiFetch.mockImplementation((path: string) =>
+          path === "/sessions/s2/start"
+            ? Promise.reject(
+                new ApiRequestError(409, {
+                  error: { code: "session_already_active", message: clash },
+                }),
+              )
+            : Promise.resolve(
+                page([
+                  session("s3", "July outing", "draft"),
+                  session("s1", "June outing", "active"),
+                  session("s2", "Draft outing", "draft"),
+                ]),
+              ),
+        );
+        await user.click(within(rowOf("Draft outing")).getByRole("button"));
+        // Its re-read, with one another admin made since: still a draft.
+        expect(await screen.findByText("July outing")).toBeInTheDocument();
+        const draft = rowOf("Draft outing");
+        expect(within(draft).getByRole("alert")).toHaveTextContent(clash);
+        expect(within(draft).getByRole("button", { name: "Start session" })).toBeInTheDocument();
+
+        // Another admin ends June and starts Draft; this list still shows June running.
+        let reread: (value: unknown) => void = () => undefined;
+        apiFetch.mockImplementation((path: string) =>
+          path === "/sessions/s1/end"
+            ? Promise.reject(
+                new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
+              )
+            : new Promise((resolve) => {
+                reread = resolve;
+              }),
+        );
+        const june = rowOf("June outing");
+        await user.click(within(june).getByRole("button", { name: "End session" }));
+        await user.click(
+          within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
+        );
+        const ended = await within(june).findByRole("alert");
+        await waitFor(() => {
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        const before = scrolled.mock.calls.length;
+
+        reread(
+          page([
+            session("s3", "July outing", "draft"),
+            session("s1", "June outing", "ended"),
+            session("s2", "Draft outing", "active"),
+          ]),
+        );
+
+        expect(await within(draft).findByText("Running now")).toBeInTheDocument();
+        expect(within(draft).getByRole("button", { name: "End session" })).toBeInTheDocument();
+        expect(within(draft).queryByRole("alert")).toBeNull();
+        // June's refusal is its own, and only June is brought into view.
+        const reopen = within(june).getByRole("button", { name: "Reopen session" });
+        expect(within(june).getByRole("alert")).toBe(ended);
+        expect(ended).toHaveTextContent(ENDED);
+        expect(scrolled.mock.contexts.slice(before)).toEqual([ended, reopen]);
+      } finally {
+        scrolled.mockRestore();
+      }
+    });
+
     it("leaves the list as it is when the press never reached the server", async () => {
       const user = userEvent.setup();
       apiFetch.mockResolvedValue(page([session("s1", "June outing", "draft")]));

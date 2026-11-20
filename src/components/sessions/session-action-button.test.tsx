@@ -23,14 +23,30 @@ beforeEach(() => {
 
 describe("SessionActionButton", () => {
   it("keeps the ordinary look for starting and reopening", () => {
-    render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={start}
+        read={0}
+        onDone={vi.fn()}
+        onStale={vi.fn()}
+      />,
+    );
     expect(screen.getByRole("button", { name: "Start session" })).toHaveClass("btn-primary");
   });
 
   it("starts without asking, since nothing is lost", async () => {
     const onDone = vi.fn();
     apiFetch.mockResolvedValue({ id: "s1" });
-    render(<SessionActionButton sessionId="s1" spec={start} onDone={onDone} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={start}
+        read={0}
+        onDone={onDone}
+        onStale={vi.fn()}
+      />,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     await waitFor(() => {
@@ -44,6 +60,7 @@ describe("SessionActionButton", () => {
       <SessionActionButton
         sessionId="s1"
         spec={start}
+        read={0}
         blocked="Add households to start it."
         onDone={vi.fn()}
         onStale={vi.fn()}
@@ -59,7 +76,15 @@ describe("SessionActionButton", () => {
   it("reopens without asking, because that is the recovery path", async () => {
     // An admin racing to unlock a member mid-amendment must not meet a dialog.
     apiFetch.mockResolvedValue({ id: "s1" });
-    render(<SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={reopen}
+        read={0}
+        onDone={vi.fn()}
+        onStale={vi.fn()}
+      />,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Reopen session" }));
     await waitFor(() => {
@@ -69,7 +94,9 @@ describe("SessionActionButton", () => {
 
   it("looks like it takes something away, and its confirm does too", async () => {
     const user = userEvent.setup();
-    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton sessionId="s1" spec={end} read={0} onDone={vi.fn()} onStale={vi.fn()} />,
+    );
     const button = screen.getByRole("button", { name: "End session" });
     expect(button).toHaveClass("btn-danger-outline");
     await user.click(button);
@@ -80,7 +107,9 @@ describe("SessionActionButton", () => {
 
   it("asks before ending, and does nothing until confirmed", async () => {
     const user = userEvent.setup();
-    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton sessionId="s1" spec={end} read={0} onDone={vi.fn()} onStale={vi.fn()} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "End session" }));
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
@@ -91,7 +120,9 @@ describe("SessionActionButton", () => {
     const user = userEvent.setup();
     const onDone = vi.fn();
     apiFetch.mockResolvedValue({ id: "s1" });
-    render(<SessionActionButton sessionId="s1" spec={end} onDone={onDone} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton sessionId="s1" spec={end} read={0} onDone={onDone} onStale={vi.fn()} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(
@@ -106,7 +137,9 @@ describe("SessionActionButton", () => {
 
   it("leaves the outing alone when the admin backs out", async () => {
     const user = userEvent.setup();
-    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton sessionId="s1" spec={end} read={0} onDone={vi.fn()} onStale={vi.fn()} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(screen.getByRole("button", { name: "Keep as it is" }));
@@ -122,7 +155,15 @@ describe("SessionActionButton", () => {
     apiFetch.mockRejectedValue(
       new ApiRequestError(409, { error: { code: "session_already_active", message: clash } }),
     );
-    render(<SessionActionButton sessionId="s2" spec={start} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s2"
+        spec={start}
+        read={0}
+        onDone={vi.fn()}
+        onStale={vi.fn()}
+      />,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(clash);
@@ -131,7 +172,15 @@ describe("SessionActionButton", () => {
   it("does not report success when the action failed", async () => {
     const onDone = vi.fn();
     apiFetch.mockRejectedValue(new Error("nope"));
-    render(<SessionActionButton sessionId="s1" spec={start} onDone={onDone} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={start}
+        read={0}
+        onDone={onDone}
+        onStale={vi.fn()}
+      />,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     await screen.findByRole("alert");
@@ -140,7 +189,15 @@ describe("SessionActionButton", () => {
 
   it("copes with a non-Error failure", async () => {
     apiFetch.mockRejectedValue("boom");
-    render(<SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton
+        sessionId="s1"
+        spec={start}
+        read={0}
+        onDone={vi.fn()}
+        onStale={vi.fn()}
+      />,
+    );
 
     await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not do that.");
@@ -156,7 +213,13 @@ describe("SessionActionButton", () => {
         apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
         const user = userEvent.setup();
         render(
-          <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         // The list and a session open where they are, not scrolled to a button.
         expect(scrolled).not.toHaveBeenCalled();
@@ -188,6 +251,7 @@ describe("SessionActionButton", () => {
         <SessionActionButton
           sessionId="s1"
           spec={start}
+          read={0}
           primary={false}
           onDone={vi.fn()}
           onStale={vi.fn()}
@@ -209,7 +273,13 @@ describe("SessionActionButton", () => {
           new ApiRequestError(409, { error: { code: "conflict", message: "Already ended." } }),
         );
         render(
-          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         await user.click(screen.getByRole("button", { name: "End session" }));
         await user.click(
@@ -237,7 +307,13 @@ describe("SessionActionButton", () => {
         const onDone = vi.fn();
         apiFetch.mockResolvedValue({ id: "s1" });
         render(
-          <SessionActionButton sessionId="s1" spec={start} onDone={onDone} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            read={0}
+            onDone={onDone}
+            onStale={vi.fn()}
+          />,
         );
         await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
         await waitFor(() => {
@@ -255,7 +331,13 @@ describe("SessionActionButton", () => {
         const user = userEvent.setup();
         apiFetch.mockRejectedValueOnce(new TypeError("Failed to fetch"));
         render(
-          <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         await user.click(screen.getByRole("button", { name: "Start session" }));
         await screen.findByRole("alert");
@@ -278,7 +360,13 @@ describe("SessionActionButton", () => {
         const user = userEvent.setup();
         apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
         render(
-          <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         await user.click(screen.getByRole("button", { name: "Start session" }));
         await screen.findByRole("alert");
@@ -325,7 +413,13 @@ describe("SessionActionButton", () => {
         const refuse = held();
         const user = userEvent.setup();
         render(
-          <SessionActionButton sessionId="s1" spec={spec} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={spec}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         const button = screen.getByRole("button", { name: label });
         await user.click(button);
@@ -347,7 +441,15 @@ describe("SessionActionButton", () => {
     it("ends on End after its confirm, once the dialog has gone", async () => {
       const refuse = held();
       const user = userEvent.setup();
-      render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />);
+      render(
+        <SessionActionButton
+          sessionId="s1"
+          spec={end}
+          read={0}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
+      );
       const button = screen.getByRole("button", { name: "End session" });
       await user.click(button);
       const dialog = screen.getByRole("alertdialog");
@@ -368,7 +470,9 @@ describe("SessionActionButton", () => {
   it("closes the dialog when the confirmed action fails, so the error is readable", async () => {
     const user = userEvent.setup();
     apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
-    render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />);
+    render(
+      <SessionActionButton sessionId="s1" spec={end} read={0} onDone={vi.fn()} onStale={vi.fn()} />,
+    );
 
     await user.click(screen.getByRole("button", { name: "End session" }));
     await user.click(
@@ -402,7 +506,13 @@ describe("SessionActionButton", () => {
         const onStale = vi.fn();
         apiFetch.mockRejectedValue(new ApiRequestError(409, { error: { code, message } }));
         render(
-          <SessionActionButton sessionId="s1" spec={spec} onDone={onDone} onStale={onStale} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={spec}
+            read={0}
+            onDone={onDone}
+            onStale={onStale}
+          />,
         );
 
         await userEvent.setup().click(screen.getByRole("button", { name: label }));
@@ -419,7 +529,15 @@ describe("SessionActionButton", () => {
       apiFetch.mockRejectedValue(
         new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
       );
-      render(<SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={onStale} />);
+      render(
+        <SessionActionButton
+          sessionId="s1"
+          spec={end}
+          read={0}
+          onDone={vi.fn()}
+          onStale={onStale}
+        />,
+      );
       await user.click(screen.getByRole("button", { name: "End session" }));
       await user.click(
         within(screen.getByRole("alertdialog")).getByRole("button", { name: "End session" }),
@@ -445,7 +563,13 @@ describe("SessionActionButton", () => {
       const onStale = vi.fn();
       apiFetch.mockRejectedValue(failure);
       render(
-        <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={onStale} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={start}
+          read={0}
+          onDone={vi.fn()}
+          onStale={onStale}
+        />,
       );
 
       await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
@@ -462,7 +586,13 @@ describe("SessionActionButton", () => {
           new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
         );
         const { rerender } = render(
-          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         const button = screen.getByRole("button", { name: "End session" });
         await user.click(button);
@@ -474,11 +604,27 @@ describe("SessionActionButton", () => {
           expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
         });
         expect(button).toHaveFocus();
+        // Drawn again before the read lands, as a session's page is by its poll.
+        rerender(
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
+        );
         const before = scrolled.mock.calls.length;
 
         // The screen has read it back as ended.
         rerender(
-          <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={reopen}
+            read={1}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
 
         expect(screen.getByRole("button")).toBe(button);
@@ -501,10 +647,22 @@ describe("SessionActionButton", () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
         const { rerender } = render(
-          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         rerender(
-          <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={reopen}
+            read={1}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         expect(screen.getByRole("button", { name: "Reopen session" })).toBeInTheDocument();
         expect(scrolled).not.toHaveBeenCalled();
@@ -513,29 +671,53 @@ describe("SessionActionButton", () => {
       }
     });
 
-    it("scrolls nothing more when a re-read leaves the same action under the failure", async () => {
+    /* The clash's sentence asks for the other session to be ended. Once
+       someone does and starts this one, a later read draws End, and the
+       sentence no longer names what is shown. */
+    it("keeps a failure its re-read leaves under the same action, scrolling nothing, until a later read changes the action", async () => {
       const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
       try {
         apiFetch.mockRejectedValue(
           new ApiRequestError(409, { error: { code: "session_already_active", message: CLASH } }),
         );
         const { rerender } = render(
-          <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={start}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
         await screen.findByRole("alert");
         expect(scrolled).toHaveBeenCalledTimes(2);
 
-        // A fresh spec, as each read draws one: only the action counts.
+        // Its own re-read: still a draft.
         rerender(
           <SessionActionButton
             sessionId="s1"
-            spec={{ ...start }}
+            spec={start}
+            read={1}
             onDone={vi.fn()}
             onStale={vi.fn()}
           />,
         );
         expect(screen.getByRole("alert")).toHaveTextContent(CLASH);
+        expect(scrolled).toHaveBeenCalledTimes(2);
+
+        // Started elsewhere, then read again by a poll or another row's press.
+        rerender(
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={2}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
+        );
+        expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
         expect(scrolled).toHaveBeenCalledTimes(2);
       } finally {
         scrolled.mockRestore();
@@ -552,7 +734,13 @@ describe("SessionActionButton", () => {
           new ApiRequestError(409, { error: { code: "conflict", message: ENDED } }),
         );
         const { rerender } = render(
-          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={0}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         const button = screen.getByRole("button", { name: "End session" });
         await user.click(button);
@@ -564,14 +752,26 @@ describe("SessionActionButton", () => {
           expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
         });
         rerender(
-          <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={reopen}
+            read={1}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
         expect(screen.getByRole("alert")).toHaveTextContent(ENDED);
         const before = scrolled.mock.calls.length;
 
         // Reopened by another admin, then read again by a poll.
         rerender(
-          <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+          <SessionActionButton
+            sessionId="s1"
+            spec={end}
+            read={2}
+            onDone={vi.fn()}
+            onStale={vi.fn()}
+          />,
         );
 
         expect(screen.getByRole("button")).toBe(button);
@@ -598,14 +798,26 @@ describe("SessionActionButton", () => {
         try {
           apiFetch.mockRejectedValue(failure);
           const { rerender } = render(
-            <SessionActionButton sessionId="s1" spec={start} onDone={vi.fn()} onStale={vi.fn()} />,
+            <SessionActionButton
+              sessionId="s1"
+              spec={start}
+              read={0}
+              onDone={vi.fn()}
+              onStale={vi.fn()}
+            />,
           );
           await userEvent.setup().click(screen.getByRole("button", { name: "Start session" }));
           await screen.findByRole("alert");
           expect(scrolled).toHaveBeenCalledTimes(2);
 
           rerender(
-            <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+            <SessionActionButton
+              sessionId="s1"
+              spec={end}
+              read={1}
+              onDone={vi.fn()}
+              onStale={vi.fn()}
+            />,
           );
 
           expect(screen.getByRole("button", { name: "End session" })).toBeInTheDocument();
@@ -622,14 +834,26 @@ describe("SessionActionButton", () => {
     it("closes End's confirm when the action changes, and leaves it closed when End comes back", async () => {
       const user = userEvent.setup();
       const { rerender } = render(
-        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={end}
+          read={0}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
       );
       const button = screen.getByRole("button", { name: "End session" });
       await user.click(button);
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
 
       rerender(
-        <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={reopen}
+          read={1}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
       );
       await waitFor(() => {
         expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
@@ -638,7 +862,13 @@ describe("SessionActionButton", () => {
       expect(button).toHaveFocus();
 
       rerender(
-        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={end}
+          read={2}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
       );
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(apiFetch).not.toHaveBeenCalled();
@@ -647,11 +877,23 @@ describe("SessionActionButton", () => {
     it("says Reopen is working once End's confirm has gone with End", async () => {
       const user = userEvent.setup();
       const { rerender } = render(
-        <SessionActionButton sessionId="s1" spec={end} onDone={vi.fn()} onStale={vi.fn()} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={end}
+          read={0}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
       );
       await user.click(screen.getByRole("button", { name: "End session" }));
       rerender(
-        <SessionActionButton sessionId="s1" spec={reopen} onDone={vi.fn()} onStale={vi.fn()} />,
+        <SessionActionButton
+          sessionId="s1"
+          spec={reopen}
+          read={1}
+          onDone={vi.fn()}
+          onStale={vi.fn()}
+        />,
       );
       await waitFor(() => {
         expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();

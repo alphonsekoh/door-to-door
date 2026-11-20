@@ -210,9 +210,11 @@ test("an End refused because the session ended elsewhere shows it ended, and reo
     .getByRole("button", { name: "End session" })
     .press("Enter");
 
-  await expect(row.getByRole("alert")).toContainText("has already ended");
   await expect(row.getByText("Ended", { exact: true })).toBeVisible();
   await expect(end).toHaveCount(0);
+  /* Only once the row is read again: before that the sentence is said
+     under End, and an alert the re-read dropped passed here. */
+  await expect(row.getByRole("alert")).toContainText("has already ended");
   const reopen = row.getByRole("button", { name: "Reopen session" });
   await expect(reopen).toBeFocused();
 

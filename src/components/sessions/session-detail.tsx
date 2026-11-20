@@ -36,6 +36,9 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
   const [tick, setTick] = useState(0);
   /* A follow-up session's households on members' list, once read. */
   const [onList, setOnList] = useState<number | null>(null);
+  /* Every read of the session, counted with what it read: the action button
+     tells by it that the read its refusal set off has landed. */
+  const [reads, setReads] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -44,6 +47,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         apiFetch<SessionBlock[]>(`/sessions/${sessionId}/blocks`),
       ]);
       setState({ status: "ready", session, blocks });
+      setReads((count) => count + 1);
     } catch (error) {
       setState({
         status: "error",
@@ -174,6 +178,7 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
       <SessionActionButton
         sessionId={session.id}
         spec={action}
+        read={reads}
         blocked={
           action.action === "start" && session.kind === "follow_up" ? startBlocker(onList) : null
         }
