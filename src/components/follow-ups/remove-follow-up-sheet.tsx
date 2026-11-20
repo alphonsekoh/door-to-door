@@ -5,6 +5,7 @@ import type { FollowUp } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { reasonNote, reasonProblem, removalCopy } from "@/lib/follow-ups/removal";
 import { FOLLOW_UP_OFFLINE_NOTE, describeFollowUpFailure } from "@/lib/history/follow-ups";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
@@ -37,6 +38,7 @@ export function RemoveFollowUpSheet({
   const sending = useRef(false);
   /* Back on the action, inside the sheet, from the page it fell to. */
   const { notePress, refused } = useRefusalFocus();
+  const said = useFailureInView<HTMLParagraphElement>(failure);
 
   const copy = removalCopy(note, isAdmin, viewerId);
   const problem = reasonProblem(reason);
@@ -83,12 +85,6 @@ export function RemoveFollowUpSheet({
       </p>
       <p className="mt-1 text-body text-foreground-muted">{copy.body}</p>
 
-      {failure === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
-          {failure}
-        </p>
-      )}
-
       <div className="mt-3">
         <label htmlFor="remove-reason" className="mb-1 block text-body font-medium">
           {copy.label}
@@ -114,6 +110,15 @@ export function RemoveFollowUpSheet({
           {reasonNote(problem, copy.readers)}
         </p>
       </div>
+
+      {/* Beside the action, out of its bar (D-225-1): said above the
+          reason, at the largest text it was scrolled away from where the
+          action is pressed (#232). */}
+      {failure === null ? null : (
+        <p ref={said} role="alert" className="mt-3 notice-danger">
+          {failure}
+        </p>
+      )}
 
       <SheetActions note={online ? null : FOLLOW_UP_OFFLINE_NOTE}>
         <button

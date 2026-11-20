@@ -19,6 +19,7 @@ import {
   dueDayToInstant,
   instantToDueDay,
 } from "@/lib/history/follow-ups";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
@@ -138,6 +139,8 @@ export function FollowUpSheet({
   /* Back on the action pressed, inside the sheet, from the page it fell to.
      A half done add counts: the action is then the retry, or Done. */
   const { notePress, refused: sendRefused } = useRefusalFocus();
+  const failureSaid = useFailureInView<HTMLParagraphElement>(failure);
+  const partialSaid = useFailureInView<HTMLParagraphElement>(partial);
 
   const copy = copyFor(mode, isAdmin);
   const length = text.trim().length;
@@ -271,17 +274,6 @@ export function FollowUpSheet({
           <p className="mt-2 text-body text-foreground-muted">{mode.context}</p>
         ) : null}
 
-        {failure === null ? null : (
-          <p role="alert" className="mt-3 notice-danger">
-            {failure}
-          </p>
-        )}
-        {partial === null ? null : (
-          <p role="alert" className="mt-3 notice-danger">
-            {partialMessage(partial)}
-          </p>
-        )}
-
         <div className="mt-3">
           <div className="mb-1 flex flex-wrap items-baseline justify-between gap-x-3">
             <label htmlFor="follow-up-note" className="text-body font-medium">
@@ -331,6 +323,20 @@ export function FollowUpSheet({
         </div>
 
         {partial === null ? <AlsoAddRow also={also} /> : null}
+
+        {/* Beside the action, out of its bar (D-225-1): said atop the
+            sheet, at the largest text it was scrolled away from where the
+            action is pressed (#232). */}
+        {failure === null ? null : (
+          <p ref={failureSaid} role="alert" className="mt-3 notice-danger">
+            {failure}
+          </p>
+        )}
+        {partial === null ? null : (
+          <p ref={partialSaid} role="alert" className="mt-3 notice-danger">
+            {partialMessage(partial)}
+          </p>
+        )}
 
         {/* One button in one place, so a half done add leaves focus on its
             retry, or Done, where the action was. */}

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MotionGlobalConfig } from "motion/react";
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 
@@ -672,7 +672,7 @@ describe("SheetActions", () => {
 
   /* jsdom lays nothing out: the bar is as tall as `bar` says, and the
      browser's resize callbacks are made by hand. */
-  it("tells its sheet's body how tall it is drawn, as its note comes and goes", () => {
+  it("tells its sheet's body how tall it is drawn, and again as it wraps anew with nothing drawn", () => {
     let bar = 80;
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
       this: HTMLElement,
@@ -702,9 +702,10 @@ describe("SheetActions", () => {
     const room = () => body.style.getPropertyValue("--sheet-actions");
     expect(room()).toBe("80px");
 
-    // Offline, the note takes a line or two above Send.
-    bar = 136;
+    // The text size changed: the note wraps to another line, and nothing
+    // is drawn again but by the browser.
     rerender(<Held note="Connect to change follow-ups" />);
+    bar = 136;
     const send = screen.getByRole("button", { name: "Send" }).parentElement;
     act(() => {
       for (const observer of observers) {
@@ -717,5 +718,39 @@ describe("SheetActions", () => {
     rerender(<Held note={null} docked={false} />);
     expect(room()).toBe("");
     expect(observers[0]?.disconnect).toHaveBeenCalled();
+  });
+
+  /* A team sheet's failure without signal comes with its "Connect to"
+     note: brought into view against the bar as it had been, it ended under
+     the bar as drawn (#232). The sheet's own layout effects run after the
+     bar's, and before any resize callback. */
+  it("tells its sheet's body at once as its note comes, before the sheet's own layout effects", () => {
+    let bar = 80;
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains("sticky") ? bar : 600;
+    });
+    const seen: string[] = [];
+    function Said({ note }: { note: string | null }) {
+      const line = useRef<HTMLParagraphElement>(null);
+      useLayoutEffect(() => {
+        const body = line.current?.closest<HTMLElement>("[data-sheet-body]");
+        if (note !== null) seen.push(body?.style.getPropertyValue("--sheet-actions") ?? "");
+      }, [note]);
+      return (
+        <Sheet label="Suggest" onClose={vi.fn()}>
+          <p ref={line}>Could not send.</p>
+          <SheetActions note={note}>
+            <button type="button">Send</button>
+          </SheetActions>
+        </Sheet>
+      );
+    }
+    const { rerender } = render(<Said note={null} />);
+
+    bar = 136;
+    rerender(<Said note="Connect to change your team" />);
+    expect(seen).toEqual(["136px"]);
   });
 });

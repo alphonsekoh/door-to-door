@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -49,6 +49,18 @@ const dialog = (name: string) => within(screen.getByRole("dialog", { name }));
 const write = (sheet: ReturnType<typeof dialog>, label: string, value: string) => {
   fireEvent.change(sheet.getByLabelText(label), { target: { value } });
 };
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 describe("an admin dismissing a suggestion", () => {
   const open = (onRemoved = vi.fn()) => {
@@ -160,11 +172,36 @@ describe("an admin dismissing a suggestion", () => {
     await sheet.findByRole("button", { name: "Working…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse(new TypeError("Failed to fetch"));
     const alert = await sheet.findByRole("alert");
     expect(button).toHaveFocus();
     expect(screen.getByRole("dialog")).toContainElement(button);
     expect(alert).not.toHaveFocus();
+    // Back on the action before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([button]);
+  });
+
+  /* Said above the reason, at the largest text it was scrolled away from
+     where the action is pressed (#232). */
+  it("says a failure under the reason, just above its bar, and brings it into view", async () => {
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    const sheet = open();
+    write(sheet, "Why not add it?", "Moved away");
+    const { scrolled } = watchScrolls();
+    const button = sheet.getByRole("button", { name: "Dismiss suggestion" });
+    fireEvent.click(button);
+
+    const alert = await sheet.findByRole("alert");
+    expect(sheet.getByLabelText("Why not add it?").compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(button);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
   });
 
   it("asks before a stray tap throws a written reason away", () => {

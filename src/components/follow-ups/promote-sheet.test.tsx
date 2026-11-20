@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { PromoteButton } from "@/components/follow-ups/promote-button";
 import { PromoteSheet } from "@/components/follow-ups/promote-sheet";
 import type { FollowUp } from "@/generated/types.gen";
@@ -81,6 +81,18 @@ const writes = () =>
 
 const sheet = () => within(screen.getByRole("dialog"));
 const addButton = () => sheet().getByRole("button", { name: "Add to list" });
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -312,11 +324,15 @@ describe("PromoteSheet", () => {
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
 
+      const { scrolled, focusAtScroll } = watchScrolls();
       request.refuse(new TypeError("Failed to fetch"));
       const alert = await sheet().findByRole("alert");
       expect(button).toHaveFocus();
       expect(screen.getByRole("dialog")).toContainElement(button);
       expect(alert).not.toHaveFocus();
+      // Back on the action before the failure is brought into view (D-208-4).
+      expect(scrolled.mock.contexts).toEqual([alert]);
+      expect(focusAtScroll).toEqual([button]);
     });
 
     it("goes back to the retry where Add to list was, when the session step fails", async () => {
@@ -330,10 +346,57 @@ describe("PromoteSheet", () => {
       await sheet().findByRole("button", { name: "Saving…" });
       await focusDropped();
 
+      const { scrolled, focusAtScroll } = watchScrolls();
       step.refuse(new TypeError("Failed to fetch"));
-      await sheet().findByRole("alert");
+      const said = await sheet().findByRole("alert");
       expect(sheet().getByRole("button", { name: "Add to Saturday revisits" })).toBe(button);
       expect(button).toHaveFocus();
+      expect(scrolled.mock.contexts).toEqual([said]);
+      expect(focusAtScroll).toEqual([button]);
+    });
+  });
+
+  /* Said above the session row, at the largest text a failure ran under
+     the bar (#232). */
+  describe("a failure, said beside the action", () => {
+    it("says a failed listing just above its bar, after the session row, and brings it into view", async () => {
+      server({
+        drafts: [SESSION],
+        promote: () => Promise.reject(new TypeError("Failed to fetch")),
+      });
+      render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
+      const row = await sheet().findByRole("checkbox", { name: /Also add to/ });
+      const { scrolled } = watchScrolls();
+      const button = addButton();
+      fireEvent.click(button);
+
+      const alert = await sheet().findByRole("alert");
+      expect(row.compareDocumentPosition(alert)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      const bar = alert.nextElementSibling;
+      expect(bar).toHaveAttribute("data-sheet-actions");
+      expect(bar).toContainElement(button);
+      expect(scrolled.mock.contexts).toEqual([alert]);
+      expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
+    });
+
+    it("says a half done add just above the retry's bar, and brings it into view each time the retry fails", async () => {
+      server({ drafts: [SESSION], addToSession: () => Promise.reject(new Error("down")) });
+      render(<PromoteSheet suggestion={SUGGESTION} onClose={vi.fn()} onPromoted={vi.fn()} />);
+      await sheet().findByRole("checkbox", { name: /Also add to/ });
+      const { scrolled } = watchScrolls();
+      fireEvent.click(addButton());
+
+      const retry = await sheet().findByRole("button", { name: "Add to Saturday revisits" });
+      const said = sheet().getByRole("alert");
+      expect(said.nextElementSibling).toHaveAttribute("data-sheet-actions");
+      expect(said.nextElementSibling).toContainElement(retry);
+      expect(scrolled.mock.contexts).toEqual([said]);
+
+      fireEvent.click(retry);
+      await waitFor(() => {
+        expect(scrolled).toHaveBeenCalledTimes(2);
+      });
+      expect(scrolled.mock.contexts).toEqual([said, said]);
     });
   });
 

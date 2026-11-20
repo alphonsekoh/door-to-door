@@ -20,6 +20,7 @@ import {
   describeFollowUpFailure,
 } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
@@ -53,6 +54,8 @@ export function PromoteSheet({
   /* Back on the action pressed, inside the sheet, from the page it fell to.
      A half done add counts: the action is then the retry, or Done. */
   const { notePress, refused } = useRefusalFocus();
+  const failureSaid = useFailureInView<HTMLParagraphElement>(failure);
+  const partialSaid = useFailureInView<HTMLParagraphElement>(partial);
 
   async function run(step: () => Promise<string | null>): Promise<void> {
     if (sending.current) return;
@@ -133,15 +136,17 @@ export function PromoteSheet({
         </p>
       </div>
 
+      {partial === null ? <AlsoAddRow also={also} /> : null}
+
+      {/* Beside the action, out of its bar (D-225-1): said above the
+          session row, at the largest text it ran under the bar (#232). */}
       {failure === null ? null : (
-        <p role="alert" className="mt-3 notice-danger">
+        <p ref={failureSaid} role="alert" className="mt-3 notice-danger">
           {failure}
         </p>
       )}
-      {partial === null ? (
-        <AlsoAddRow also={also} />
-      ) : (
-        <p role="alert" className="mt-3 notice-danger">
+      {partial === null ? null : (
+        <p ref={partialSaid} role="alert" className="mt-3 notice-danger">
           {partialMessage(partial)}
         </p>
       )}
