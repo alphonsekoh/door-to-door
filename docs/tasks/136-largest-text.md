@@ -39,6 +39,9 @@ only: no contract or schema change.
   note. A `ResizeObserver` keeps the height current, so it does not go stale as D-111-40's
   measured offset did. _Refined by D-214-9:_ a control inside the bar is not scrolled
   to, since the padding counts the bar as covered and moved the form by its height.
+  _Refined by D-230-1 and D-230-2:_ the padding adds the home indicator's inset, as the
+  bar rests above it; a sheet with no bar keeps 16px plus the inset, 16px only in the
+  browser.
 - **D-136-4 · The Saved line keeps room for "Saved {unit} on this phone." from the save
   on (`hold-text`).** The held words come from `data-hold` as a `visibility: hidden`
   `::after` in the same grid cell, so they are in no text a test locator or screen reader
@@ -108,7 +111,8 @@ only: no contract or schema change.
   releases. Extends D-111-65. _Why:_ eleven direct saves used over a third of the admin's
   30-a-minute budget (D-126-8), so repeats were refused 429. A 1.5s timer let a slow run
   take both readings after the switch. That would pass with nothing held. _Extended by
-  D-196-8 and D-196-15 (#196)._
+  D-196-8 and D-196-15 (#196), and by D-230-4 (#230):_ an installed check, with the
+  inset simulated, beside the third check.
 
 - **D-136-13 · #181 part 2 stays open, and `:613` never failed CI.** In CI run
   43375997037, `:613` on mobile-webkit has outcome `expected`. Its body failed with
@@ -140,7 +144,7 @@ only: no contract or schema change.
 
 ## Known limits
 
-- **On an installed iPhone, a focused field in a sheet can end about 18px under the bar
+- ~~**On an installed iPhone, a focused field in a sheet can end about 18px under the bar
   (reviewer r2 should-fix, open at `dff2daf`).** The bar sits above the body's
   `inset-safe-bottom` padding, while scroll padding is counted from the body's bottom
   edge. With a 34px inset, `--sheet-actions` plus 16px leaves the field 18px short.
@@ -151,7 +155,8 @@ only: no contract or schema change.
   _Measured for Suggest a return visit's note by D-227-2_: the line being typed goes up
   to 17.5px under; #230 takes it. In the browser at 32px on an iPhone 13 that note's
   foot is under the bar too, as the box is taller than the room: a limit of its own,
-  D-227-3.
+  D-227-3.~~ Closed by D-230-1 (#230) for every sheet, with an E2E that simulates the
+  inset (D-230-4); D-225-7's one-off is superseded by D-230-3. D-227-3 stands.
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
   sent." or a note's suffix can still grow the line. _Extended by D-196-2:_ under 18.75

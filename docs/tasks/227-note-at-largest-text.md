@@ -27,7 +27,8 @@ contract, schema, server, UI or test change.
   13). With #230's fix simulated it stays at least 16.5px above, at four rows; a
   three-row box alone still had 95 of 150 under. #230's check gains typing in this note.
   _Why:_ the cause is the inset the scroll padding leaves out (R-184, D-136's safe-area
-  limit), not the box's height. _Research:_ R-184, R-221.
+  limit), not the box's height. _Research:_ R-184, R-221. _Fixed by D-230-1:_ installed,
+  0 of 150 keystrokes under, the caret at least 15.45px above Send (#230 verifier r0).
 - **D-227-3 · The note's foot under Send at 32px on an iPhone 13 in the browser is a known
   limit (owner, 2026-11-20).** It is recorded against D-111-31's "fully into view" and
   D-136-3's 16px clearance, superseding neither, as D-136 did with its inset limit. The
@@ -43,14 +44,14 @@ contract, schema, server, UI or test change.
 
 ## How existing decisions are handled
 
-| Decision                       | Effect                                                                           | By          |
-| ------------------------------ | -------------------------------------------------------------------------------- | ----------- |
-| D-111-31                       | Known limit: at 32px on an iPhone 13 the note is not fully in view               | D-227-3     |
-| D-136-3                        | Known limit for the box's foot; the line being typed stays at least 15.5px clear | D-227-1, -3 |
-| D-136's safe-area limit        | Measured for this note while typing (up to 17.5px under); left to #230           | D-227-2     |
-| D-214's known limit (the note) | Measured and accepted (owner)                                                    | D-227-1, -3 |
-| D-111-48                       | Not extended: no short-screen switch for the note                                | D-227-3     |
-| D-221-8                        | Kept: the one-slot bar                                                           | D-227-4     |
+| Decision                       | Effect                                                                           | By               |
+| ------------------------------ | -------------------------------------------------------------------------------- | ---------------- |
+| D-111-31                       | Known limit: at 32px on an iPhone 13 the note is not fully in view               | D-227-3          |
+| D-136-3                        | Known limit for the box's foot; the line being typed stays at least 15.5px clear | D-227-1, -3      |
+| D-136's safe-area limit        | Measured for this note while typing (up to 17.5px under); closed by #230         | D-227-2, D-230-1 |
+| D-214's known limit (the note) | Measured and accepted (owner)                                                    | D-227-1, -3      |
+| D-111-48                       | Not extended: no short-screen switch for the note                                | D-227-3          |
+| D-221-8                        | Kept: the one-slot bar                                                           | D-227-4          |
 
 ## Evidence
 
@@ -68,8 +69,8 @@ contract, schema, server, UI or test change.
   the text reaches it (D-227-3). Then the body scrolls 58px: the foot ends 15.4px clear,
   and the box's top row goes under the header. On the Pixel 5 the box is in view
   but ends 10.9px above the bar, inside D-136-3's 16px.
-- Installed, until #230 lands, the line being typed goes up to 17.5px under the bar at 28
-  and 32px (D-227-2).
+- ~~Installed, until #230 lands, the line being typed goes up to 17.5px under the bar at 28
+  and 32px (D-227-2).~~ Closed by D-230-1 (#230).
 - Not measured: the admin's Add to the follow-up list opened from Needs a return visit,
   with its context line (the seed has no rows there; its room depends only on the header,
   so the same result is expected); a real iPhone at its 17px default with SF metrics; the
@@ -78,10 +79,12 @@ contract, schema, server, UI or test change.
 
 ## Follow-ups (owner)
 
-- #230: add the check of D-227-2. Installed at 28 and 32px, typing five lines into this
-  note keeps the line being typed above the bar.
-- For #230's verifier: installed, content scrolls through the 34px strip below the bar,
-  and "Go back by (optional)" was drawn under Send (R-184).
+- ~~#230: add the check of D-227-2. Installed at 28 and 32px, typing five lines into this
+  note keeps the line being typed above the bar.~~ Done in #230's device pass, not a
+  test: 0 of 150 keystrokes under.
+- ~~For #230's verifier: installed, content scrolls through the 34px strip below the bar,
+  and "Go back by (optional)" was drawn under Send (R-184).~~ Seen again; a known limit
+  and owner follow-up of #230.
 
 ## Relies on
 

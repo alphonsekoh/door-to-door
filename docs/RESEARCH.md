@@ -2114,7 +2114,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   indicator.
 - **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
   #136 reviewer r2, not re-measured by the docs step
-- **Used by:** D-136-3 (known limit), D-225-7, D-227-2
+- **Used by:** D-136-3 (known limit), D-225-7, D-227-2, D-230-1
 
 ### R-185 · Vitest 5 clears every mock's calls before each test, including those made as a module loaded
 
@@ -2694,7 +2694,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   `Emulation.setSafeAreaInsetsOverride`. Re-measures R-184's shortfall.
 - **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin);
   measured (#225 verifier r0 and r1, iPhone 13 at 390x844 on WebKit, 393x851 on Chromium)
-- **Used by:** D-225-7
+- **Used by:** D-225-7, D-230-1, D-230-3, D-230-4
 
 ### R-219 · React draws two updates made outside an event in one render, and an urgent update before a transition (measured)
 
@@ -2756,7 +2756,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   keystrokes. Two frames after each, the caret's place was read from a mirror of the
   textarea, which matched its `scrollHeight` to 0px whenever the text overflowed.
   Re-measures R-184's shortfall while typing.
-- **Used by:** D-227-1, D-227-2, D-227-3
+- **Used by:** D-227-1, D-227-2, D-227-3, D-230-1
 
 ### R-222 · App Router remounts a page when its dynamic segment's value changes, and React ignores a state set after unmount (read)
 
@@ -2774,3 +2774,21 @@ config`, parse only; #124 docs step, confirming the planner's check)
   react-dom 19.3.1, whose only such warning left is for a component not yet mounted.
   Read, not measured (#234 docs).
 - **Used by:** D-234-3
+
+### R-223 · Focus scrolls a field out of view toward the middle, and WebKit did so for a date input even with `preventScroll` (measured)
+
+- **Finding:** on Chromium and WebKit, `focus()` on a field below a sheet body's visible
+  part scrolls it toward the middle of the scrollport before the sheet's own `nearest`
+  focus scroll runs. In Suggest a return visit at 32px on a simulated installed phone
+  that reached the end of the scroll, where "Go back by (optional)" rests 16px above the
+  bar whatever the scroll padding, so a focus-based check passed with #230's fix
+  reverted. With `focus({ preventScroll: true })` Chromium left the scroll to the
+  sheet's `nearest` (18px under without the fix), but WebKit still scrolled the date
+  input to the end. `scrollIntoView({ block: "nearest" })` moves it only as far as the
+  padding asks, on both. So on WebKit `preventScroll` did not hold for this date input,
+  unlike the button of R-215 and the general rule of R-106.
+- **Source:** measured (#230 builder, production build at 0f907ff, Pixel 5 on Chromium
+  and iPhone 13 on WebKit, every `env(safe-area-inset-bottom)` served as 34px as in
+  R-218); not re-measured by the docs step.
+  [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
+- **Used by:** D-230-5

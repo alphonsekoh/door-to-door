@@ -279,17 +279,9 @@ export function AmendVisitSheet({ entry, teamIds = [], onClose, onSaved }: Props
               form: with the details open or the text large, the top is
               scrolled away from where Save is pressed. Out of the bar, which
               is chrome-sized and pinned: a reader-sized failure in it could
-              outgrow a small phone's sheet and lose its top.
-              Its own margin adds the home indicator's inset: the bar rests
-              above the body's inset padding, which the body's scroll padding
-              leaves out, so on an installed iPhone `nearest` left the last
-              line half under the bar (R-184). Zero without an inset. */}
+              outgrow a small phone's sheet and lose its top. */}
           {failure === null ? null : (
-            <p
-              ref={said}
-              role="alert"
-              className="scroll-mb-[env(safe-area-inset-bottom)] notice-danger"
-            >
+            <p ref={said} role="alert" className="notice-danger">
               {failure}
             </p>
           )}

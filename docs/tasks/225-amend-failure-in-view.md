@@ -45,7 +45,7 @@ test; `sheet.tsx` is untouched.
   or 32px at 32px text. No test guards this: a class check would be hollow (verifier nit
   4). The code comment is the guard, so a later tidy-up must not put the padding back.
   _Research:_ R-217.
-- **D-225-7 · The alert adds the home indicator's inset as its own scroll margin
+- ~~**D-225-7 · The alert adds the home indicator's inset as its own scroll margin
   (`scroll-mb-[env(safe-area-inset-bottom)]`, 5a5ff04).** This fixes D-136's accepted
   safe-area known limit for this alert only. A focused field in any sheet can still end
   about 18px under the bar. _Why:_ the bar rests above the body's inset padding, which the
@@ -53,23 +53,24 @@ test; `sheet.tsx` is untouched.
   failure ended 17.6px under the bar; with the margin it ends 16px above. The margin is
   zero without an inset. If the shared fix lands in `scroll-clear-sheet-actions` (#230, Open
   questions), remove it: it would be redundant, though harmless at the end of the scroll.
-  _Research:_ R-218.
+  _Research:_ R-218.~~ Superseded by D-230-3 (owner, 2026-11-20): the shared
+  padding adds the inset for every sheet (D-230-1).
 - **D-225-8 · No E2E.** Component tests and the verifier's device pass on both phones
   carry it, as with D-213-6. _Why:_ keep the suite thin (D-37-6). Playwright draws no
   inset and no on-screen keyboard.
 
 ## How existing decisions are handled
 
-| Decision                  | Effect                                                                | By           |
-| ------------------------- | --------------------------------------------------------------------- | ------------ |
-| D-33-29, D-111-26         | Their slot beside Save is followed, outside the bar; record form kept | D-225-1, -2  |
-| D-195-1, D-164-7, D-213-1 | Applied inside a sheet, with one scroll, the alert's                  | D-225-3      |
-| D-208-4, D-214-2/3/5      | Kept: the refocus comes first, with `preventScroll`; no alert focus   | D-225-4      |
-| D-213-3, D-164-2          | Applied                                                               | D-225-5      |
-| D-119-21                  | Kept: the sheet still opens at its top                                | D-225-5      |
-| D-136-3, D-214-9          | Unchanged: `sheet.tsx` is untouched                                   | D-225-3      |
-| D-136's safe-area limit   | Fixed for this alert only (owner accepted the limit)                  | D-225-7      |
-| #214's follow-up          | Closed: the amend sheet's failure is in view                          | D-225-1 to 5 |
+| Decision                  | Effect                                                                          | By                   |
+| ------------------------- | ------------------------------------------------------------------------------- | -------------------- |
+| D-33-29, D-111-26         | Their slot beside Save is followed, outside the bar; record form kept           | D-225-1, -2          |
+| D-195-1, D-164-7, D-213-1 | Applied inside a sheet, with one scroll, the alert's                            | D-225-3              |
+| D-208-4, D-214-2/3/5      | Kept: the refocus comes first, with `preventScroll`; no alert focus             | D-225-4              |
+| D-213-3, D-164-2          | Applied                                                                         | D-225-5              |
+| D-119-21                  | Kept: the sheet still opens at its top                                          | D-225-5              |
+| D-136-3, D-214-9          | Unchanged: `sheet.tsx` is untouched                                             | D-225-3              |
+| D-136's safe-area limit   | Fixed for this alert only (owner); for every sheet by #230, superseding D-225-7 | D-225-7, D-230-1, -3 |
+| #214's follow-up          | Closed: the amend sheet's failure is in view                                    | D-225-1 to 5         |
 
 ## Evidence
 
@@ -126,4 +127,5 @@ D-208-4, D-213-1, D-213-3, D-213-6, D-214-2, D-214-3, D-214-5, D-214-9.
 - ~~**The inset for every sheet.**~~ Settled by the owner on 2026-11-20: merge D-225-7 as
   it is, and make the shared fix (`env(safe-area-inset-bottom)` in
   `scroll-clear-sheet-actions`, which takes D-225-7's margin off) in #230. Until #230
-  lands, D-225-7 is a known one-off against D-111-5, accepted by the owner.
+  lands, D-225-7 is a known one-off against D-111-5, accepted by the owner. Resolved by
+  D-230-1 and D-230-3: the one-off is gone.

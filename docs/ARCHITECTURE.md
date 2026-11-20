@@ -418,8 +418,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
     sheet's note on why Send is grey. `bleed-x` lines them up with the page's margin
     (`--page-gutter`). `scroll-clear-chrome` scrolls clear of the page's chrome, and
     `scroll-clear-sheet-actions` clears a sheet's bar by the height `SheetActions`
-    measures onto its body (`--sheet-actions`). `scroll-clear-nav` clears only the nav
-    and a floating banner (D-164-7).
+    measures onto its body (`--sheet-actions`) plus the home indicator's inset, which
+    the bar rests above (D-230-1). `scroll-clear-nav` clears only the nav and a floating
+    banner (D-164-7).
   - Control utilities: `btn-*`, `field`, `notice-*`.
   - Press feedback: `press`, `press-row` and the base layer. `PressFeedback` in
     `AppShell` makes iOS honour `:active`. No `filter` is ever transitioned
