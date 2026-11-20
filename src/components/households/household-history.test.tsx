@@ -1,10 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { HouseholdHistoryPanel } from "@/components/households/household-history";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 import { landWhileTyping } from "../../../test/land-while-typing";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -488,6 +490,31 @@ describe("acting on a note", () => {
     expect(onChanged).not.toHaveBeenCalled();
   });
 
+  /* Disabled while it saves, the button loses focus to the page (#221).
+     Held until it has, as a real refusal is (D-208-6). */
+  it.each([
+    ["Mark done", note()],
+    ["Reopen", note({ doneAt: "2026-04-01T00:00:00.000Z" })],
+  ])("gives focus back to %s after a refusal", async (label, shown) => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    render(<Panel over={{ followUps: [shown] }} />);
+    const button = screen.getByRole("button", { name: label });
+    await pressByKey(user, button);
+    await screen.findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
+  });
+
   it("lets any member resolve in its session, but offers Edit only to the author", () => {
     asViewer("u2");
     render(<Panel over={{ followUps: [note()] }} />);
@@ -915,6 +942,31 @@ describe("older visits (#160)", () => {
     expect(await screen.findByText("Could not load earlier visits.")).toBeInTheDocument();
     expect(scrolled).not.toHaveBeenCalled();
     expect(notes).toHaveFocus();
+  });
+
+  /* Disabled while it reads, the control loses focus to the page (#221).
+     Held until it has, as a real failure is (D-208-6). */
+  it("gives focus back to the control after a failed read, before the line is brought into view", async () => {
+    const focusAtScroll: (Element | null)[] = [];
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+      focusAtScroll.push(document.activeElement);
+    });
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
+    const answer = later();
+    const user = userEvent.setup();
+    render(<HouseholdHistoryPanel history={firstPage()} active={null} onChanged={noop} atDoor />);
+    placeControl();
+    const button = showEarlier();
+    await pressByKey(user, button);
+    expect(button).toBeDisabled();
+    await focusDropped();
+
+    answer.reject(new TypeError("Failed to fetch"));
+    await screen.findByText("Could not load earlier visits.");
+    expect(button).toHaveFocus();
+    expect(focusAtScroll).toEqual([button]);
   });
 
   it("leaves the page where it is when a failure lands after the member scrolled away, and moves it once they are back", async () => {

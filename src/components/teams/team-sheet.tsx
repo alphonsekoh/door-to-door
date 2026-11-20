@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { Participant } from "@/generated/types.gen";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { MAX_TEAM_NAME_LENGTH, checkTeamName } from "@/lib/teams/team-name";
 import { nameLength } from "@/lib/session/own-name";
 import {
@@ -46,6 +47,8 @@ export function TeamSheet({
   const [failure, setFailure] = useState<string | null>(null);
   /* Synchronous, so two taps in one frame send one request. */
   const sending = useRef(false);
+  /* Back on the action, inside the sheet, from the page it fell to. */
+  const { notePress, refused } = useRefusalFocus();
 
   const showPicker = mode !== "rename";
   const showName = mode !== "add";
@@ -70,6 +73,7 @@ export function TeamSheet({
         return;
       }
     }
+    notePress();
     setFailure(null);
     sending.current = true;
     setBusy(true);
@@ -77,6 +81,7 @@ export function TeamSheet({
       await onSubmit({ name: name.trim(), partnerId: partnerId ?? "" });
     } catch (error) {
       setFailure(describeTeamFailure(error).message);
+      refused();
     } finally {
       sending.current = false;
       setBusy(false);

@@ -1,6 +1,6 @@
 # #226 · A refused Start, End or Reopen shows the session's real state
 
-- **Status:** In progress (PR #231, branch `fix/226-stale-session-after-conflict`)
+- **Status:** Done (PR #231)
 - **Phase:** 7 - Hardening
 - **Depends on:** #213, #214
 

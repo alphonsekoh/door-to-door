@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsolidatedHistory } from "@/components/history/consolidated-history";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 /* A door's label, drawn in pieces so its unit number never breaks: the
    innermost element holding the whole of it. */
@@ -474,6 +475,29 @@ describe("ConsolidatedHistory", () => {
 
     // The screen's sentence, never the browser's (#194).
     expect(await screen.findByText("Could not export those records.")).toBeInTheDocument();
+  });
+
+  /* Disabled while it exports, Export CSV loses focus to the page (#221).
+     Held until it has, as a real failure is (D-208-6). */
+  it("gives focus back to Export CSV after a failed export", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const button = screen.getByRole("button", { name: "Export CSV" });
+    await pressByKey(user, button);
+    await screen.findByRole("button", { name: "Exporting…" });
+    await focusDropped();
+
+    refuse(new TypeError("Load failed"));
+    await screen.findByText("Could not export those records.");
+    expect(button).toHaveFocus();
   });
 
   it("says nothing has been recorded when nothing is filtered", async () => {

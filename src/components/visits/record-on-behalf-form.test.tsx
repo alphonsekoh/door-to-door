@@ -5,6 +5,7 @@ import { RecordOnBehalfForm } from "@/components/visits/record-on-behalf-form";
 import type { Block, User } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
 import { ApiRequestError } from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -328,6 +329,31 @@ describe("RecordOnBehalfForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("not part of the active session");
     expect(screen.getByLabelText("Unit number")).toHaveValue("#05-123");
+  });
+
+  /* Disabled while it saves, Save loses focus to the page, outside the
+     sheet (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Save, inside the sheet, after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const user = renderForm();
+    await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    const save = screen.getByRole("button", { name: "Save the record" });
+    await pressByKey(user, save);
+    await screen.findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    refuse(new TypeError("Load failed"));
+    const alert = await screen.findByRole("alert");
+    expect(save).toHaveFocus();
+    expect(screen.getByRole("dialog")).toContainElement(save);
+    expect(alert).not.toHaveFocus();
   });
 
   it("says its own sentence, not the browser's, when the save gets no answer (#194)", async () => {

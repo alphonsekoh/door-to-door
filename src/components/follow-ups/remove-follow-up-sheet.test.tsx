@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RemoveFollowUpSheet } from "@/components/follow-ups/remove-follow-up-sheet";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -139,6 +141,30 @@ describe("an admin dismissing a suggestion", () => {
     );
     expect(sheet.getByLabelText("Why not add it?")).toHaveValue("Moved away");
     expect(onRemoved).not.toHaveBeenCalled();
+  });
+
+  /* Disabled while it works, the action loses focus to the page, outside
+     the sheet (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Dismiss suggestion, inside the sheet, after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    const user = userEvent.setup();
+    const sheet = open();
+    write(sheet, "Why not add it?", "Moved away");
+    const button = sheet.getByRole("button", { name: "Dismiss suggestion" });
+    await pressByKey(user, button);
+    await sheet.findByRole("button", { name: "Working…" });
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await sheet.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(screen.getByRole("dialog")).toContainElement(button);
+    expect(alert).not.toHaveFocus();
   });
 
   it("asks before a stray tap throws a written reason away", () => {

@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-client";
 import { reasonNote, reasonProblem, removalCopy } from "@/lib/follow-ups/removal";
 import { FOLLOW_UP_OFFLINE_NOTE, describeFollowUpFailure } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 import { FollowUpDoor, WholeWords } from "@/components/ui/unit-number";
 
@@ -34,12 +35,15 @@ export function RemoveFollowUpSheet({
   const [failure, setFailure] = useState<string | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  /* Back on the action, inside the sheet, from the page it fell to. */
+  const { notePress, refused } = useRefusalFocus();
 
   const copy = removalCopy(note, isAdmin, viewerId);
   const problem = reasonProblem(reason);
 
   async function remove(): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
@@ -51,6 +55,7 @@ export function RemoveFollowUpSheet({
       onRemoved();
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
+      refused();
     } finally {
       sending.current = false;
       setBusy(false);

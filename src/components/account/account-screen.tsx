@@ -40,6 +40,7 @@ export function AccountScreen() {
   /* Noted on Sign out, never on Sign out anyway, which leaves with its
      dialog: both paths end on Sign out, where D-90-9 returns focus too. */
   const signOutFocus = useRefusalFocus();
+  const nameFocus = useRefusalFocus();
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +80,7 @@ export function AccountScreen() {
       return;
     }
 
+    nameFocus.notePress();
     setFailure(null);
     setSaving(true);
     try {
@@ -95,6 +97,7 @@ export function AccountScreen() {
       await update({ name: updated.name }).catch(() => undefined);
     } catch (error) {
       setFailure(failureLine(error, "Could not save your name."));
+      nameFocus.refused();
     } finally {
       setSaving(false);
     }

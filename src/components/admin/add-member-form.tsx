@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Role, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import {
   inGoogleDomains,
   listDomains,
@@ -40,6 +41,7 @@ export function AddMemberForm({
   const [failure, setFailure] = useState<string | null>(null);
   /* password null: the account signs in with Google only. */
   const [added, setAdded] = useState<{ email: string; password: string | null } | null>(null);
+  const { notePress, refused } = useRefusalFocus();
 
   async function save(): Promise<void> {
     if (email.trim() === "") {
@@ -61,6 +63,7 @@ export function AddMemberForm({
       }
     }
 
+    notePress();
     setFailure(null);
     setSaving(true);
     try {
@@ -82,6 +85,7 @@ export function AddMemberForm({
       onAdded(user);
     } catch (error) {
       setFailure(failureLine(error, "Could not add that person."));
+      refused();
     } finally {
       setSaving(false);
     }

@@ -15,6 +15,7 @@ import {
   type AdminTeamAction,
 } from "@/lib/teams/team-ui";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { loadAllUsers } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
@@ -62,6 +63,10 @@ export function AdminTeams({
   const generation = useRef(0);
   /* Set synchronously: state is not updated between two taps in one frame. */
   const inFlight = useRef(false);
+  /* Remove and Delete team, noted on the card, never on their confirm: a
+     refusal ends on them, where D-90-9 returns focus too. A sheet's refusal
+     keeps the sheet open, and the sheet gives focus back itself. */
+  const { notePress, refused } = useRefusalFocus();
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
@@ -151,6 +156,7 @@ export function AdminTeams({
       );
     } catch {
       /* change() has already put the reason on screen. */
+      refused();
     }
     setConfirm(null);
   }
@@ -233,6 +239,7 @@ export function AdminTeams({
                         disabled={disabled}
                         aria-label={`Remove ${displayName(member.name)} from ${team.name}`}
                         onClick={() => {
+                          notePress();
                           setActionFailure(null);
                           setConfirm({ kind: "remove", team, member });
                         }}
@@ -271,6 +278,7 @@ export function AdminTeams({
                   type="button"
                   disabled={disabled}
                   onClick={() => {
+                    notePress();
                     setActionFailure(null);
                     setConfirm({ kind: "delete", team });
                   }}

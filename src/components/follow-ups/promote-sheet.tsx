@@ -21,6 +21,7 @@ import {
 } from "@/lib/history/follow-ups";
 import { formatDay } from "@/lib/history/dates";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 
 /*
@@ -49,17 +50,23 @@ export function PromoteSheet({
   const [partial, setPartial] = useState<HalfAdded | null>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  /* Back on the action pressed, inside the sheet, from the page it fell to.
+     A half done add counts: the action is then the retry, or Done. */
+  const { notePress, refused } = useRefusalFocus();
 
   async function run(step: () => Promise<string | null>): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
       const message = await step();
-      if (message !== null) onPromoted(message);
+      if (message === null) refused();
+      else onPromoted(message);
     } catch (error) {
       setFailure(describeFollowUpFailure(error));
+      refused();
     } finally {
       sending.current = false;
       setBusy(false);
