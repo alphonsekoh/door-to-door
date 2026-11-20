@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { RevisitList } from "@/components/follow-ups/revisit-list";
 import type { ActiveSession, FollowUp, RevisitEntry } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -128,6 +128,18 @@ function entry(
 }
 
 const list = (data: RevisitEntry[]) => ({ data });
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -269,10 +281,38 @@ describe("RevisitList", () => {
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse(new TypeError("Failed to fetch"));
     const alert = await screen.findByRole("alert");
     expect(button).toHaveFocus();
     expect(alert).not.toHaveFocus();
+    // Back on Mark done before the two are brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert.parentElement]);
+    expect(focusAtScroll).toEqual([button]);
+  });
+
+  /* The failure, drawn above Mark done, pushed it under the install banner
+     floating on the nav, and nothing brought it back (#232). */
+  it("brings a failure and the Mark done it pushed down into view together, clear of the nav", async () => {
+    apiFetch.mockImplementation((_path: string, init?: { method?: string }) =>
+      init?.method === "PATCH"
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : Promise.resolve(list([entry("#05-123")])),
+    );
+    const { scrolled } = watchScrolls();
+    render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
+    const button = await screen.findByRole("button", { name: "Mark done, #05-123" });
+    // Nothing moves as the list is read (D-213-3).
+    expect(scrolled).not.toHaveBeenCalled();
+    fireEvent.click(button);
+
+    const alert = await screen.findByRole("alert");
+    const controls = alert.parentElement;
+    expect(controls).toContainElement(button);
+    // No Save docks on the session screen, so the nav's room alone (D-195-1).
+    expect(controls).toHaveClass("scroll-clear-nav");
+    expect(scrolled.mock.contexts).toEqual([controls]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
   });
 
   it("re-reads the list when one of a household's notes closes and the next is refused", async () => {

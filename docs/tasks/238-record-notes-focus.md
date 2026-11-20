@@ -19,7 +19,7 @@ page had no focus scroll like a sheet's. UI only; no contract, schema or server 
   input in WebKit, reveals only the caret; Chromium's Tab onto an input or select, and
   WebKit's onto a select, honour the margin. _Why:_ margins alone would fix only part of
   Tab and none of a tap, so the plan needed both halves (R-213's method). _Research:_
-  R-224.
+  R-225.
 - **D-238-2 · Name, Contact, Religion and Notes get `scroll-clear-chrome`.** It is the
   room the unit field, the interest tiles and the Saved line already have (D-111-69,
   D-119-15), so a field lands at the bar's top. `globals.css` is unchanged. _Why:_ reuse,
@@ -68,7 +68,7 @@ page had no focus scroll like a sheet's. UI only; no contract, schema or server 
     tap is centred.
 
   _Why:_ jsdom lays nothing out (D-37-6), and each test failed with its part of the fix
-  broken (builder and verifier bites). _Research:_ R-224.
+  broken (builder and verifier bites). _Research:_ R-225.
 
 - **D-238-9 · Other pages are left as a note.** Account's "Your name", above its docked
   "Save name", has no focus scroll. The inline forms with no docked bar (New session, Add

@@ -36,7 +36,9 @@ wording is kept, and focus after a failed press is left to #214.
   when a second try clears the alert; a second failure scrolls again. Applies D-164-2.
   _Why:_ on a second try the control is under the thumb that just pressed it. _Refined
   by D-226-4:_ when a `409`'s re-read turns the button into another action under its
-  kept failure, the alert and the button are brought into view again.
+  kept failure, the alert and the button are brought into view again. _Refined by
+  D-232-8:_ Create draft and Add households bring a kept failure into view again after
+  every re-read a refusal sets off.
 - **D-213-4 · Focus is not moved; the tests check only that the alert takes none.** Where
   focus lands after a failed press on a busy-disabled button is #214's. _Why:_ b37cf33's
   checks that focus stayed on the pressed button held only because the mock failed within

@@ -7,6 +7,7 @@ import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import type { Block, InterestLevel, RecordedVisit, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useFailureInView } from "@/lib/hooks/use-failure-in-view";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import {
   type NotSaved,
@@ -66,6 +67,7 @@ export function RecordOnBehalfForm({
      server's refusal opens Not saved, it then opens from Save, and its OK
      still goes to the field it names (D-119-15). */
   const { notePress, refused: saveRefused } = useRefusalFocus();
+  const said = useFailureInView<HTMLParagraphElement>(failure);
   const fieldRefs: Partial<Record<NotSavedField, RefObject<HTMLElement | null>>> = {
     memberId: memberField,
     blockId: blockField,
@@ -146,12 +148,6 @@ export function RecordOnBehalfForm({
           noValidate
           className="space-y-4 pt-2"
         >
-          {failure === null ? null : (
-            <p role="alert" className="notice-danger">
-              {failure}
-            </p>
-          )}
-
           <div>
             <label htmlFor="behalf-member" className="mb-1 block text-body font-medium">
               Recorded by
@@ -235,6 +231,15 @@ export function RecordOnBehalfForm({
               className="field py-2"
             />
           </div>
+
+          {/* Beside Save, out of its bar, as in the amend sheet (D-225-1):
+              said atop the form, it was scrolled away from where Save is
+              pressed. */}
+          {failure === null ? null : (
+            <p ref={said} role="alert" className="notice-danger">
+              {failure}
+            </p>
+          )}
 
           <SheetActions>
             <button

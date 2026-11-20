@@ -2579,7 +2579,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   banner.
 - **Source:** [CSSOM View, scroll an element into view](https://drafts.csswg.org/cssom-view/#scroll-an-element-into-view);
   measured (#213 verifier r0 and r1, Pixel 5 on Chromium and iPhone 13 on WebKit).
-- **Used by:** D-213-1
+- **Used by:** D-213-1, D-232-7
 
 ### R-213 · A failed press on a busy-disabled button ends with focus on the page, wherever measured (measured)
 
@@ -2680,7 +2680,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** measured (#225 builder, production build, Pixel 5 on Chromium and iPhone 13
   on WebKit; the top case simulated with an alert-sized copy at the top of the form). The
   built layout was confirmed by the #225 verifier.
-- **Used by:** D-225-1, D-225-6
+- **Used by:** D-225-1, D-225-6, D-232-1
 
 ### R-218 · A target's `scroll-margin` adds to its scroller's `scroll-padding` in `scrollIntoView` (measured)
 
@@ -2793,7 +2793,26 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [HTML Standard, `focus()`](https://html.spec.whatwg.org/multipage/interaction.html#dom-focus)
 - **Used by:** D-230-5
 
-### R-224 · On a page, a tap on a partly hidden field scrolls nothing, and Tab reads `scroll-margin` only for some fields (measured)
+### R-224 · A child's layout effects run before its parent's, and a `ResizeObserver` answers after both (read and measured)
+
+- **Finding:** React commits layout effects depth-first: a function component's
+  `useLayoutEffect` runs after every layout effect in its subtree. Resize observations
+  are gathered and delivered in the event loop's rendering step, after layout and before
+  paint, so after the task whose commit ran those effects. So a sheet's layout effect
+  that scrolls to a failure reads the `--sheet-actions` the bar's observer last wrote,
+  not the bar as just drawn. When an offline team sheet drew its "Connect to change…"
+  note with its failure, the bar grew from 80px to 128px at 32px, and the failure ended
+  32px under it. A measure in `SheetActions`' own layout effect, a child of the sheet,
+  is written first.
+- **Source:** react-dom 19.3.1, `commitLayoutEffectOnFiber` (calls
+  `recursivelyTraverseLayoutEffects` before `commitHookLayoutEffects`);
+  [Resize Observer, HTML processing model](https://drafts.csswg.org/resize-observer/#html-event-loop);
+  [HTML Standard, update the rendering](https://html.spec.whatwg.org/multipage/webappapis.html#update-the-rendering);
+  measured (#232 builder, production build, Pixel 5 on Chromium and iPhone 13 on WebKit;
+  the bar's heights by the #232 verifier r1). `sheet.test.tsx` pins the order in jsdom.
+- **Used by:** D-232-4
+
+### R-225 · On a page, a tap on a partly hidden field scrolls nothing, and Tab reads `scroll-margin` only for some fields (measured)
 
 - **Finding:** on the record page, with a field's top showing 24px above the docked Save,
   a tap focuses it and scrolls nothing, on Chromium and WebKit, whatever its

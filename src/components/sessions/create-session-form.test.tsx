@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { CreateSessionForm } from "@/components/sessions/create-session-form";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -99,6 +99,18 @@ const leftTheList = () =>
         "A household you picked is no longer on the follow-up list. Refresh the list and pick again.",
     },
   });
+
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 
 /* The first read of the list answers at once; every later one is handed to `reread`. */
 function rereadList(reread: () => Promise<unknown>): () => Promise<unknown> {
@@ -201,10 +213,36 @@ describe("CreateSessionForm", () => {
     await screen.findByRole("button", { name: "Creating…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse(new TypeError("Load failed"));
     const alert = await screen.findByRole("alert");
     expect(button).toHaveFocus();
     expect(alert).not.toHaveFocus();
+    // Back on Create draft before the two are brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert.parentElement]);
+    expect(focusAtScroll).toEqual([button]);
+  });
+
+  /* Said atop the form, a failure pushed Create draft under the install
+     banner, and at the largest text was above the screen (#232). */
+  it("says a failure under Create draft, and brings the two into view together, clear of the nav", async () => {
+    server({ create: () => Promise.reject(new TypeError("Load failed")) });
+    const { scrolled } = watchScrolls();
+    const user = await open();
+    await user.type(screen.getByLabelText("Name this session"), "Saturday morning");
+    // Nothing moves as the form opens (D-213-3).
+    expect(scrolled).not.toHaveBeenCalled();
+    const button = create();
+    await user.click(button);
+
+    const alert = await screen.findByRole("alert");
+    expect(button.compareDocumentPosition(alert)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const actions = alert.parentElement;
+    expect(actions).toContainElement(button);
+    // No Save docks on Sessions, so the nav's room alone (D-195-1).
+    expect(actions).toHaveClass("scroll-clear-nav");
+    expect(scrolled.mock.contexts).toEqual([actions]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
   });
 
   it("copes with a non-Error failure", async () => {
@@ -425,11 +463,14 @@ describe("creating a follow-up session", () => {
     await screen.findByRole("button", { name: "Creating…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     refuse(leftTheList());
     const alert = await screen.findByRole("alert");
     expect(button).toBeDisabled();
     expect(button).toHaveAccessibleDescription("Loading the follow-up list…");
     expect(document.body).toHaveFocus();
+    const actions = alert.parentElement;
+    expect(scrolled.mock.contexts).toEqual([actions]);
 
     reread(page(LIST.filter((note) => note.householdId !== "h2")));
     await waitFor(() => {
@@ -438,6 +479,10 @@ describe("creating a follow-up session", () => {
     expect(button).toHaveFocus();
     expect(alert).not.toHaveFocus();
     expect(picker().getByRole("status")).toHaveTextContent("2 of 2 households ticked");
+    /* The households came back above Create draft, so its failure is
+       brought into view again (D-226-4), once focus is back on it. */
+    expect(scrolled.mock.contexts).toEqual([actions, actions]);
+    expect(focusAtScroll).toEqual([document.body, button]);
   });
 
   /* A disabled button cannot take focus, so it is left on the page; the

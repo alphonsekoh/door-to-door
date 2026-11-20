@@ -150,13 +150,14 @@ and 862ec8a.
   success: Save name, Export CSV, Show earlier visits while more remain, Mark done and
   Reopen, Join (replaced by "You've joined"). Gone with their form: Add to the registry,
   Add to the team, Create draft.
-- Already on main, seen by the verifier:
-  - A sheet draws its failure at the top of its body and nothing brings it into view:
+- ~~Already on main, seen by the verifier:~~ Filed as #232; closed by D-232-1, D-232-6
+  and D-232-7, with #232's known limits.
+  - ~~A sheet draws its failure at the top of its body and nothing brings it into view:
     Add to the registry, Record for a member and Add households at the default size, Add
     blocks and the follow-up sheet's half-done line at 32px. Worth one issue, as #213 did
-    for Sessions and Team.
-  - Its own failure line pushes a revisit row's Mark done 50px under the iOS install
-    hint, and Create draft 11px under the Android install banner.
+    for Sessions and Team.~~
+  - ~~Its own failure line pushes a revisit row's Mark done 50px under the iOS install
+    hint, and Create draft 11px under the Android install banner.~~
 
 ## Relies on
 

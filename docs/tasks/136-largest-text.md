@@ -41,7 +41,8 @@ only: no contract or schema change.
   to, since the padding counts the bar as covered and moved the form by its height.
   _Refined by D-230-1 and D-230-2:_ the padding adds the home indicator's inset, as the
   bar rests above it; a sheet with no bar keeps 16px plus the inset, 16px only in the
-  browser.
+  browser. _Refined by D-232-4:_ the bar also measures in a layout effect on every
+  render, so a note drawn with a failure is counted before the sheet scrolls to it.
 - **D-136-4 · The Saved line keeps room for "Saved {unit} on this phone." from the save
   on (`hold-text`).** The held words come from `data-hold` as a `visibility: hidden`
   `::after` in the same grid cell, so they are in no text a test locator or screen reader

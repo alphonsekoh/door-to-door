@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { SessionHouseholds } from "@/components/sessions/session-households";
 import type {
   FollowUp,
@@ -681,10 +681,92 @@ describe("adding households", () => {
     await sheet.findByRole("button", { name: "Adding…" });
     await focusDropped();
 
+    const focusAtScroll: (Element | null)[] = [];
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+      focusAtScroll.push(document.activeElement);
+    });
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
     refuse(new TypeError("Failed to fetch"));
     const alert = await sheet.findByRole("alert");
     expect(button).toHaveFocus();
     expect(alert).not.toHaveFocus();
+    // Back on Add before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([button]);
+  });
+
+  /* Said atop the list, it was above the view once the list was scrolled
+     to tick a household, at every text size (#232). */
+  it("says a failed add just above Add's bar, and brings it into view as it is drawn", async () => {
+    server({ add: () => Promise.reject(new TypeError("Failed to fetch")) });
+    mount();
+    const sheet = await openSheet();
+    fireEvent.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
+    const add = sheet.getByRole("button", { name: "Add 1 household" });
+    fireEvent.click(add);
+
+    const alert = await sheet.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not add those households.");
+    expect(
+      sheet.getByRole("checkbox", { name: "Blk 130 · #h4" }).compareDocumentPosition(alert),
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(add);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
+  });
+
+  /* The read that empties the pick puts why Add waits in its bar, which
+     grew over the failure kept above it (#232). */
+  it.each([
+    ["comes back without the household", () => Promise.resolve(listedPage([note("h1")]))],
+    ["cannot be read", () => Promise.reject(new TypeError("Failed to fetch"))],
+  ])("brings a kept failure into view again once the list read after it %s", async (_, answer) => {
+    let reads = 0;
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server({
+      listed: () =>
+        ++reads === 1
+          ? Promise.resolve(listedPage([note("h1"), note("h4", { blockName: "130" })]))
+          : held.then(answer),
+      add: () =>
+        Promise.reject(
+          new ApiRequestError(409, {
+            error: {
+              code: "not_on_follow_up_list",
+              message:
+                "A household you picked is no longer on the follow-up list. Refresh the list and pick again.",
+            },
+          }),
+        ),
+    });
+    mount();
+    const sheet = await openSheet();
+    fireEvent.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
+    fireEvent.click(sheet.getByRole("button", { name: "Add 1 household" }));
+    const alert = await sheet.findByRole("alert");
+    expect(scrolled.mock.contexts).toEqual([alert]);
+
+    release();
+    expect(
+      await sheet.findByRole("button", { description: "Tick the households to add." }),
+    ).toBeDisabled();
+    expect(alert).toHaveTextContent("A household you picked is no longer on the follow-up list.");
+    expect(scrolled.mock.contexts).toEqual([alert, alert]);
   });
 
   it("holds more than one request may add, and says so beside the button", async () => {

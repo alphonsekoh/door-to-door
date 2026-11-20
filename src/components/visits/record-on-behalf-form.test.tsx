@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { RecordOnBehalfForm } from "@/components/visits/record-on-behalf-form";
 import type { Block, User } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -349,10 +349,49 @@ describe("RecordOnBehalfForm", () => {
     await screen.findByRole("button", { name: "Saving…" });
     await focusDropped();
 
+    const focusAtScroll: (Element | null)[] = [];
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+      focusAtScroll.push(document.activeElement);
+    });
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
     refuse(new TypeError("Load failed"));
     const alert = await screen.findByRole("alert");
     expect(save).toHaveFocus();
     expect(screen.getByRole("dialog")).toContainElement(save);
+    expect(alert).not.toHaveFocus();
+    // Back on Save before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([save]);
+  });
+
+  /* Said atop the form, it was above the view once Notes was reached, at
+     every text size (#232). */
+  it("says a failure beside Save, just above its bar, and brings it into view as it is drawn", async () => {
+    const user = renderForm();
+    apiFetch.mockRejectedValue(new TypeError("Load failed"));
+    await user.selectOptions(screen.getByLabelText("Recorded by"), "u1");
+    await user.type(screen.getByLabelText("Unit number"), "#05-123");
+    await user.click(screen.getByRole("radio", { name: "High" }));
+    await user.type(screen.getByLabelText("Notes"), "Phoned in");
+    const scrolled = vi.spyOn(Element.prototype, "scrollIntoView");
+    onTestFinished(() => {
+      scrolled.mockRestore();
+    });
+    const save = screen.getByRole("button", { name: "Save the record" });
+    await user.click(save);
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Could not record that visit.");
+    expect(screen.getByLabelText("Notes").compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(save);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
     expect(alert).not.toHaveFocus();
   });
 

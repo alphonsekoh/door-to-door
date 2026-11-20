@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { FollowUpSheet, diffFollowUp } from "@/components/follow-ups/follow-up-sheet";
 import type { FollowUp } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -74,6 +74,17 @@ const invalid = (path: string, message = "Invalid string: must match pattern /\\
 const type = (label: string, value: string) => {
   fireEvent.change(sheet().getByLabelText(label), { target: { value } });
 };
+/* Every scroll from here on, and where focus was at each. */
+function watchScrolls() {
+  const focusAtScroll: (Element | null)[] = [];
+  const scrolled = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {
+    focusAtScroll.push(document.activeElement);
+  });
+  onTestFinished(() => {
+    scrolled.mockRestore();
+  });
+  return { scrolled, focusAtScroll };
+}
 /* A request the test refuses by hand, once focus has had time to drop. */
 function held(): { promise: Promise<never>; refuse: (reason: unknown) => void } {
   let refuse: (reason: unknown) => void = () => undefined;
@@ -206,10 +217,36 @@ describe("a member suggesting a return visit", () => {
     await sheet().findByRole("button", { name: "Saving…" });
     await focusDropped();
 
+    const { scrolled, focusAtScroll } = watchScrolls();
     request.refuse(new TypeError("Failed to fetch"));
     const alert = await sheet().findByRole("alert");
     expect(button).toHaveFocus();
     expect(screen.getByRole("dialog")).toContainElement(button);
+    expect(alert).not.toHaveFocus();
+    // Back on the action before the failure is brought into view (D-208-4).
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(focusAtScroll).toEqual([button]);
+  });
+
+  /* Said atop the sheet, it was above the view once the due date was
+     reached at the largest text (#232). */
+  it("says a failed send just above its bar, and brings it into view as it is drawn", async () => {
+    apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+    render(<FollowUpSheet mode={create} onClose={vi.fn()} onSaved={vi.fn()} />);
+    type(WHY, "Call back");
+    const { scrolled } = watchScrolls();
+    const button = sheet().getByRole("button", { name: "Send suggestion" });
+    fireEvent.click(button);
+
+    const alert = await sheet().findByRole("alert");
+    expect(sheet().getByLabelText("Go back by (optional)").compareDocumentPosition(alert)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    const bar = alert.nextElementSibling;
+    expect(bar).toHaveAttribute("data-sheet-actions");
+    expect(bar).toContainElement(button);
+    expect(scrolled.mock.contexts).toEqual([alert]);
+    expect(scrolled.mock.calls).toEqual([[{ block: "nearest" }]]);
     expect(alert).not.toHaveFocus();
   });
 
@@ -505,6 +542,28 @@ describe("an admin adding to the follow-up list", () => {
         expect(button).toBeEnabled();
       });
       expect(button).toHaveFocus();
+    });
+
+    /* Said atop the sheet, the line was above the view at the largest
+       text (#232). Each refused retry says it anew, so it is brought into
+       view again. */
+    it("says so just above the retry's bar, and brings it into view each time the session step fails", async () => {
+      asAdmin();
+      server({ running: [SESSION], addToSession: () => Promise.reject(new Error("down")) });
+      const { scrolled } = watchScrolls();
+      const said = await listOnce();
+      const retry = sheet().getByRole("button", { name: "Add to Saturday revisits" });
+      const bar = said.nextElementSibling;
+      expect(bar).toHaveAttribute("data-sheet-actions");
+      expect(bar).toContainElement(retry);
+      expect(scrolled.mock.contexts).toEqual([said]);
+
+      fireEvent.click(retry);
+      await waitFor(() => {
+        expect(scrolled).toHaveBeenCalledTimes(2);
+      });
+      expect(scrolled.mock.contexts).toEqual([said, said]);
+      expect(said).not.toHaveFocus();
     });
 
     it("closes without asking, since the note is saved", async () => {
