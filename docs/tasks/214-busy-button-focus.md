@@ -1,7 +1,6 @@
 # #214 · A failed press on a busy-disabled button gives focus back
 
-- **Status:** In progress (PR #224, branch `fix/214-busy-button-focus`). The owner ruled
-  option B on 2026-11-19 (D-214-2).
+- **Status:** Done (PR #224). The owner ruled option B on 2026-11-19 (D-214-2).
 - **Phase:** 7 - Hardening
 - **Depends on:** #208, #213
 
@@ -136,9 +135,9 @@ To file or fold into #221:
   test placed after one of them hangs (R-214). `block-attach-sheet` and `outing-team`
   are on #221's list, so #221 should narrow `toFake` there first.
 - A successful press can drop focus the same way (D-214-8).
-- Already on main, seen by the verifier: the amend sheet's failure is drawn at the top
+- ~~Already on main, seen by the verifier: the amend sheet's failure is drawn at the top
   of the form and nothing brings it into view, so at 32px, or with Add details open, it
-  can sit above the visible part of the sheet.
+  can sit above the visible part of the sheet.~~ Fixed by #225 (D-225-1 to D-225-5).
 - Already on main: after End is refused because the session ended elsewhere, Admin
   Sessions still shows "Running now" and End session beside "already ended" until a
   refresh.
