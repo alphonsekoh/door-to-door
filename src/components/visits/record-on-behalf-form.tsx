@@ -7,6 +7,7 @@ import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import type { Block, InterestLevel, RecordedVisit, User } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import {
   type NotSaved,
   type NotSavedField,
@@ -61,6 +62,10 @@ export function RecordOnBehalfForm({
   const blockField = useRef<HTMLSelectElement>(null);
   const unitField = useRef<HTMLInputElement>(null);
   const firstInterest = useRef<HTMLInputElement>(null);
+  /* Back on Save, inside the sheet, from the page it fell to. Where the
+     server's refusal opens Not saved, it then opens from Save, and its OK
+     still goes to the field it names (D-119-15). */
+  const { notePress, refused: saveRefused } = useRefusalFocus();
   const fieldRefs: Partial<Record<NotSavedField, RefObject<HTMLElement | null>>> = {
     memberId: memberField,
     blockId: blockField,
@@ -93,6 +98,7 @@ export function RecordOnBehalfForm({
       return;
     }
 
+    notePress();
     setFailure(null);
     setSaving(true);
     const unit = normaliseUnitNumber(unitNumber);
@@ -118,6 +124,7 @@ export function RecordOnBehalfForm({
           : failureLine(error, "Could not record that visit."),
       );
       setNotSaved(refused);
+      saveRefused();
     } finally {
       setSaving(false);
     }

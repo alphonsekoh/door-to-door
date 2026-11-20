@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AddMemberForm } from "@/components/admin/add-member-form";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -154,6 +155,30 @@ describe("AddMemberForm", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/^Could not add that person\.$/);
     expect(screen.getByLabelText("Email")).toHaveValue("new@t.local");
+  });
+
+  /* Disabled while it adds, the button loses focus to the page (#221).
+     Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Add to the team after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        refuse = reject;
+      }),
+    );
+    render(<AddMemberForm onAdded={vi.fn()} googleDomains={DOMAINS} />);
+    const user = await open();
+    await user.type(screen.getByLabelText("Email"), "taken@t.local");
+    await user.type(screen.getByLabelText("Initial password"), "password123");
+    const button = screen.getByRole("button", { name: "Add to the team" });
+    await pressByKey(user, button);
+    await screen.findByRole("button", { name: "Adding…" });
+    await focusDropped();
+
+    refuse(refusal("That email is already in use."));
+    const alert = await screen.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 
   it("copes with a non-Error failure", async () => {

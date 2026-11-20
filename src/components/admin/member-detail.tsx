@@ -6,6 +6,7 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { formatDayTime } from "@/lib/history/dates";
 
 const BACK = { href: "/admin/team", label: "Team" };
@@ -46,6 +47,10 @@ export function MemberDetail({ userId }: { userId: string }) {
   const [failure, setFailure] = useState<{ at: string; message: string } | null>(null);
   /* The failure and the control it is about, scrolled into view together. */
   const failureBlock = useRef<HTMLDivElement>(null);
+  /* Every Sign out is disabled until the list is read again. A refusal gives
+     focus back to the one pressed then; Sign out everywhere's is noted on
+     it, never on its confirm. */
+  const { notePress, refused } = useRefusalFocus();
   /* Only the newest read of the list is shown (D-28-7). */
   const generation = useRef(0);
 
@@ -117,6 +122,7 @@ export function MemberDetail({ userId }: { userId: string }) {
     await load({ keepList: failed });
     setEnding(null);
     setBusy(false);
+    if (failed) refused();
   }
 
   /* `control`, with the failure about it just above it. */
@@ -208,9 +214,10 @@ export function MemberDetail({ userId }: { userId: string }) {
                       <button
                         type="button"
                         disabled={busy}
-                        onClick={() =>
-                          void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id)
-                        }
+                        onClick={() => {
+                          notePress();
+                          void end(`/users/${userId}/sign-ins/${signIn.id}`, signIn.id);
+                        }}
                         aria-label={`${ending === signIn.id ? "Signing out" : "Sign out"} ${signIn.device}, last used ${formatDayTime(signIn.lastUsedAt)}`}
                         className="min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
                       >
@@ -231,6 +238,7 @@ export function MemberDetail({ userId }: { userId: string }) {
                 type="button"
                 disabled={busy}
                 onClick={() => {
+                  notePress();
                   setConfirming(true);
                 }}
                 className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"

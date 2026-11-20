@@ -315,6 +315,9 @@ export function RecordVisitForm({
      refusal gives it back (#214); the Not saved pop-up opens after, and
      still sends it to the field (D-119-15). */
   const { notePress, refused: saveRefused } = useRefusalFocus();
+  /* Undo is disabled while it reopens. One that got no answer stays for a
+     second try and has focus back; one refused goes, and its button too. */
+  const undoFocus = useRefusalFocus();
   const savedId = saved?.visitId ?? null;
   const live = useLive();
 
@@ -637,10 +640,15 @@ export function RecordVisitForm({
       ids,
       before.kind === "failed" ? before.reopened : 0,
     );
-    if (undoing.current === visitId) undoing.current = null;
-    /* The next unit's first keystroke can meet this answer (#155). */
+    /* No newer Undo has gone out since: an older answer landing late would
+       spend the press noted for the newer one. */
+    const newest = undoing.current === visitId;
+    if (newest) undoing.current = null;
+    /* The next unit's first keystroke can meet this answer (#155). Focus
+       goes back in the same transition, as Undo is enabled again. */
     startTransition(() => {
       setSaved(onThisSave(outcome));
+      if (newest && outcome.kind === "failed") undoFocus.refused();
     });
     void followUp?.recheck?.();
     onRecorded();
@@ -758,7 +766,10 @@ export function RecordVisitForm({
                       count={undoIds.length}
                       undoing={saved.undo.kind === "undoing"}
                       disabled={!online}
-                      onUndo={() => void undoMarked(saved.visitId, undoIds, saved.undo)}
+                      onUndo={() => {
+                        undoFocus.notePress();
+                        void undoMarked(saved.visitId, undoIds, saved.undo);
+                      }}
                     />
                   </>
                 )}

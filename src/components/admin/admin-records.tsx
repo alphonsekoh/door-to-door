@@ -26,6 +26,7 @@ import {
 } from "@/lib/follow-ups/marked-done";
 import { asHouseholdSummary } from "@/lib/history/history";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { loadAllUsers } from "@/lib/session/users";
 import {
@@ -104,6 +105,9 @@ export function AdminRecords() {
   const online = useOnline();
   /* The record whose Undo is on its way, as on the member's Saved line. */
   const undoing = useRef<string | null>(null);
+  /* Undo is disabled while it reopens. One that got no answer stays for a
+     second try and has focus back; one refused goes, and its button too. */
+  const undoFocus = useRefusalFocus();
   const markedLine = useRef<HTMLDivElement>(null);
   const markedId = marked?.visitId ?? null;
 
@@ -236,8 +240,12 @@ export function AdminRecords() {
       ids,
       current.undo.kind === "failed" ? current.undo.reopened : 0,
     );
-    if (undoing.current === current.visitId) undoing.current = null;
+    /* No newer Undo has gone out since: an older answer landing late would
+       spend the press noted for the newer one. */
+    const newest = undoing.current === current.visitId;
+    if (newest) undoing.current = null;
     setMarked(onThis(outcome));
+    if (newest && outcome.kind === "failed") undoFocus.refused();
   }
 
   const { session, entries, total } = state;
@@ -282,7 +290,10 @@ export function AdminRecords() {
               count={undoIds.length}
               undoing={marked.undo.kind === "undoing"}
               disabled={!online}
-              onUndo={() => void undoMarked(marked, undoIds)}
+              onUndo={() => {
+                undoFocus.notePress();
+                void undoMarked(marked, undoIds);
+              }}
             />
           )}
         </div>

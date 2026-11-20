@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AdminTeamSheet } from "@/components/admin/admin-team-sheet";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const people = [
   { id: "admin", name: "Ada Admin" },
@@ -102,6 +103,31 @@ describe("AdminTeamSheet", () => {
     await user.click(screen.getByRole("button", { name: "Save name" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/Could not change/);
     expect(screen.getByLabelText(/Team name/)).toHaveValue("North");
+  });
+
+  /* Disabled while it saves, the action loses focus to the page, outside
+     the sheet (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to its action, inside the sheet, after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((_, reject) => {
+          refuse = reject;
+        }),
+    );
+    const user = userEvent.setup();
+    sheet({ mode: "rename", initialName: "North", onSubmit });
+    const dialog = screen.getByRole("dialog", { name: "Rename team" });
+    const save = screen.getByRole("button", { name: "Save name" });
+    await pressByKey(user, save);
+    await screen.findByRole("button", { name: "Saving…" });
+    await focusDropped();
+
+    refuse("boom");
+    const alert = await screen.findByRole("alert");
+    expect(save).toHaveFocus();
+    expect(dialog).toContainElement(save);
+    expect(alert).not.toHaveFocus();
   });
 
   it("sends once for a double tap", async () => {

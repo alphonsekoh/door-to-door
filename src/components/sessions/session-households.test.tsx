@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionHouseholds } from "@/components/sessions/session-households";
 import type {
@@ -10,6 +11,7 @@ import type {
 } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -459,6 +461,35 @@ describe("taking a household out", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not remove that household.");
   });
 
+  /* Disabled while it removes, the confirm's button loses focus to the page
+     (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("ends on the row's Remove after its confirm is refused, once the dialog has gone", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    server({
+      remove: () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    const user = userEvent.setup();
+    mount();
+    const button = await screen.findByRole("button", {
+      name: "Remove Blk 125 · #h3 from this session",
+    });
+    await pressByKey(user, button);
+    const dialog = screen.getByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Remove from session" }));
+    await within(dialog).findByRole("button", { name: "Working…" });
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    await screen.findByRole("alert");
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(button).toHaveFocus();
+  });
+
   it("is not offered for a household visited in this session, and says why", async () => {
     server({
       picks: () =>
@@ -629,6 +660,31 @@ describe("adding households", () => {
     fireEvent.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
     fireEvent.click(sheet.getByRole("button", { name: "Add 1 household" }));
     expect(await sheet.findByRole("alert")).toHaveTextContent("Could not add those households.");
+  });
+
+  /* Disabled while it adds, the button loses focus to the page, outside the
+     sheet (#221). Held until it has, as a real refusal is (D-208-6). */
+  it("gives focus back to Add, inside the sheet, after a refusal", async () => {
+    let refuse: (reason: unknown) => void = () => undefined;
+    server({
+      add: () =>
+        new Promise((_, reject) => {
+          refuse = reject;
+        }),
+    });
+    const user = userEvent.setup();
+    mount();
+    const sheet = await openSheet();
+    await user.click(await sheet.findByRole("checkbox", { name: "Blk 130 · #h4" }));
+    const button = sheet.getByRole("button", { name: "Add 1 household" });
+    await pressByKey(user, button);
+    await sheet.findByRole("button", { name: "Adding…" });
+    await focusDropped();
+
+    refuse(new TypeError("Failed to fetch"));
+    const alert = await sheet.findByRole("alert");
+    expect(button).toHaveFocus();
+    expect(alert).not.toHaveFocus();
   });
 
   it("holds more than one request may add, and says so beside the button", async () => {

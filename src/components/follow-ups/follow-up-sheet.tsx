@@ -20,6 +20,7 @@ import {
   instantToDueDay,
 } from "@/lib/history/follow-ups";
 import { useOnline } from "@/lib/hooks/use-online";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import {
   NOTE_NOT_SAVED,
@@ -134,6 +135,9 @@ export function FollowUpSheet({
   const noteField = useRef<HTMLTextAreaElement>(null);
   /* Synchronous, so two taps in one frame send one request (D-74-44). */
   const sending = useRef(false);
+  /* Back on the action pressed, inside the sheet, from the page it fell to.
+     A half done add counts: the action is then the retry, or Done. */
+  const { notePress, refused: sendRefused } = useRefusalFocus();
 
   const copy = copyFor(mode, isAdmin);
   const length = text.trim().length;
@@ -153,12 +157,14 @@ export function FollowUpSheet({
   /* The request answers with what to tell the parent, or null to stay open. */
   async function send(request: () => Promise<string | null>): Promise<void> {
     if (sending.current) return;
+    notePress();
     sending.current = true;
     setBusy(true);
     setFailure(null);
     try {
       const message = await request();
-      if (message !== null) onSaved(message);
+      if (message === null) sendRefused();
+      else onSaved(message);
     } catch (error) {
       const refused = notSavedFromServer(error, ["note"]);
       if (refused === null) {
@@ -171,6 +177,7 @@ export function FollowUpSheet({
         if (note === undefined) setFailure(notSavedLine(refused));
         setNotSaved(refused);
       }
+      sendRefused();
     } finally {
       sending.current = false;
       setBusy(false);
@@ -325,8 +332,19 @@ export function FollowUpSheet({
 
         {partial === null ? <AlsoAddRow also={also} /> : null}
 
+        {/* One button in one place, so a half done add leaves focus on its
+            retry, or Done, where the action was. */}
         <SheetActions note={online ? null : FOLLOW_UP_OFFLINE_NOTE}>
-          {partial === null ? null : partial.refused === null ? (
+          {partial === null ? (
+            <button
+              type="button"
+              disabled={busy || !online || also.looking}
+              onClick={submit}
+              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
+            >
+              {busy ? "Saving…" : copy.submit}
+            </button>
+          ) : partial.refused === null ? (
             <button
               type="button"
               disabled={busy || !online}
@@ -346,16 +364,6 @@ export function FollowUpSheet({
               className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
             >
               Done
-            </button>
-          )}
-          {partial !== null ? null : (
-            <button
-              type="button"
-              disabled={busy || !online || also.looking}
-              onClick={submit}
-              className="min-h-14 w-full btn-primary rounded-xl text-title font-semibold"
-            >
-              {busy ? "Saving…" : copy.submit}
             </button>
           )}
         </SheetActions>

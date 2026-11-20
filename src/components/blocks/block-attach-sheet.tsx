@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Block, BlockList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
+import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { Sheet, SheetActions } from "@/components/ui/sheet";
 
 /*
@@ -37,6 +38,9 @@ export function BlockAttachSheet({
    * they come back in that order.
    */
   const generation = useRef(0);
+  /* Add to the registry and Attach are both disabled while either is out.
+     A refusal gives focus back to the one pressed, inside the sheet. */
+  const { notePress, refused } = useRefusalFocus();
 
   const load = useCallback(async (term: string) => {
     const mine = ++generation.current;
@@ -67,6 +71,7 @@ export function BlockAttachSheet({
       setFailure("A block needs a number and a street.");
       return;
     }
+    notePress();
     setFailure(null);
     setBusy(true);
     try {
@@ -82,18 +87,21 @@ export function BlockAttachSheet({
       setCreating(false);
     } catch (error) {
       setFailure(failureLine(error, "Could not add that block."));
+      refused();
     } finally {
       setBusy(false);
     }
   }
 
   async function attach(): Promise<void> {
+    notePress();
     setFailure(null);
     setBusy(true);
     try {
       await onAttach(chosen);
     } catch (error) {
       setFailure(failureLine(error, "Could not attach those blocks."));
+      refused();
     } finally {
       setBusy(false);
     }

@@ -6,6 +6,7 @@ import type { SignIn, User } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
 import { formatDayTime } from "@/lib/history/dates";
+import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@/lib/api-client", async () => {
@@ -335,6 +336,85 @@ describe("MemberDetail (#125)", () => {
       expect(alert.parentElement).toHaveClass("scroll-clear-nav");
       expect(alert.parentElement).not.toHaveClass("scroll-clear-chrome");
       expect(within(card("Chrome on Android")).queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    /* Every Sign out is disabled until the list is read again, and the one
+       pressed loses focus to the page (#221). Each holds the refusal until it
+       has, as a real one is (D-208-6), and the read after it too. */
+    describe("focus", () => {
+      function heldEnd() {
+        let refuse: (reason: unknown) => void = () => undefined;
+        const onDelete = () =>
+          new Promise((_, reject) => {
+            refuse = reject;
+          });
+        return {
+          onDelete,
+          refuse: (reason: unknown) => {
+            refuse(reason);
+          },
+        };
+      }
+
+      it("goes back to the Sign out pressed once the list is read again", async () => {
+        const user = userEvent.setup();
+        const phone = signIn("s1", "Chrome on Android");
+        const iphone = signIn("s2", "Safari on iPhone");
+        const end = heldEnd();
+        const after = held();
+        serveReads(alice, [Promise.resolve([phone, iphone]), after.promise], end.onDelete);
+        render(<MemberDetail userId="u1" />);
+        await screen.findByText("Safari on iPhone");
+        const button = within(card("Safari on iPhone")).getByRole("button", {
+          name: /^Sign out/,
+        });
+        await pressByKey(user, button);
+        expect(button).toBeDisabled();
+        await focusDropped();
+
+        end.refuse(new TypeError("Failed to fetch"));
+        const alert = await within(card("Safari on iPhone")).findByRole("alert");
+        // Still disabled while the list is read again, so not yet.
+        expect(button).toBeDisabled();
+        expect(document.body).toHaveFocus();
+
+        after.settle([phone, iphone]);
+        await waitFor(() => {
+          expect(button).toBeEnabled();
+        });
+        expect(button).toHaveFocus();
+        expect(alert).not.toHaveFocus();
+      });
+
+      it("goes back to Sign out everywhere after its confirm, which could not give it back", async () => {
+        const user = userEvent.setup();
+        const phone = signIn("s1", "Chrome on Android");
+        const end = heldEnd();
+        const after = held();
+        serveReads(alice, [Promise.resolve([phone]), after.promise], end.onDelete);
+        render(<MemberDetail userId="u1" />);
+        await screen.findByText("Chrome on Android");
+        const button = screen.getByRole("button", { name: "Sign out everywhere" });
+        await pressByKey(user, button);
+        const dialog = screen.getByRole("alertdialog");
+        await user.click(within(dialog).getByRole("button", { name: "Sign out everywhere" }));
+        await within(dialog).findByRole("button", { name: "Working…" });
+        await focusDropped();
+
+        end.refuse(new TypeError("Failed to fetch"));
+        await screen.findByRole("alert");
+        await waitFor(() => {
+          expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+        });
+        // The dialog gave focus back to a button still disabled (D-90-9).
+        expect(document.body).toHaveFocus();
+
+        after.settle([phone]);
+        await waitFor(() => {
+          expect(button).toBeEnabled();
+        });
+        expect(button).toHaveFocus();
+      });
     });
 
     it("draws nothing once the list read again no longer has what was pressed", async () => {

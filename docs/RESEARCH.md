@@ -2695,3 +2695,21 @@ config`, parse only; #124 docs step, confirming the planner's check)
 - **Source:** [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin);
   measured (#225 verifier r0 and r1, iPhone 13 at 390x844 on WebKit, 393x851 on Chromium)
 - **Used by:** D-225-7
+
+### R-219 · React draws two updates made outside an event in one render, and an urgent update before a transition (measured)
+
+- **Finding:** in React 18 and later, state updates made outside a React event, after
+  an `await` or in a promise callback, are batched and drawn together in a later task.
+  So an update made one `await` on an already-settled promise after another, a
+  microtask later, lands in the same render. An update inside `startTransition` is drawn
+  after an urgent one made beside it, so a `setState` outside the transition commits
+  first, while the transition's state still holds the old value (R-151 on the lanes).
+  Measured in #221: with `refused()` moved out of its transition, the record form's Undo
+  and Show earlier visits tests fail, as the hook focuses a button still disabled. Join's
+  `refused()`, one settled `await` after `change()`'s `finally`, gives focus back, and
+  its test fails without it.
+- **Source:** [React 18: automatic batching](https://react.dev/blog/2022/03/29/react-v18#new-feature-automatic-batching),
+  [`startTransition`](https://react.dev/reference/react/startTransition); react-dom
+  19.3.1 in this repo; measured by the #221 builder, reviewer r1 and verifier (mutations
+  RV2, HH1, OT1).
+- **Used by:** D-221-5, D-221-6, D-221-15
