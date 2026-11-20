@@ -2114,7 +2114,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   indicator.
 - **Source:** [CSS Scroll Snap 1, `scroll-padding`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-padding);
   #136 reviewer r2, not re-measured by the docs step
-- **Used by:** D-136-3 (known limit), D-225-7
+- **Used by:** D-136-3 (known limit), D-225-7, D-227-2
 
 ### R-185 · Vitest 5 clears every mock's calls before each test, including those made as a module loaded
 
@@ -2731,3 +2731,29 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [React 18, automatic batching](https://react.dev/blog/2022/03/29/react-v18#new-feature-automatic-batching);
   measured (#226 verifier r0 to r2, production build).
 - **Used by:** D-226-2, D-226-8, D-226-9
+
+### R-221 · Typing in a sheet's textarea scrolls the body to the caret, within its scroll padding, not to the box (measured)
+
+- **Finding:** on Chromium and WebKit, each keystroke in a focused `<textarea>` scrolls
+  the sheet's body only far enough to put the caret inside its `scroll-padding` (the bar
+  plus 16px, D-136-3). So the line being typed stays clear of the bar while the box's
+  foot need not. At 32px on an iPhone 13 in the browser, Suggest a return visit's 226px
+  note has 199.4px of room above Send. After focus its foot is 21.6px under the bar
+  (Shift+Tab) or 42.6px (Tab, tap). Once the text reaches its third or fourth row the
+  body scrolls 58px and the foot ends 15.4px clear. The caret was never under the bar
+  (0 of 750 keystrokes), at worst 15.5px above. On a Pixel 5 the box fits, 10.9px above.
+  With a 34px inset the same scroll stops short by R-184's shortfall: at 28 and 32px the
+  caret was under the bar in 81 of 150 keystrokes on both engines, by up to 17.5px,
+  though the box fits (226px in 318.4px). With `env(safe-area-inset-bottom)` added to
+  the body's scroll padding (#230's fix) it stayed at least 16.5px above. A three-row box
+  (178px, forced in CSS) ended 5.4px above the bar in the browser after Tab or a tap, and
+  installed still had 95 of 150 under.
+- **Source:** measured (#227 planner, production build at 4a79e6e, Pixel 5 on Chromium at
+  393x727 and iPhone 13 on WebKit at 390x664; the default text and 24, 28 and 32px;
+  focus by Tab, Shift+Tab from Send and a tap). Installed was simulated at 390x844 and
+  393x851 with every `env(safe-area-inset-bottom)` rewritten to 34px, as in R-218. Each
+  case typed a wrapping 69-character sentence, then six lines with Enter, 150
+  keystrokes. Two frames after each, the caret's place was read from a mirror of the
+  textarea, which matched its `scrollHeight` to 0px whenever the text overflowed.
+  Re-measures R-184's shortfall while typing.
+- **Used by:** D-227-1, D-227-2, D-227-3
