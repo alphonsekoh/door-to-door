@@ -147,7 +147,8 @@ To file or fold into #221:
   Sessions still shows "Running now" and End session beside "already ended" until a
   refresh. _Fixed by #226 (D-226-1 to D-226-3)._
 - Already on main: on an iPhone at 32px, "Suggest a return visit"'s note box is taller
-  than the room above Send and ends 22px under the bar.
+  than the room above Send and ends 22px under the bar. _Measured by #227 (D-227-1): the
+  line being typed stays clear; accepted as a known limit (D-227-3)._
 
 ## Relies on
 

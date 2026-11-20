@@ -148,6 +148,10 @@ only: no contract or schema change.
   shortfall was about 2px at 32px. Playwright draws no inset, so no E2E sees it.
   _Research:_ R-184. Accepted as a known limit (owner, 2026-11-15). _Fixed for the amend
   sheet's failure only by D-225-7_, with its own scroll margin; fields keep the limit.
+  _Measured for Suggest a return visit's note by D-227-2_: the line being typed goes up
+  to 17.5px under; #230 takes it. In the browser at 32px on an iPhone 13 that note's
+  foot is under the bar too, as the box is taller than the room: a limit of its own,
+  D-227-3.
 - Held words leave a blank line under "Saved #05-123." at 32px after a direct save that
   never says "on this phone" (48px above the unit). Where they cannot be held, "… Not
   sent." or a note's suffix can still grow the line. _Extended by D-196-2:_ under 18.75
