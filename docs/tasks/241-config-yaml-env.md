@@ -1,6 +1,6 @@
 # #241 · Settings from a CONFIG_YAML environment variable
 
-- **Status:** In review (PR #242)
+- **Status:** Done (PR #242)
 - **Phase:** 7 - Hardening
 - **Depends on:** #75
 
