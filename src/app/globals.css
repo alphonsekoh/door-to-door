@@ -208,9 +208,13 @@
    SheetActions docked at its foot, as tall as the bar is drawn
    (--sheet-actions, measured in sheet.tsx). That is 80px at the base size
    whatever the text size, as the page's Save bar is, and more with a note
-   above its button, which follows the text. */
+   above its button, which follows the text. The bar rests above the body's
+   inset-safe-bottom padding, but scroll padding counts from the body's edge,
+   so it adds the home indicator's inset too (R-184): zero without one. */
 @utility scroll-clear-sheet-actions {
-  scroll-padding-bottom: calc(var(--sheet-actions, 0px) + var(--chrome-rem));
+  scroll-padding-bottom: calc(
+    var(--sheet-actions, 0px) + env(safe-area-inset-bottom) + var(--chrome-rem)
+  );
 }
 
 /* Pushed down by the same distance, so something placed just after a bar

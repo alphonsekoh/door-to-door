@@ -787,6 +787,67 @@ test("without signal, a follow-up sheet says why Send is grey at the text size, 
   }
 });
 
+/*
+ * Installed on an iPhone, a sheet's body keeps padding under its bar for the
+ * home indicator, and the bar rests above that padding. The room kept under
+ * what the sheet scrolls into view was counted from the body's edge, so a
+ * field or a failure ended 18px under Send (R-184). No Playwright phone
+ * draws an inset: the stylesheet is served with each one at an iPhone 13's
+ * 34px.
+ */
+test.describe("with a home indicator", () => {
+  /* page.route misses requests the service worker makes in WebKit. */
+  test.use({ serviceWorkers: "block" });
+
+  test("what a sheet brings into view ends clear of Send, which rests above the indicator", async ({
+    memberPage: page,
+  }) => {
+    await page.route(/\/_next\/static\/[^?]*\.css(\?|$)/, async (route) => {
+      const response = await route.fetch();
+      const css = await response.text();
+      await route.fulfill({
+        status: response.status(),
+        contentType: "text/css; charset=utf-8",
+        body: css.replaceAll("env(safe-area-inset-bottom)", "34px"),
+      });
+    });
+    await page.goto(`/households/${RESOLVED_HOUSEHOLD}`);
+    await atCap(page);
+    await page.getByRole("button", { name: SUGGESTING.open, exact: true }).first().click();
+    const sheet = page.getByRole("dialog", { name: SUGGESTING.title });
+    const due = sheet.getByLabel("Go back by (optional)");
+    /* So a pass is not a stylesheet served unchanged. */
+    expect(
+      await due.evaluate((field) => {
+        const body = field.closest("[data-sheet-body]");
+        return body === null ? null : getComputedStyle(body).paddingBottom;
+      }),
+      "the body's padding for the home indicator",
+    ).toBe("34px");
+
+    /* Below the note at this size. Scrolled as the sheet scrolls a field
+       taking focus, and the amend sheet its failure: focus itself has each
+       engine scroll a hidden field toward the middle first, and WebKit did
+       so for this date field even with preventScroll. */
+    await due.evaluate((field) => {
+      field.scrollIntoView({ block: "nearest" });
+    });
+    await expect
+      .poll(
+        () =>
+          due.evaluate((field) => {
+            const bar = field.closest("[data-sheet-body]")?.querySelector("[data-sheet-actions]");
+            if (!bar) return null;
+            return Math.round(
+              bar.getBoundingClientRect().top - field.getBoundingClientRect().bottom,
+            );
+          }),
+        { message: "the room between Go back by and the top of Send's bar" },
+      )
+      .toBe(16);
+  });
+});
+
 /* From the default to the cap: the iOS sizes past Large (21px, 23px), and
    either side of where each phone turns compact (about 25px on an iPhone
    13, 27px on a Pixel 5). */
