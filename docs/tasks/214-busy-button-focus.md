@@ -145,7 +145,7 @@ To file or fold into #221:
   can sit above the visible part of the sheet.~~ Fixed by #225 (D-225-1 to D-225-5).
 - Already on main: after End is refused because the session ended elsewhere, Admin
   Sessions still shows "Running now" and End session beside "already ended" until a
-  refresh.
+  refresh. _Fixed by #226 (D-226-1 to D-226-3)._
 - Already on main: on an iPhone at 32px, "Suggest a return visit"'s note box is taller
   than the room above Send and ends 22px under the bar.
 

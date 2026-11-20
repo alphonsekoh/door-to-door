@@ -19,20 +19,20 @@ export type ActionSpec = {
   destructive: boolean;
 };
 
-const SPECS: Record<SessionStatus, ActionSpec[]> = {
-  draft: [{ action: "start", label: "Start session", confirm: null, destructive: false }],
-  active: [
-    {
-      action: "end",
-      label: "End session",
-      confirm: "Members will not be able to record or amend until it is reopened.",
-      destructive: true,
-    },
-  ],
-  ended: [{ action: "reopen", label: "Reopen session", confirm: null, destructive: false }],
+/* One per status: the list and a session's page keep one button for it, which
+   turns from End to Reopen in place when the session moves under it. */
+const SPECS: Record<SessionStatus, ActionSpec> = {
+  draft: { action: "start", label: "Start session", confirm: null, destructive: false },
+  active: {
+    action: "end",
+    label: "End session",
+    confirm: "Members will not be able to record or amend until it is reopened.",
+    destructive: true,
+  },
+  ended: { action: "reopen", label: "Reopen session", confirm: null, destructive: false },
 };
 
-export function availableActions(status: SessionStatus): ActionSpec[] {
+export function sessionAction(status: SessionStatus): ActionSpec {
   return SPECS[status];
 }
 

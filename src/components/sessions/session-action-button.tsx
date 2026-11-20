@@ -2,7 +2,7 @@
 
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { OutingSession } from "@/generated/types.gen";
-import { apiFetch } from "@/lib/api-client";
+import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import type { ActionSpec } from "@/lib/session/sessions";
@@ -17,31 +17,67 @@ import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
  *
  * A failure is said under the button and brought into view with it: near the
  * foot of the Sessions list it landed under the nav (#213).
+ *
+ * A 409 means something moved under this screen: the session was ended or
+ * started by another admin, or another one runs. The screen reads it again
+ * through `onStale` rather than go on offering End beside "has already ended"
+ * (#226). The sentence stays when that re-read turns the button into another
+ * action, since it names the state the screen then shows.
  */
 export function SessionActionButton({
   sessionId,
   spec,
+  read,
   primary = true,
   blocked = null,
   onDone,
+  onStale,
 }: {
   sessionId: string;
   spec: ActionSpec;
+  /* Bumped by the screen each time it reads the session, in the render that
+     draws what it read: `spec` is the same for a re-read that changed
+     nothing, which still ends the wait for one. */
+  read: number;
   primary?: boolean;
   /* Why the server would refuse it now, said beside it instead of offered. */
   blocked?: string | null;
   onDone: (session: OutingSession) => void;
+  onStale: () => void;
 }) {
   const blockedId = useId();
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  /* From a 409 to the screen's next read, taken for the one it set off: a
+     poll already out can land first, and at worst the sentence then goes
+     with the change. Apart from the failure, so that ending the wait brings
+     nothing into view again. */
+  const [awaitsRead, setAwaitsRead] = useState(false);
   const pressed = useRef<HTMLButtonElement>(null);
   const said = useRef<HTMLParagraphElement>(null);
   /* Noted on this button, never on End's confirm, which leaves with its
      dialog: End then ends here too, where D-90-9 returns focus. Above the
      scrolls, which come after focus is back (D-208-4). */
   const { notePress, refused } = useRefusalFocus();
+
+  /* The button outlives a change of its action (D-226-2); what it said or
+     opened for the old one does not, as when it was keyed by its action. A
+     poll that turned Reopen back into End brought back End's confirm, and
+     "has already ended" under it. Only the first read after a 409 keeps the
+     failure through a change, as that sentence names the state it shows.
+     That read ends the wait, changed or not: a clash read back as it was,
+     then started elsewhere, left "Another session is already active" under
+     End. */
+  const [seen, setSeen] = useState({ action: spec.action, read });
+  if (seen.action !== spec.action || seen.read !== read) {
+    setSeen({ action: spec.action, read });
+    setAwaitsRead(false);
+    if (seen.action !== spec.action) {
+      setConfirming(false);
+      if (!awaitsRead) setFailure(null);
+    }
+  }
 
   /*
    * Before it is painted, clear of the nav and a banner floating on it, and
@@ -51,12 +87,17 @@ export function SessionActionButton({
    * outgrew the screen and left the alert's end under the nav. The alert's
    * end, then the button's top, land where a block of just the two would,
    * the button winning where even they cannot fit.
+   *
+   * Again when a 409's re-read turns the button into another action under
+   * the failure it keeps: the re-read redraws the row or page around it, and
+   * on a session's page an ended summary lands above it (D-226-4). Any other
+   * change of action has dropped the failure by then.
    */
   useLayoutEffect(() => {
     if (failure === null) return;
     said.current?.scrollIntoView({ block: "nearest" });
     pressed.current?.scrollIntoView({ block: "nearest" });
-  }, [failure]);
+  }, [failure, spec.action]);
 
   async function run(): Promise<void> {
     setFailure(null);
@@ -71,8 +112,14 @@ export function SessionActionButton({
       /* ApiRequestError carries the contract's message, which for a clash
          says how to clear it - keep it rather than a generic apology. */
       setFailure(failureLine(error, "Could not do that."));
+      /* Only a 409 says the session may have moved. After a network failure
+         the re-read would most likely fail too, swapping the screen for its
+         load error. */
+      const stale = error instanceof ApiRequestError && error.status === 409;
+      setAwaitsRead(stale);
       setConfirming(false);
       refused();
+      if (stale) onStale();
     } finally {
       setBusy(false);
     }

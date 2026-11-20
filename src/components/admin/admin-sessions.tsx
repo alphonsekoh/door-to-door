@@ -8,7 +8,7 @@ import { SessionActionButton } from "@/components/sessions/session-action-button
 import type { OutingSession, SessionList, SessionStatus } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
-import { availableActions, statusLabel } from "@/lib/session/sessions";
+import { sessionAction, statusLabel } from "@/lib/session/sessions";
 
 const PAGE_SIZE = 25;
 
@@ -40,9 +40,13 @@ const STATUS_STYLE: Record<SessionStatus, string> = {
  */
 export function AdminSessions({ notices }: { notices?: ReactNode }) {
   const [state, setState] = useState<State>({ status: "loading" });
+  /* Every read of the list, counted with what it read: a row's action button
+     tells by it that the read its refusal set off has landed. */
+  const [reads, setReads] = useState(0);
 
   /* A transition: it draws New session's form again, and set urgently inside
-     the input event of a name being typed it put the name back (#171). */
+     the input event of a name being typed it put the name back (#171). The
+     count goes in the same one, so it lands with the rows it counts. */
   const load = useCallback(async () => {
     let next: State;
     try {
@@ -56,6 +60,7 @@ export function AdminSessions({ notices }: { notices?: ReactNode }) {
     }
     startTransition(() => {
       setState(next);
+      setReads((count) => count + 1);
     });
   }, []);
 
@@ -99,7 +104,7 @@ export function AdminSessions({ notices }: { notices?: ReactNode }) {
           </button>
         </div>
       ) : (
-        <SessionRows sessions={state.sessions} onChanged={() => void load()} />
+        <SessionRows sessions={state.sessions} read={reads} onChanged={() => void load()} />
       )}
     </div>
   );
@@ -107,9 +112,11 @@ export function AdminSessions({ notices }: { notices?: ReactNode }) {
 
 function SessionRows({
   sessions,
+  read,
   onChanged,
 }: {
   sessions: OutingSession[];
+  read: number;
   onChanged: () => void;
 }) {
   return sessions.length === 0 ? (
@@ -142,16 +149,18 @@ function SessionRows({
               The action sits on the row, not behind the detail screen.
               Reopening a session ended by mistake has to be two taps from
               here, because a member mid-amendment is locked out until it is.
+              One slot, keyed by nothing that changes with the status: when a
+              refused End reads the session back as ended, the same button
+              turns into Reopen, keeping its failure and its focus.
             */}
-            {availableActions(session.status).map((spec) => (
-              <SessionActionButton
-                key={spec.action}
-                sessionId={session.id}
-                spec={spec}
-                primary={false}
-                onDone={onChanged}
-              />
-            ))}
+            <SessionActionButton
+              sessionId={session.id}
+              spec={sessionAction(session.status)}
+              read={read}
+              primary={false}
+              onDone={onChanged}
+              onStale={onChanged}
+            />
           </div>
         </li>
       ))}
