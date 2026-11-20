@@ -1,6 +1,6 @@
 # #230 · A sheet's room under its bar counts the home indicator
 
-- **Status:** In review (PR #237)
+- **Status:** Done (PR #237)
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #225, #227
 
