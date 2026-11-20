@@ -105,10 +105,11 @@ untouched.
 
 - The 34px strip below the bar (Known limits), if a change to the sheet's structure is
   wanted.
-- Not a sheet, and the same on main (verifier nit 2): on the record page, a focused Notes
+- ~~Not a sheet, and the same on main (verifier nit 2): on the record page, a focused Notes
   in Add details is not brought clear of the docked Save. Tapped with its top 24px above
   the bar, it stays 66 to 154px under; installed, Tab from Religion leaves it under the
-  nav. The page has no focus scroll like a sheet's.
+  nav. The page has no focus scroll like a sheet's.~~ Filed as #238; fixed by D-238-2 and
+  D-238-3.
 
 ## Relies on
 

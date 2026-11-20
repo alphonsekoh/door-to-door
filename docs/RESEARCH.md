@@ -2811,3 +2811,29 @@ config`, parse only; #124 docs step, confirming the planner's check)
   measured (#232 builder, production build, Pixel 5 on Chromium and iPhone 13 on WebKit;
   the bar's heights by the #232 verifier r1). `sheet.test.tsx` pins the order in jsdom.
 - **Used by:** D-232-4
+
+### R-225 · On a page, a tap on a partly hidden field scrolls nothing, and Tab reads `scroll-margin` only for some fields (measured)
+
+- **Finding:** on the record page, with a field's top showing 24px above the docked Save,
+  a tap focuses it and scrolls nothing, on Chromium and WebKit, whatever its
+  `scroll-margin`: Notes stayed 66, 132 and 154px under the bar at the default text, 28
+  and 32px. Tab onto a `<textarea>` in either engine, and onto a text `<input>` in
+  WebKit, scrolls only to reveal the caret and ignores the margin: installed at the
+  default text, Notes took focus 237 to 238px under the bar with no scroll, while in the
+  browser, its caret hidden, it was centred 22 to 28px clear. Chromium's Tab onto an
+  `<input>` or `<select>`, and WebKit's onto a `<select>`, honour the margin (Contact on
+  a Pixel 5, -113 to 0). With a focus handler calling
+  `scrollIntoView({ block: "nearest" })`, every tapped or tabbed field ended at the
+  margin's edge (0px), a hidden one included, so not centred. Playwright's `click()`
+  first scrolls a hidden field to the middle, and Chromium centres its margin box there:
+  Notes' unequal margins (56px above, 144px below) left it 44px higher than without
+  them.
+- **Source:** measured (#238 planner, production build of main at 610f95b, Pixel 5 on
+  Chromium and iPhone 13 on WebKit, in the browser and installed with every
+  `env(safe-area-inset-bottom)` served as 34px as in R-218, at the default text, 28 and
+  32px; re-measured by the verifier at c02d196; the `click()` case by the builder, whose
+  screenshot matched it to the pixel). The margin box being what is centred is the
+  builder's reading of the spec, not re-read by the docs step.
+  [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
+  [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
+- **Used by:** D-238-1, D-238-3, D-238-7, D-238-8

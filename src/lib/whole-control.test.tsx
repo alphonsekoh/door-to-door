@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { wholeControl } from "@/lib/whole-control";
+import { isEntryField, wholeControl } from "@/lib/whole-control";
 
 describe("wholeControl", () => {
   it("is the tile round a checkbox drawn inside its label", () => {
@@ -56,5 +56,40 @@ describe("wholeControl", () => {
     // A field of its own, too tall to be a tile: the field is what is typed in.
     const notes = screen.getByRole("textbox", { name: "Notes" });
     expect(wholeControl(notes)).toBe(notes);
+  });
+});
+
+describe("isEntryField", () => {
+  it("is a field typed or picked in", () => {
+    render(
+      <>
+        <input aria-label="Name" />
+        <input type="tel" aria-label="Contact" />
+        <textarea aria-label="Notes" />
+        <select aria-label="Religion">
+          <option>Not known</option>
+        </select>
+      </>,
+    );
+    expect(isEntryField(screen.getByRole("textbox", { name: "Name" }))).toBe(true);
+    expect(isEntryField(screen.getByRole("textbox", { name: "Contact" }))).toBe(true);
+    expect(isEntryField(screen.getByRole("textbox", { name: "Notes" }))).toBe(true);
+    expect(isEntryField(screen.getByRole("combobox", { name: "Religion" }))).toBe(true);
+  });
+
+  it("is never a tile, a button or anything else, where the thumb already is", () => {
+    render(
+      <>
+        <input type="radio" aria-label="High" />
+        <input type="checkbox" aria-label="Blk 123" />
+        <button type="button">Save and next</button>
+        <p>Saved #05-123.</p>
+      </>,
+    );
+    expect(isEntryField(screen.getByRole("radio", { name: "High" }))).toBe(false);
+    expect(isEntryField(screen.getByRole("checkbox", { name: "Blk 123" }))).toBe(false);
+    expect(isEntryField(screen.getByRole("button", { name: "Save and next" }))).toBe(false);
+    expect(isEntryField(screen.getByText("Saved #05-123."))).toBe(false);
+    expect(isEntryField(null)).toBe(false);
   });
 });

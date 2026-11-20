@@ -274,7 +274,8 @@ round 8, and they are in the PR #112 body too.
   _Refined by D-136-3:_ the body clears the bar as drawn (`scroll-clear-sheet-actions`),
   not `scroll-pb-24`. _Refined by D-196-5:_ a box drawn inside its label brings the whole
   tile (`wholeControl`). _Refined by D-214-9:_ a control in the `SheetActions` bar,
-  always in view, is not scrolled to.
+  always in view, is not scrolled to. _Extended by D-238-3:_ the record form brings its
+  own entry fields into view the same way.
 - **D-111-32 · The E2E adds one describe block, "the phone's display settings",** in
   `record-visit.spec.ts`. It covers:
   - press on touch-down;

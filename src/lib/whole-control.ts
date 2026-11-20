@@ -8,3 +8,16 @@ export function wholeControl(element: Element): Element {
   const label = element instanceof HTMLInputElement ? element.labels?.[0] : undefined;
   return label?.contains(element) === true ? label : element;
 }
+
+/*
+ * A field a member types or picks in. A tile or a button is where the thumb
+ * already is, so it is never scrolled to.
+ */
+export function isEntryField(
+  target: EventTarget | null,
+): target is HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  if (target instanceof HTMLInputElement) {
+    return target.type !== "radio" && target.type !== "checkbox";
+  }
+  return target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+}

@@ -89,7 +89,7 @@ in 9828c3c, 210bf9b and 99c37d0.
   moved 84px at 32px, and on an iPhone with a keyboard the failure went under the header
   (verifier r0). Safe because every bar is the last child of the body, or of a form that
   is, so it is always pinned in view, and only buttons in it take focus. _Research:_
-  R-215.
+  R-215. _Applied to the record page by D-238-4:_ its focus scroll skips the docked Save.
 - **D-214-10 · The stalled-outing record form test fakes only `setTimeout` and
   `clearTimeout` (9828c3c).** _Why:_ faking every timer started jsdom's frame and focus
   fixup interval under the fake clock; after it, no later test in the file drew a frame
