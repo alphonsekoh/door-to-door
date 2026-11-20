@@ -1,6 +1,6 @@
 # #238 · A focused field on the record page comes clear of the docked Save
 
-- **Status:** In review (PR #240)
+- **Status:** Done (PR #240)
 - **Phase:** 7 - Hardening
 - **Depends on:** #136, #196, #214, #230
 
