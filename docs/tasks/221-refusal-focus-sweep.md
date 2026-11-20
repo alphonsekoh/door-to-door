@@ -86,12 +86,20 @@ and 862ec8a.
   only where focus ends, and pass without the hook, as D-90-9 gives focus back (D-214-7
   found the same for End and Deactivate). The device pass covers them. _Why:_ D-37-6,
   D-214-7.
+- **D-221-15 · Create draft gives focus back once the list is read again (owner).** A
+  `not_on_follow_up_list` refusal reads the list again and keeps Create draft disabled
+  meanwhile, so the refusal now goes with that re-read: `refused()` runs inside the
+  transition that draws the list, beside `setListed` (D-221-6), on every outcome (55a5a9e).
+  Focus comes back when the list leaves the button enabled; when the read fails or leaves
+  nothing ticked, the button stays disabled and focus stays on the page. The no-answer team
+  controls and buttons disabled offline stay known limits. _Why:_ the owner, 2026-11-20:
+  "Fix it in #229", and accept the other two; D-214-2, D-214-3.
 
 ## How existing decisions are handled
 
 | Decision         | Effect                                                                                | By                |
 | ---------------- | ------------------------------------------------------------------------------------- | ----------------- |
-| D-214-2          | Applied to the rest of the app; three places fall short (Open questions)              | D-221-1, D-221-2  |
+| D-214-2          | Applied to the rest of the app; two places fall short (Known limits, owner)           | D-221-1, D-221-15 |
 | D-214-3          | Refined: a settled `await` may sit between, and a transition's refusal goes inside it | D-221-5, D-221-6  |
 | D-214-5          | Applied; on Sign out everywhere the hook, not D-90-9, gives focus back                | D-221-4, D-221-11 |
 | D-214-7, D-208-6 | Refined: the tests poll for the drop and press by key                                 | D-221-12 to 14    |
@@ -126,8 +134,8 @@ and 862ec8a.
 - No answer on the Team card, admin Teams or either team sheet: every control stays
   disabled until a read succeeds, so focus stays on the page (seen on both phones). In a
   sheet, Tab goes back into the panel.
-- Create draft refused `not_on_follow_up_list` stays disabled while the list is read
-  again, so `refused()` meets a disabled button and focus stays on the page.
+- Create draft refused `not_on_follow_up_list`: if the list cannot be read again, or
+  leaves nothing ticked, the button stays disabled and focus stays on the page (D-221-15).
 - A button also disabled offline stays disabled if the signal drops mid-request.
 - As #214: after an iPhone tap focus stays where it was; VoiceOver and TalkBack were not
   measured.
@@ -157,14 +165,6 @@ D-208-3, D-208-4, D-208-6, D-208-7, D-214-1 to D-214-8, D-214-10.
 
 ## Open questions
 
-- **A refusal that meets a button still disabled for another reason: accept, or fix?**
-  D-214-2 (owner): "Giving focus back is the app-wide rule for a failed press on a
-  busy-disabled button." D-214-3: "`refused()` must run in the same tick as the update
-  that re-enables the button … a caller that awaited between them would focus a
-  disabled button and lose the press." Create draft's `not_on_follow_up_list` refusal
-  does that knowingly: the button is still disabled while the list is read again. The
-  reviewer (r1) says it can be fixed as on a member's page (D-221-4). The no-answer team
-  controls and a button disabled offline have the same shape, but only a later read or
-  the signal enables them. If all stand as written, D-214-2's rule fails at these three
-  places and D-214-3 has a knowing exception. Accept all three as known limits, or fix
-  Create draft (here or in a new issue) and accept the other two?
+- ~~**A refusal that meets a button still disabled for another reason: accept, or fix?**~~
+  Settled by the owner on 2026-11-20: Create draft is fixed here (D-221-15); the no-answer
+  team controls and buttons disabled offline are accepted as known limits.
