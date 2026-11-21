@@ -25,7 +25,8 @@ here from #126 by the owner (D-126-13).
   **Refines D-126-1's wording:** the history's first visit, not its last, is
   `listHouseholds`' latest. _Why:_ the newest page is the one read first, and the id
   makes the order total, so a page edge inside a run stored at one instant neither
-  repeats nor skips a visit.
+  repeats nor skips a visit. _Client refined by D-251-15:_ the API's times carry
+  milliseconds, so the phone keeps visits tied there in the server's order, not by id.
 - **D-160-3 · `visits` has `maxItems: 100`.** _Why:_ `withContract` then checks the bound
   on every answer, not only a test.
 - **D-160-4 · New required `answered`:** some visit, on any page, has an interest level
@@ -91,6 +92,8 @@ here from #126 by the owner (D-126-13).
   more than a page (21 after one new visit), never fewer. _Why:_ a visit stored in
   between pushes the old first page's oldest off the new one, and an older page read
   from an offset counted before that misses it too; the plan dropped it (builder).
+  _Refined by D-251-15:_ the re-read first page is held above the older pages, so what
+  is held stays newest first.
 - **D-160-17 · The failure line has `role="status"` and is brought into view before
   paint, clear of the docked Save at the door (`scroll-clear-chrome`) and of the nav and
   any floating banner elsewhere (`scroll-clear-nav`, D-164-7, D-164-8),** as the Saved

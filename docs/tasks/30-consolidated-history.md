@@ -15,7 +15,8 @@ never revisited.
   with an outstanding follow-up is excluded; oldest first; `minimumInterest` defaults to
   `high`. _Refined by D-117-22:_ a pending suggestion also excludes it, and removed notes
   don't count.
-- **D-30-2 · History groups by household, visits oldest first.**
+- **D-30-2 · History groups by household, visits oldest first.** _Refined by
+  D-251-15:_ visits in one millisecond keep the API's order, reversed.
 - **D-30-3 · CSV export walks every page of the filtered set, capped at 20 pages**, and
   says so when capped.
 - **D-30-4 · CSV cells starting `= + - @` or tab are prefixed with a quote.** _Why:_

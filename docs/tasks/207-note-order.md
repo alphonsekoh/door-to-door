@@ -63,7 +63,8 @@ only a tie, which had no defined order, gains one.
   matters most: the CSV export (D-30-3) reads `/history` 100 rows at a time by offset,
   so a tie across a page edge can leave one record out of the file and put another in
   twice, with no warning. Only seeds and imports make such ties (sync writes each item in
-  its own transaction). Each fix is one more key: the visit id or the session id,
+  its own transaction; _since D-251-7_ a run shares one, but its rows are a microsecond
+  apart, so they still do not tie). Each fix is one more key: the visit id or the session id,
   descending for `listHistory` and `listSessions`. Sign-in eviction and `listSignIns`
   (`src/server/auth/sign-ins.ts:79`, `:228`) are safe: at most `MAX_SIGN_INS` are kept,
   so the limit never splits a tie, and a tie only swaps two equally old rows. _Why:_ the

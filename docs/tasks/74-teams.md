@@ -167,7 +167,9 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
 - **D-74-29 · Disbanded mid-record.** If the team is deleted between reading and
   stamping, the FK fails. Sync retries once, re-reading the author's team (now none or
   another). `POST /visits` has the same race and returns a retryable `500`. _Why:_ a
-  good record must not be held for a team's disbanding.
+  good record must not be held for a team's disbanding. _Refined by D-251-4:_ a run of
+  new records reads the team once; if the run fails, each record's fallback can read it
+  twice more.
 - **D-74-30 · Unexpected failures in sync are `rejected` with `internal_error`, which
   is RETRYABLE, never `conflict`.** The cause is logged server-side with the item id
   only; the client sees a generic message. _Why:_ `conflict` is held for review
@@ -182,6 +184,9 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   statement's snapshot; the lock then a fresh statement sees it (R-34, R-35).
   _Lock mode refined by D-123-2 (owner):_ the code now takes
   `FOR NO KEY UPDATE`, and `canAmend` reads the membership `FOR KEY SHARE` (D-123-3).
+  _Refined by D-251-3:_ consecutive new records insert in one statement, in one
+  transaction. All rows back is the trigger, and fewer sends the records again one at a
+  time (D-251-4).
 - **D-74-32 · A sync item cannot move a stored visit.** A different block, unit or outing
   is `conflict` for EVERYONE, the author included, and is also enforced under the lock
   (a concurrent first insert on another unit no longer leaves identity written to the

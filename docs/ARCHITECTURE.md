@@ -234,9 +234,11 @@ authoritative, and a change to any of them needs the owner.
    the caller, checked in step 3. Then both lock the session row (`FOR KEY SHARE`) and
    judge the session, the block and, in a follow-up session, the list rule for a
    member's new visit
-   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
-   then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
-   the answer is a `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
+   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`). Sync does this once per
+   run of new records and judges every record of the run before writing any
+   (`refuseUnderLock`, D-251-3; see Offline). A new visit on the list then marks the
+   household's owed notes done, last (`markDoneByVisit`, D-117-69), and the answer is a
+   `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
    sync item for a stored visit) is one transaction that locks the session
    `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
    `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
@@ -594,7 +596,7 @@ member signs out on the phone (D-129-6).
 save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /api/auth/session
                                                     │   (owner still signed in?)
                                                     ▼
-                    flushOnce: owner's due records, oldest first, ≤100 (1 if isolated)
+                    flushOnce: owner's due records, oldest first, ≤25 (1 if isolated)
                                                     ▼
                     POST /visits/sync via apiFetch (fresh sentAt, 20 s timeout)
                                                     ▼
@@ -618,6 +620,8 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
   D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record). A
   `413` is handled as a `400` (D-126-11).
+- A batch is at most 25 records (`BATCH_SIZE`). The contract accepts 100, and 25 leaves
+  room under the 20 s timeout even when every record is an amend (D-251-12).
 
 **Offline shell (#77).** A navigation that fails gets the precached, static `/offline`
 at the address that failed; `OfflineShell` then reads the local copy at runtime.
@@ -649,18 +653,44 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   until "Continue as": while the copy loads, when there is none, and at the gate
   (D-106-8).
 
-**Sync write path.** Each item runs in one transaction. It first locks its session's
-row `FOR KEY SHARE` and judges, under that lock, that the session is still active, the
-block is in it and, for a member's new visit in a follow-up session, the unit is on its
-list (D-117-45). Then `INSERT ... ON CONFLICT DO
-NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
-snapshot, auto-join and, in a follow-up session, marking the household's notes done),
-otherwise `SELECT ... FOR NO KEY UPDATE` (D-123-2), re-judge under the lock
-(`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
-interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
-`internal_error` (retryable). The request path above is unchanged; the new endpoints
-(`/sessions/{id}/join`, `/participants`, `/teams`, `/teams/{id}/members`) are ordinary
-`withContract` handlers.
+**Sync write path** (`src/server/visits/sync.ts`). A batch costs a fixed number of
+round trips: 17 for any number of new records by a member on a team, and 7 for replays
+(R-249).
+
+1. **Read.** It reads what judging needs once: blocks, stored visits and sessions
+   (D-251-2).
+2. **Judge.** It judges each item in request order, in the order D-74-34 and D-76-6
+   set. An item either is refused, or is answered `unchanged` or `stale` without a
+   write, or becomes an amend or a new record.
+3. **Write runs.** Consecutive new records form a run, written in one transaction
+   (D-251-3):
+   - It locks the session row `FOR KEY SHARE`. Under that lock it judges, for every
+     record, that the session is still active, the block is in it and, for a member in
+     a follow-up session, the unit is on its list (`refuseUnderLock`, D-117-45). A
+     refused record is refused alone.
+   - Then a fixed set of statements writes the households, the team, the visits, the
+     teammate snapshot, the auto-join and the marking. Households are upserted with
+     identity folded per unit in request order, locked `FOR UPDATE` in (block, unit)
+     order (`upsertHouseholds`, D-251-6). The visits are inserted with
+     `INSERT ... ON CONFLICT DO NOTHING RETURNING`, their `created_at` a microsecond
+     apart in request order (D-251-7). In a follow-up session, each household's owed
+     notes are marked done for its first new record (D-251-8).
+   - If fewer rows come back than were sent, or anything else fails, the run rolls
+     back. Its records then go again one at a time, unlogged (D-251-4, D-251-11).
+4. **Write one at a time.** The per-record path (`persist`), which an amend always
+   takes (D-251-5), is one transaction. It takes the same lock and judgement, then
+   inserts. If the visit is already stored, it runs `SELECT ... FOR NO KEY UPDATE`
+   (D-123-2), re-judges under the lock (`canAmend`, newer `updatedAt`, same household
+   and session), and then makes a narrow `UPDATE` of interest, description and
+   `updatedAt`.
+5. **Answer.** It reads every answer once, after the writes (`getVisits`,
+   `notesMarkedDoneByVisits`, D-251-9).
+
+A batch that names one id twice goes one item at a time (D-251-10). Non-`ApiError`
+failures are `rejected` with `internal_error` (retryable); a failed shared read rejects
+every item it serves. The new endpoints from #74 (`/sessions/{id}/join`,
+`/participants`, `/teams`, `/teams/{id}/members`) are ordinary `withContract`
+handlers.
 
 **Limit: pairs and the queue.** The queue lives in one phone's IndexedDB, scoped to the
 member who saved each record (D-33-1). Teammates (#74)
