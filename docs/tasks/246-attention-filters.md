@@ -37,7 +37,7 @@ schema or server change.
   component state; it now survives Back from a household and a reload, which the term
   does not (D-129-7's trade-off, Known limits). Extends D-29-4 and D-129-7 to this
   screen. _Why:_ Back from a household keeps the filters, and every admin list follows
-  one rule for the address. _Research:_ R-227 (Known limits).
+  one rule for the address. _Research:_ R-233 (Known limits).
 - **D-246-4 · "Show more (N of M)", 50 a page, added to the end, replaces "Showing the N
   longest-waiting of M".** _Why:_ without it, a search on the device could never reach
   past the first 50.
@@ -76,7 +76,7 @@ schema or server change.
   load that the worker answered with Offline, taking the screen and the search with it
   (verifier r0). Now a filter changed offline fails in place to the list's alert and
   Try again, as before #246.
-  _Research:_ R-140, R-141, R-226.
+  _Research:_ R-140, R-141, R-232.
 - **D-246-11 · `useSearchTerm` (D-163-5, D-163-7) serves `/admin/attention` too.** An
   old `?q=` fills the box, and the address keeps only the block and the toggle.
   `signInRedirect` already strips `q` on every path (D-163-8), and no request or
@@ -117,7 +117,7 @@ schema or server change.
   _Why:_ D-37-6 allows it. It rests on Next's history patch and the state Next keeps in
   the entry, which Vitest models by hand, and on there being no page round trip; only a
   real browser on the production build sees them. With `show()` handing Next its own
-  state, it failed on both engines (verifier r1). _Research:_ R-226.
+  state, it failed on both engines (verifier r1). _Research:_ R-232.
 
 ## How existing decisions are handled
 
@@ -159,7 +159,7 @@ schema or server change.
 - A block the picker does not list, from an edited link or past the first 100, reads
   "All blocks" while the list is filtered to it. Clear filters recovers. As on All
   records.
-- `asUuid` is looser than the API's `z.uuid()` (R-227). An edited address with a
+- `asUuid` is looser than the API's `z.uuid()` (R-233). An edited address with a
   well-formed id of no RFC 9562 version or variant passes, the API answers 400, and the
   screen shows the refusal with a Try again that repeats it and no control to clear the
   block; the header's Sessions link leaves. Records' and All records' `teamId` share the

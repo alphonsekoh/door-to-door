@@ -2838,7 +2838,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
 
-### R-226 · A filter change through `router.replace` waits on an RSC fetch and falls back to a page load; through `history.replaceState(null, …)` it makes none (measured)
+### R-232 · A filter change through `router.replace` waits on an RSC fetch and falls back to a page load; through `history.replaceState(null, …)` it makes none (measured)
 
 - **Finding:** on `/admin/attention`, whose page reads no `searchParams`,
   `router.replace` for a block or the toggle fetched the page's RSC payload, and
@@ -2860,7 +2860,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   D-32-18). Extends R-140 from the `?q=` strip to filter changes.
 - **Used by:** D-246-10, D-246-17
 
-### R-227 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
+### R-233 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
 
 - **Finding:** `z.uuid()` with no version wants a version digit 1 to 8 and a variant
   digit 8, 9, a or b (either case), or the nil or max UUID. `asUuid`
