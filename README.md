@@ -630,8 +630,11 @@ and `main` rulesets require:
 | **Production build**       | production `next build`, with no config file and no database                                              | Unless only docs changed                        |
 
 - **A draft runs nothing.** Open a pull request as a draft, push review fixes to it, and
-  mark it ready once: that runs CI, and each later push runs it again. A draft's jobs
-  report skipped, and a draft cannot be merged.
+  mark it ready once: that runs CI, and each later push runs it again. A draft's run
+  skips every job, and its lint job reports under a name no ruleset requires, so the run
+  never stands in for a ready one: the merge waits for the ready run's **Lint, types and
+  format**. If a draft's push starts its run after the ready run's and cancels it, that
+  check is left cancelled until you re-run either run (**Re-run all jobs**).
 - **A lint failure stops the run** in about two minutes, before the other jobs start.
 - **Docs only:** a pull request that changes nothing but `docs/`, `.claude/` and
   top-level Markdown skips the tests and the build
@@ -653,26 +656,30 @@ and `main` rulesets require:
   workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
   base: close and reopen the pull request for that.
 - **A skipped job passes a required check,** and the newest check of each name is the one
-  that counts. So no event that changes no code starts a run that skips one, and no run
-  reports a skip under a required name late. CI's E2E job waits for lint, so a
-  placeholder job that never runs reports **End-to-end smoke** skipped as the run begins,
-  and the E2E job takes that name only when it runs. `e2e-catch-up.yml`'s job is likewise
-  named **End-to-end smoke** only when it runs the suite, and any other label or edit
-  starts no job.
+  that counts. So no label or edit reports a required check skipped, and no run reports
+  one skipped late. CI's E2E job waits for lint, so a placeholder job that never runs
+  reports **End-to-end smoke** skipped as the run begins, and the E2E job takes that name
+  only when it runs. `e2e-catch-up.yml`'s job is likewise named **End-to-end smoke** only
+  when it runs the suite: every other label, and every title or body edit, starts a
+  catch-up run whose one job is skipped under another name. GitHub shows a skipped job's
+  name expression as written, so a required check is skipped only under a fixed name.
 - **Re-running** all of a CI run's jobs (**Re-run all jobs**, or `gh run rerun <id>`)
-  runs every job, even in a draft's run, and reads the labels and base afresh, so E2E
-  runs if the pull request is labelled or into `stage` or `main` now. A re-run otherwise
-  replays the event that started the run: a draft's run would skip every check over a
-  newer failure, and a run from before a label or a retarget would skip E2E. **Re-run
-  failed jobs** keeps the lint job's decision unless lint is among them.
-- Every job has a timeout, and a pull request's newer run cancels its older one. The E2E
-  job caches Playwright's browsers by version. Only pull request runs write caches, and
-  no other pull request reads them, so a pull request's first run usually starts without.
+  always runs the lint job, even in a draft's run, and it reads the labels and base
+  afresh: tests and the build still skip when only docs changed, and E2E runs if the pull
+  request is labelled or into `stage` or `main` now. A re-run otherwise replays the event
+  that started the run: a draft's run would skip again over the ready run's checks, and a
+  run from before a label or a retarget would skip E2E. **Re-run failed jobs** keeps the
+  lint job's decision unless lint is among them.
+- Every job has a timeout. CI's newer run for a pull request cancels its older one;
+  `e2e-catch-up.yml` has no concurrency group and cancels nothing. The E2E job caches
+  Playwright's browsers by version. Only pull request runs write caches, and no other
+  pull request reads them, so a pull request's first run usually starts without.
 
-The jobs' token can only read the repository and its pull requests, and checkout leaves
-it nowhere on disk. Apart from checkout, only the lint job's first step is given it, to
-read the pull request's labels and base, before any of the pull request's code or
-`npm ci` runs.
+The jobs' token can only read the repository and, in `ci.yml`, its pull requests.
+`actions/checkout` and `actions/setup-node` receive it as their default `token` input and
+keep it in their own process, and checkout leaves it nowhere on disk. Of the other steps,
+only the lint job's first is given it, to read the pull request's labels and base, before
+any of the pull request's code or `npm ci` runs.
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
