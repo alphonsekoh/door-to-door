@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import { untouchableDatabase } from "@/db/testing";
-import { syncVisits, type SyncItem } from "@/server/visits/sync";
+import { splitWrites, syncVisits, type SyncItem } from "@/server/visits/sync";
 
 const clock = { now: new Date("2026-03-14T12:00:00.000Z"), toleranceMs: 300_000 };
 
@@ -137,5 +137,57 @@ describe("a blank unit number", () => {
     });
     // A deliberate refusal, not a failure worth a log line.
     expect(logged).not.toHaveBeenCalled();
+  });
+});
+
+describe("splitting a batch's writes", () => {
+  type Judged = Parameters<typeof splitWrites>[0][number];
+  const caller = { id: "u1", role: "member" as const };
+  const write = (sessionId: string) => ({
+    item,
+    memberId: "u1",
+    caller,
+    session: { id: sessionId, kind: "regular" as const, startedAt: new Date(0) },
+    judgeList: true,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  });
+  const fresh = (key: string, sessionId = "s1"): Judged => ({
+    key,
+    verdict: { kind: "new", write: write(sessionId) },
+  });
+  const amend = (key: string): Judged => ({ key, verdict: { kind: "amend", write: write("s1") } });
+  const replay = (key: string): Judged => ({
+    key,
+    verdict: { kind: "answered", status: "unchanged" },
+  });
+  /* A run as its keys, an amend as its key. */
+  const shape = (judged: Judged[]) =>
+    splitWrites(judged).map((step) =>
+      step.kind === "run" ? step.entries.map((entry) => entry.key) : step.key,
+    );
+
+  it("writes consecutive new records as one run, past replays between them", () => {
+    expect(shape([fresh("a"), replay("b"), fresh("c"), replay("d")])).toEqual([["a", "c"]]);
+  });
+
+  it("writes an amend alone, in its place, and starts another run after it", () => {
+    expect(shape([fresh("a"), amend("b"), amend("c"), fresh("d"), fresh("e")])).toEqual([
+      ["a"],
+      "b",
+      "c",
+      ["d", "e"],
+    ]);
+  });
+
+  it("starts another run for a record in another session", () => {
+    expect(shape([fresh("a", "s1"), fresh("b", "s2"), fresh("c", "s2")])).toEqual([
+      ["a"],
+      ["b", "c"],
+    ]);
+  });
+
+  it("writes nothing for replays alone", () => {
+    expect(shape([replay("a"), replay("b")])).toEqual([]);
   });
 });

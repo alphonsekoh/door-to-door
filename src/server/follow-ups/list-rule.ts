@@ -135,11 +135,28 @@ export async function isNoteOnActiveRevisitList(db: Database, noteId: string): P
   return found.length > 0;
 }
 
+/* A unit as households are keyed: its block in either letter case, and its unit as stored. */
+export function placeKey(blockId: string, unitNumber: string): string {
+  return `${blockId.toLowerCase()} ${unitNumber}`;
+}
+
+/* The refusal for recording off the list, worded once for every path that judges it. */
+export function offRevisitList(): ConflictError {
+  return new ConflictError(
+    "not_on_follow_up_list",
+    "This unit is not on this session's list. Ask an admin to add it.",
+  );
+}
+
 /*
  * In a follow-up session a member records only at listed households. The
  * caller's role decides, not the author's: an admin recording on a member's
  * behalf is exempt, as the admin is the one choosing to record there.
  */
+function listBinds(actor: { role: Role }, session: RevisitSession): boolean {
+  return actor.role !== "admin" && session.kind === "follow_up";
+}
+
 export async function assertMayRecordHere(
   db: Database,
   actor: { role: Role },
@@ -147,13 +164,44 @@ export async function assertMayRecordHere(
   blockId: string,
   unitNumber: string,
 ): Promise<void> {
-  if (actor.role === "admin" || session.kind !== "follow_up") {
+  if (!listBinds(actor, session)) {
     return;
   }
   if (!(await isUnitOnRevisitList(db, session, blockId, unitNumber))) {
-    throw new ConflictError(
-      "not_on_follow_up_list",
-      "This unit is not on this session's list. Ask an admin to add it.",
-    );
+    throw offRevisitList();
   }
+}
+
+/*
+ * assertMayRecordHere for a batch's units, in one query: those of `places`
+ * the caller may not record at. Units as stored, so already trimmed.
+ */
+export async function unitsOffRevisitList<P extends { blockId: string; unitNumber: string }>(
+  db: Database,
+  actor: { role: Role },
+  session: RevisitSession,
+  places: readonly P[],
+): Promise<Set<P>> {
+  if (places.length === 0 || !listBinds(actor, session)) {
+    return new Set();
+  }
+  const listed = await db
+    .selectDistinct({ blockId: households.blockId, unitNumber: households.unitNumber })
+    .from(followUps)
+    .innerJoin(households, eq(households.id, followUps.householdId))
+    .where(
+      and(
+        inArray(
+          households.blockId,
+          places.map((place) => place.blockId),
+        ),
+        inArray(
+          households.unitNumber,
+          places.map((place) => place.unitNumber),
+        ),
+        onRevisitList(db, session),
+      ),
+    );
+  const on = new Set(listed.map((row) => placeKey(row.blockId, row.unitNumber)));
+  return new Set(places.filter((place) => !on.has(placeKey(place.blockId, place.unitNumber))));
 }

@@ -13,6 +13,8 @@ import { createUser, listUsers } from "@/server/users/service";
 
 /*
  * The team. Admin-only: it exposes email addresses and who is deactivated.
+ * Approved people by default, which is what every picker and count wants;
+ * the queue waiting for approval, and those rejected, by `approval` (#249).
  *
  * Implemented here rather than with member management (#31) because recording
  * on someone's behalf needs a picker, and a picker needs the list.
@@ -30,6 +32,7 @@ export const GET = withContract(
     const { rows, total } = await listUsers(getDatabase(), {
       limit,
       offset,
+      approval: query.approval,
       includeDeactivated,
       ...(query.role === undefined ? {} : { role: query.role }),
     });

@@ -19,7 +19,8 @@ without signing in again. No contract, schema or server change.
 - **D-85-2 · Any `401` means signed out; only `403 account_deactivated` means
   deactivated.** A plain `403` or `404` raises nothing. _Why:_ a plain `403` refuses one
   action (a team change, an admin route after a demotion, D-83-4) and the screen that asked
-  already explains it.
+  already explains it. _Extended by D-249-11 (#249):_ `403 account_pending` or
+  `account_blocked` is "unapproved", which shows no message: the gate moves to `/waiting`.
 - **D-85-3 · The first failure wins and sticks until the next full page load.** _Why:_
   every way out is a full navigation (D-74-10), and flipping between two messages would
   only confuse.
@@ -42,12 +43,16 @@ without signing in again. No contract, schema or server change.
   on a non-public path; a failure is swallowed (offline stays silent). _Why:_
   server-rendered and not-found pages make no API call of their own, so without it a
   deactivated member could sit on one unwarned; the same read refreshes the role (D-85-8).
+  _Extended by D-249-11, D-249-21 (#249):_ an explicit `approval` of `pending` or
+  `blocked` there moves the page to `/waiting`. _Extended by D-252-9 (#252):_ that one
+  read is shared with Home's team card (`sharedCurrentUser`); a failed read is not.
 - **D-85-8 · `useRole` prefers the role from the latest `/users/me` when its id matches
   the token's.** Reads go through `loadCurrentUser()` (`src/lib/users.ts`; used by the
   gate, Account and Outing team), and Account records the role a `PATCH` returns. The
   token, its `update` trigger (D-74-6) and the viewer id (D-74-51) are untouched. _Why:_
   the token's role is a hint (D-83-3); this closes D-83-15(a) without widening the token.
-  Still affordance only (D-16-2).
+  Still affordance only (D-16-2). _Extended by D-252-9 (#252):_ Account's save notes its
+  answer through `noteSavedUser`, which the next shared read returns.
 - **D-85-9 · Unsynced records: the screen tells, it does not ask.** When
   `hasUnsyncedItems()` is true it says "Records not yet sent are kept on this phone."
   instead of D-74-9's warn-before-sign-out. _Why:_ signing out is the only way forward, so

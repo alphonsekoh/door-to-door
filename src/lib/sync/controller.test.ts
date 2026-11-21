@@ -463,7 +463,7 @@ describe("createSyncController", () => {
     release({ kind: "ok", results: [] });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // The second batch of a hundred and one, and the re-run asked for, never go.
+    // The rest of the hundred and one, and the re-run asked for, never go.
     expect(h.send).toHaveBeenCalledTimes(1);
   });
 

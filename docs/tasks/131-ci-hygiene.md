@@ -18,7 +18,9 @@ agents, and a check that an applied migration's SQL is never edited.
   `permissions`. _Why:_ nothing in CI writes to the repository, and a job's grant
   replaces the workflow's for that job. The test's job schema declares `permissions`
   because zod strips an undeclared key, which hid a `write-all` job until review.
-  _Research:_ R-144, R-6.
+  _Research:_ R-144, R-6. _Extended by D-248-10:_ `ci.yml` also grants
+  `pull-requests: read`, for the lint job's first step; still read-only, and the test
+  names each workflow's grants.
 - **D-131-2 · Every checkout sets `persist-credentials: false`.** No job runs an
   authenticated git command or `gh` after checkout. _Why:_ by default the token stays on
   disk for the whole job, `npm ci`'s install scripts included. _Research:_ R-145.
@@ -41,11 +43,15 @@ agents, and a check that an applied migration's SQL is never edited.
   digests would otherwise go stale, and a major waits for the owner: node moves with
   CI's `NODE_VERSION`, and postgres 18 cannot open a 17 data directory. _Trade-off:_
   every image PR runs the full CI, and the cooldown may hold digests back (Open
-  questions). _Research:_ R-95, R-147, R-148.
+  questions). _Research:_ R-95, R-147, R-148. _Schedule superseded by D-248-14 (owner):_
+  monthly, with `rebase-strategy: disabled`. The full-CI trade-off still holds through
+  the `e2e` label (D-248-15).
 - **D-131-6 · A test holds CI's postgres service image to `docker-compose.yml`'s.**
   _Why:_ no Dependabot updater reads a workflow's service images, so Compose is the copy
   it updates and CI follows by hand. _Trade-off:_ a docker-compose PR starts red until
-  its digest is copied into `ci.yml`. _Research:_ R-148.
+  its digest is copied into `ci.yml`. _Research:_ R-148. _Extended by D-244-13:_ the
+  stage stack's images are pinned too, and its postgres is held to Compose's. _Extended
+  by D-248-8:_ copy the digest into `e2e-catch-up.yml` too; the test reads every workflow.
 - **D-131-7 · `next-auth` is exactly `5.0.0-beta.32`,** the version already locked. In
   `package-lock.json` only the root entry changed, and `npm ci` installs the same tree. A
   test refuses any ranged prerelease in `package.json`. _Why:_ `^5.0.0-beta.32` admits
@@ -88,6 +94,7 @@ D-02-1, D-02-4, D-06-1, D-06-2, D-08-1, D-111-2, D-118-1, D-118-7.
   weekly run may rarely find it old enough. If no docker PR has come in a month, shorten
   or drop the cooldown on the two image entries; that departs from D-118-7 and needs the
   owner. The pins themselves are at most a day old, younger than the cooldown allows.
+  _Sharper since D-248-14:_ the run is monthly, so the cooldown gets one try a month.
 - ~~**Merge order with PR #167:** its `0006_sign_ins.sql` has no checksum line.~~
   Closed: #131 merged first, and merging `main` into #167 ran `npm run db:generate`,
   which appended `0006_sign_ins.sql` to `drizzle/checksums.sha256` (D-131-9).

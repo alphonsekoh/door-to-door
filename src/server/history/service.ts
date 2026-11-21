@@ -80,60 +80,61 @@ export async function listHistory(
   /* Filters compose: every supplied one narrows the same set. */
   const filter = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const found = await db
-    .select({
-      id: visits.id,
-      teamId: visits.teamId,
-      visitHouseholdId: visits.householdId,
-      visitSessionId: visits.sessionId,
-      interestLevel: visits.interestLevel,
-      description: visits.description,
-      clientCreatedAt: visits.clientCreatedAt,
-      visitCreatedAt: visits.createdAt,
-      visitUpdatedAt: visits.updatedAt,
-      memberId: users.id,
-      memberName: users.name,
-      memberImage: users.image,
-      household: households,
-      block: blocks,
-      sessionId: outingSessions.id,
-      sessionTitle: outingSessions.title,
-      sessionKind: outingSessions.kind,
-      sessionStatus: outingSessions.status,
-      sessionStartedAt: outingSessions.startedAt,
-      sessionEndedAt: outingSessions.endedAt,
-      sessionCreatedAt: outingSessions.createdAt,
-      sessionCreatedBy: sessionCreator.id,
-      sessionCreatedByName: sessionCreator.name,
-      sessionCreatedByImage: sessionCreator.image,
-    })
-    .from(visits)
-    .innerJoin(users, eq(users.id, visits.memberId))
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .innerJoin(blocks, eq(blocks.id, households.blockId))
-    .innerJoin(outingSessions, eq(outingSessions.id, visits.sessionId))
-    /*
-     * Aliased so the session's creator can be joined alongside the visit's
-     * member. Fetching creators separately needed a fallback for a user who
-     * cannot be missing - createdBy has a restrict foreign key - and an
-     * unreachable branch is worse than an extra join.
-     */
-    .innerJoin(sessionCreator, eq(sessionCreator.id, outingSessions.createdBy))
-    .where(filter)
-    /* The id keeps records stored at one instant in one order from page to
+  /* The page and the total, together (#252). */
+  const [rows, counted] = await Promise.all([
+    db
+      .select({
+        id: visits.id,
+        teamId: visits.teamId,
+        visitHouseholdId: visits.householdId,
+        visitSessionId: visits.sessionId,
+        interestLevel: visits.interestLevel,
+        description: visits.description,
+        clientCreatedAt: visits.clientCreatedAt,
+        visitCreatedAt: visits.createdAt,
+        visitUpdatedAt: visits.updatedAt,
+        memberId: users.id,
+        memberName: users.name,
+        memberImage: users.image,
+        household: households,
+        block: blocks,
+        sessionId: outingSessions.id,
+        sessionTitle: outingSessions.title,
+        sessionKind: outingSessions.kind,
+        sessionStatus: outingSessions.status,
+        sessionStartedAt: outingSessions.startedAt,
+        sessionEndedAt: outingSessions.endedAt,
+        sessionCreatedAt: outingSessions.createdAt,
+        sessionCreatedBy: sessionCreator.id,
+        sessionCreatedByName: sessionCreator.name,
+        sessionCreatedByImage: sessionCreator.image,
+      })
+      .from(visits)
+      .innerJoin(users, eq(users.id, visits.memberId))
+      .innerJoin(households, eq(households.id, visits.householdId))
+      .innerJoin(blocks, eq(blocks.id, households.blockId))
+      .innerJoin(outingSessions, eq(outingSessions.id, visits.sessionId))
+      /*
+       * Aliased so the session's creator can be joined alongside the visit's
+       * member. Fetching creators separately needed a fallback for a user who
+       * cannot be missing - createdBy has a restrict foreign key - and an
+       * unreachable branch is worse than an extra join.
+       */
+      .innerJoin(sessionCreator, eq(sessionCreator.id, outingSessions.createdBy))
+      .where(filter)
+      /* The id keeps records stored at one instant in one order from page to
        page, so the CSV export, which reads this a page at a time, neither
        drops nor repeats one at a page edge (#212). */
-    .orderBy(desc(visits.createdAt), desc(visits.id))
-    .limit(filters.limit)
-    .offset(filters.offset);
-
-  const rows = await attachTeams(db, found);
-
-  const counted = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(visits)
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .where(filter);
+      .orderBy(desc(visits.createdAt), desc(visits.id))
+      .limit(filters.limit)
+      .offset(filters.offset)
+      .then((found) => attachTeams(db, found)),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(visits)
+      .innerJoin(households, eq(households.id, visits.householdId))
+      .where(filter),
+  ]);
 
   return {
     rows: rows.map((row) => ({

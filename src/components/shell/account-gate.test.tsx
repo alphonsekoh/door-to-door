@@ -4,18 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AccountGate } from "@/components/shell/account-gate";
 import { accountStore } from "@/lib/session/account-state";
 
-const { usePathname, useRole, loadCurrentUser, hasUnsynced } = vi.hoisted(() => ({
+const { usePathname, useRole, sharedCurrentUser, hasUnsynced, replaceWith } = vi.hoisted(() => ({
   usePathname: vi.fn<() => string>(),
   useRole: vi.fn(),
-  loadCurrentUser: vi.fn(),
+  sharedCurrentUser: vi.fn(),
   hasUnsynced: vi.fn(),
+  replaceWith: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({ usePathname, useSelectedLayoutSegment: () => null }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
-vi.mock("@/lib/session/users", () => ({ loadCurrentUser }));
+vi.mock("@/lib/session/users", () => ({ sharedCurrentUser }));
 vi.mock("@/lib/pwa/sw-update", () => ({ hasUnsyncedItems: hasUnsynced }));
 vi.mock("next-auth/react", () => ({ signOut: vi.fn() }));
+vi.mock("@/lib/session/navigate", () => ({ replaceWith }));
 
 const signedIn = (isSignedIn: boolean) => useRole.mockReturnValue({ isSignedIn });
 
@@ -23,7 +25,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   usePathname.mockReturnValue("/");
   signedIn(true);
-  loadCurrentUser.mockResolvedValue({ id: "u1", role: "member" });
+  sharedCurrentUser.mockResolvedValue({ id: "u1", role: "member", approval: "approved" });
   hasUnsynced.mockResolvedValue(false);
 });
 
@@ -78,34 +80,101 @@ describe("AccountGate", () => {
     usePathname.mockReturnValue("/history");
     rerender(<AccountGate>other page</AccountGate>);
     await waitFor(() => {
-      expect(loadCurrentUser).toHaveBeenCalledOnce();
+      expect(sharedCurrentUser).toHaveBeenCalledOnce();
     });
   });
 
   it("does not read /users/me on a public page", () => {
     usePathname.mockReturnValue("/sign-in");
     render(<AccountGate>form</AccountGate>);
-    expect(loadCurrentUser).not.toHaveBeenCalled();
+    expect(sharedCurrentUser).not.toHaveBeenCalled();
   });
 
   it("does not read /users/me for nobody, and reads it once the session arrives", () => {
     signedIn(false);
     const { rerender } = render(<AccountGate>app</AccountGate>);
-    expect(loadCurrentUser).not.toHaveBeenCalled();
+    expect(sharedCurrentUser).not.toHaveBeenCalled();
 
     signedIn(true);
     rerender(<AccountGate>app</AccountGate>);
-    expect(loadCurrentUser).toHaveBeenCalledOnce();
+    expect(sharedCurrentUser).toHaveBeenCalledOnce();
   });
 
   it("swallows a failed read: offline is not an account problem", async () => {
-    loadCurrentUser.mockRejectedValue(new Error("offline"));
+    sharedCurrentUser.mockRejectedValue(new Error("offline"));
     render(<AccountGate>app</AccountGate>);
     await waitFor(() => {
-      expect(loadCurrentUser).toHaveBeenCalled();
+      expect(sharedCurrentUser).toHaveBeenCalled();
     });
     expect(screen.getByText("app")).toBeInTheDocument();
     expect(accountStore.getSnapshot().failure).toBeNull();
+  });
+
+  it("leaves an approved account where it is", async () => {
+    render(<AccountGate>app</AccountGate>);
+    await waitFor(() => {
+      expect(sharedCurrentUser).toHaveBeenCalled();
+    });
+    await Promise.resolve();
+    expect(screen.getByText("app")).toBeInTheDocument();
+    expect(replaceWith).not.toHaveBeenCalled();
+  });
+
+  /* #249: no message for an account nobody has approved; the waiting page. */
+  describe("an account nobody has approved", () => {
+    it.each(["pending", "blocked"])(
+      "takes an account the once-per-load read finds %s to the waiting page, drawing nothing on the way",
+      async (approval) => {
+        sharedCurrentUser.mockResolvedValue({ id: "u1", role: "member", approval });
+        render(<AccountGate>home screen</AccountGate>);
+        await waitFor(() => {
+          expect(replaceWith).toHaveBeenCalledWith("/waiting");
+        });
+        expect(replaceWith).toHaveBeenCalledOnce();
+        expect(screen.queryByText("home screen")).not.toBeInTheDocument();
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      },
+    );
+
+    it("takes it there when any request is refused for it, before the screen's own refusal shows", async () => {
+      sharedCurrentUser.mockReturnValue(new Promise(() => undefined));
+      const { Gate, store } = await freshGate();
+      render(
+        <Gate>
+          <p>Could not load the session.</p>
+        </Gate>,
+      );
+      act(() => {
+        store.reportAuthFailure("unapproved");
+      });
+      expect(screen.queryByText("Could not load the session.")).not.toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(replaceWith).toHaveBeenCalledWith("/waiting");
+    });
+
+    it("leaves the waiting page to answer for itself", async () => {
+      usePathname.mockReturnValue("/waiting");
+      sharedCurrentUser.mockResolvedValue({ id: "u1", role: "member", approval: "pending" });
+      const { Gate, store } = await freshGate();
+      render(<Gate>waiting page</Gate>);
+      await waitFor(() => {
+        expect(sharedCurrentUser).toHaveBeenCalled();
+      });
+      act(() => {
+        store.reportAuthFailure("unapproved");
+      });
+      expect(screen.getByText("waiting page")).toBeInTheDocument();
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+      expect(replaceWith).not.toHaveBeenCalled();
+    });
+
+    it("still gives the waiting page the signed-out message", async () => {
+      usePathname.mockReturnValue("/waiting");
+      const { Gate, store } = await freshGate();
+      store.reportAuthFailure("signed-out");
+      render(<Gate>waiting page</Gate>);
+      expect(screen.getByRole("alertdialog", { name: "Signed out" })).toBeInTheDocument();
+    });
   });
 
   it("renders the plain app on the server, whatever this browser was told", async () => {

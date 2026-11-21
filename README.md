@@ -23,8 +23,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - [How the API is built](#how-the-api-is-built-openapi-first)
 - [Configuration](#configuration) · [Environment variables](#environment-variables)
 - [Database](#database) · [Scripts](#scripts) · [Testing](#testing) · [CI](#ci)
-- [Deployment](#deployment) · [Troubleshooting](#troubleshooting) ·
-  [Contributing](#contributing)
+- [Deployment](#deployment) · [Stage environment](#stage-environment) ·
+  [Troubleshooting](#troubleshooting) · [Branches](#branches) · [Contributing](#contributing)
 
 ## Features
 
@@ -59,8 +59,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Installable on a phone. Visits are saved on the phone first and sent when there is
   signal; a cold start with no signal opens an offline recording screen.
 
-**Signing in** is with Google, for the addresses an admin has added, with email and
-password as the fallback. Signing out ends that device's sign-in only.
+**Signing in** is with Google, where a newcomer waits for an admin's approval, with
+email and password as the fallback. Signing out ends that device's sign-in only.
 
 ## Known limits
 
@@ -220,8 +220,8 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
   by the database. A session is door-to-door or follow-up, fixed when it is created. A
   follow-up session goes back to households an admin picked from the follow-up list,
   and its blocks follow them; members record only at households on its list.
-- **Auth** is Auth.js v5: Google for the addresses an admin added, and email and password
-  (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
+- **Auth** is Auth.js v5: Google, where a newcomer waits for an admin's approval, and
+  email and password (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
   every request checks, so a sign-out, an admin or a deactivation ends it. Every handler
   re-reads the user's role and deactivation from the database; the token's role is a UI
   hint only.
@@ -243,9 +243,11 @@ The least obvious part of the system. In short (details in
    visit gets a **client-generated UUIDv7** id, and the database has no default for it
    (D-07-3).
 2. **Send in batches.** A controller sends the signed-in member's queued visits to
-   `POST /visits/sync`, up to 100 per request, on app start, each save, regaining signal,
-   focus and Retry. It first checks that the member who saved them is still the one
-   signed in; another member's records stay on the phone untouched (D-33-1).
+   `POST /visits/sync`, up to 25 per request (the contract accepts 100, D-251-12), on
+   app start, each save, regaining signal, focus and Retry. It first checks that the
+   member who saved them is still the one signed in; another member's records stay on
+   the phone untouched (D-33-1). The server writes a batch's new records together, so a
+   batch costs the same few database round trips however long it is (D-251-3).
 3. **The server answers per item**, in request order (D-21-3):
 
    Each item's `status` is `applied`, `unchanged`, `stale` or `rejected`; a rejected item
@@ -298,7 +300,7 @@ To add or change an endpoint:
    operation with no route file fails `src/server/http/route-registry.test.ts`; a
    response that drifts from the spec throws in tests and is a logged `500` in production.
 
-CI regenerates on every push and fails if `src/generated/` differs, so a spec change
+CI regenerates on every run and fails if `src/generated/` differs, so a spec change
 without regenerating and a hand edit are both caught. A test also asserts that the spec's
 enums match the database `pgEnum` values.
 
@@ -316,6 +318,7 @@ default (D-75-4).
 | Key                                 | Default | Meaning                                                                               |
 | ----------------------------------- | ------- | ------------------------------------------------------------------------------------- |
 | `database.url`                      | -       | **Required.** Connection URL **without** username or password                         |
+| `database.migrationUrl`             | `url`   | Where `db:migrate` and drizzle-kit connect instead: the direct host behind a pooler   |
 | `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
 | `auth.secureCookies`                | `true`  | Cookies `Secure` whatever the scheme; `false` for plain http                          |
 | `auth.google.clientId`              | unset   | Google OAuth client ID; set it to offer Google sign-in (see below)                    |
@@ -329,8 +332,11 @@ default (D-75-4).
 | `sync.clockSkewToleranceSeconds`    | `300`   | Tolerated difference between a phone's clock and the server's                         |
 
 Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
-`database.url` may carry only the `sslmode` and `application_name` query parameters;
-credentials in it are refused (D-75-3).
+`database.url` and `database.migrationUrl` may carry only the `sslmode` and
+`application_name` query parameters; credentials in either are refused (D-75-3), and both
+get the same `DATABASE_USER` and `DATABASE_PASSWORD`. The app connects only to
+`database.url`; only `db:migrate` and drizzle-kit (`db:push`, `db:studio`) connect to
+`database.migrationUrl`.
 
 **Google sign-in** needs an OAuth client of type "Web application" in the Google Cloud
 console. Register `<public origin>/api/auth/callback/google` as its authorised redirect
@@ -338,10 +344,13 @@ URI (for local development, `http://localhost:3000/api/auth/callback/google`). P
 client ID in `auth.google.clientId` and export the client secret as
 `AUTH_GOOGLE_SECRET`. In the Docker image, also set `AUTH_URL` to the public origin
 (`https://<your domain>`): without it Google is sent back to the server's own
-`0.0.0.0:3000` and refuses the sign-in (D-14-27). Only an address an admin has added (on **Admin → Team**, or with
-`create-admin`) can sign in, once Google has verified it. Anyone else, and a deactivated
-account, gets the same refusal, and signing in never creates an account. Without
-`auth.google`, sign-in is email and password only, and every account needs a password.
+`0.0.0.0:3000` and refuses the sign-in (D-14-27). Someone an admin has added (on
+**Admin → Team**, or with `create-admin`) signs in as themselves, once Google has
+verified the address. Anyone else Google vouches for asks to join with their first
+sign-in: they wait on a page of their own until an admin approves them under **Waiting
+for approval** on **Admin → Team**, and can use nothing else (#249). A deactivated
+account is refused. Without `auth.google`, sign-in is email and password only, and every
+account needs a password.
 No real credentials are needed for the tests: E2E runs a stand-in provider (D-14-14).
 
 List in `auth.google.domains` only `gmail.com` and domains on Google Workspace, lower
@@ -352,7 +361,9 @@ elsewhere sign in with email and password, so add them with one.
 - Google vouches for an address only at `gmail.com`, or for a Workspace account. On any
   other listed domain a member must use their Workspace account; a personal Google
   account made on that address is refused, since that mailbox could have changed hands.
-- Add a Gmail address exactly as Google has it, dots included.
+- Add a Gmail address exactly as Google has it, dots included. Spelled otherwise, the
+  member's Google sign-in asks to join as a second account: reject that request and
+  correct the address.
 - If a listed domain is a Workspace **alias** of another (as `tjc.org` may be of
   `tjc.sg`), rather than a secondary domain, Google reports the member's address at the
   primary domain. Add those members at the primary domain.
@@ -406,7 +417,10 @@ both is a startup error (D-75-2).
 | `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                                              |
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
 | `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
+| `VERCEL_URL`, `VERCEL_REGION`              | set by Vercel on its functions                                   | Read by `@vercel/functions`: with both set, the database pool keeps its instance awake until idle connections close. Never set them anywhere else                                |
 | `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                                       |
+| `STAGE_PORT`, `STAGE_TOXIPROXY_PORT`       | `3400`, `3401`                                                   | Stage stack only: where its edge and toxiproxy's API are published, for Compose and `stage:perf`                                                                                 |
+| `STAGE_AUTH_SECRET`                        | made once per stack                                              | Stage stack only: its app's `AUTH_SECRET`, in place of the one it makes                                                                                                          |
 | `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | `true` in Compose                                                | Compose only: watch files by polling, for bind mounts on macOS and Windows                                                                                                       |
 | `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8)                      |
 | `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                                      |
@@ -479,7 +493,7 @@ to `medium` between March and June.
 | `npm run test:e2e:ui`      | The same in Playwright's UI mode                                                              |
 | `npm run test:e2e:linux`   | The same suite in a Linux container, as CI runs it (needs Docker)                             |
 | `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)                     |
-| `npm run db:migrate`       | Apply pending migrations                                                                      |
+| `npm run db:migrate`       | Apply pending migrations, at `database.migrationUrl` when it is set                           |
 | `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users                  |
 | `npm run db:reset`         | Migrate, then seed: `npm run db:reset -- --demo`. Deletes nothing                             |
 | `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))                   |
@@ -490,6 +504,12 @@ to `medium` between March and June.
 | `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                                  |
 | `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                                          |
 | `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                                               |
+| `npm run stage:up`         | Build and start the [stage stack](#stage-environment) at https://localhost:3400               |
+| `npm run stage:seed`       | Load a year of records into the stage stack's empty database; refused anywhere else           |
+| `npm run stage:perf`       | Measure the stage stack; `-- --db-latency 220` adds a database round trip                     |
+| `npm run stage:logs`       | The stage stack's logs (`-- app` for one service)                                             |
+| `npm run stage:psql`       | `psql` in the stage stack's database, to `EXPLAIN` a slow query                               |
+| `npm run stage:down`       | Stop the stage stack and delete its data                                                      |
 
 The `npm run build` check of the standalone output runs as an npm `postbuild` hook, so
 running `next build` directly skips it: always build with `npm run build`.
@@ -552,7 +572,9 @@ own `door_to_door_e2e` database, so it never disturbs the integration suite. The
 `e2e/` cover signing in and the role split, Google sign-in against a local stand-in
 (never the real Google), an admin ending a member's sign-ins, recording a visit (with and
 without signal), a session's lifecycle, a follow-up session, teams, the account screen
-and sign-out, and the PWA (the worker, offline fallback, caching and phone layout).
+and sign-out, the PWA (the worker, offline fallback, caching and phone layout), every
+screen at the largest text, and the admin lists' address: an old `?q=` link, and Needs
+a return visit's filters moving it with no page round trip, online and offline.
 Four tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit fails a
 request before the service worker can answer it, offline or routed (D-32-18, D-166-5),
 and two in `sign-ins.spec` because it cannot hold or stop the worker's requests (R-138).
@@ -582,7 +604,7 @@ It runs a commit, never uncommitted changes: `git archive` feeds the container, 
 pass covers exactly what a push sends. The image is the `Dockerfile`'s `e2e` stage
 (Ubuntu 26.04, Node 24, and Playwright's browsers installed as CI installs them), built
 once and then cached until `package.json`, `package-lock.json` or the stage changes
-(Dependabot's weekly digest bumps included). Each rebuild leaves the last image, about
+(Dependabot's monthly digest bumps included). Each rebuild leaves the last image, about
 3 GB, untagged; `docker image prune` reclaims it. The database is CI's postgres image in a
 throwaway container on a private network, so the run needs neither the host's Postgres
 nor any free port. One run goes at a time per clone, and a second one waits. The run
@@ -603,32 +625,115 @@ pushes go through ungated.
 It skips branch deletions, pushes that change only docs (`docs/`, a top-level `*.md` or
 `.claude/`), and any tree that has passed a whole-suite run or differs from one only in
 docs, so running `npm run test:e2e:linux` before a push makes the push itself immediate.
-`SKIP_E2E_LINUX=1 git push` skips the gate once, and CI still runs the suite.
+`SKIP_E2E_LINUX=1 git push` skips the gate once. CI runs the suite only into `stage` or
+`main`, or with the `e2e` label (see [CI](#ci)), so a skipped gate elsewhere leaves the
+push untested on Linux until then.
 
 ## CI
 
-Every push to `main` and every pull request runs four jobs
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+CI runs on pull requests, never on a merge: the promotion's pull request already tested
+what reaches `main`, and Vercel deploys it. A merge into `dev` or `main` only warms the
+caches ([below](#caches)). A ready pull request runs four jobs
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), whose names the `dev`, `stage`
+and `main` rulesets require:
 
-| Job        | Checks                                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| **Static** | lint · typecheck · format · spec lint · generated API code matches the spec · migrations match the schema |
-| **Tests**  | unit, component and integration tests against PostgreSQL 17, then the coverage gate                       |
-| **E2E**    | the Playwright suite on Chromium and WebKit                                                               |
-| **Build**  | production `next build`, with no config file and no database                                              |
+| Job                        | Checks                                                                                                    | Runs                                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Lint, types and format** | lint · typecheck · format · spec lint · generated API code matches the spec · migrations match the schema | Always, and first: the others wait for it       |
+| **Tests and coverage**     | unit, component and integration tests against PostgreSQL 17, then the coverage gate                       | Unless only docs changed                        |
+| **End-to-end smoke**       | the Playwright suite on Chromium and WebKit                                                               | Into `stage` or `main`, or with the `e2e` label |
+| **Production build**       | production `next build`, with no config file and no database                                              | Unless only docs changed                        |
 
-The jobs' token can only read the repository, and checkout leaves it nowhere on disk.
+- **A draft runs nothing.** Open a pull request as a draft, push review fixes to it, and
+  mark it ready once: that runs CI, and each later push runs it again. A draft's run
+  skips every job, and its lint job reports under a name no ruleset requires, so the merge
+  waits for a ready run's **Lint, types and format**. Its other three skips carry their
+  required names, though, and pass them. So mark a draft ready only once the run for its
+  last push has appeared (`gh run list --commit <sha> --workflow CI` lists it). GitHub
+  can start the push's run after the ready one, and it then cancels the ready run. If the
+  ready run's lint job is still running, that check is left cancelled until you re-run
+  either run (**Re-run all jobs**). If it has finished, the draft's skips pass tests, the
+  build and E2E over the ready run's results, and the pull request can merge untested.
+  Reopening a pull request while it is a draft does the same over its last ready run's
+  checks, so once you mark it ready again, wait for the new run before merging.
+- **A lint failure stops the run** in about two minutes, before the other jobs start.
+- **Docs only:** a pull request that changes nothing but `docs/`, `.claude/` and
+  top-level Markdown skips the tests and the build
+  ([`scripts/ci-changes.sh`](scripts/ci-changes.sh) decides). `README.md` counts as code,
+  because tests read it.
+- **E2E** runs on every pull request into `stage` or `main`, the last check before users
+  see a change. Into `dev` or a feature branch it runs only with the `e2e` label. A push
+  from a clone has already passed it in the [pre-push gate](#on-linux-as-ci-runs-it), but
+  a commit made on GitHub (a web edit, **Update branch**) has not, so label that pull
+  request. Dependabot labels its version updates itself; a security update comes with no
+  labels, so label it when you retarget it to `dev`. The lint job reads the labels and
+  base as they are when it starts ([`scripts/ci-e2e.sh`](scripts/ci-e2e.sh) decides), so
+  a label added while the pull request is a draft takes effect in the ready run. Added
+  later, it runs E2E at once ([`e2e-catch-up.yml`](.github/workflows/e2e-catch-up.yml)),
+  and later pushes run it too. A label added in the seconds before lint reads it runs E2E
+  in both workflows, on the same commit; Dependabot's and `gh pr create --label`'s
+  usually do.
+- **Retargeting** a ready pull request to `stage` or `main` runs E2E at once, in the same
+  workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
+  base: close and reopen the pull request for that.
+- **A skipped job passes a required check,** and the newest check of each name is the one
+  that counts. So no label or edit reports a required check skipped, and CI reports
+  **End-to-end smoke** skipped only as its run begins: its E2E job waits for lint, so a
+  placeholder job that never runs reports that skip, and the E2E job takes the name only
+  when it runs. Only a draft's run reports skips over a ready run's checks (see drafts
+  above). `e2e-catch-up.yml`'s job is likewise named **End-to-end smoke** only
+  when it runs the suite: every other label, and every title or body edit, starts a
+  catch-up run whose one job is skipped under another name. GitHub shows a skipped job's
+  name expression as written, so a required check is skipped only under a fixed name.
+- **Re-running** all of a CI run's jobs (**Re-run all jobs**, or `gh run rerun <id>`)
+  always runs the lint job, even in a draft's run, and it reads the labels and base
+  afresh: tests and the build still skip when only docs changed, and E2E runs if the pull
+  request is labelled or into `stage` or `main` now. A re-run otherwise replays the event
+  that started the run: a draft's run would skip again over the ready run's checks, and a
+  run from before a label or a retarget would skip E2E. **Re-run failed jobs** keeps the
+  lint job's decision unless lint is among them.
+- Every job has a timeout. CI's newer run for a pull request cancels its older one;
+  `e2e-catch-up.yml` has no concurrency group and cancels nothing.
+
+The jobs' token can only read the repository and, in `ci.yml`, its pull requests.
+`actions/checkout` and `actions/setup-node` receive it as their default `token` input and
+keep it in their own process, and checkout leaves it nowhere on disk. Of the other steps,
+only the lint job's first is given it, to read the pull request's labels and base, before
+any of the pull request's code or `npm ci` runs.
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
-copy the digest into `ci.yml` (the test fails until you do).
+copy the digest into `ci.yml` and `e2e-catch-up.yml` (the test fails until you do). Its
+`docker-compose` entry reads the [stage stack](#stage-environment)'s file too, and
+`src/stage-stack.test.ts` fails if the stage postgres differs from the dev stack's.
+
+Dependabot proposes version updates monthly and never rebases them on its own: each
+rebase is a CI run, and it would rebase every open one whenever `dev` moves. Comment
+`@dependabot rebase` on one to bring it up to date. `src/ci-runs.test.ts` holds the
+workflows and `.github/dependabot.yml` to these rules.
+
+### Caches
+
+CI's jobs restore npm's cache and the build's `.next/cache`, and the E2E job restores
+Playwright's browsers, keyed by the OS release, the architecture and the Playwright
+version. A cache that a pull request's run saves is that pull request's alone, but a run
+can also restore its base branch's and `main`'s. So each merge into `dev` or `main` runs
+[`warm-caches.yml`](.github/workflows/warm-caches.yml), which saves the same keys in that
+branch's scope: npm's after `npm ci`, the browsers when their key is new, and
+`.next/cache` from a build when `src/` or the lockfile changed. A pull request into `dev`
+restores `dev`'s. One into `stage`, `main` or a feature branch restores `main`'s, which
+move only on a promotion, so a key that has changed on `dev` since (a new lockfile or
+Playwright) misses until the next one. The warm-up runs on no pull request or draft,
+reports no check a ruleset requires, has no secret and can only read. A later merge into
+the same branch cancels one still running. `src/ci-runs.test.ts` holds its keys to CI's.
 
 ## Deployment
 
 The app ships as a Docker image: the `runner` stage of the [`Dockerfile`](Dockerfile),
 Next.js standalone output on `node:24-alpine` (pinned by digest), running as uid 1001 on
-port 3000. No hosting target has been chosen; anything that runs a container next to
-PostgreSQL will do.
+port 3000. Production does not use it: it is the same app on Vercel, with settings from
+`CONFIG_YAML`, and PostgreSQL 17 on Neon. The image runs anywhere that runs a container
+next to PostgreSQL.
 
 ```bash
 docker build -t door-to-door .
@@ -654,7 +759,8 @@ docker run -p 3000:3000 \
 - **Migrations** must be applied before a new version starts. The runner image holds the
   `drizzle/` folder but not the migration runner, so run `npm run db:migrate` from a
   checkout, or the Compose `migrate` service on its own, with the production
-  `config.yaml` and credentials:
+  `config.yaml` and credentials. It connects to `database.migrationUrl` when that is set,
+  and to `database.url` otherwise:
 
   ```bash
   CONFIG_FILE=./config.yaml DATABASE_USER=... DATABASE_PASSWORD=... \
@@ -662,7 +768,7 @@ docker run -p 3000:3000 \
   ```
 
   `migrate` only migrates, and `--no-deps` keeps Compose from starting its own `db`. It
-  runs in a container, so the file's `database.url` must name a host the container can
+  runs in a container, so the URL it connects to must name a host the container can
   reach, not `localhost`. Never `docker compose up` against production: that also starts the dev server and the
   demo seed, which refuses a database with users but not a new, empty one. Never run
   `db:seed` in production: it creates the demo logins.
@@ -725,11 +831,55 @@ docker run -p 3000:3000 \
   (`experimental.proxyClientMaxBodySize`, set from `src/server/http/body-limit.ts`)
   rather than refusing it, and logs a warning naming the route. On the API a cut body is
   still refused `413`; on Auth.js's sign-in routes the cut is the only bound.
-- **Database connections:** one `pg` pool per process; changing `database.url` needs a
-  restart. A dropped connection fails that request with a `500` and is replaced.
-- **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
-  database has no admin, so after migrating, create the first one from the same place you
-  ran `db:migrate`, with the same `config.yaml` and credentials:
+- **Database connections:** one `pg` pool per process, which on Vercel means one per
+  function instance: at most 10 connections, each closed after 5 s idle
+  (`src/db/client.ts` says why). The pool is handed to `attachDatabasePool` from
+  `@vercel/functions`, which keeps an instance awake until its idle connections have
+  closed, so Vercel never suspends one holding a connection the database may drop in the
+  meantime. It acts only where `VERCEL_URL` and `VERCEL_REGION` are set, as Vercel sets
+  them on its functions; in the image, Compose, the stage stack and the tests it does
+  nothing. Changing `database.url` needs a restart, or on Vercel a new deployment. A
+  dropped connection fails that request with a `500` and is replaced.
+- **Neon** (production): the app connects through Neon's pooled host, which runs
+  PgBouncer in transaction mode, and migrations through the database's direct host, as
+  Neon advises. The two hosts differ only by `-pooler` after the endpoint's name; Neon's
+  Connect dialog shows the pooled one with "Connection pooling" on. Transaction mode
+  gives each transaction whichever server connection is free, so the app keeps nothing
+  on a connection past one: no session `SET`, `LISTEN` or `NOTIFY`, session-level
+  advisory locks, temporary tables or named prepared statements (Drizzle's are unnamed).
+  Keep it that way. `create-admin`, whose lock is released with its transaction,
+  `db:check-blank` and `db:seed` use `database.url` like the app.
+
+  **One-time change on Vercel**, to move production onto the pooler (#250):
+  1. Wait until production runs a build that includes #250. A build without it refuses
+     `database.migrationUrl` as an unknown key and does not start. If Preview has a
+     `CONFIG_YAML` of its own, change it only once every branch it deploys includes #250
+     too.
+  2. In the project's **Settings → Environment Variables**, edit `CONFIG_YAML` for
+     Production. Under `database`, add `migrationUrl` with the direct host, the one
+     without `-pooler` that `url` names today, then add `-pooler` to `url`'s host. Keep
+     the same database and query string in both, with no username or password in
+     either. Only `sslmode` and `application_name` are allowed, so leave out the
+     `channel_binding` that Neon's own connection strings add. Change nothing else:
+
+     ```yaml
+     database:
+       url: postgresql://<endpoint>-pooler.<region>.aws.neon.tech/<database>?sslmode=require
+       migrationUrl: postgresql://<endpoint>.<region>.aws.neon.tech/<database>?sslmode=require
+     ```
+
+  3. Leave `DATABASE_USER` and `DATABASE_PASSWORD` as they are: the same Neon role signs
+     in on both hosts.
+  4. Redeploy production (**Deployments**, the current production deployment,
+     **Redeploy**): a change to `CONFIG_YAML` reaches only a new deployment.
+  5. Sign in and open a block. Then run `npm run db:migrate` from a checkout, with
+     `CONFIG_YAML` set to the same text and the same credentials exported: it reaches the
+     direct host and prints `migrations applied`. Keep migrating that way from now on.
+
+- **Accounts:** admins add members on **Admin → Team**, and approve there anyone who
+  asks to join with Google. A fresh database has no admin to do either, so after
+  migrating, create the first one from the same place you ran `db:migrate`, with the same
+  `config.yaml` and credentials:
 
   ```bash
   npm run create-admin -- --email lead@example.org --name "Lead Organiser"
@@ -748,7 +898,92 @@ docker run -p 3000:3000 \
   **Admin → Team** (a valid address, and a password of 8 to 200 characters when there is
   one). A Google-only admin needs a terminal.
   The script refuses, changing nothing, if any admin already exists, deactivated ones
-  included: later admins are added in the app.
+  included: later admins are added in the app. It also refuses an address that already
+  belongs to an account, since it only ever creates one. That includes an address that
+  asked to join with Google before there was an admin to approve it (#249): the refusal
+  gives the `DELETE` that removes that request, with its Google link and sign-in, so the
+  script can then be run again; or make the first admin at another address and approve
+  the request on **Admin → Team**.
+
+## Stage environment
+
+`stage` is the release candidate (see [Branches](#branches)). Before it is merged to
+`main`, run it in a stack shaped like production, with a year of records in it, and
+measure it. The stack is [`docker-compose.stage.yml`](docker-compose.stage.yml), its own
+Compose project (`door-to-door-stage`) with its own volumes and network, so it never
+touches the dev stack, the test databases or their ports.
+
+```bash
+git switch stage       # or whichever branch you want to measure
+npm run stage:up       # build and start it, waiting until it is healthy
+npm run stage:seed     # load a year of records into its empty database
+npm run stage:perf     # measure it; add -- --db-latency 220 for a far database
+npm run stage:down     # stop it and delete its data
+```
+
+| Service     | Stands in for                  | What it is                                                                                                                                                       |
+| ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edge`      | Vercel's edge                  | Caddy: HTTPS on `127.0.0.1:3400` from its own certificate authority, zstd and gzip, and `X-Forwarded-For`, `-Proto` and `-Host` to the app                       |
+| `app`       | The Vercel function            | The Dockerfile's `runner` stage, the production build on Node 24, with one CPU and 2 GB. Settings from `CONFIG_YAML`: secure cookies, `trustHost`, one proxy hop |
+| `toxiproxy` | The network between them       | Relays every query the app makes; its API on `127.0.0.1:3401` adds a delay for `--db-latency`                                                                    |
+| `db`        | Neon                           | PostgreSQL 17, the dev stack's image, published nowhere                                                                                                          |
+| `migrate`   | Migrating before a deploy      | The real migration runner (`npm run db:migrate`); `app` starts only once it succeeds                                                                             |
+| `secret`    | The deployment's `AUTH_SECRET` | Made once per stack and kept in its volume, or `STAGE_AUTH_SECRET` from your shell; never in the repository                                                      |
+| `seed`      | -                              | Runs only for `npm run stage:seed`                                                                                                                               |
+
+**The seed** loads 30 blocks, about 3,000 households and about 14,500 visits over the past
+year: 48 weekly sessions, 4 follow-up sessions, one session active today and one waiting
+to start, about 1,250 follow-ups (suggested, listed, done and removed), and 3 admins and
+40 members, 2 of whom have left. Every run makes the same counts, ending at the moment it
+runs, and the same moment gives the same records. It first prints
+`Stage seed target: host:port/database`, then refuses, writing nothing, any database not
+named `door_to_door_stage`, and any that holds a user, block, session, household, visit or
+follow-up. It is not the demo seed and never runs against production. Its logins share
+one published password, `stage-password`: `admin@stage.example.com` (admin) and
+`member01@stage.example.com` to `member38@stage.example.com` (`member39` and `member40`
+have left); the stack is on this machine's loopback only.
+
+**The check** signs in as that admin and a member, then makes the requests each
+screen makes, a page and then its API reads, in a phone's order: sign-in, home and the
+active session, a block's units, a household's history, recording a visit, follow-ups,
+Admin Sessions with its notices, All records (`/admin/history`) and Needs a return visit
+(`/admin/attention`). It prints p50, p95 and maximum latency per route and the median
+response size, decoded and as sent, as a Markdown table. It runs 20 rounds after 2
+warm-up rounds, one phone at a time: it measures latency, not load. Each round records
+a visit, so the stack's data grows a little with every run.
+
+```bash
+npm run stage:perf -- --iterations 10 --warmup 1 --db-latency 220 --json stage-results.json
+```
+
+Each round signs in as the next member, since one member may save only 30 visits a
+minute, and a refusal shows in the `failed` column with its status. `STAGE_PORT` and
+`STAGE_TOXIPROXY_PORT` move the published ports, for both Compose and the check.
+
+`--db-latency <ms>` adds that round trip to every query the app makes, half each way,
+and takes it off when the check ends. With none, the database is on the same Docker
+network, as a function in Neon's region (`sin1` beside `ap-southeast-1`) nearly is. A
+function in Vercel's default region for new projects, Washington, D.C. (`iad1`), is
+about 220 ms from Singapore, and a request that makes several queries pays it each time.
+
+**In a browser**, open https://localhost:3400. The certificate is the stack's own, so the
+browser warns once; Chrome then refuses the service worker unless you trust the stack's
+root certificate, which `stage:down` deletes with the stack:
+
+```bash
+docker compose -p door-to-door-stage -f docker-compose.stage.yml exec -T edge \
+  cat /data/caddy/pki/authorities/local/root.crt > stage-root.crt
+```
+
+The edge drops the app's HSTS header, which would otherwise pin every port of `localhost`
+to HTTPS, the dev server's included.
+
+**What it does not model:** Vercel's cold starts, when a new function instance boots and
+opens its database connections on its first request; Vercel's edge network and the
+distance from a phone in Singapore to it (the check runs on this machine); Neon waking
+from scale-to-zero, its TLS connections and its connection pooler; Google sign-in, which
+needs a real OAuth client; many phones at once; mobile networks; and the browser's own
+work, since the check fetches pages and API responses but runs no JavaScript.
 
 ## Troubleshooting
 
@@ -791,8 +1026,10 @@ src/
                 history, follow-ups, hooks, session, sync (offline queue), offline
                 (local copy)
   auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
-  server/       server-only services, auth (sign-ins, sign-out, guards), withContract
-  db/           Drizzle schema, client, seed data and the seed's guard
+  server/       server-only services, auth (sign-ins, sign-out, guards), withContract,
+                and the stage check (stage/)
+  db/           Drizzle schema, client, seed data and the seed's guard, and the stage
+                seed
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware); under
                 next dev, also refuses a Host that is not localhost
@@ -800,9 +1037,38 @@ drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
-                check-standalone (postbuild)
+                check-standalone (postbuild), record-migration-checksums, e2e-linux,
+                ci-changes, ci-e2e, stage-seed, stage-perf
+docker/stage/   the stage stack's edge (Caddyfile) and toxiproxy settings
 docs/           architecture, research and per-issue decisions
 ```
+
+## Branches
+
+| Branch      | Holds                                       | Changes arrive by                                                    |
+| ----------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| a feature's | One issue                                   | Commits                                                              |
+| `dev`       | New features                                | A pull request per feature, squash or rebase merged                  |
+| `stage`     | The release candidate                       | A pull request from `dev`, merged with a merge commit                |
+| `main`      | Production: Vercel deploys it to d2dsrg.com | A pull request from `stage`, once tested, merged with a merge commit |
+
+`dev`, `stage` and `main` are protected: a change needs a pull request and the four
+[CI](#ci) checks, and none of them can be force-pushed or deleted. `dev` takes squash or
+rebase merges; `stage` and `main` take merge commits only. Feature pull
+requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test it in the
+[stage environment](#stage-environment), then merge `stage` to `main`.
+
+Dependabot's version updates target `dev` too (`target-branch` in
+[`.github/dependabot.yml`](.github/dependabot.yml)). Its security updates ignore that
+setting and open against `main`, the default branch: retarget each to `dev` before
+merging it (`gh pr edit <number> --base dev`). None of the entry's other settings apply
+to them either: they come without its groups, labels or commit prefix, and past its
+`ignore` rules.
+
+Promotions are the only merge commits. Squashed or rebased, a promotion would give `dev`
+and `stage` the same changes under different commits, and every later promotion would
+conflict over them. Work never flows back: a fix goes to `dev` and is promoted like
+anything else.
 
 ## Contributing
 
@@ -810,6 +1076,7 @@ Read [CLAUDE.md](CLAUDE.md): it holds the domain model and the working rules, ea
 as CI-enforced or convention. Check [`docs/tasks/`](docs/tasks/README.md) for prior
 decisions before making one.
 
-Branches are stacked: a feature branch bases off the previous one and its PR targets that
-branch rather than `main`. Merge top-down, and squash or rebase rather than creating a
-merge commit.
+Branches are stacked: the first branch of a stack bases off `dev` and its PR targets
+`dev`; each later one bases off the branch before it and targets that. Merge top-down,
+and squash or rebase into `dev`: a merge commit there gives every branch above it phantom
+conflicts. Only promotions are merge commits (see [Branches](#branches)).

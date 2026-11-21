@@ -334,8 +334,8 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** A `<select>` styled `min-h-12` rendered 26px tall in Playwright's WebKit at a
   phone viewport; adding `height` (`h-12`) rendered it 48px. Chromium honoured
   `min-height`. Observed in Playwright WebKit only; unverified on a real iPhone.
-- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filter selects are at
-  least 44px tall")
+- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filters are at least
+  44px tall", named "admin filter selects are at least 44px tall" until #245)
 - **Used by:** D-74-62
 
 ### R-40 · Linux WebKit's worker update check is cookieless, but it stores cookies set on the reply
@@ -1562,8 +1562,10 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   the first load carried the old URL in `Referer` (`same-origin`): 23 on Chromium, 13 on
   WebKit. An aborted or `500` RSC fetch gave a second document load, search empty; with
   no signal, the Offline page. Next 16.4.3, production build, both phone projects.
-- **Source:** #163 verifier, round 0 (Playwright network logs)
-- **Used by:** D-163-6
+- **Source:** #163 verifier, round 0 (Playwright network logs). #245's verifier r0 saw
+  the same wait on All records' filters: a picked date read blank until the server
+  answered.
+- **Used by:** D-163-6, D-245-5, D-246-10, D-257-1
 
 ### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
 
@@ -1574,10 +1576,11 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   which is what moves `useSearchParams`. On `popstate`, an entry with no state is ignored
   and one without `__NA` reloads the page. So a call before the patch must carry
   `history.state` itself. The docs promise the sync, not when the patch is in place.
-- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3);
+- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3; the
+  patch re-read unchanged in 16.4.5, lines 274-324, by #245's docs step);
   `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
   "Native History API"
-- **Used by:** D-163-6
+- **Used by:** D-163-6, D-245-5, D-246-10, D-257-1, D-257-2, D-257-3
 
 ### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
 
@@ -1764,7 +1767,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   The provider's `account()` decides which token fields are stored on the link.
 
 - **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
-- **Used by:** D-14-3, D-14-4, D-14-7
+- **Used by:** D-14-3, D-14-4, D-14-7, D-249-2
 
 ### R-157 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
 
@@ -2837,3 +2840,517 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-226 · Caddy's `reverse_proxy` writes `X-Forwarded-For`, `-Proto` and `-Host` itself, ignoring a client's values (read)
+
+- **Finding:** by default `reverse_proxy` passes headers through, except that it sets or
+  augments `X-Forwarded-For` and sets `X-Forwarded-Proto` and `X-Forwarded-Host`. It
+  ignores incoming values for all three unless the sender is in `trusted_proxies`. So
+  behind one Caddy with no trusted proxies, the client's address is the last
+  `X-Forwarded-For` entry the app sees, and a client cannot choose it.
+- **Source:** [Caddy, `reverse_proxy` › Headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers)
+  (caddyserver/website `reverse_proxy.md`, read through `gh api` on 2026-11-21). Not
+  measured by the docs step; the #244 builder's sign-ins through the edge worked.
+- **Used by:** D-244-7
+
+### R-227 · A toxiproxy latency toxic delays one direction only (read)
+
+- **Finding:** a `latency` toxic adds `latency` ± `jitter` to the data on one stream:
+  `downstream` (server to client) by default, or `upstream`. For a round-trip delay, put
+  one on each stream. Toxics are added and removed through the HTTP API at runtime, with
+  no restart of the proxy or its clients.
+- **Source:** [Shopify/toxiproxy README, Toxics › latency](https://github.com/Shopify/toxiproxy#latency)
+  (read through `gh api` on 2026-11-21).
+- **Used by:** D-244-10
+
+### R-228 · With `target-branch`, Dependabot's security updates take none of the entry's options, and the config is read from the default branch (read)
+
+- **Finding:** when an entry sets `target-branch`, its version updates check and target
+  that branch. Its options then no longer apply to security updates, "because security
+  updates always use the default branch". That covers groups (`applies-to:
+security-updates` included), ignores, labels, assignees and the commit-message prefix.
+  `dependabot.yml` must sit on the default branch. Its `docker-compose` updater picks
+  files by `/(docker-)?compose(-[\w]+)?(?>\.[\w-]+)?\.ya?ml/i`, which matches
+  `docker-compose.stage.yml`.
+- **Source:** github/docs `dependabot-options-reference.md` (commit 92ac1df), sections
+  `target-branch` and the shield-marked options;
+  `about-the-dependabot-yml-file.md` ("in the default branch");
+  dependabot-core `docker/lib/dependabot/docker_compose/file_fetcher.rb`
+  (`FILENAME_REGEX`, commit 2e6fcea). All read through `gh api` on 2026-11-21.
+  Security updates were off on the repository (`automated-security-fixes`: `enabled:
+false`) on that date.
+- **Used by:** D-244-3, D-244-13; the conflict with D-118-7 and D-166-11 in #244's open
+  questions
+
+### R-229 · A Vercel function's default size is 1 vCPU and 2 GB
+
+- **Finding:** Vercel's Standard function size, the default, is 1 vCPU and 2 GB of memory.
+  New projects run their functions in `iad1` (Washington, D.C.) unless a region is chosen.
+- **Source:** [Vercel, configuring memory and CPU](https://vercel.com/docs/functions/configuring-functions/memory)
+  and [Vercel, configuring regions](https://vercel.com/docs/functions/configuring-functions/region),
+  as the #244 builder and #247 read them. The docs step could not reach vercel.com, so
+  neither was re-read.
+- **Used by:** D-244-14
+
+### R-230 · The stage stack with a year of records: what the check measured (measured)
+
+- **Finding:** in one phone's requests, the latency comes from database round trips, not
+  rows.
+  - **No added delay:** API reads took 16 to 48 ms at p50, and pages 9 to 21 ms.
+  - **2 ms round trip:** API reads took 24 to 74 ms.
+  - **220 ms round trip:** every API read took at least about 700 ms. A block's units took
+    2.1 s, a unit's history 1.6 s, a save 3.0 s and a sign-in 1.7 s. Member pages that
+    read nothing stayed at 8 to 19 ms. Admin pages took 250 to 960 ms, as they read the
+    database.
+
+  The app sends API JSON uncompressed: before the edge had `encode`, every API route's
+  size as sent equalled its decoded size, and `/api/history` was 126.6 KB a page. With
+  `encode zstd gzip` it went out at 11.0 KB. One member making every round's save had 14
+  of 20 refused by the 30-a-minute limit. `/api/auth/csrf` behind the edge set a second
+  `__Host-authjs.csrf-token` cookie with a `callback-url` of `https://0.0.0.0:3000`.
+
+- **Source:** measured by the #244 builder on 2026-11-21 with `npm run stage:perf`, using
+  20 rounds (8 at 220 ms) on a freshly seeded stack. Other builds shared the machine, so
+  single milliseconds are noise. Not re-measured by the docs step.
+- **Used by:** D-244-9, D-244-23
+
+### R-231 · iOS Safari draws a native date input content-box with a 30px min-height, whatever the page sets (measured on a simulator)
+
+- **Finding:** in Safari on iOS, an `<input type="date">` with its native appearance keeps
+  a content-box size and a 30px min-height, ignoring the page's `box-sizing`, `width`
+  and `min-height`. On All records at 430px, From and To were 221 × 32 in 194px cells
+  beside 194 × 51 selects, so To ran from x 219 to 441. The follow-up sheet's input was
+  28px wider than its column. With `appearance: none` each takes the field's box: 194 ×
+  51, and 96px tall at 32px text, where a filled date wraps to two lines. Playwright's
+  WebKit and Chromium do not draw iOS's control and never showed the overflow. With and
+  without the rule both gave the same 179 × 48 box, 12px padding, 1px border and 8px
+  radius, and Chromium kept its calendar icon. Tailwind 4.3.5's preflight already sets
+  `::-webkit-date-and-time-value { min-height: 1lh; text-align: inherit }`. That keeps an
+  empty date's height on iOS and lets its value start-align.
+- **Source:** measured in Safari on an iOS 26.5 simulator, iPhone 15 Pro Max, 430px (#245
+  builder; before and after at 16 and 32px by the verifier r0), not on a real device.
+  Chromium and desktop WebKit compared with and without the rule by the #245 reviewer.
+  `node_modules/tailwindcss/preflight.css` lines 319-327 (4.3.5).
+- **Used by:** D-245-1, D-245-2, D-245-4
+
+### R-232 · A filter change through `router.replace` waits on an RSC fetch and falls back to a page load; through `history.replaceState(null, …)` it makes none (measured)
+
+- **Finding:** on `/admin/attention`, whose page reads no `searchParams`,
+  `router.replace` for a block or the toggle fetched the page's RSC payload, and
+  `useSearchParams` moved only when it committed: with the fetch held 1 s, the select
+  read the block just left and the toggle stayed unpressed for the whole second.
+  Offline, Next logged "Failed to fetch RSC payload … Falling back to browser
+  navigation", and the worker answered that navigation with the Offline page. With
+  `window.history.replaceState(null, "", href)`, Next's patch (R-141) restored the
+  router to the new URL in a transition: no RSC fetch, no document load and no new
+  history entry; the select showed the new block by the second frame and the toggle by
+  the first; offline the screen stayed; Back after a client navigation away restored
+  both from the entry. Handed `history.state` (Next's `__NA`) instead of `null`, the
+  call went straight through, `useSearchParams` never moved, and the next filter
+  written dropped the first.
+- **Source:** next 16.4.5, `dist/client/components/router-reducer/fetch-server-response.js`
+  (the fallback) and `dist/client/components/app-router.js` (the patch); measured (#246
+  verifier r0 at 1c1f036 and r1 at 4490b2c, production build, Pixel 5 on Chromium,
+  iPhone 13 and iPhone 15 Pro Max on WebKit, whose offline mode bypasses the worker,
+  D-32-18). Extends R-140 from the `?q=` strip to filter changes.
+- **Used by:** D-246-10, D-246-17, D-257-1, D-257-2
+
+### R-233 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
+
+- **Finding:** `z.uuid()` with no version wants a version digit 1 to 8 and a variant
+  digit 8, 9, a or b (either case), or the nil or max UUID. `asUuid`
+  (`src/lib/history/record-filters.ts`) tests only the 8-4-4-4-12 hex shape, which is
+  Zod's looser `guid`. So `12345678-1234-1234-1234-123456789012` passes the client's
+  check, and the API, whose `blockId` and `teamId` are `z.uuid()`, refuses it with 400.
+- **Source:** zod 4.6.7, `node_modules/zod/v4/core/regexes.js` (`uuid`, `guid`);
+  `src/generated/zod.gen.ts`. Read (#246 reviewer, docs step).
+- **Used by:** D-246-3
+
+### R-234 · `attachDatabasePool` keeps a Vercel instance awake for a pg pool's idle timeout after each release, and does nothing off Vercel (read)
+
+- **Finding:** for a pg `Pool`, it wraps `connect` so that each client remembers the
+  request it was checked out for. On every `release` it hands that request's `waitUntil`
+  a promise that resolves after `idleTimeoutMillis` plus 100 ms. The wait is cut short
+  1 s before the request's deadline, with a floor of 100 ms, and a later release
+  replaces the earlier timer. It returns at once unless `VERCEL_URL` and `VERCEL_REGION`
+  are both set. With both set and no request context, it logs "Pool release event
+  triggered outside of request scope." Attaching the same pool twice does nothing (a
+  `WeakSet`), `DEBUG` set to any value logs each release, and a pool type it does not
+  recognise throws. Vercel's guide says idle timers do not run while an instance is
+  suspended, so a connection stays open until the database drops it. The attach makes
+  "idle connections close before suspension", and the guide suggests an idle timeout of
+  about 5 s.
+- **Source:** `node_modules/@vercel/functions/db-connections/index.js` and
+  `get-context.js` (3.11.3). Vercel's guide to connection pooling with Functions, as
+  quoted in #247's report; the docs step did not re-read it.
+  `src/db/client.integration.test.ts` runs the 5000 + 100 ms wait on a real pool.
+- **Used by:** D-250-6, D-250-7, D-250-10
+
+### R-235 · `@vercel/functions`' root entry loads `@vercel/oidc`, and its `db-connections` subpath does not (read)
+
+- **Finding:** the package is CommonJS. Its `index.js` requires every module, among them
+  `affinity.js`, which requires `@vercel/oidc` 4.0.9. That in turn depends on
+  `@vercel/cli-config` and `@vercel/cli-exec`, and through `execa` 5 on `cross-spawn`
+  and its helpers. The `./db-connections` export requires only `../get-context` and
+  `../deadline`.
+- **Source:** `node_modules/@vercel/functions/package.json` (`exports`), `index.js`,
+  `affinity.js` and `db-connections/index.js` (3.11.3), and `package-lock.json`. The
+  builder found no `@vercel/oidc` in the build output; the docs step did not check that
+  again.
+- **Used by:** D-250-8, D-250-9
+
+### R-236 · Neon's pooled host is PgBouncer in transaction mode, recommended for serverless, with migrations on the direct host (read)
+
+- **Finding:** Neon says "Use the pooled connection string … for serverless functions".
+  The pooled host runs PgBouncer in transaction mode, which gives each transaction
+  whatever server connection is free. Neon advises running migrations against the
+  direct, non-pooler host. The pooled hostname is the endpoint's name with `-pooler`
+  added, and Neon's Connect dialog shows it when "Connection pooling" is on. Neon's
+  connection strings carry `channel_binding`, which `database.url`'s rules refuse
+  (D-75-3).
+- **Source:** Neon docs, Connection pooling, as quoted in #247's report (recommendation
+  2); the hostname, Connect dialog and `channel_binding` details are as the #250 builder
+  read them. The docs step re-read none of it.
+- **Used by:** D-250-1, D-250-3, D-250-5, D-250-11
+
+### R-237 · Drizzle over node-postgres names a statement only through `.prepare()`, and pg-pool defaults to 10 connections and 10 s idle (read)
+
+- **Finding:** in drizzle-orm 0.45.4, a query builder's `execute()` calls `_prepare()`
+  with no name, and `NodePgPreparedQuery` passes that `name` on to pg. pg 8.23.1 sends a
+  named statement, which lasts as long as the server connection, only when `name` is
+  set. So only a `.prepare("name")` call makes one. pg-pool 3.14.0 defaults `max` to 10
+  and `idleTimeoutMillis` to 10000.
+- **Source:** `node_modules/drizzle-orm/pg-core/query-builders/select.js` (`_prepare`,
+  `execute`), `node_modules/drizzle-orm/node-postgres/session.js` (`rawQueryConfig`),
+  `node_modules/pg/lib/query.js` (`name`) and `node_modules/pg-pool/index.js` (the
+  constructor's defaults).
+- **Used by:** D-250-5, D-250-6
+
+### R-244 · On a first OAuth sign-in Auth.js calls `jwt` with `signUp` and goes to `pages.newUser`
+
+- **Finding:** in `@auth/core` 0.41.3's OAuth callback, the `signIn` callback is called
+  before any account is made, with `user` the account already linked to this provider id
+  or, failing that, the provider's own `profile()` result. It may return `false` (refused
+  as `AccessDenied`), `true`, or a URL to redirect to. When `handleLoginOrRegister` then
+  calls `createUser` (R-156), it passes that profile, the provider's id included, and
+  reports `isNewUser`. With JWT sessions the `jwt` callback gets `trigger: "signUp"`
+  instead of `"signIn"`, and with `pages.newUser` set the answer redirects there with the
+  `callbackUrl`, not to it.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/index.js` (`handleAuthorized`,
+  the OAuth branch), `node_modules/@auth/core/lib/actions/callback/handle-login.js`
+- **Used by:** D-249-2, D-249-10, and #249's open question on a deactivated account
+
+### R-245 · Chromium reads hidden text inside a link laid out as blocks with a break (measured)
+
+- **Finding:** with the count as visually hidden text inside the Admin tab's link,
+  Chromium read the link's name as "Admin , 1 …". The builder's reading: the link lays
+  its children out as blocks, so a break is read between them. An `aria-label` on the
+  link reads "Admin, 1 waiting for approval".
+- **Source:** measured (#249 builder, Chromium); not re-measured, nor tried in WebKit,
+  by the docs step.
+- **Used by:** D-249-24
+
+### R-246 · An upsert locks every conflicting row in one mode, chosen by the columns its SET names, and cannot touch a row twice (read and measured)
+
+- **Finding:** `INSERT ... ON CONFLICT DO UPDATE` locks each conflicting row before it
+  updates it. The mode is the one an UPDATE of the SET's columns would take, chosen once
+  for the statement. Naming a column of a unique index a foreign key can use, such as
+  `unit_number` in `households_block_unit_unique`, gives `FOR UPDATE` even when the value
+  does not change. Otherwise the mode is `FOR NO KEY UPDATE` (R-124). If a statement's
+  rows name one conflict target twice, the statement fails ("ON CONFLICT DO UPDATE
+  command cannot affect row a second time"), so a batch upsert needs one row per unit.
+  The executor takes VALUES rows in order, so sorted rows are locked in sorted order;
+  this is not documented. Measured: with `unit_number` dropped from the SET, the
+  parked-lock test that holds a household no longer waits. Three concurrent resends of
+  25 records, beside an admin's 25 at the same units in reverse order, did not deadlock.
+- **Source:** [PostgreSQL, INSERT, ON CONFLICT clause](https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT);
+  PostgreSQL `src/backend/executor/nodeModifyTable.c`, where `ExecOnConflictUpdate` locks
+  with `ExecUpdateLockMode`, which returns `LockTupleExclusive` when the updated columns
+  overlap the key columns. The docs step did not re-read that against a checkout. Also
+  measured (#251 builder, verifier r0 and r1).
+- **Used by:** D-251-6
+
+### R-247 · `now()` is the transaction's start, PostgreSQL keeps microseconds, and the API's times keep milliseconds
+
+- **Finding:** `now()` (`transaction_timestamp()`) is the time the current transaction
+  started. It does not change within the transaction, so every row a statement writes
+  with it gets the same time. `timestamp with time zone` keeps microseconds.
+  node-postgres reads a `timestamptz` into a JavaScript `Date`, whose time value is whole
+  milliseconds, and the API writes it with `toISOString()`. So rows stored a microsecond
+  apart reach the phone with the same time. Measured: the 21 visits of one batch were
+  stored within a single millisecond in the E2E database.
+- **Source:** [PostgreSQL, current date/time](https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT);
+  [PostgreSQL, date/time types](https://www.postgresql.org/docs/current/datatype-datetime.html);
+  [ECMAScript, time values](https://tc39.es/ecma262/#sec-time-values-and-time-range);
+  measured (#251 verifier r0).
+- **Used by:** D-251-7, D-251-15
+
+### R-248 · `Array.prototype.sort` is stable
+
+- **Finding:** since ES2019, `Array.prototype.sort` must be stable: elements that
+  compare equal keep their order. So if a list is reversed and then sorted oldest first,
+  tied elements end up in the reverse of the order they arrived in.
+- **Source:** [ECMAScript 2019, Array.prototype.sort](https://262.ecma-international.org/10.0/#sec-array.prototype.sort);
+  [MDN, sort stability](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort#sort_stability)
+- **Used by:** D-251-15
+
+### R-249 · What a sync batch costs, before and after #251 (measured)
+
+- **Finding:** round trips per `POST /visits/sync` batch, counting every statement the
+  app's connections sent, BEGIN and COMMIT included. Measured for a member on a team at
+  distinct units, median of 5 runs. "Projected" is local time plus 2 ms per round trip
+  (sin1 to Neon, #247).
+
+  | Kind   | n   | Before | After | After, local ms | After, projected ms |
+  | ------ | --- | ------ | ----- | --------------- | ------------------- |
+  | new    | 1   | 17     | 17    | 6.6             | 41                  |
+  | new    | 25  | 425    | 17    | 7.9             | 42                  |
+  | new    | 50  | 850    | 17    | 9.9             | 44                  |
+  | new    | 100 | 1700   | 17    | 16.1            | 50                  |
+  | replay | 1   | 6      | 7     | 2.6             | 17                  |
+  | replay | 25  | 150    | 7     | 2.7             | 17                  |
+  | replay | 50  | 300    | 7     | 2.9             | 17                  |
+  | replay | 100 | 600    | 7     | 4.1             | 18                  |
+  | amend  | 1   | 16     | 16    | 4.8             | 37                  |
+  | amend  | 25  | 400    | 232   | 43.1            | 507                 |
+  | amend  | 50  | 800    | 457   | 76.6            | 991                 |
+  | amend  | 100 | 1600   | 907   | 156.7           | 1971                |
+
+  A follow-up session costs 19 for 1, 25 or 100 new records; before, it was 19, 475 and
+  1,900. Amends cost 3 + 9n + 4. A run of 25 that falls back costs about 267 round trips.
+  Locally, 25 new records took about 70 to 79 ms before and 8 to 10 ms after.
+  #247 measured about 0.13 s for a 13-statement record in sin1, roughly 10 ms a
+  statement. At that rate 25 amends take about 2.4 s and a fallback about 2.7 s. At
+  iad1's 220 ms, a 17-statement run alone is about 4 s.
+
+- **Source:** measured with a counting pool on `door_to_door_test_51` (#251 builder).
+  #251 verifier r1 re-ran the count with `origin/dev`'s `sync.ts` swapped in for
+  "before", and every count matched. The sin1 and iad1 figures are from #247's report
+  (2026-11-21, recommendation 3).
+- **Used by:** D-251-3, D-251-12
+
+### R-238 · A job skipped by `if:` passes a required check; a skipped workflow leaves it pending (read)
+
+- **Finding:** a job skipped by a conditional reports "Success" and does not block a
+  merge, even when its check is required. Successful conclusions are `success`,
+  `skipped` and `neutral`. A workflow skipped by path or branch filtering, or a commit
+  message, leaves its checks "Pending", which blocks the merge. A job whose `needs`
+  failed is skipped and "may not block merging". Required checks must pass on the
+  latest commit. The Checks API's `filter=latest`, its default, "returns the most recent
+  check runs". No page read says outright that a ruleset reads only the newest check run
+  of a name; the builder's model (`src/ci-runs.test.ts`) assumes it, and the main session
+  checks it on GitHub after the push.
+- **Source:** github/docs `troubleshooting-required-status-checks.md` (commit 60f9f34),
+  "Handling skipped but required checks"; `control-jobs-with-conditions.md` (93069a0);
+  github/rest-api-description, the `filter` parameter of the check-run list endpoints
+  (bbd57e6). All read through `gh api` on 2026-11-21.
+- **Used by:** D-248-4, D-248-8, D-248-9
+
+### R-239 · A re-run keeps its run's commit and ref, and a partial re-run keeps the other jobs' outputs (read)
+
+- **Finding:** a re-run uses the same `GITHUB_SHA` and `GITHUB_REF` as the event that
+  started the run, with the privileges of the actor who started it. `github.run_attempt`
+  is a string, `1` on the first attempt, and increments with each re-run. Re-running
+  failed jobs or one job also re-runs the jobs that need them, and jobs left out keep
+  their outputs from the previous attempt. That the event payload (`draft`, labels, base)
+  is replayed too is not stated on the page; review r1 of #248 found it, and the lint
+  job's API read (D-248-10) no longer depends on it.
+- **Source:** github/docs `re-run-workflows-and-jobs.md` (commit 6abed3d);
+  `contexts.md` (`github.run_attempt`). Read through `gh api` on 2026-11-21.
+- **Used by:** D-248-10, D-248-11
+
+### R-240 · `pull_request` events, their payloads and a job's default timeout (read)
+
+- **Finding:** a `pull_request` workflow runs only on `opened`, `synchronize` and
+  `reopened` unless `types` names others, such as `ready_for_review`, `labeled` and
+  `edited`. Its `GITHUB_SHA` is the test merge commit on `refs/pull/<n>/merge`. An
+  `edited` payload carries `changes.base.ref.from` when the base changed. No
+  `pull_request` workflow runs while the pull request has a merge conflict. Expressions
+  compare strings ignoring case. A job's `timeout-minutes` defaults to 360.
+- **Source:** github/docs `events-that-trigger-workflows.md` (commit 3d26e90),
+  `expressions.md`, `workflow-syntax.md` (28d2706); github/rest-api-description,
+  `webhook-pull-request-edited` (bbd57e6). Read through `gh api` on 2026-11-21. That the
+  merge commit's first parent is the base is GitHub's merge-ref layout, which
+  `scripts/ci-changes.sh` relies on; no page read states it.
+- **Used by:** D-248-1, D-248-5, D-248-6, D-248-8, D-248-12
+
+### R-241 · A pull request run's caches are its own (read)
+
+- **Finding:** a cache made by a `pull_request` run is scoped to `refs/pull/<n>/merge`
+  and only re-runs of that pull request can restore it, not its base or another pull
+  request. A pull request run can restore caches from its own ref, its base branch and
+  the default branch, here `main`. Only a run on a branch, such as a push, fills that
+  branch's scope; `warm-caches.yml` fills `dev`'s and `main`'s (D-248-21, D-248-26), and
+  `stage`'s stays empty.
+- **Source:** github/docs `dependency-caching.md` (commit 6d84733), "Restrictions for
+  accessing a cache". Read through `gh api` on 2026-11-21.
+- **Used by:** D-248-13, D-248-21, D-248-26
+
+### R-242 · Dependabot's `rebase-strategy`, monthly schedule and labels (read)
+
+- **Finding:** by default Dependabot rebases an open pull request when its schedule
+  runs, when it is reopened, when `target-branch` changes, and when a push to the target
+  branch puts it in conflict. `rebase-strategy: disabled` stops that, but pull requests
+  opened before keep being rebased until 30 days after they were opened. `monthly` runs on
+  the first day of the month. A label named in `labels` that the repository does not
+  define is ignored; `e2e` was defined on 2026-11-21. With `target-branch` set, none of
+  these options reach security updates (R-228).
+- **Source:** github/docs `dependabot-options-reference.md` (commit 92ac1df), sections
+  `rebase-strategy`, `schedule` and `labels`; `gh label list`. Read on 2026-11-21.
+- **Used by:** D-248-14, D-248-15
+
+### R-243 · Playwright advises against caching its browsers (read)
+
+- **Finding:** "Caching browser binaries is not recommended", because restoring the
+  cache takes about as long as downloading them, and on Linux the system packages must
+  be installed anyway and cannot be cached. If cached, key the cache on the Playwright
+  version.
+- **Source:** microsoft/playwright `docs/src/ci.md` (commit 1c9b809), "Caching browsers"
+  ([Playwright, CI](https://playwright.dev/docs/ci#caching-browsers)). Read through
+  `gh api` on 2026-11-21.
+- **Used by:** D-248-13
+
+### R-250 · A skipped job's name expression shows as written (measured)
+
+- **Finding:** when a job whose `name:` is an expression is skipped, its check run is
+  named by the expression's text, the inside of `${{ }}`, not its value. A fixed name
+  shows as is. So a skipped job with an expression name never reports, or passes, a
+  required check. The same runs show CI's placeholder skip at the run's start and its
+  E2E job's skip after lint, about two minutes later. No docs page read states the
+  naming either way, and an expression name on a job that runs was not seen here.
+- **Source:** #260's runs on `24406e6`: CI 44908665916 (its `e2e` job) and E2E catch-up
+  44908763351 (its one job, on the retarget to `dev`), through `gh run view --json jobs`
+  and `gh api …/commits/<sha>/check-runs` on 2026-11-21.
+- **Used by:** D-248-9, D-248-18, D-248-19, D-248-20
+
+### R-251 · A cache is found only under its key and path, and saved only by a job that succeeds with a new key (read)
+
+- **Finding:** a cache's version hashes its `path` and the compression tool, and a
+  restore matches key and version, so the same key under another path is a miss. A miss
+  on `key` tries prefix and `restore-keys` matches, newest first; `cache-hit` is `true`
+  only for an exact `key`. The post step saves the cache only when the job succeeds
+  (`post-if: success()`) and the key was not already there; `lookup-only` skips the
+  download and leaves saving as it is. `setup-node`'s npm key is
+  `node-cache-<OS>-<arch>-npm-<lockfile hash>`, also saved on success when the key is
+  new.
+- **Source:** actions/cache `README.md` and `action.yml` at 55cc834 (v6.1.0), "Inputs",
+  "Outputs", "Example cache workflow" and "Cache Version"; actions/setup-node
+  `src/cache-restore.ts`, `src/cache-save.ts` and `action.yml` at 949feb2 (v7.1.0);
+  github/docs `dependency-caching.md` (commit 6d84733), "Cache key matching". Read
+  through `gh api` on 2026-11-21 (#248 docs step).
+- **Used by:** D-248-24, D-248-25
+
+### R-252 · A commit GitHub makes names `GitHub <noreply@github.com>` as its committer (measured)
+
+- **Finding:** on this repository, the commits GitHub made have committer
+  `GitHub <noreply@github.com>`: squash merges, merge commits from the merge button and
+  Dependabot's, 122 in all. The author stays the person or bot, and the four checked
+  (`e49313a`, `3e92d4c`, `7f5ac21`, `0a562a0`) carry a valid signature. GitHub's docs say
+  commits made in the web interface are signed with the web-flow key, but name no
+  committer. A web edit and **Update branch** were not seen here.
+- **Source:** `gh api repos/{owner}/{repo}/commits/<sha> --jq .commit.committer` and
+  `git log --all --committer=noreply@github.com`, on 2026-11-22; github/docs
+  `about-commit-signature-verification.md` (commit 3c5bf3c). #248 docs step.
+- **Used by:** D-248-28
+
+### R-253 · `router.replace` on a static route stays on the device for 5 minutes; after that, or on a dynamic route, it asks the server, and offline leaves the screen (measured)
+
+- **Finding:** Next keeps its client copy of a static route, which the bottom nav
+  prefetches on load, for `staleTimes.static`: 5 minutes by default. The app does not
+  set it. Within that time a `router.replace` to `/history?view=team` or
+  `/follow-ups?view=mine` sent no RSC request, so offline the screen stayed with its
+  alert. After it, and at once if the prefetch never landed, the replace fetched the RSC
+  payload. Offline that failed, and Next fell back to a page load (R-232). The Pixel
+  showed the worker's Offline page, and Playwright's WebKit, which has no worker
+  offline (D-32-18), ignored the tap. On the Pixel, the dynamic routes
+  `/admin/follow-ups` and `/history/[sessionId]` (`dynamic` defaults to 0 s) showed
+  Offline on the first tap.
+  Through `useAddressFilters` all four stayed on screen with no RSC request: warm, cold,
+  with every prefetch refused, and 6 minutes after load.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/staleTimes.md`
+  (next 16.4.5). Measured by #257's builder (warm, Chromium with the worker) and by its
+  verifier r1 and r2 using Playwright's clock (4 and 6 minutes after load). Production
+  build, Pixel 5 on Chromium, iPhone 13 and iPhone 15 Pro Max on WebKit.
+- **Used by:** D-257-2
+
+### R-254 · React `cache()` lasts one server render, and a Route Handler or Server Action is not one (read and measured)
+
+- **Finding:** Next's guide says React's `cache` "deduplicates within a React render
+  pass. Server Actions and Route Handlers are not part of a render pass, so the wrapper
+  does nothing and every call runs the function." #252's reviewer found that Next's
+  app-route runtime has no React cache dispatcher. Outside a request, Flight's
+  `getCacheForType` returns a new `Map` each time. On the standalone build, with a pg
+  tracer, each admin page made 1 sign-in query (2 in #247), and every API request made
+  exactly 1, back-to-back repeats included.
+- **Source:** `node_modules/next/dist/docs/01-app/02-guides/authentication.md:1181`
+  (Next 16); #252 reviewer r1; #252 verifier r0 and r2.
+- **Used by:** D-252-4
+
+### R-255 · An empty `generateStaticParams` builds each path on its first request and keeps it (read and measured)
+
+- **Finding:** "To statically render all paths the first time they're visited, return
+  an empty array." With Cache Components on, an empty array is a build error. The app
+  does not use Cache Components. On the standalone build, `/households/[id]` is `●`
+  (`ƒ` before). Its first request is a MISS and the next a HIT, with 0 queries and the
+  proxy's `Cache-Control: no-store` kept. Any id is built and kept, invalid ones
+  included. After one device pass the server held 100 unit pages, most from Link
+  prefetches as rows scrolled into view. Not checked on Vercel.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/generate-static-params.md`
+  ("All paths at runtime", "With Cache Components"); #252 build output; #252 verifier r0
+  and r2.
+- **Used by:** D-252-12
+
+### R-256 · An index serves `ORDER BY … DESC` only in its own null order; Drizzle's `.desc()` is NULLS LAST; a plain `CREATE INDEX` blocks writes (read and measured)
+
+- **Finding:**
+  - In PostgreSQL a plain `DESC` sorts nulls first. A B-tree serves an `ORDER BY` only
+    when it is scanned forward or backward in that exact order, nulls included.
+  - drizzle-orm's `.desc()` on an index column sets nulls to `"last"`, so `.nullsFirst()`
+    is needed.
+  - On 2,109 visits, All records' first page with the NULLS FIRST index is an Index Scan
+    on `visits_created_id_idx`, 0.2 ms. With a NULLS LAST index in its place, it is a Seq
+    Scan and a top-N sort. #247 measured 15,390 visits: page one went from 18.1 to
+    0.45 ms, and offset 10,000 from 30 to 15.8 ms, with no sort spilling to disk.
+  - `CREATE INDEX` without `CONCURRENTLY` locks the table against writes, not reads, until
+    the build ends. `CONCURRENTLY` cannot run inside a transaction block, and drizzle-orm's
+    `migrate` applies every pending migration inside one transaction.
+- **Source:** PostgreSQL docs, "Indexes and ORDER BY" and `CREATE INDEX` ("Building
+  Indexes Concurrently"); `node_modules/drizzle-orm/pg-core/columns/common.js:76-97` and
+  `pg-core/dialect.js:60-71` (`migrate`); #252 verifier r0 and r1; #247's report,
+  recommendation 8.
+- **Used by:** D-252-8
+
+### R-257 · Vercel's 4.5 MB response limit against a 250-record `/history` page (measured; the limit as cited)
+
+- **Finding:**
+  - A Vercel Function's response body may be at most 4.5 MB.
+  - `GET /api/history?limit=250`, with every field at its maximum length in Chinese text
+    and no team, measured 4,009,326 bytes (3.82 MiB), about 11% under the limit. The
+    builder's 3.3 MB estimate was low.
+  - Teams are uncapped, and each teammate adds a name and an image URL to every record.
+  - The API accepts control characters. A description of 3,999 U+0001 is 26.8 KB as
+    JSON, so 250 such records would be about 6.7 MB. At 100 a page they were about
+    2.7 MB.
+- **Source:** Vercel docs, Functions limitations, as #252's reviewer and verifier cited
+  them. The docs step did not re-read them, nor check whether the limit applies before or
+  after compression. The sizes were measured by #252 verifier r1 on the local build.
+- **Used by:** D-252-6
+
+### R-258 · node-postgres: a pool lends a connection to each query in flight and queues the rest; a client runs its queries in turn (read and measured)
+
+- **Finding:**
+  - pg-pool 3.14.0 gives each query in flight a connection, an idle one first, and opens
+    new ones up to `max`. Past that it queues the query. With no
+    `connectionTimeoutMillis`, which the app does not set, a queued query waits rather
+    than fails.
+  - A `Client` runs one query at a time. pg 8.23.1 warns that calling `client.query()`
+    while one is executing "is deprecated and will be removed in pg@9.0". That is what
+    `Promise.all` on a transaction's client would do.
+  - Measured on the standalone build with a cold pool: `/api/sessions/active` took 4
+    round trips and opened 2 connections, and a unit's history took 3 with 1 new. Warm,
+    they took 3 and 2. Locally a new connection cost 20 to 40 ms. #247 puts one at about
+    12 ms from sin1, against about 2 ms a query.
+- **Source:** `node_modules/pg-pool/index.js:190-262` (`connect`);
+  `node_modules/pg/lib/client.js:34-36, 779-780`; #252 verifier r0 and r1; #247's
+  report.
+- **Used by:** D-252-1, D-250-6 (its reasoning)

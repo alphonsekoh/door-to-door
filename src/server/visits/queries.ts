@@ -57,6 +57,8 @@ export type HouseholdSummaryRow = {
  * visits, their outstanding follow-up counts, and two to attach teams (none
  * when no visit is stamped). Summarising each household with its own round
  * trip would be N+1 on a block with a hundred units, which is the normal case.
+ * Those that need nothing from another run together, in four round trips one
+ * after another at most (#252).
  *
  * Only the page's summaries and at most one visit per household reach Node,
  * however many visits a household has (D-126-1).
@@ -65,16 +67,6 @@ export async function listHouseholds(
   db: Database,
   options: { blockId: string; sessionId?: string | undefined; limit: number; offset: number },
 ): Promise<{ rows: HouseholdSummaryRow[]; total: number }> {
-  const blockExists = await db
-    .select({ id: blocks.id })
-    .from(blocks)
-    .where(eq(blocks.id, options.blockId))
-    .limit(1);
-
-  if (blockExists.length === 0) {
-    throw new NotFoundError("No such block.");
-  }
-
   /*
    * Scoped to a session, only units recorded during it are listed: the block
    * unit list shows tonight's work, not every household ever known there.
@@ -87,18 +79,26 @@ export async function listHouseholds(
           sql`exists (select 1 from ${visits} v where v.household_id = ${households.id} and v.session_id = ${options.sessionId})`,
         );
 
-  const page = await db
-    .select({ id: households.id })
-    .from(households)
-    .where(filter)
-    .orderBy(asc(households.unitNumber))
-    .limit(options.limit)
-    .offset(options.offset);
+  /* A block that is not there has no households either, so its page and
+     count are read alongside the check rather than after it. */
+  const [blockExists, page, counted] = await Promise.all([
+    db.select({ id: blocks.id }).from(blocks).where(eq(blocks.id, options.blockId)).limit(1),
+    db
+      .select({ id: households.id })
+      .from(households)
+      .where(filter)
+      .orderBy(asc(households.unitNumber))
+      .limit(options.limit)
+      .offset(options.offset),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(households)
+      .where(filter),
+  ]);
 
-  const counted = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(households)
-    .where(filter);
+  if (blockExists.length === 0) {
+    throw new NotFoundError("No such block.");
+  }
 
   const total = firstOrThrow(counted, "the household count").total;
   if (page.length === 0) {
@@ -129,37 +129,44 @@ export async function listHouseholds(
     .limit(1)
     .as("latest");
 
-  const summaries = await db
-    .select({ household: households, visitCount: tally.visitCount, latestId: latest.id })
-    .from(households)
-    .crossJoinLateral(tally)
-    .leftJoinLateral(latest, sql`true`)
-    .where(inArray(households.id, ids))
-    .orderBy(asc(households.unitNumber));
+  /* The summaries, then their latest visits, then those visits' teams. */
+  const summarised = async () => {
+    const summaries = await db
+      .select({ household: households, visitCount: tally.visitCount, latestId: latest.id })
+      .from(households)
+      .crossJoinLateral(tally)
+      .leftJoinLateral(latest, sql`true`)
+      .where(inArray(households.id, ids))
+      .orderBy(asc(households.unitNumber));
 
-  const latestIds = summaries.flatMap((row) => (row.latestId === null ? [] : [row.latestId]));
-  const latestVisits = await attachTeams(
-    db,
-    await db
-      .select(visitColumns)
-      .from(visits)
-      .innerJoin(users, eq(users.id, visits.memberId))
-      .where(inArray(visits.id, latestIds)),
-  );
+    const latestIds = summaries.flatMap((row) => (row.latestId === null ? [] : [row.latestId]));
+    const latestVisits = await attachTeams(
+      db,
+      await db
+        .select(visitColumns)
+        .from(visits)
+        .innerJoin(users, eq(users.id, visits.memberId))
+        .where(inArray(visits.id, latestIds)),
+    );
+    return { summaries, latestVisits };
+  };
 
-  /* Only what is owed: a suggestion is not a promise until an admin lists it. */
-  const outstanding = await db
-    .select({ householdId: followUps.householdId, total: sql<number>`count(*)::int` })
-    .from(followUps)
-    .where(
-      and(
-        inArray(followUps.householdId, ids),
-        liveFollowUp,
-        eq(followUps.status, "listed"),
-        isNull(followUps.doneAt),
-      ),
-    )
-    .groupBy(followUps.householdId);
+  const [{ summaries, latestVisits }, outstanding] = await Promise.all([
+    summarised(),
+    /* Only what is owed: a suggestion is not a promise until an admin lists it. */
+    db
+      .select({ householdId: followUps.householdId, total: sql<number>`count(*)::int` })
+      .from(followUps)
+      .where(
+        and(
+          inArray(followUps.householdId, ids),
+          liveFollowUp,
+          eq(followUps.status, "listed"),
+          isNull(followUps.doneAt),
+        ),
+      )
+      .groupBy(followUps.householdId),
+  ]);
 
   const outstandingByHousehold = new Map(outstanding.map((row) => [row.householdId, row.total]));
   const visitsById = new Map(latestVisits.map((visit) => [visit.id, visit]));
@@ -189,47 +196,48 @@ export type HouseholdHistoryRows = {
 
 /*
  * A unit and one page of its visits (#160): four queries, or six with a
- * visit on a team, however many visits it holds. Only the page goes through
- * attachTeams. Newest first, the id breaking a tie as listHouseholds' latest
- * visit does (D-126-1), so the order is total and a page boundary inside a
- * run of visits stored at one instant neither repeats nor skips one.
+ * visit on a team, however many visits it holds. The four need nothing from
+ * one another, so they run together, and only the page's teams wait, for the
+ * page (#252). Only the page goes through attachTeams. Newest first, the id
+ * breaking a tie as listHouseholds' latest visit does (D-126-1), so the order
+ * is total and a page boundary inside a run of visits stored at one instant
+ * neither repeats nor skips one.
  */
 export async function getHouseholdHistory(
   db: Database,
   householdId: string,
   page: { limit: number; offset: number },
 ): Promise<HouseholdHistoryRows> {
-  const found = await db
-    .select({ household: households, block: blocks })
-    .from(households)
-    .innerJoin(blocks, eq(blocks.id, households.blockId))
-    .where(eq(households.id, householdId))
-    .limit(1);
-
-  const row = found[0];
-  if (!row) {
-    throw new NotFoundError("No such household.");
-  }
-
-  const history = await attachTeams(
-    db,
-    await db
+  const [found, history, tally, notes] = await Promise.all([
+    db
+      .select({ household: households, block: blocks })
+      .from(households)
+      .innerJoin(blocks, eq(blocks.id, households.blockId))
+      .where(eq(households.id, householdId))
+      .limit(1),
+    db
       .select(visitColumns)
       .from(visits)
       .innerJoin(users, eq(users.id, visits.memberId))
       .where(eq(visits.householdId, householdId))
       .orderBy(desc(visits.createdAt), desc(visits.id))
       .limit(page.limit)
-      .offset(page.offset),
-  );
+      .offset(page.offset)
+      .then((rows) => attachTeams(db, rows)),
+    db
+      .select({
+        total: sql<number>`count(*)::int`,
+        answered: sql<boolean>`coalesce(bool_or(${visits.interestLevel} <> 'no_response'), false)`,
+      })
+      .from(visits)
+      .where(eq(visits.householdId, householdId)),
+    listFollowUpsFor(db, householdId),
+  ]);
 
-  const tally = await db
-    .select({
-      total: sql<number>`count(*)::int`,
-      answered: sql<boolean>`coalesce(bool_or(${visits.interestLevel} <> 'no_response'), false)`,
-    })
-    .from(visits)
-    .where(eq(visits.householdId, householdId));
+  const row = found[0];
+  if (!row) {
+    throw new NotFoundError("No such household.");
+  }
   const { total, answered } = firstOrThrow(tally, "the visit tally");
 
   return {
@@ -238,7 +246,7 @@ export async function getHouseholdHistory(
     visits: history,
     total,
     answered,
-    followUps: await listFollowUpsFor(db, householdId),
+    followUps: notes,
   };
 }
 
@@ -387,33 +395,34 @@ export async function listHouseholdsNeedingAttention(
   ];
   const filter = and(...conditions);
 
-  const found = await db
-    .select({
-      ...visitColumns,
-      household: households,
-      block: blocks,
-      visitCount: sql<number>`(
-        select count(*)::int from ${visits} v3 where v3.household_id = ${visits.householdId}
-      )`,
-    })
-    .from(visits)
-    .innerJoin(users, eq(users.id, visits.memberId))
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .innerJoin(blocks, eq(blocks.id, households.blockId))
-    .where(filter)
-    /* Oldest first: the longer a yes has been left, the more it has cost. The
-       id keeps doors whose last visits tie in one order from page to page. */
-    .orderBy(asc(visits.createdAt), asc(visits.id))
-    .limit(options.limit)
-    .offset(options.offset);
-
-  const rows = await attachTeams(db, found);
-
-  const counted = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(visits)
-    .innerJoin(households, eq(households.id, visits.householdId))
-    .where(filter);
+  /* The page and the total, together (#252). */
+  const [rows, counted] = await Promise.all([
+    db
+      .select({
+        ...visitColumns,
+        household: households,
+        block: blocks,
+        visitCount: sql<number>`(
+          select count(*)::int from ${visits} v3 where v3.household_id = ${visits.householdId}
+        )`,
+      })
+      .from(visits)
+      .innerJoin(users, eq(users.id, visits.memberId))
+      .innerJoin(households, eq(households.id, visits.householdId))
+      .innerJoin(blocks, eq(blocks.id, households.blockId))
+      .where(filter)
+      /* Oldest first: the longer a yes has been left, the more it has cost. The
+         id keeps doors whose last visits tie in one order from page to page. */
+      .orderBy(asc(visits.createdAt), asc(visits.id))
+      .limit(options.limit)
+      .offset(options.offset)
+      .then((found) => attachTeams(db, found)),
+    db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(visits)
+      .innerJoin(households, eq(households.id, visits.householdId))
+      .where(filter),
+  ]);
 
   return {
     rows: rows.map((row) => ({

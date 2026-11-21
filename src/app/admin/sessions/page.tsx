@@ -1,4 +1,5 @@
 import { AdminSessions } from "@/components/admin/admin-sessions";
+import { ApprovalCountCard } from "@/components/admin/approval-count-card";
 import { OverdueFollowUps } from "@/components/follow-ups/overdue-follow-ups";
 import { ReviewCountCard } from "@/components/follow-ups/review-count-card";
 import { PageHeader } from "@/components/ui/page-header";
@@ -17,6 +18,7 @@ export default async function AdminSessionsPage() {
       <AdminSessions
         notices={
           <div className="space-y-3 empty:hidden">
+            <ApprovalCountCard />
             <ReviewCountCard />
             <OverdueFollowUps />
           </div>

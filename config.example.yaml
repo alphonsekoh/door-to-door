@@ -18,6 +18,14 @@ database:
   # DATABASE_PASSWORD_FILE).
   url: postgresql://localhost:5432/door_to_door
 
+  # Where db:migrate and drizzle-kit connect instead of url: the same
+  # database, also WITHOUT credentials (the same DATABASE_USER and
+  # DATABASE_PASSWORD are added). Set it when url goes through a connection
+  # pooler in transaction mode, such as Neon's "-pooler" host: url stays on
+  # the pooler for the app, and this names the database's direct host, where
+  # migrations belong. The app never connects here. Default: url.
+  # migrationUrl: postgresql://localhost:5432/door_to_door
+
 auth:
   # Trust the Host header from a reverse proxy. Leave true behind Docker, a
   # load balancer or any proxy; set false only when the app is exposed directly

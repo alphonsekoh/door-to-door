@@ -35,12 +35,19 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:linux": "bash scripts/e2e-linux.sh",
     "start:standalone": "cp -r public .next/standalone/public && cp -r .next/static .next/standalone/.next/static && if [ -n \"$CONFIG_YAML\" ]; then node .next/standalone/server.js; else CONFIG_PATH=\"${CONFIG_PATH:-$PWD/config.yaml}\" node .next/standalone/server.js; fi",
-    "icons": "tsx scripts/generate-icons.ts"
+    "icons": "tsx scripts/generate-icons.ts",
+    "stage:up": "docker compose -p door-to-door-stage -f docker-compose.stage.yml up -d --build --wait",
+    "stage:seed": "docker compose -p door-to-door-stage -f docker-compose.stage.yml run --rm --build seed",
+    "stage:perf": "tsx scripts/stage-perf.ts",
+    "stage:logs": "docker compose -p door-to-door-stage -f docker-compose.stage.yml logs",
+    "stage:psql": "docker compose -p door-to-door-stage -f docker-compose.stage.yml exec db psql -U stage door_to_door_stage",
+    "stage:down": "docker compose -p door-to-door-stage -f docker-compose.stage.yml down -v"
   },
   "dependencies": {
     "@auth/drizzle-adapter": "^1.11.3",
     "@node-rs/argon2": "^2.2.2",
     "@serwist/turbopack": "^9.5.13",
+    "@vercel/functions": "3.11.3",
     "drizzle-orm": "^0.45.4",
     "esbuild-wasm": "^0.28.2",
     "idb": "^8.0.4",

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
+import {
+  WAITING_PATH,
+  isApiPath,
+  isPublicPath,
+  isPwaPath,
+  isWaitingPath,
+  signInRedirect,
+} from "@/server/auth/routes";
 
 describe("isPublicPath", () => {
   it.each([
@@ -29,6 +36,20 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/api/authorise")).toBe(false);
     expect(isPublicPath("/offline-secrets")).toBe(false);
     expect(isPublicPath("/serwistx")).toBe(false);
+  });
+});
+
+/* #249: only someone signed in has a request to wait on. */
+describe("the waiting page", () => {
+  it("is guarded, not public", () => {
+    expect(WAITING_PATH).toBe("/waiting");
+    expect(isPublicPath(WAITING_PATH)).toBe(false);
+  });
+
+  it("is that one path, not a lookalike", () => {
+    expect(isWaitingPath("/waiting")).toBe(true);
+    expect(isWaitingPath("/waiting-room")).toBe(false);
+    expect(isWaitingPath("/")).toBe(false);
   });
 });
 

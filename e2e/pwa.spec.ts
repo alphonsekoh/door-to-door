@@ -540,8 +540,11 @@ test.describe("phone layout", () => {
   });
 
   /* iOS WebKit ignores min-height on a native select and drew the admin
-     filters 26px tall, under the 44px rule (D-30-8); selects carry h-12. */
-  test("admin filter selects are at least 44px tall", async ({ adminPage, adminApi }) => {
+     filters 26px tall, under the 44px rule (D-30-8); selects carry h-12.
+     It draws a native date input content-box, 32px tall and past its cell
+     (#245), which neither engine here does, so the date fields are checked
+     for the cause too: no native appearance. */
+  test("admin filters are at least 44px tall", async ({ adminPage, adminApi }) => {
     await ensureActiveSession(adminApi);
     for (const [path, label] of [
       ["/admin/records", "Filter by block"],
@@ -559,6 +562,22 @@ test.describe("phone layout", () => {
           })
           .toBeGreaterThanOrEqual(44);
       }
+    }
+    for (const label of ["Recorded from", "Recorded to"]) {
+      const date = adminPage.getByLabel(label);
+      await expect(date, label).toHaveCSS("appearance", "none");
+      const id = label === "Recorded from" ? "history-from" : "history-to";
+      const caption = adminPage.locator(`label[for="${id}"]`);
+      await expect(caption, label).toBeVisible();
+      /* An sr-only label is a 1x1 box, which toBeVisible accepts. */
+      const captionBox = await caption.boundingBox();
+      const dateBox = await date.boundingBox();
+      expect(captionBox?.height ?? 0, label).toBeGreaterThanOrEqual(16);
+      expect(captionBox?.width ?? 0, label).toBeGreaterThan(8);
+      expect((captionBox?.y ?? 0) + (captionBox?.height ?? 0), label).toBeLessThanOrEqual(
+        dateBox?.y ?? 0,
+      );
+      expect(dateBox?.height ?? 0, label).toBeGreaterThanOrEqual(44);
     }
     await endActiveSession(adminApi);
   });

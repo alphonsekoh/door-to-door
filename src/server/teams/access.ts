@@ -109,21 +109,32 @@ export async function stampVisit(
   teamId: string | null,
   authorId: string,
 ): Promise<void> {
+  await stampVisits(db, [visitId], teamId, authorId);
+}
+
+/* stampVisit for visits one author just inserted together: one snapshot, one insert. */
+export async function stampVisits(
+  db: Database,
+  visitIds: readonly string[],
+  teamId: string | null,
+  authorId: string,
+): Promise<void> {
   if (teamId === null) return;
   const mates = await snapshotTeammates(db, teamId, authorId);
   if (mates.length === 0) return;
   await db
     .insert(visitTeammates)
-    .values(mates.map((userId) => ({ visitId, userId })))
+    .values(visitIds.flatMap((visitId) => mates.map((userId) => ({ visitId, userId }))))
     .onConflictDoNothing();
 }
 
 /*
- * Adds `team` to visit rows: the stamped teams' names, then their snapshots
- * joined to current user names. Two queries for up to 10,000 visits, so a
- * page of a hundred costs no more than one (D-20-3); past that, one more per
- * 10,000 (#126), although a household's history now passes one page (#160).
- * Each visit's teammates come from one query, in name order.
+ * Adds `team` to visit rows: the stamped teams' names, and their snapshots
+ * joined to current user names, read together (#252). Two queries for up to
+ * 10,000 visits, so a page of a hundred costs no more than one (D-20-3); past
+ * that, one more per 10,000 (#126), although a household's history now
+ * passes one page (#160). Each visit's teammates come from one query, in name
+ * order.
  */
 export async function attachTeams<T extends { id: string; teamId: string | null }>(
   db: Database,
@@ -135,27 +146,28 @@ export async function attachTeams<T extends { id: string; teamId: string | null 
   }
 
   const teamIds = [...new Set(stamped.map((row) => row.teamId).filter((id) => id !== null))];
-  const teamRows = await selectInChunks(teamIds, (ids) =>
-    db
-      .select({ id: sessionTeams.id, name: sessionTeams.name })
-      .from(sessionTeams)
-      .where(inArray(sessionTeams.id, ids)),
-  );
-
   const visitIds = [...new Set(stamped.map((row) => row.id))];
-  const mates = await selectInChunks(visitIds, (ids) =>
-    db
-      .select({
-        visitId: visitTeammates.visitId,
-        id: users.id,
-        name: users.name,
-        image: users.image,
-      })
-      .from(visitTeammates)
-      .innerJoin(users, eq(users.id, visitTeammates.userId))
-      .where(inArray(visitTeammates.visitId, ids))
-      .orderBy(asc(users.name), asc(users.id)),
-  );
+  const [teamRows, mates] = await Promise.all([
+    selectInChunks(teamIds, (ids) =>
+      db
+        .select({ id: sessionTeams.id, name: sessionTeams.name })
+        .from(sessionTeams)
+        .where(inArray(sessionTeams.id, ids)),
+    ),
+    selectInChunks(visitIds, (ids) =>
+      db
+        .select({
+          visitId: visitTeammates.visitId,
+          id: users.id,
+          name: users.name,
+          image: users.image,
+        })
+        .from(visitTeammates)
+        .innerJoin(users, eq(users.id, visitTeammates.userId))
+        .where(inArray(visitTeammates.visitId, ids))
+        .orderBy(asc(users.name), asc(users.id)),
+    ),
+  ]);
 
   const namesById = new Map(teamRows.map((team) => [team.id, team.name]));
   const matesByVisit = new Map<string, PersonRow[]>();

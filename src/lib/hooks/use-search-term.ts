@@ -4,7 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 
 /*
- * The history and records search term, which the screen holds and the URL
+ * An admin list's search term, which the screen holds and the URL
  * never carries (D-129-7): it is a name or a phone number, and a query string
  * reaches the server's logs, the phone's history and a sign-in's callbackUrl.
  *

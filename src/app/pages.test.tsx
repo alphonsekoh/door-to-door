@@ -15,19 +15,24 @@ import AdminMemberPage from "@/app/admin/team/[id]/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockLoading from "@/app/blocks/[id]/loading";
 import BlockPage from "@/app/blocks/[id]/page";
-import HouseholdPage from "@/app/households/[id]/page";
+import HouseholdPage, { generateStaticParams } from "@/app/households/[id]/page";
 import NotFound from "@/app/not-found";
 import SessionPage from "@/app/page";
+import WaitingPage from "@/app/waiting/page";
 import type * as ApiClientModule from "@/lib/api-client";
 
-const { requireAdminPage } = vi.hoisted(() => ({ requireAdminPage: vi.fn() }));
-vi.mock("@/server/auth/pages", () => ({ requireAdminPage }));
+const { requireAdminPage, requireWaitingPage } = vi.hoisted(() => ({
+  requireAdminPage: vi.fn(),
+  requireWaitingPage: vi.fn(),
+}));
+vi.mock("@/server/auth/pages", () => ({ requireAdminPage, requireWaitingPage }));
 vi.mock("@/auth/google", () => ({ googleDomains: () => ["gmail.com", "tjc.sg"] }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
   useSelectedLayoutSegment: () => null,
   useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({ id: "h1" }),
 }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
@@ -100,14 +105,18 @@ describe("history screens", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("renders a unit's timeline", async () => {
-    render(
-      await HouseholdPage({
-        params: Promise.resolve({ id: "h1" }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
+  it("renders the timeline of the unit in the address", async () => {
+    const { apiFetch } = await import("@/lib/api-client");
+    render(<HouseholdPage />);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/^\/households\/h1\?/));
+  });
+
+  /* Read on the client, the unit leaves nothing for the server to draw per
+     request, so no unit is drawn at build time either: each is drawn when
+     first asked for (#252). */
+  it("draws no unit's page at build time", () => {
+    expect(generateStaticParams()).toEqual([]);
   });
 });
 
@@ -210,10 +219,12 @@ describe("admin screens", () => {
 
   it("tells Add someone where Google sign-in works, as config.yaml has it (#14)", async () => {
     const { apiFetch } = await import("@/lib/api-client");
-    vi.mocked(apiFetch).mockResolvedValueOnce({
-      data: [],
-      pagination: { limit: 100, offset: 0, total: 0, hasMore: false },
-    });
+    const none = { data: [], pagination: { limit: 100, offset: 0, total: 0, hasMore: false } };
+    // Waiting for approval, the team, and Not approved (#249).
+    vi.mocked(apiFetch)
+      .mockResolvedValueOnce(none)
+      .mockResolvedValueOnce(none)
+      .mockResolvedValueOnce(none);
     const user = userEvent.setup();
     render(await AdminTeamPage());
     await user.click(await screen.findByRole("button", { name: "Add someone" }));
@@ -232,6 +243,43 @@ describe("admin screens", () => {
     expect(requireAdminPage).toHaveBeenCalled();
     expect(screen.getByRole("heading", { level: 1, name: "Session" })).toBeInTheDocument();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+});
+
+/* #249: drawn from the account's row, so Check again shows a change at once. */
+describe("waiting page", () => {
+  it("says an account is waiting, from the guard's own read of it", async () => {
+    requireWaitingPage.mockResolvedValueOnce({
+      email: "pat@gmail.com",
+      name: "Pat",
+      approval: "pending",
+    });
+    render(await WaitingPage());
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Waiting for approval" }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Your name")).toHaveValue("Pat");
+    expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
+    // There is nowhere else to go.
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("says a rejected account wasn't approved", async () => {
+    requireWaitingPage.mockResolvedValueOnce({
+      email: "pat@gmail.com",
+      name: "Pat",
+      approval: "blocked",
+    });
+    render(await WaitingPage());
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Your request wasn't approved" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  });
+
+  it("draws nothing for anyone the guard sends elsewhere", async () => {
+    requireWaitingPage.mockRejectedValueOnce(new Error("NEXT_REDIRECT /"));
+    await expect(WaitingPage()).rejects.toThrow("NEXT_REDIRECT");
   });
 });
 

@@ -14,6 +14,16 @@ export const PWA_PATHS = ["/offline", "/manifest.webmanifest", "/serwist"] as co
 
 export const PUBLIC_PATHS = ["/sign-in", ...PWA_PATHS] as const;
 
+/*
+ * Where an account waiting for an admin's approval, or rejected, is kept
+ * (#249). Not public: only someone signed in has a request to wait on.
+ */
+export const WAITING_PATH = "/waiting";
+
+export function isWaitingPath(pathname: string): boolean {
+  return pathname === WAITING_PATH;
+}
+
 /* Auth.js owns these; guarding them would make signing in impossible. */
 export const AUTH_PREFIX = "/api/auth";
 

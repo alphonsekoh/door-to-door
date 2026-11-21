@@ -64,6 +64,20 @@ info:
     reactivating it brings none back. A token whose sign-in has ended is
     answered `401` by every operation, however long it has left to run.
 
+    ## Approval
+
+    A first Google sign-in at one of the server's Google sign-in domains
+    creates an account that is waiting for an admin's approval
+    (`approval: pending`). Someone an admin adds with `POST /users` is
+    approved from the start. Until an admin approves it, the account may
+    call only `GET /users/me` and `PATCH /users/me`; every other operation
+    answers `403 account_pending`. An admin who rejects it blocks it
+    (`approval: blocked`): it may then call only `GET /users/me`, and every
+    other operation answers `403 account_blocked`, until an admin unblocks
+    it, which puts it back in the queue. Approval is read on every request,
+    like deactivation, so approving, rejecting or unblocking takes effect
+    on the account's next request without signing in again.
+
     ## Same origin only
 
     Every operation other than a `GET` refuses, with `403 forbidden` and before
@@ -182,6 +196,17 @@ components:
         is not a list entry and is never resolved.
       enum: [suggested, listed]
 
+    Approval:
+      type: string
+      description: |
+        `approved` may use the app; everyone an admin adds is approved from
+        the start. `pending` was created by a first Google sign-in
+        and waits for an admin. `blocked` was rejected by an admin, and
+        cannot ask again until an admin unblocks it, which makes it
+        `pending`. Only an `approved` account can be an admin or be
+        deactivated.
+      enum: [pending, approved, blocked]
+
     # ----------------------------------------------------------------- errors
 
     ErrorCode:
@@ -191,6 +216,8 @@ components:
         - unauthenticated
         - forbidden
         - account_deactivated
+        - account_pending
+        - account_blocked
         - not_found
         - conflict
         - session_not_active
@@ -264,17 +291,20 @@ components:
     User:
       type: object
       additionalProperties: false
-      required: [id, email, name, role, deactivatedAt, lastRecordedAt, createdAt]
+      required: [id, email, name, role, approval, deactivatedAt, lastRecordedAt, createdAt]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
         name:
           type: [string, "null"]
           description: |
-            Absent until an admin or the member supplies one. Signing in with
-            Google never sets or changes it.
+            Absent until an admin or the member supplies one. A first Google
+            sign-in, which creates a `pending` account, takes the name on the
+            Google account when it is a valid name; a later sign-in never
+            sets or changes it.
         image: { type: [string, "null"], format: uri }
         role: { $ref: "#/components/schemas/Role" }
+        approval: { $ref: "#/components/schemas/Approval" }
         deactivatedAt:
           type: [string, "null"]
           format: date-time
@@ -1451,6 +1481,14 @@ components:
       in: query
       description: Rows per page.
       schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    HistoryLimit:
+      name: limit
+      in: query
+      description: |
+        Rows per page. Up to 250 here, so the CSV export reads a large filtered
+        set in few requests. Even with every description at its longest, 250
+        records stay within a few megabytes.
+      schema: { type: integer, minimum: 1, maximum: 250, default: 50 }
     Offset:
       name: offset
       in: query
@@ -1481,9 +1519,12 @@ components:
     Forbidden:
       description: |
         Authenticated, but not permitted. Returned to members calling
-        admin-only operations, to members amending another member's record, and
-        to any account deactivated after its session was issued. Also returned
-        to a write sent from another origin (see "Same origin only").
+        admin-only operations, to members amending another member's record,
+        to any account deactivated after its session was issued
+        (`account_deactivated`), and to an account waiting for approval
+        (`account_pending`) or rejected (`account_blocked`; see "Approval").
+        Also returned to a write sent from another origin (see "Same origin
+        only").
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -1594,6 +1635,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ActiveSession" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: |
             No session is active. A normal state, not an error condition —
@@ -1725,6 +1767,7 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/SessionBlock" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Sessions]
@@ -2035,7 +2078,9 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: No such session, or a listed user does not exist.
+          description: |
+            No such session, or a listed user does not exist or is not
+            approved.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2134,7 +2179,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404":
-          description: No such team, or no such user.
+          description: No such team, or no such approved user.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2204,6 +2249,7 @@ paths:
               schema: { $ref: "#/components/schemas/BlockList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Blocks]
       operationId: createBlock
@@ -2293,6 +2339,7 @@ paths:
               schema: { $ref: "#/components/schemas/HouseholdList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /households/attention:
@@ -2361,6 +2408,7 @@ paths:
               schema: { $ref: "#/components/schemas/HouseholdHistory" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ================================================================ Visits
@@ -2449,7 +2497,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "404":
-          description: The block, or a named `memberId`, does not exist.
+          description: |
+            The block does not exist, or a named `memberId` does not exist
+            or is not approved.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2900,7 +2950,7 @@ paths:
         - name: to
           in: query
           schema: { type: string, format: date-time }
-        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/HistoryLimit"
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
@@ -2952,6 +3002,7 @@ paths:
               schema: { $ref: "#/components/schemas/HistoryList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /history/mine/sessions:
     get:
@@ -2981,6 +3032,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionHistoryList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ================================================================= Users
   /users:
@@ -2988,13 +3040,23 @@ paths:
       tags: [Users]
       operationId: listUsers
       summary: List users
-      description: "**Requires: admin.**"
+      description: |
+        **Requires: admin.** By default only `approved` users, by name: the
+        team, and what every picker offers. `approval=pending` is the queue
+        waiting for approval and `approval=blocked` those rejected, each
+        oldest first; `pagination.total` is how many there are.
       parameters:
         - name: role
           in: query
           schema: { $ref: "#/components/schemas/Role" }
+        - name: approval
+          in: query
+          schema:
+            allOf: [{ $ref: "#/components/schemas/Approval" }]
+            default: approved
         - name: includeDeactivated
           in: query
+          description: Only an `approved` user can be deactivated.
           schema: { type: boolean, default: false }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
@@ -3013,9 +3075,11 @@ paths:
       operationId: createUser
       summary: Add someone to the team
       description: |
-        **Requires: admin.** Adds someone to the team. Signing in never
-        creates an account: only an address added here (or by
-        `npm run create-admin`) can sign in.
+        **Requires: admin.** Adds someone to the team, approved from the
+        start. Email-and-password accounts are made only here (or by
+        `npm run create-admin`). A first Google sign-in at one of the
+        server's Google sign-in domains makes an account too, but one
+        waiting for an admin's approval (see "Approval").
 
         With a `password` they sign in with email and password. They can
         also sign in with Google, but only when Google sign-in is set up on
@@ -3044,10 +3108,12 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "409":
           description: |
-            That email address already belongs to someone, or no `password`
-            was given while Google sign-in is not set up on this server, or no
-            `password` was given for an address outside the server's
-            `auth.google.domains`. The message names those domains.
+            That email address already belongs to someone: the message says
+            so, or that it is waiting for approval, or that it was rejected
+            and must be unblocked first. Or no `password` was given while
+            Google sign-in is not set up on this server, or no `password` was
+            given for an address outside the server's `auth.google.domains`.
+            The message names those domains.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3060,8 +3126,10 @@ paths:
       operationId: getCurrentUser
       summary: The authenticated user
       description: |
-        Available to all roles. Clients use the returned `role` for UI
-        affordance only — never as an authorization decision.
+        Available to all roles, and to an account waiting for approval or
+        rejected: `approval` is how the app knows to show the waiting page.
+        Clients use the returned `role` and `approval` for UI affordance
+        only — never as an authorization decision.
       responses:
         "200":
           description: The current user.
@@ -3083,9 +3151,12 @@ paths:
       operationId: updateOwnProfile
       summary: Change your own display name
       description: |
-        Available to all roles. Always acts on the caller: there is no id
-        parameter, so one member cannot rename another through this operation.
-        Changing someone else's account stays admin-only on `PATCH /users/{id}`.
+        Available to all roles, and to an account waiting for approval, so
+        it can correct the name its Google account gave it; a rejected
+        account is `403 account_blocked`. Always acts on the caller: there
+        is no id parameter, so one member cannot rename another through this
+        operation. Changing someone else's account stays admin-only on
+        `PATCH /users/{id}`.
 
         A name is a label; authorship is by id. Past records therefore show the
         new name, and no visit or record changes author (D-29-2).
@@ -3104,7 +3175,9 @@ paths:
         "401": { $ref: "#/components/responses/Unauthenticated" }
         "403":
           description: |
-            The account was deactivated after this session was issued.
+            The account was deactivated after this session was issued
+            (`account_deactivated`), or its request was rejected
+            (`account_blocked`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3153,6 +3226,9 @@ paths:
         Deactivating preserves the user's records and their attribution, and
         ends every one of the user's sign-ins in the same change.
         Reactivating brings none of them back: the user signs in again.
+
+        Only an `approved` user can be changed here; one waiting for
+        approval or rejected is `409`. Use approve, reject or unblock.
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       requestBody:
         required: true
@@ -3171,13 +3247,98 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: |
-            An admin attempting to demote or deactivate themselves, or a
-            change that would leave no active admin.
+            An admin attempting to demote or deactivate themselves, a change
+            that would leave no active admin, or a user who is not
+            `approved`.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
         "413": { $ref: "#/components/responses/ContentTooLarge" }
         "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  /users/{id}/approve:
+    post:
+      tags: [Users]
+      operationId: approveUser
+      summary: Let someone waiting for approval use the app
+      description: |
+        **Requires: admin.** Moves `pending` to `approved`, always as a
+        `member`; promote them afterwards with `PATCH /users/{id}`. They do
+        not sign in again: their next request is let through.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The approved user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            They are not waiting for approval: already approved, or
+            rejected (unblock them first).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/{id}/reject:
+    post:
+      tags: [Users]
+      operationId: rejectUser
+      summary: Turn down someone waiting for approval
+      description: |
+        **Requires: admin.** Moves `pending` to `blocked`. Their Google
+        account can no longer ask to join: signing in again shows only that
+        it was not approved. Their sign-ins are kept, so that an unblock
+        reaches a phone still signed in; they authorize nothing but
+        `GET /users/me`.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The rejected user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            They are not waiting for approval: already rejected, or already
+            approved (deactivate them instead).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /users/{id}/unblock:
+    post:
+      tags: [Users]
+      operationId: unblockUser
+      summary: Let a rejected account ask again
+      description: |
+        **Requires: admin.** Moves `blocked` back to `pending`: the person
+        is waiting for approval again, on their next request, and an admin
+        can then approve them.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The unblocked user, now waiting for approval.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: They are not blocked.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /users/{id}/sign-ins:
     get:

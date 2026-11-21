@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { Role } from "@/db/schema";
+import type { Approval, Role } from "@/db/schema";
 import { signIns, users, visits } from "@/db/schema";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { checkOwnName } from "@/lib/session/own-name";
@@ -18,7 +18,9 @@ import { hashPassword } from "@/server/password";
  *
  * Deactivated users are excluded from listings by default but never deleted:
  * their records stay attributed to them, because history has to survive
- * someone leaving.
+ * someone leaving. So is everyone not approved (#249): the team, its pickers
+ * and its counts are the approved accounts, and the queue is asked for by
+ * name.
  */
 
 export type UserRow = {
@@ -27,6 +29,7 @@ export type UserRow = {
   name: string | null;
   image: string | null;
   role: Role;
+  approval: Approval;
   deactivatedAt: Date | null;
   lastRecordedAt: Date | null;
   createdAt: Date;
@@ -63,6 +66,7 @@ function selectUsers(db: Database) {
       name: users.name,
       image: users.image,
       role: users.role,
+      approval: users.approval,
       deactivatedAt: users.deactivatedAt,
       lastRecordedAt: recent.lastRecordedAt,
       createdAt: users.createdAt,
@@ -75,21 +79,28 @@ export async function listUsers(
   db: Database,
   options: {
     role?: Role | undefined;
+    approval: Approval;
     includeDeactivated: boolean;
     limit: number;
     offset: number;
   },
 ): Promise<{ rows: UserRow[]; total: number }> {
-  const conditions = [
+  const filter = and(
+    eq(users.approval, options.approval),
     ...(options.role === undefined ? [] : [eq(users.role, options.role)]),
     ...(options.includeDeactivated ? [] : [isNull(users.deactivatedAt)]),
-  ];
-  const filter = conditions.length > 0 ? and(...conditions) : undefined;
+  );
 
   const rows = await selectUsers(db)
-    /* By name so a picker reads alphabetically; email breaks the tie and is
-       never null, so the order is stable across pages. */
-    .orderBy(asc(users.name), asc(users.email))
+    .orderBy(
+      /* The team by name so a picker reads alphabetically; email breaks the
+         tie and is never null, so the order is stable across pages. A queue
+         oldest first, so whoever has waited longest is at the top; the id
+         breaks a tie (#212). */
+      ...(options.approval === "approved"
+        ? [asc(users.name), asc(users.email)]
+        : [asc(users.createdAt), asc(users.id)]),
+    )
     .where(filter)
     .limit(options.limit)
     .offset(options.offset);
@@ -163,9 +174,30 @@ export async function createUser(
     return await getUser(db, firstOrThrow(inserted, "the user insert").id);
   } catch (error) {
     if (isConstraintViolation(error, "users_email_unique")) {
-      throw new ConflictError("conflict", "That email address already belongs to someone.");
+      throw new ConflictError("conflict", await takenMessage(db, email));
     }
     throw error;
+  }
+}
+
+/*
+ * Someone who asked with Google is never added over the top: approval always
+ * makes a member, and an add could otherwise give them a role or a password
+ * (#249). The admin is pointed at the action that applies instead.
+ */
+async function takenMessage(db: Database, email: string): Promise<string> {
+  const found = await db
+    .select({ approval: users.approval })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  switch (found[0]?.approval) {
+    case "pending":
+      return `${email} is waiting for approval. Approve them under Waiting for approval.`;
+    case "blocked":
+      return `${email} wasn't approved. Unblock them under Not approved first.`;
+    default:
+      return "That email address already belongs to someone.";
   }
 }
 
@@ -194,7 +226,12 @@ export async function updateUser(
 ): Promise<UserRow> {
   await db.transaction(async (tx) => {
     const locked = await tx
-      .select({ id: users.id, role: users.role, deactivatedAt: users.deactivatedAt })
+      .select({
+        id: users.id,
+        role: users.role,
+        approval: users.approval,
+        deactivatedAt: users.deactivatedAt,
+      })
       .from(users)
       .where(or(eq(users.id, id), and(eq(users.role, "admin"), isNull(users.deactivatedAt))))
       .orderBy(asc(users.id))
@@ -206,6 +243,14 @@ export async function updateUser(
     const current = locked.find((row) => sameUuid(row.id, id));
     if (!current) {
       throw new NotFoundError("No such user.");
+    }
+    /* A role or deactivation would skip the queue; the check constraint
+       would refuse either, but with a constraint name for a message. */
+    if (current.approval !== "approved") {
+      throw new ConflictError(
+        "conflict",
+        "They haven't been approved. Approve, reject or unblock them instead.",
+      );
     }
 
     if (sameUuid(id, actorId)) {
@@ -258,4 +303,110 @@ export async function updateOwnName(db: Database, userId: string, raw: string): 
     .set({ name: checked.name, updatedAt: new Date() })
     .where(eq(users.id, userId));
   return getUser(db, userId);
+}
+
+/*
+ * Approving, rejecting and unblocking (#249). Each is one conditional UPDATE
+ * from the state it applies to, so two admins at once cannot both move the
+ * same person: the second finds the row moved on and is told why. Nobody's
+ * sign-ins are touched. They are checked against the row on every request,
+ * so the change reaches the person's next one; a rejected person keeps
+ * theirs, which authorize nothing but reading their own state, so that an
+ * unblock reaches a phone still signed in.
+ */
+async function moveApproval(
+  db: Database,
+  id: string,
+  from: Approval,
+  to: Approval,
+  refusal: (current: Approval) => string,
+): Promise<UserRow> {
+  const moved = await db
+    .update(users)
+    .set({ approval: to, updatedAt: new Date() })
+    .where(and(eq(users.id, id), eq(users.approval, from)))
+    .returning({ id: users.id });
+  if (moved.length === 0) {
+    const found = await db
+      .select({ approval: users.approval })
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    const current = found[0];
+    if (!current) {
+      throw new NotFoundError("No such user.");
+    }
+    throw new ConflictError("conflict", refusal(current.approval));
+  }
+  return getUser(db, id);
+}
+
+/* Always as a member: the check constraint holds everyone waiting to that. */
+export function approveUser(db: Database, id: string): Promise<UserRow> {
+  return moveApproval(db, id, "pending", "approved", (current) =>
+    current === "blocked"
+      ? "Their request was rejected. Unblock them first."
+      : "They've already been approved.",
+  );
+}
+
+export function rejectUser(db: Database, id: string): Promise<UserRow> {
+  return moveApproval(db, id, "pending", "blocked", (current) =>
+    current === "blocked"
+      ? "Their request was already rejected."
+      : "They've already been approved. Deactivate them instead.",
+  );
+}
+
+export function unblockUser(db: Database, id: string): Promise<UserRow> {
+  return moveApproval(db, id, "blocked", "pending", () => "They aren't blocked.");
+}
+
+/*
+ * A first Google sign-in (#249): an account waiting for approval, a member
+ * with no password and no picture, named by Google when the name is one a
+ * member could have given themselves. Returns null when the address was
+ * taken meanwhile, by a second sign-in racing this one or an admin adding it.
+ */
+export type AccessRequest = {
+  id: string;
+  email: string;
+  emailVerified: Date | null;
+  name: string | null;
+  image: string | null;
+  role: Role;
+  deactivatedAt: Date | null;
+};
+
+export async function createAccessRequest(
+  db: Database,
+  input: { email: string; name: string | null },
+): Promise<AccessRequest | null> {
+  try {
+    const inserted = await db
+      .insert(users)
+      .values({
+        email: input.email,
+        name: input.name,
+        passwordHash: null,
+        image: null,
+        role: "member",
+        approval: "pending",
+      })
+      .returning({
+        id: users.id,
+        email: users.email,
+        emailVerified: users.emailVerified,
+        name: users.name,
+        image: users.image,
+        role: users.role,
+        deactivatedAt: users.deactivatedAt,
+      });
+    return firstOrThrow(inserted, "the access request insert");
+  } catch (error) {
+    if (isConstraintViolation(error, "users_email_unique")) {
+      return null;
+    }
+    throw error;
+  }
 }

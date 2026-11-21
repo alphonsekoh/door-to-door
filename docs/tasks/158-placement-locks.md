@@ -51,7 +51,9 @@ still be put on a team and made a participant of the session. D-132-6 left this 
   - Recording: author `FOR SHARE`, session `FOR KEY SHARE`, household, the visit insert
     (foreign-key `KEY SHARE`), `visit_teammates`, participants, notes.
   - Sync: session `FOR KEY SHARE`, household, visit `FOR NO KEY UPDATE`, team membership
-    `FOR KEY SHARE`, participants, notes; no user row.
+    `FOR KEY SHARE`, participants, notes; no user row. _Refined by D-251-6:_ a run of
+    new records locks its households `FOR UPDATE`, several per transaction, in (block,
+    unit) order.
   - Amend: session `FOR KEY SHARE`, household `FOR UPDATE`, visit `FOR NO KEY UPDATE`,
     team membership `FOR KEY SHARE`.
   - Team changes (rename, disband, remove a member, join): single statements.

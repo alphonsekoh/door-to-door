@@ -45,13 +45,15 @@ flowchart LR
 | `src/auth/`           | Auth.js entrypoint (`@/auth`); Google sign-in (`google.ts`)     | 100%     | Server-only (D-14-18); `@/auth` only in `session.ts` and the auth route (D-83-12).    |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data and its guard       | 100%     | Constraints carry the invariants the API cannot race.                                 |
+| `src/db/stage-seed*`  | The stage stack's year of records and its guards                | 100%     | Never the demo seed; refuses all but the stack's own empty database (D-244-16).       |
+| `src/server/stage/`   | The stage check: HTTP client, percentiles, toxiproxy            | 100%     | Tooling for `npm run stage:perf`; nothing in the app imports it (D-244-27).           |
 | `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
 | `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
 | `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()`: 404 for members, sign-in with no live sign-in. |
 | `drizzle/`            | Generated migrations and their checksums                        | excluded | From `npm run db:generate` only, which appends `checksums.sha256` (D-131-9).          |
-| `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
+| `scripts/`            | migrate, seed, create-admin, check-blank-text, icons, stage-*   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
 | `test/`               | Vitest setup, global setup and shared test helpers              | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
@@ -103,6 +105,10 @@ users ─< sign_ins (one per device signed in; cascade on delete)
 - **Sign-in** (`sign_ins`): one row per device or browser signed in, named by the session
   token's `signInId` claim. Deleting it ends that sign-in (D-125-2). At most 50 per
   account, and expired after 30 days plus 15 minutes unused (D-125-7, D-125-8).
+- **Approval** (`users.approval`, #249): `approved`, which everyone an admin adds is, or
+  `pending` (a first Google sign-in) or `blocked` (rejected, until unblocked). A check
+  keeps an unapproved account a member and never deactivated (D-249-1). Only approved
+  people are on the team, its pickers and its counts (D-249-7, D-249-8).
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
   always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
@@ -143,7 +149,8 @@ authoritative, and a change to any of them needs the owner.
 - **Consequences.** A token's claims are frozen at sign-in, so role and deactivation are
   read from the database on every API request and admin page; the token's claims are UI
   hints only (D-83-1, D-83-3). Deactivation is a `403 account_deactivated` on any
-  operation (D-10-4, D-83-4). A JWT cannot be taken back on its own, so each one names a
+  operation (D-10-4, D-83-4), and an unapproved account `403 account_pending` or
+  `account_blocked` (D-249-4). A JWT cannot be taken back on its own, so each one names a
   `sign_ins` row that the same lookup checks: deleting the row ends that sign-in before
   its token expires (D-125-2, D-125-3).
 
@@ -219,14 +226,19 @@ authoritative, and a change to any of them needs the owner.
    uncapped (D-74-15, D-118-6); the 256 KiB cap bounds it at about 6,700 ids (D-126-7).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation, and the token's sign-in, from the
-   database on every request (one query, no cache), then calls the pure `requireUser` /
-   `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
-   `403 account_deactivated`, whatever its sign-in. "Last used" is written at most every
-   15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
+   database on every request (one query, nothing kept across requests; an admin page's
+   layout and page share it through React `cache()`, D-252-4), then calls the pure
+   `requireUser` / `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
+   `403 account_deactivated`, whatever its sign-in. One not approved is
+   `403 account_pending` or `403 account_blocked`, failing closed; only `GET` and
+   `PATCH /users/me` take it, through `requireOwnAccount` (D-249-4, D-249-5). "Last
+   used" is written at most every 15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
    budget, 30 a minute, and are `429 rate_limited` once it is spent
    (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
-4. The service does the work. Text that must say something (a unit number, note, block
-   name or street) is refused blank before anything is read (D-119-3). Sync and
+4. The service does the work. Reads that need nothing from one another go out together,
+   never on a transaction's client (D-252-1). Text that must say something (a unit
+   number, note, block name or street) is refused blank before anything is read
+   (D-119-3). Sync and
    `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
    transaction `POST /visits` first locks its author's user row (`FOR SHARE`) and
@@ -234,9 +246,11 @@ authoritative, and a change to any of them needs the owner.
    the caller, checked in step 3. Then both lock the session row (`FOR KEY SHARE`) and
    judge the session, the block and, in a follow-up session, the list rule for a
    member's new visit
-   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`); a new visit on the list
-   then marks the household's owed notes done, last (`markDoneByVisit`, D-117-69), and
-   the answer is a `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
+   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`). Sync does this once per
+   run of new records and judges every record of the run before writing any
+   (`refuseUnderLock`, D-251-3; see Offline). A new visit on the list then marks the
+   household's owed notes done, last (`markDoneByVisit`, D-117-69), and the answer is a
+   `RecordedVisit` naming them. An amend (`PATCH /visits/{id}`, or a
    sync item for a stored visit) is one transaction that locks the session
    `FOR KEY SHARE`, the household, the visit `FOR NO KEY UPDATE` and the team membership
    `FOR KEY SHARE`, and judges `canAmend` on those rows (D-123-1 to D-123-3). Changing a
@@ -245,7 +259,7 @@ authoritative, and a change to any of them needs the owner.
    the placed users' rows `FOR SHARE` in id order (ids lower-cased and de-duplicated),
    then the session row `FOR KEY SHARE` (an add with its team's row, then a member
    caller's membership), and judge the session, the team and the people on those rows:
-   a missing person is `404`, a deactivated one `409 conflict`. Teams and joins are
+   a missing or unapproved person is `404`, a deactivated one `409 conflict`. Teams and joins are
    checked in the same transaction, and members inserted in id order (D-158-2, D-158-3,
    D-180-1 to D-180-4). `PATCH /users/{id}` locks the target and every
    active admin `FOR NO KEY UPDATE` in id order, and refuses a change that would leave
@@ -287,13 +301,17 @@ per 5 s burst. The sync catch uses the same helpers.
 
 ## Configuration
 
-- Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`).
+- Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`), or
+  the same YAML in `CONFIG_YAML` on a host with no file, such as Vercel; both together
+  refuse to start (D-241-1, D-241-2).
   `config.example.yaml` and `config.docker.yaml` are committed; `config.yaml` is not.
   Pure parsing and validation is `src/lib/config.ts`; file access and caching is
   `src/server/config.ts`.
 - Secrets never go in the file: database user/password, `AUTH_SECRET`,
   `AUTH_GOOGLE_SECRET` are env vars with optional `_FILE` variants. `database.url` with
-  credentials is refused.
+  credentials is refused, and so is `database.migrationUrl`. That optional key names the
+  direct host behind a pooler, and only `db:migrate` and drizzle-kit use it; the app's
+  config never holds it (D-250-1 to D-250-3).
 - Loading is lazy (config, rate limiter, proxy, db client), so `next build` needs neither
   file nor database. `src/instrumentation.ts` validates at start and exits 1 on bad config,
   which includes a placeholder `AUTH_SECRET` and, outside `next dev`, one marked
@@ -323,20 +341,27 @@ and debug output is dropped. Lines are throttled for 60 s, and the throttles sit
 `Symbol.for` global that both module graphs share. A failed sign-in is left to
 `sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
-any admin exists (D-105-3); after that the app never leaves the team without an active
-admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only, at an
+any admin exists (D-105-3), and at an address that already has an account, a Google
+request waiting for approval included (D-105-4, D-249-37); after that the app never
+leaves the team without an active admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only, at an
 address in its domains (D-14-13, D-14-23).
 
 Google sign-in (`src/auth/google.ts`, #14) is the main way in when `config.yaml` sets
-`auth.google`; email and password stay as the fallback (D-14-1, D-14-2). Only an address
-an admin added, verified by Google, on an active account, can sign in (D-14-3), and only
-where Google vouches for it: a domain in `auth.google.domains`, and, anywhere but
-`gmail.com`, an ID token whose `hd` is a listed domain (D-14-19, D-14-20). Signing in
-creates nobody, links by email and never to a cookie already on the phone, and keeps no
-Google token (D-14-3 to D-14-7). An account added with no password is Google-only, and
+`auth.google`; email and password stay as the fallback (D-14-1, D-14-2). It signs in
+only an address Google has verified and vouches for: a domain in `auth.google.domains`,
+and, anywhere but `gmail.com`, an ID token whose `hd` is a listed domain (D-14-19,
+D-14-20). An account at that address signs in as itself unless deactivated. With none,
+the first sign-in asks to join: the adapter's `createUser` makes a pending member, named
+by Google if the name passes D-74-4, and Auth.js sends it to `/waiting`
+(`pages.newUser`), where it waits for an admin (D-249-2, D-249-10, D-249-18). Linking is
+by email, never to a cookie already on the phone, and no Google token or picture is
+kept (D-14-4, D-14-7). An account added with no password is Google-only, and
 is refused outside the domains (D-14-12, D-14-22). `googleDomains()` reads the list per
 request, and the pages pass it to the forms (D-14-21). Every Google refusal reads the
-same (D-14-5).
+same (D-14-5, D-249-19). Only admins approve, reject or unblock
+(`POST /users/{id}/approve`, `/reject`, `/unblock`, D-249-6); approval is read with the
+sign-in on every request, so a change reaches the person's next one (D-249-5). The proxy
+does not gate approval (D-249-12).
 
 Each sign-in is a `sign_ins` row named by the token's `signInId` claim (`sign-ins.ts`).
 `resolveSession` checks it on every request, and Auth.js's own routes check it in the
@@ -378,7 +403,17 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
-  per document load.
+  per document load, and Home's team card takes the same read (`sharedCurrentUser`,
+  D-252-9). A `403 account_pending` or `account_blocked`, or that read naming
+  either, shows no message: once that answer is in, the gate draws nothing and replaces
+  the page with `/waiting`, and does nothing there (D-249-11, D-249-21, D-249-22,
+  D-249-36).
+- `/waiting` is drawn on the server from the session's row (`requireWaitingPage`), with
+  no nav and no install banner: the name to correct, Check again and Sign out, or only
+  Sign out once rejected (D-249-10, D-249-23).
+- Admin → Team hosts `ApprovalRequests`: Waiting for approval above the team, Not
+  approved below. The Admin tab's badge and the landing page's card read
+  `src/lib/session/approval-count.ts`, once per document load (D-249-14, D-249-15).
 - Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
   `z-30`, bottom nav `z-40`, sheets `z-50`, confirm and Not saved dialogs `z-60`, account
   screen `z-70`.
@@ -461,7 +496,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Active-session screen: "Join this session" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/teams/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
-  stored. The card refreshes with the screen's 30s poll and Refresh.
+  stored. The card refreshes with the screen's 30s poll and Refresh. The poll asks
+  nothing while the tab is hidden, and reads once when it is seen again (D-252-11).
 - Records show who made them through `VisitByline` (`src/lib/teams/team-label.ts`): the author
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
@@ -491,7 +527,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/teams/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
-- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`).
+- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`):
+  approved people only, the API's default (D-249-7).
 - Whole follow-up lists (the removal notice, the household picker, Add households, On the
   list) load every page through `loadAllFollowUps()` (`src/lib/follow-ups/pages.ts`),
   keeping each note once by id (D-117-52).
@@ -507,8 +544,13 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   under the unit field says its key facts and leads down to it
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
-  (`showHistoryLine`, D-196-36 to D-196-38).
-- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
+  (`showHistoryLine`, D-196-36 to D-196-38). `/households/[id]` is a static shell that
+  reads its id on the client: each unit's page is built on its first request and kept
+  until the next deploy, still behind the proxy (D-252-12). `/blocks/[id]` still renders
+  per request, for `?unit=` (D-252-13).
+- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select. A date
+  input needs no height: `field` drops its native appearance, which iOS draws
+  content-box past its cell (D-245-1, D-245-3).
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
@@ -544,12 +586,22 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `/offline`, which is not `no-store`, `RestoreGuard` (in `AppShell`, outside
   `AccountGate`, so on every document) hides and reloads it (`reloadWhenRestored` in
   `src/lib/session/navigate.ts`, D-129-1).
-- The admin history and records screens keep their filters in the URL, except the search
-  term, which the screen holds in state and never writes to the URL (D-29-4, D-129-7).
+- The admin history, records and Needs a return visit screens keep their filters in the
+  URL, except the search term, which the screen holds in state and never writes to the
+  URL (D-29-4, D-129-7, D-246-3). It runs over the rows loaded, through one matcher,
+  `matchesHouseholdSearch` (`src/lib/households/search.ts`, D-246-1, D-246-2).
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
   trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
-  (D-163-8).
+  (D-163-8). Every filter, tab and view kept in the address moves through
+  `useAddressFilters` (`src/lib/hooks/use-address-filters.ts`), never `router.replace`.
+  That covers these three screens, both follow-up lists' tabs, and Me / My team on
+  `/history` and a session's records. The hook holds a pick on screen and moves the
+  address through Next's patched `replaceState(null, …)` with no page round trip. A
+  quick second pick keeps the first, and a pick with no signal fails in place (D-245-5,
+  D-246-10, D-257-1 to D-257-3). These lists draw only their newest read (D-245-6,
+  D-246-8, D-257-7). All records' and Needs a return visit's Show more waits while any
+  read of the list is out (D-246-12, D-257-5).
 
 ## PWA and service worker
 
@@ -594,7 +646,7 @@ member signs out on the phone (D-129-6).
 save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /api/auth/session
                                                     │   (owner still signed in?)
                                                     ▼
-                    flushOnce: owner's due records, oldest first, ≤100 (1 if isolated)
+                    flushOnce: owner's due records, oldest first, ≤25 (1 if isolated)
                                                     ▼
                     POST /visits/sync via apiFetch (fresh sentAt, 20 s timeout)
                                                     ▼
@@ -618,6 +670,8 @@ save ─► IndexedDB ─► controller (trigger) ─► Web Lock ─► GET /ap
 - Outcomes are D-33-16 (per item) and D-33-17 (whole batch); the cap and isolation are
   D-33-26, D-33-6 and D-33-27 (a whole-request failure is never charged to a record). A
   `413` is handled as a `400` (D-126-11).
+- A batch is at most 25 records (`BATCH_SIZE`). The contract accepts 100, and 25 leaves
+  room under the 20 s timeout even when every record is an amend (D-251-12).
 
 **Offline shell (#77).** A navigation that fails gets the precached, static `/offline`
 at the address that failed; `OfflineShell` then reads the local copy at runtime.
@@ -649,18 +703,44 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
   until "Continue as": while the copy loads, when there is none, and at the gate
   (D-106-8).
 
-**Sync write path.** Each item runs in one transaction. It first locks its session's
-row `FOR KEY SHARE` and judges, under that lock, that the session is still active, the
-block is in it and, for a member's new visit in a follow-up session, the unit is on its
-list (D-117-45). Then `INSERT ... ON CONFLICT DO
-NOTHING RETURNING` (a row back means newly created, the only trigger for the teammate
-snapshot, auto-join and, in a follow-up session, marking the household's notes done),
-otherwise `SELECT ... FOR NO KEY UPDATE` (D-123-2), re-judge under the lock
-(`canAmend`, newer `updatedAt`, same household and session), then a narrow `UPDATE` of
-interest, description and `updatedAt`. Non-`ApiError` failures are `rejected` with
-`internal_error` (retryable). The request path above is unchanged; the new endpoints
-(`/sessions/{id}/join`, `/participants`, `/teams`, `/teams/{id}/members`) are ordinary
-`withContract` handlers.
+**Sync write path** (`src/server/visits/sync.ts`). A batch costs a fixed number of
+round trips: 17 for any number of new records by a member on a team, and 7 for replays
+(R-249).
+
+1. **Read.** It reads what judging needs once: blocks, stored visits and sessions
+   (D-251-2).
+2. **Judge.** It judges each item in request order, in the order D-74-34 and D-76-6
+   set. An item either is refused, or is answered `unchanged` or `stale` without a
+   write, or becomes an amend or a new record.
+3. **Write runs.** Consecutive new records form a run, written in one transaction
+   (D-251-3):
+   - It locks the session row `FOR KEY SHARE`. Under that lock it judges, for every
+     record, that the session is still active, the block is in it and, for a member in
+     a follow-up session, the unit is on its list (`refuseUnderLock`, D-117-45). A
+     refused record is refused alone.
+   - Then a fixed set of statements writes the households, the team, the visits, the
+     teammate snapshot, the auto-join and the marking. Households are upserted with
+     identity folded per unit in request order, locked `FOR UPDATE` in (block, unit)
+     order (`upsertHouseholds`, D-251-6). The visits are inserted with
+     `INSERT ... ON CONFLICT DO NOTHING RETURNING`, their `created_at` a microsecond
+     apart in request order (D-251-7). In a follow-up session, each household's owed
+     notes are marked done for its first new record (D-251-8).
+   - If fewer rows come back than were sent, or anything else fails, the run rolls
+     back. Its records then go again one at a time, unlogged (D-251-4, D-251-11).
+4. **Write one at a time.** The per-record path (`persist`), which an amend always
+   takes (D-251-5), is one transaction. It takes the same lock and judgement, then
+   inserts. If the visit is already stored, it runs `SELECT ... FOR NO KEY UPDATE`
+   (D-123-2), re-judges under the lock (`canAmend`, newer `updatedAt`, same household
+   and session), and then makes a narrow `UPDATE` of interest, description and
+   `updatedAt`.
+5. **Answer.** It reads every answer once, after the writes (`getVisits`,
+   `notesMarkedDoneByVisits`, D-251-9).
+
+A batch that names one id twice goes one item at a time (D-251-10). Non-`ApiError`
+failures are `rejected` with `internal_error` (retryable); a failed shared read rejects
+every item it serves. The new endpoints from #74 (`/sessions/{id}/join`,
+`/participants`, `/teams`, `/teams/{id}/members`) are ordinary `withContract`
+handlers.
 
 **Limit: pairs and the queue.** The queue lives in one phone's IndexedDB, scoped to the
 member who saved each record (D-33-1). Teammates (#74)
@@ -688,22 +768,53 @@ CSP violation (D-122-8).
   `seed` (`--demo`, after `migrate`), `web` (waits on `migrate` only), every port on
   `127.0.0.1` (D-124-5, D-124-6). `npm run dev` binds `127.0.0.1` (D-124-10). The seed
   refuses without `--demo` or on a database with users of its own (D-124-1, D-124-2).
-- **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
-  `node .next/standalone/server.js`.
+- **Prod:** Vercel deploys `main` to d2dsrg.com, with settings from `CONFIG_YAML` and
+  PostgreSQL 17 on Neon (ap-southeast-1). The image is the multi-stage `Dockerfile`,
+  `output: "standalone"`, served by `node .next/standalone/server.js`.
   The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
   copies and fails the build on anything else (D-106-2, D-106-3). Settings and secrets
   arrive at runtime. The image optimizer is off, so `/_next/image` is a `404` (D-118-4).
+- **Branches:** features land on `dev` (squash or rebase), `dev` is promoted to `stage`
+  and `stage` to `main`, each by a merge commit, and nothing flows back (D-244-1). The
+  rulesets require a PR and the four checks on `dev`, `stage` and `main`; `stage` and
+  `main` take merge commits only (D-244-2, D-244-30).
+- **Stage:** `docker-compose.stage.yml` (project `door-to-door-stage`) runs `edge`
+  (Caddy, HTTPS, compressing) → `app` (the `runner` stage, `CONFIG_YAML`, 1 CPU, 2 GB)
+  → `toxiproxy` → `db` (the dev stack's postgres), after one-shot `secret` and
+  `migrate`. `npm run stage:seed` loads a year of records, and `stage:perf` reports
+  latency and sizes per route, optionally with a database delay (D-244-5 to D-244-25).
+  It does not model Vercel's cold starts or edge, or Neon (README, Stage environment).
 - **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
   Next's separate module graphs share it; changing `database.url` needs a restart. Every
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`
   (`src/db/pool-errors.ts`). A dropped connection is logged once per burst and replaced
   on the next query. The query in flight rejects, so the request is a `500` and never
-  crashes the process.
-- **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
-  tests with coverage against Postgres, production build, E2E. The token can only read,
-  and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by
-  commit and images by digest, and `src/supply-chain.test.ts` refuses a new line that
-  is not (D-131-3, D-131-4). Dependabot (`.github/dependabot.yml`) opens grouped npm,
-  Actions, Docker and Compose updates weekly (D-118-7, D-131-5); CI's postgres image
-  follows Compose's by hand (D-131-6). A test refuses an edited, deleted or unrecorded
-  migration against `drizzle/checksums.sha256` (D-131-9).
+  crashes the process. The app's pool holds at most 10 connections, each closed after
+  5 s idle, and goes to `@vercel/functions`' `attachDatabasePool`. On Vercel that keeps
+  an instance awake until its idle connections have closed. Anywhere else it does
+  nothing (D-250-6, D-250-7).
+- **Production database:** the app runs on Vercel (sin1) and connects through Neon's
+  pooled host (PgBouncer, transaction mode), so nothing may keep session state on a
+  connection (D-250-5). Migrations go to the direct host, `database.migrationUrl`.
+- **CI:** runs on ready pull requests only, never a draft or a merge (D-248-1, D-248-2).
+  A merge into `dev` or `main` runs only `.github/workflows/warm-caches.yml`, whose one
+  job fills the npm, `.next` and browser caches in that branch's scope and reports no
+  required check. Pull requests into `dev` restore `dev`'s, and the rest `main`'s
+  (D-248-21, D-248-24 to D-248-26). Static checks (lint, types, format, spec lint,
+  codegen and migration drift) run first, and the other jobs need them (D-248-3). Tests
+  with coverage against Postgres and the production build skip a docs-only PR
+  (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E runs into `stage` or `main`, or with
+  the `e2e` label (`scripts/ci-e2e.sh`, D-248-6). `.github/workflows/e2e-catch-up.yml`
+  runs it when that label or base arrives later (D-248-8). A skipped job passes a
+  required check, so only a job that runs reports "End-to-end smoke" after a run begins
+  (D-248-9), a draft's lint job is named "Lint, types and format (draft, not run)"
+  (D-248-18), and a required check is skipped only under a fixed name (D-248-19). The
+  token can only read the repository and, in `ci.yml`, its pull requests, and checkout
+  leaves it nowhere on disk (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
+  `src/supply-chain.test.ts` refuses a new line that is not (D-131-3, D-131-4).
+  Dependabot (`.github/dependabot.yml`) opens grouped npm, Actions, Docker and Compose
+  updates monthly, labelled `e2e` and never rebased unasked (D-118-7, D-131-5, D-248-14,
+  D-248-15), against `dev` once that setting reaches `main` (D-244-3); CI's postgres
+  image follows Compose's by hand (D-131-6), and the stage stack's is held to it by a
+  test (D-244-13). A test refuses an edited, deleted or unrecorded migration against
+  `drizzle/checksums.sha256` (D-131-9).

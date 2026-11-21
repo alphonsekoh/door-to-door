@@ -2,7 +2,7 @@
 
 import { signOut } from "next-auth/react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
-import { type AuthFailure, accountStore } from "@/lib/session/account-state";
+import { type AccountFailure, accountStore } from "@/lib/session/account-state";
 import { signOutAndForget } from "@/lib/session/sign-out";
 import { useModal } from "@/lib/hooks/use-modal";
 import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
@@ -33,7 +33,7 @@ const COPY = {
  * A blocking modal: Escape does nothing, and a sheet open underneath or opened
  * later cannot take focus from it.
  */
-export function AuthFailureScreen({ kind }: { kind: AuthFailure }) {
+export function AuthFailureScreen({ kind }: { kind: AccountFailure }) {
   const copy = COPY[kind];
   const headingId = useId();
   const button = useRef<HTMLButtonElement>(null);

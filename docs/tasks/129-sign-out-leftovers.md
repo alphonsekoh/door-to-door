@@ -92,7 +92,8 @@ deleted, and the CSV guard missed a leading CR.
   sign-in's `callbackUrl` on every keystroke, and a hash still sits in the phone's
   history; the search is client-side, so nothing needs it in the URL. _Trade-off:_ the term is lost on reload or Back from a household and is not in a
   shared link. Typing no longer refetches. `session-records.tsx`, which #130 cites, holds
-  only the Me / My team scope and is unchanged.
+  only the Me / My team scope and is unchanged. _Extended by D-246-3:_ Needs a return
+  visit's term too (`attention-filters` never reads or writes `q`).
 - **D-129-8 · An expired local copy is deleted when it is read.** `loadLocalCopy(now)`
   deletes a copy past 12 h in the same transaction as an unreadable one, and `copyExpired`
   is shared with `usableCopy`. Writes are left to #126. Refines D-77-3 and D-77-5 (exactly

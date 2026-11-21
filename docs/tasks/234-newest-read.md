@@ -31,7 +31,9 @@ that landed last drew "Running now" over a session already read as ended. UI onl
 - **D-234-3 · No generation bump in the effects' cleanup**, unlike D-74-45's team card.
   _Why:_ the list's `load` never changes, so its cleanup runs only on unmount; the page
   remounts for each session, and React ignores a state set after unmount. A test of the
-  bump would assert nothing (D-117-50). _Research:_ R-222.
+  bump would assert nothing (D-117-50). _Research:_ R-222. _Not so on Needs a return
+  visit (D-246-13), All records or Records (D-257-8):_ their effects re-run on each
+  filter change, so their cleanups bump.
 - **D-234-4 · A superseded read's failure is dropped too, on both screens.** Extends
   D-88-3. _Why:_ an older read failing after a newer one had drawn swapped the screen for
   its load error, and the button with its sentence and focus went with it.
@@ -79,6 +81,7 @@ that landed last drew "Running now" over a session already read as ended. UI onl
   generation, so a read slower than 30 s is dropped; if every read is, the page stays on
   "Loading…" or its last read. On main late reads were drawn. The page's Households and
   Teams panels already behave so, and `apiFetch` has no timeout (reviewer, not blocking).
+  Records has the same limit since D-257-7.
 - **A failed Remove on the page is not a read.** It sets the load error itself, outside
   the counter, so the next poll draws the page again and "Could not remove that block."
   goes. As on main.

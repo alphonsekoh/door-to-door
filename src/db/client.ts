@@ -1,3 +1,4 @@
+import { attachDatabasePool } from "@vercel/functions/db-connections";
 import { drizzle } from "drizzle-orm/node-postgres";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -19,9 +20,28 @@ type Cached = { pool: Pool; db: Database };
 const CACHE = Symbol.for("door-to-door.database");
 const processWide = globalThis as Record<symbol, Cached | undefined>;
 
+/*
+ * Sized for Vercel's Fluid compute, where each instance has its own pool
+ * (#250). attachDatabasePool keeps an instance awake until its idle
+ * connections have closed, idleTimeoutMillis after the last query, so none
+ * survives a suspension for the next request to find dead. The instance
+ * outlives its last request by that long, so it is short: reconnecting from
+ * sin1 to Neon costs about 10-20 ms (#247). max is per instance; Neon's
+ * pooler, not this, bounds the database's own connections. Ten lets ten
+ * requests query at once before the next waits. Off Vercel the attach does
+ * nothing and the pool behaves as any other.
+ */
+const MAX_CONNECTIONS = 10;
+const IDLE_TIMEOUT_MS = 5_000;
+
 export function createDatabase(connectionString: string): { pool: Pool; db: Database } {
-  const pool = new Pool({ connectionString });
+  const pool = new Pool({
+    connectionString,
+    max: MAX_CONNECTIONS,
+    idleTimeoutMillis: IDLE_TIMEOUT_MS,
+  });
   attachPoolErrorHandler(pool);
+  attachDatabasePool(pool);
   return { pool, db: drizzle(pool, { schema }) };
 }
 

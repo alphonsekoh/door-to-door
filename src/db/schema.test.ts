@@ -2,6 +2,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import {
   accounts,
+  approvalEnum,
   authSessions,
   blocks,
   followUpStatusEnum,
@@ -81,6 +82,10 @@ describe("enums", () => {
   it("follow-up status is a suggestion or a list entry", () => {
     expect(followUpStatusEnum.enumValues).toEqual(["suggested", "listed"]);
   });
+
+  it("approval is waiting, approved or blocked", () => {
+    expect(approvalEnum.enumValues).toEqual(["pending", "approved", "blocked"]);
+  });
 });
 
 describe("users", () => {
@@ -99,6 +104,11 @@ describe("users", () => {
 
   it("deactivates rather than deletes, so records stay attributed", () => {
     expect(columnNames(users)).toContain("deactivated_at");
+  });
+
+  it("approves by default, so an account an admin adds needs no approval (#249)", () => {
+    expect(column(users, "approval")?.default).toBe("approved");
+    expect(column(users, "approval")?.notNull).toBe(true);
   });
 });
 
@@ -214,6 +224,21 @@ describe("visits", () => {
 
   it("indexes household history, the main read path", () => {
     expect(indexNames(visits)).toContain("visits_household_created_idx");
+  });
+
+  /* As All records orders them (#252). A plain DESC puts nulls first; an
+     index that puts them last cannot be read in that order, and the planner
+     goes back to sorting every visit. */
+  it("indexes All records' order, newest first with the id settling a tie", () => {
+    const index = config(visits).indexes.find((i) => i.config.name === "visits_created_id_idx");
+    expect(
+      index?.config.columns.map((c) =>
+        "indexConfig" in c ? { name: c.name, ...c.indexConfig } : undefined,
+      ),
+    ).toEqual([
+      expect.objectContaining({ name: "created_at", order: "desc", nulls: "first" }),
+      expect.objectContaining({ name: "id", order: "desc", nulls: "first" }),
+    ]);
   });
 
   it("protects the session and member, and follows the household", () => {

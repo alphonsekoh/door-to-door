@@ -23,7 +23,8 @@ the same pattern.
 - **D-88-3 · `BlockAttachSheet` ignores an error from a superseded search as well as its
   rows.** Extends D-28-7 to the failure path. _Why:_ a slow failing request could put an
   alert over a list that had already loaded. This was a real component bug, not a test
-  bug. _Extended by D-234-4_ to Admin Sessions and a session's page.
+  bug. _Extended by D-234-4_ to Admin Sessions and a session's page, by D-245-6 to All
+  records, _by D-246-8_ to Needs a return visit, _and by D-257-7_ to Records.
 - **D-88-4 · update-prompt tests wait for the observable effect, not the first sign of
   it.** "Reserves room at the top" waits for `--banner-top` to be set, and "holds off
   while saved visits have not synced" uses `findByText`. _Why:_ the banner appears after

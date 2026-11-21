@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { auth } from "@/auth";
 import { getDatabase, type Database } from "@/db/client";
 import type { Role } from "@/db/schema";
@@ -21,14 +22,14 @@ import { AccountDeactivatedError, UnauthenticatedError } from "@/server/http/err
  * that has ended (signed out, ended by an admin, or by a deactivation) is
  * signed out however long its token has left (#125).
  *
- * Deliberately uncached. Any TTL is a window in which a deactivated account
- * still works, and the cache would be per-process, so with several instances
- * it could not even promise that window.
+ * Deliberately uncached across requests. Any TTL is a window in which a
+ * deactivated account still works, and the cache would be per-process, so
+ * with several instances it could not even promise that window.
  *
  * Returning a SessionLike keeps requireUser/requireRole/requireAdmin pure.
  */
 
-type ResolvedUser = Required<Pick<SessionUser, "id" | "email" | "name" | "role">>;
+type ResolvedUser = Required<Pick<SessionUser, "id" | "email" | "name" | "role" | "approval">>;
 
 /* A deactivated account carries no sign-in: it may not use one. */
 export type ResolvedSession =
@@ -49,15 +50,26 @@ export async function resolveSession(
   if (checked.status === "no-user" || checked.status === "ended") {
     return null;
   }
-  const { email, name, role } = checked.account;
+  const { email, name, role, approval } = checked.account;
   if (checked.status === "deactivated") {
-    return { user: { id, email, name, role, deactivated: true } };
+    return { user: { id, email, name, role, approval, deactivated: true } };
   }
-  return { user: { id, email, name, role, deactivated: false }, signInId: checked.signInId };
+  return {
+    user: { id, email, name, role, approval, deactivated: false },
+    signInId: checked.signInId,
+  };
 }
 
-/* A lookup failure propagates: it must surface as a 500, never as "allowed". */
-export async function currentSession(): Promise<ResolvedSession | null> {
+/*
+ * A lookup failure propagates: it must surface as a 500, never as "allowed".
+ *
+ * One check per render, not per caller: an admin page's layout and the page
+ * itself both ask, and React's cache hands the second the first's answer
+ * (#252). That cache lives as long as one server render of one request, and
+ * outside a render, as in a route handler, it keeps nothing, so every request
+ * still checks the database as D-83-6 requires.
+ */
+export const currentSession: () => Promise<ResolvedSession | null> = cache(async () => {
   // auth() first: it opts the page into dynamic rendering, so the database
   // (and config.yaml) are never touched while `next build` prerenders.
   const session = await auth();
@@ -66,7 +78,7 @@ export async function currentSession(): Promise<ResolvedSession | null> {
     return null;
   }
   return resolveSession(getDatabase(), session);
-}
+});
 
 export async function currentUser(role?: Role): Promise<SessionUser> {
   const session = await currentSession();

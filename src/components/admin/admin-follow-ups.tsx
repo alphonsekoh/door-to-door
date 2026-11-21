@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet } from "@/components/follow-ups/follow-up-sheet";
@@ -11,6 +11,7 @@ import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { groupListedByHousehold, loadAllListed } from "@/lib/follow-ups/listed";
 import { removedByline } from "@/lib/history/follow-ups";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { formatDay } from "@/lib/history/dates";
 import { displayName } from "@/lib/teams/team-ui";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -62,8 +63,14 @@ type Counts = { review: number | null; list: number | null };
  * URL, so Back and a reload keep the place.
  */
 export function AdminFollowUps() {
-  const router = useRouter();
-  const tab = parseFollowUpTab(new URLSearchParams(useSearchParams().toString()));
+  const params = useSearchParams();
+  /* Not router.replace: this page checks the admin on the server, so that
+     waited on a round trip, and with no signal left the screen for Offline. */
+  const [search, chooseTab] = useAddressFilters(
+    "/admin/follow-ups",
+    `tab=${parseFollowUpTab(new URLSearchParams(params.toString()))}`,
+  );
+  const tab = parseFollowUpTab(new URLSearchParams(search));
   const [now] = useState(() => new Date());
   const [state, setState] = useState<State>({ status: "loading" });
   const [counts, setCounts] = useState<Counts>({ review: null, list: null });
@@ -172,7 +179,7 @@ export function AdminFollowUps() {
                 if (on) return;
                 setState({ status: "loading" });
                 setNotice(null);
-                router.replace(`/admin/follow-ups?tab=${value}`);
+                chooseTab(`tab=${value}`);
               }}
               className={`flex min-h-14 flex-[1_1_9ch] press flex-col items-center justify-center rounded-lg border px-2 py-1 text-body leading-tight font-medium ${
                 on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"

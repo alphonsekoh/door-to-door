@@ -1,11 +1,11 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { InterestLevel, Religion, Role, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
-import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { assertMayRecordHere, placeKey, type RevisitSession } from "@/server/follow-ups/list-rule";
 import { markDoneByVisit } from "@/server/follow-ups/marked-by-visit";
 import {
   attachTeams,
@@ -15,6 +15,7 @@ import {
   teamIdFor,
   type TeamStamp,
 } from "@/server/teams/access";
+import { compareUuids } from "@/lib/uuid";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/server/http/errors";
 import { requireText } from "@/server/http/text";
 
@@ -34,19 +35,21 @@ export type HouseholdIdentity = {
   religion?: Religion | null | undefined;
 };
 
+type KnownIdentity = { name?: string; contact?: string; religion?: Religion };
+
 /*
  * Identity fields update only when a non-null value is supplied. A later visit
  * that learns nothing must not erase what an earlier one recorded - the member
  * who got a name in March should not lose it because nobody answered in June.
  * Spaces alone are nothing learnt either (D-119-7).
  */
-function knownFieldsOnly(identity: HouseholdIdentity): Record<string, unknown> {
-  const known: Record<string, unknown> = {};
+function knownFieldsOnly(identity: HouseholdIdentity): KnownIdentity {
+  const known: KnownIdentity = {};
   const name = identity.name?.trim();
   const contact = identity.contact?.trim();
-  if (name !== undefined && name !== "") known["name"] = name;
-  if (contact !== undefined && contact !== "") known["contact"] = contact;
-  if (identity.religion != null) known["religion"] = identity.religion;
+  if (name !== undefined && name !== "") known.name = name;
+  if (contact !== undefined && contact !== "") known.contact = contact;
+  if (identity.religion != null) known.religion = identity.religion;
   return known;
 }
 
@@ -82,6 +85,73 @@ export async function upsertHousehold(
     .returning();
 
   return firstOrThrow(inserted, "the household upsert");
+}
+
+/* A unit a batch records at, with what it learnt there. The unit is as stored: trimmed. */
+export type HouseholdPlace = { blockId: string; unitNumber: string } & HouseholdIdentity;
+
+export type FoldedHousehold = { blockId: string; unitNumber: string } & KnownIdentity;
+
+/*
+ * One row per unit, as one statement cannot touch a row twice. Identity is
+ * folded in request order, field by field, so the unit ends as recording the
+ * records one at a time would leave it: a later known value wins, a blank
+ * never erases. Sorted by block, then unit, so every batch locks the rows it
+ * shares with another in one order.
+ */
+export function foldHouseholds(places: readonly HouseholdPlace[]): FoldedHousehold[] {
+  const byPlace = new Map<string, FoldedHousehold>();
+  for (const place of places) {
+    const key = placeKey(place.blockId, place.unitNumber);
+    const base = byPlace.get(key) ?? {
+      blockId: place.blockId.toLowerCase(),
+      unitNumber: place.unitNumber,
+    };
+    byPlace.set(key, { ...base, ...knownFieldsOnly(place) });
+  }
+  // Two rows never share both block and unit, so units never tie.
+  return [...byPlace.values()].sort(
+    (a, b) => compareUuids(a.blockId, b.blockId) || (a.unitNumber < b.unitNumber ? -1 : 1),
+  );
+}
+
+/*
+ * upsertHousehold for a batch's units in one statement: the household ids,
+ * by placeKey.
+ *
+ * Postgres picks one lock for every row from the columns the SET names.
+ * Naming unit_number, a key, makes it FOR UPDATE: the mode upsertHousehold
+ * takes for a record that learns nothing, and stronger than its NO KEY
+ * UPDATE for one that learns something. So a run waits wherever its records
+ * would have waited alone, behind a visit not yet committed there say, and
+ * never less (D-251-6). updated_at moves only when something was learnt, as
+ * upsertHousehold's does.
+ */
+export async function upsertHouseholds(
+  db: Database,
+  places: readonly HouseholdPlace[],
+): Promise<Map<string, string>> {
+  const upserted = await db
+    .insert(households)
+    .values(foldHouseholds(places))
+    .onConflictDoUpdate({
+      target: [households.blockId, households.unitNumber],
+      set: {
+        unitNumber: sql`excluded.unit_number`,
+        name: sql`coalesce(excluded.name, households.name)`,
+        contact: sql`coalesce(excluded.contact, households.contact)`,
+        religion: sql`coalesce(excluded.religion, households.religion)`,
+        updatedAt: sql`case when num_nonnulls(excluded.name, excluded.contact, excluded.religion) > 0
+          then now() else households.updated_at end`,
+      },
+    })
+    .returning({
+      id: households.id,
+      blockId: households.blockId,
+      unitNumber: households.unitNumber,
+    });
+
+  return new Map(upserted.map((row) => [placeKey(row.blockId, row.unitNumber), row.id]));
 }
 
 export type VisitBase = {
@@ -126,16 +196,17 @@ export const visitColumns = {
  */
 async function lockActiveAuthor(tx: Database, memberId: string): Promise<void> {
   const found = await tx
-    .select({ deactivatedAt: users.deactivatedAt })
+    .select({ approval: users.approval, deactivatedAt: users.deactivatedAt })
     .from(users)
     .where(eq(users.id, memberId))
     .for("share");
 
   const author = found[0];
-  if (!author) {
-    /* Only reachable when an admin names someone: a caller's own id comes
-       from a verified session. A bare insert would fail on the foreign key
-       with a constraint name instead of a usable message. */
+  /* Only reachable when an admin names someone: a caller's own id comes from
+     a verified, approved session. A bare insert would fail on the foreign key
+     with a constraint name instead of a usable message. Someone waiting for
+     approval, or rejected, is not on the team (#249). */
+  if (author?.approval !== "approved") {
     throw new NotFoundError("No such member.");
   }
   if (author.deactivatedAt !== null) {
@@ -193,6 +264,20 @@ export async function getVisit(db: Database, id: string): Promise<VisitRow> {
 
   const visit = firstOrThrow(rows, "the visit just written");
   return firstOrThrow(await attachTeams(db, [visit]), "the visit's team");
+}
+
+/* getVisit for many ids at once, keyed by id in lower case; an id not stored is absent. */
+export async function getVisits(
+  db: Database,
+  ids: readonly string[],
+): Promise<Map<string, VisitRow>> {
+  const rows = await db
+    .select(visitColumns)
+    .from(visits)
+    .innerJoin(users, eq(users.id, visits.memberId))
+    .where(inArray(visits.id, [...ids]));
+
+  return new Map((await attachTeams(db, rows)).map((visit) => [visit.id, visit]));
 }
 
 export async function createVisit(

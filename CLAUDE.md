@@ -76,8 +76,12 @@ are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/
 **[CI]** A Playwright suite (`e2e/`) runs against the production build in a real browser
 at phone viewports, on Chromium (Pixel 5) and WebKit (iPhone 13): signing in (Google
 through a local stand-in, never the real one), ending sign-ins, recording a visit online
-and offline, a session's lifecycle, a follow-up session, teams, the account screen and
-the PWA.
+and offline, a session's lifecycle, a follow-up session, teams, the account screen, the
+PWA, the largest text, and the admin lists' address (an old `?q=` link, Needs a return
+visit's filters). CI runs it on every pull request into `stage` or `main`, and on one into
+`dev` or a feature branch only with the `e2e` label; once enabled, `.githooks/pre-push` runs
+it in CI's Linux container before each push that changes code, unless that tree has passed
+or `SKIP_E2E_LINUX=1` is set.
 It exists for what jsdom cannot see - layout, stacking, and client-side navigation -
 after a sheet's save button shipped underneath the bottom nav through three PRs and 1100
 passing tests. Keep the suite thin; Vitest owns coverage. Add a spec only for a flow it
@@ -165,9 +169,13 @@ silently widen a contract type).
 **[convention]** Conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, `test:`).
 Reference the issue with `Refs #N`; use `Closes #N` in the PR body, not the commit.
 
-**[convention]** Branches are stacked: each feature branch bases off the previous one and
-its PR targets that branch, not `main`. Merge top-down, and squash or rebase — a merge
-commit on `main` gives every branch below it phantom conflicts.
+**[convention]** Branches are stacked: the first branch of a stack bases off `dev` and its
+PR targets `dev`; each later one bases off the branch before it and targets that, never
+`stage` or `main`. Merge top-down, and squash or rebase into `dev`: a merge commit on
+`dev` gives every branch above it phantom conflicts. Only promotions are merge commits:
+`dev` into `stage`, then `stage` into `main`, which Vercel deploys. Squashed or rebased, a
+promotion would give `dev` and `stage` the same changes under different commits, and every
+later promotion would conflict. Nothing flows back from `stage` or `main` into `dev`.
 
 ## Workflow
 

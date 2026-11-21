@@ -17,7 +17,7 @@ import {
  * Google sign-in end to end through Auth.js (#14), with Google's servers
  * stood in for by the fake the E2E suite also runs: discovery, the token
  * endpoint and a signed ID token, through the provider's customFetch.
- * Nothing here reaches Google.
+ * Nothing here reaches Google. Since #249 a first sign-in asks to join.
  */
 
 const ISSUER = "https://fake-google.test";
@@ -146,6 +146,20 @@ const counts = async () =>
   ).rows[0];
 
 const REFUSED = `${ORIGIN}/sign-in?error=AccessDenied`;
+/* Auth.js's newUser page, with where the sign-in was going. */
+const WAITING = `/waiting?${new URLSearchParams({ callbackUrl: `${ORIGIN}/` }).toString()}`;
+
+const userAt = async (email: string) =>
+  (
+    await pool.query<{
+      id: string;
+      name: string | null;
+      image: string | null;
+      password_hash: string | null;
+      role: string;
+      approval: string;
+    }>(`SELECT id, name, image, password_hash, role, approval FROM users WHERE email = $1`, [email])
+  ).rows;
 
 describe("leaving for Google", () => {
   it("asks Google for its account chooser every time, at the configured issuer", async () => {
@@ -208,11 +222,114 @@ describe("an address an admin added, verified by Google", () => {
   });
 });
 
-describe("refused, with one message for every reason (D-15-1), and nothing created", () => {
+/* #249: anyone Google vouches for may ask to join. */
+describe("a first sign-in at an address nobody added", () => {
+  it("asks to join: an account waiting for approval, named by Google, signed in and sent to wait", async () => {
+    const { callback, jar } = await signInWithGoogle({ email: "Pat@Gmail.com", verified: true });
+
+    expect(callback.headers.get("location")).toBe(WAITING);
+    const [pat] = await userAt("pat@gmail.com");
+    expect(pat).toMatchObject({
+      name: "Name From Google",
+      image: null,
+      password_hash: null,
+      role: "member",
+      approval: "pending",
+    });
+    expect(await signedInAs(jar)).toBe(pat?.id);
+
+    const { rows: linked } = await pool.query(
+      `SELECT user_id, provider, access_token, refresh_token, id_token FROM accounts`,
+    );
+    expect(linked).toEqual([
+      {
+        user_id: pat?.id,
+        provider: "google",
+        access_token: null,
+        refresh_token: null,
+        id_token: null,
+      },
+    ]);
+    const { rows: signIns } = await pool.query(`SELECT user_id, user_agent FROM sign_ins`);
+    expect(signIns).toEqual([{ user_id: pat?.id, user_agent: PIXEL }]);
+  });
+
+  it("asks once: the next sign-in is the same account, going where it was going", async () => {
+    await signInWithGoogle({ email: "pat@gmail.com", verified: true });
+    const before = await counts();
+    const second = await signInWithGoogle({
+      email: "pat@gmail.com",
+      verified: true,
+      name: "Other",
+    });
+
+    expect(second.callback.headers.get("location")).toBe(`${ORIGIN}/`);
+    expect(await counts()).toEqual({ ...before, sign_ins: (before?.sign_ins ?? 0) + 1 });
+    // No later sign-in renames anyone.
+    expect((await userAt("pat@gmail.com"))[0]?.name).toBe("Name From Google");
+  });
+
+  it.each<[string, string | null]>([
+    ["no name at all", null],
+    ["a name that is only spaces", "   "],
+    ["a name past 80 characters", "x".repeat(81)],
+  ])("names nobody when Google gives %s", async (_case, name) => {
+    await signInWithGoogle({ email: "pat@gmail.com", verified: true, name });
+    expect((await userAt("pat@gmail.com"))[0]?.name).toBeNull();
+  });
+
+  it("at a Workspace domain, as Google vouches for it", async () => {
+    const { callback } = await signInWithGoogle({
+      email: "newbie@tjc.org",
+      verified: true,
+      hd: "tjc.sg",
+    });
+    expect(callback.headers.get("location")).toBe(WAITING);
+    expect((await userAt("newbie@tjc.org"))[0]?.approval).toBe("pending");
+  });
+
+  it("is asked for the person signing in, never linked to the one whose cookie is on the phone", async () => {
+    // Alice is signed in on a shared phone; Pat picks it up and signs in with Google.
+    const alice = await signInWithGoogle({ email: "alice@gmail.com", verified: true });
+    const pat = await signInWithGoogle({ email: "pat@gmail.com", verified: true }, alice.jar);
+
+    const [created] = await userAt("pat@gmail.com");
+    expect(await signedInAs(pat.jar)).toBe(created?.id);
+    const { rows } = await pool.query<{ user_id: string }>(
+      `SELECT a.user_id FROM accounts a JOIN users u ON u.id = a.user_id ORDER BY u.email`,
+    );
+    expect(rows.map((row) => row.user_id)).toEqual([ALICE, created?.id]);
+  });
+});
+
+describe("an account nobody has approved, signing in again", () => {
+  it.each(["pending", "blocked"])(
+    "signs in as %s, to see where it stands, making nothing",
+    async (approval) => {
+      await signInWithGoogle({ email: "pat@gmail.com", verified: true });
+      await pool.query(`UPDATE users SET approval = $1 WHERE email = 'pat@gmail.com'`, [approval]);
+      const before = await counts();
+
+      const { callback, jar } = await signInWithGoogle({ email: "pat@gmail.com", verified: true });
+      expect(callback.headers.get("location")).toBe(`${ORIGIN}/`);
+      expect(await signedInAs(jar)).toBe((await userAt("pat@gmail.com"))[0]?.id);
+      expect(await counts()).toMatchObject({ users: before?.users, accounts: before?.accounts });
+    },
+  );
+});
+
+describe("refused, with one message for every reason, and nothing created", () => {
   it.each<[string, FakeGoogleAccount]>([
-    ["an address nobody added", { email: "stranger@gmail.com", verified: true }],
     ["an address Google has not verified", { email: "alice@gmail.com", verified: false }],
-    ["a deactivated account", { email: "gone@gmail.com", verified: true }],
+    ["a new address Google has not verified", { email: "pat@gmail.com", verified: false }],
+    [
+      "a deactivated account, which is never put back in the queue",
+      { email: "gone@gmail.com", verified: true },
+    ],
+    [
+      "a consumer Google account on a listed domain, with no account",
+      { email: "pat@tjc.sg", verified: true },
+    ],
   ])("%s", async (_name, account) => {
     const before = await counts();
     const { callback, jar } = await signInWithGoogle(account);
