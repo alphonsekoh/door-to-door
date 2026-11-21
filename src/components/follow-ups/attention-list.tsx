@@ -21,6 +21,7 @@ import {
   type AttentionFilters,
 } from "@/lib/follow-ups/attention-filters";
 import { formatDay } from "@/lib/history/dates";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { matchesHouseholdSearch } from "@/lib/households/search";
 import { SheetPresence } from "@/components/ui/sheet";
@@ -64,8 +65,12 @@ function addMode(row: HouseholdAttention): FollowUpSheetMode {
 }
 
 export function AttentionList() {
-  const filters = parseAttentionFilters(new URLSearchParams(useSearchParams().toString()));
-  const search = toAttentionSearch(filters);
+  const params = useSearchParams();
+  const [search, chooseFilters] = useAddressFilters(
+    PATH,
+    toAttentionSearch(parseAttentionFilters(new URLSearchParams(params.toString()))),
+  );
+  const filters = parseAttentionFilters(new URLSearchParams(search));
   /* Held here, never in the address (attention-filters). */
   const [q, setQ] = useSearchTerm(PATH, search);
 
@@ -125,16 +130,8 @@ export function AttentionList() {
     );
   }, []);
 
-  /*
-   * The History API, not router.replace, which waits on a server round trip
-   * this page has no use for: the controls show the filter just left until it
-   * answers, and offline it falls back to a page load the worker answers with
-   * Offline (D-163-6). Null state, or Next's patch skips telling
-   * useSearchParams.
-   */
   function show(next: AttentionFilters): void {
-    const query = toAttentionSearch(next);
-    window.history.replaceState(null, "", query === "" ? PATH : `${PATH}?${query}`);
+    chooseFilters(toAttentionSearch(next));
   }
 
   if (state.status === "loading") {

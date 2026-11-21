@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConsolidatedHistory } from "@/components/history/consolidated-history";
@@ -380,7 +380,7 @@ describe("ConsolidatedHistory", () => {
     await card("Blk 123, #05-123");
 
     await user.click(screen.getByRole("button", { name: /Show more/ }));
-    const late = await held.waiting("any@100");
+    const late = await held.waiting("any@1");
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
     await held.answer("hindu@0", list([entry("h2", { unitNumber: "#05-124" })]));
     await card("Blk 123, #05-124");
@@ -393,25 +393,190 @@ describe("ConsolidatedHistory", () => {
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
   });
 
-  it("keeps a pick's records when Show more is tapped while they load", async () => {
+  /* Enabled again by the overtaken read, Show more sat under the old list and
+     asked the new filters for the page after it: after 200 old rows, records
+     101 to 200 of the new ones never appeared (#257). */
+  it.each([
+    ["a Show more page", "any@1"],
+    ["an older pick's first page", "buddhist@0"],
+  ])("keeps Show more waiting when %s lands while a newer pick loads", async (_, overtaken) => {
     const user = userEvent.setup();
     const held = holdHistory((path) => {
       const query = new URLSearchParams(path.split("?")[1]);
       return `${query.get("religion") ?? "any"}@${query.get("offset") ?? ""}`;
     });
+    const asked = () =>
+      apiFetch.mock.calls
+        .map(([path]) => new URLSearchParams(String(path).split("?")[1]))
+        .filter((query) => query.get("religion") === "hindu")
+        .map((query) => query.get("offset"));
     render(<ConsolidatedHistory />);
-    await held.answer("any@0", list([entry("h1")], 2));
+    await held.answer("any@0", list([entry("h1")], 3));
+    await card("Blk 123, #05-123");
+
+    const religion = screen.getByLabelText("Filter by religion");
+    if (overtaken === "any@1") {
+      await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    } else {
+      await user.selectOptions(religion, "buddhist");
+    }
+    const late = await held.waiting(overtaken);
+    await user.selectOptions(religion, "hindu");
+    await held.waiting("hindu@0");
+    await act(async () => {
+      late.resolve(list([entry("h9", { unitNumber: "#05-129" })], 3));
+      await Promise.resolve();
+    });
+
+    const waiting = screen.getByRole("button", { name: "Loading…" });
+    expect(waiting).toBeDisabled();
+    await user.click(waiting);
+    expect(asked()).toEqual(["0"]);
+
+    await held.answer(
+      "hindu@0",
+      list([entry("h2", { unitNumber: "#05-124" }), entry("h3", { unitNumber: "#05-125" })], 3),
+    );
+    await user.click(await screen.findByRole("button", { name: "Show more (2 of 3)" }));
+    expect(asked()).toEqual(["0", "2"]);
+  });
+
+  /* Tapped while a pick's first page loaded, Show more's page went onto the
+     old list, and the first page then replaced it while the count of pages
+     moved on: records 101 to 200 never appeared (#257). Each request runs on
+     its own, so here the further page is answered at once, before the first. */
+  it("waits while a pick's first page loads, so a further page cannot skip records", async () => {
+    const user = userEvent.setup();
+    const numbered = (from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, i) =>
+        entry(`h${String(from + i)}`, { unitNumber: `#01-${String(from + i)}` }),
+      );
+    let first: Held = { resolve: () => undefined, reject: () => undefined };
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+      if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+      if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+      const query = new URLSearchParams(path.split("?")[1]);
+      const offset = Number(query.get("offset"));
+      if (query.get("religion") === null) return Promise.resolve(list([entry("h0")], 201));
+      if (offset > 0) return Promise.resolve(list(numbered(offset + 1, offset + 100), 201));
+      return new Promise((resolve, reject) => {
+        first = { resolve, reject };
+      });
+    });
+    const offsets = () =>
+      apiFetch.mock.calls
+        .map(([path]) => new URLSearchParams(String(path).split("?")[1]))
+        .filter((query) => query.get("religion") === "hindu")
+        .map((query) => query.get("offset"));
+    render(<ConsolidatedHistory />);
     await card("Blk 123, #05-123");
 
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
-    await held.waiting("hindu@0");
-    await user.click(screen.getByRole("button", { name: /Show more/ }));
-    await held.answer("hindu@0", list([entry("h2", { unitNumber: "#05-124" })], 2));
-    await held.answer("hindu@100", list([entry("h3", { unitNumber: "#05-125" })], 2));
+    await waitFor(() => {
+      expect(offsets()).toEqual(["0"]);
+    });
+    const waiting = screen.getByRole("button", { name: "Loading…" });
+    expect(waiting).toBeDisabled();
+    await user.click(waiting);
+    expect(offsets()).toEqual(["0"]);
 
-    expect(await screen.findByText(door("Blk 123, #05-125"))).toBeInTheDocument();
-    expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    await act(async () => {
+      first.resolve(list(numbered(1, 100), 201));
+      await Promise.resolve();
+    });
+    await user.click(await screen.findByRole("button", { name: "Show more (100 of 201)" }));
+
+    expect(await screen.findByText(door("Blk 123, #01-101"))).toBeInTheDocument();
+    expect(screen.getByText(door("Blk 123, #01-1"))).toBeInTheDocument();
+    expect(screen.getByText(door("Blk 123, #01-200"))).toBeInTheDocument();
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
+    expect(offsets()).toEqual(["0", "100"]);
+    expect(screen.getByRole("button", { name: "Show more (200 of 201)" })).toBeEnabled();
+  });
+
+  it("reads Loading… while its own page loads, so a second tap cannot ask for it again", async () => {
+    const user = userEvent.setup();
+    const held = holdHistory((path) => new URLSearchParams(path.split("?")[1]).get("offset"));
+    render(<ConsolidatedHistory />);
+    await held.answer("0", list([entry("h1")], 3));
+    await card("Blk 123, #05-123");
+
+    await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+
+    await held.answer("1", list([entry("h2", { unitNumber: "#05-124" })], 3));
+    expect(await screen.findByRole("button", { name: "Show more (2 of 3)" })).toBeEnabled();
+    expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+  });
+
+  it("asks for the page after the rows on screen once Try again starts the list again", async () => {
+    // Counting taps instead, a page that failed was counted as loaded, and
+    // the next Show more skipped it.
+    const user = userEvent.setup();
+    const held = holdHistory((path) => new URLSearchParams(path.split("?")[1]).get("offset"));
+    render(<ConsolidatedHistory />);
+    await held.answer("0", list([entry("h1")], 3));
+    await card("Blk 123, #05-123");
+
+    await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    const failed = await held.waiting("1");
+    await act(async () => {
+      failed.reject(new TypeError("Load failed"));
+      await Promise.resolve();
+    });
+    await user.click(await screen.findByRole("button", { name: "Try again" }));
+    await held.answer("0", list([entry("h1")], 3));
+    await card("Blk 123, #05-123");
+
+    await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    await held.answer("1", list([entry("h2", { unitNumber: "#05-124" })], 3));
+
+    expect(await screen.findByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.getByText(door("Blk 123, #05-123"))).toBeInTheDocument();
+  });
+
+  it("never draws a read for the filters just left that lands before the next pick's load starts", async () => {
+    // The pick's load waits a tick; the screen already shows the new filter.
+    vi.useFakeTimers();
+    try {
+      const held = new Map<string, Held>();
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+        if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+        if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+        const religion = new URLSearchParams(path.split("?")[1]).get("religion");
+        if (religion === null) return Promise.resolve(list([entry("h1")]));
+        return new Promise((resolve, reject) => {
+          held.set(religion, { resolve, reject });
+        });
+      });
+      render(<ConsolidatedHistory />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText(door("Blk 123, #05-123"))).toBeInTheDocument();
+
+      const religion = screen.getByLabelText("Filter by religion");
+      fireEvent.change(religion, { target: { value: "hindu" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const hindu = held.get("hindu");
+      expect(hindu).toBeDefined();
+
+      fireEvent.change(religion, { target: { value: "buddhist" } });
+      await act(async () => {
+        hindu?.resolve(list([entry("h3", { unitNumber: "#05-125" })]));
+        for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      });
+
+      expect(held.has("buddhist")).toBe(false);
+      expect(screen.queryByText(door("Blk 123, #05-125"))).not.toBeInTheDocument();
+      expect(religion).toHaveValue("buddhist");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("reloads after amending, so the row is not stale", async () => {

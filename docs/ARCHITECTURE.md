@@ -585,12 +585,15 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
   trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
-  (D-163-8). All records also writes its filters that way: `useAddressFilters` holds a
-  pick on screen and moves the address through Next's patched `replaceState`, and only
-  the newest first page is drawn (D-245-5, D-245-6). Needs a return visit moves its block
-  and toggle the same way, so a filter change reads only the list, with no page round
-  trip (D-246-10). The records screen still writes them with `router.replace`, which
-  waits for the server (D-245-7).
+  (D-163-8). Every filter, tab and view kept in the address moves through
+  `useAddressFilters` (`src/lib/hooks/use-address-filters.ts`), never `router.replace`.
+  That covers these three screens, both follow-up lists' tabs, and Me / My team on
+  `/history` and a session's records. The hook holds a pick on screen and moves the
+  address through Next's patched `replaceState(null, …)` with no page round trip. A
+  quick second pick keeps the first, and a pick with no signal fails in place (D-245-5,
+  D-246-10, D-257-1 to D-257-3). These lists draw only their newest read (D-245-6,
+  D-246-8, D-257-7). All records' and Needs a return visit's Show more waits while any
+  read of the list is out (D-246-12, D-257-5).
 
 ## PWA and service worker
 

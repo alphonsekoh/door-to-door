@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HistoryEntry } from "@/generated/types.gen";
-import { ownHistoryRequest, parseScope, scopeHref, vouchedTeamIds } from "@/lib/teams/team-view";
+import { ownHistoryRequest, parseScope, scopeSearch, vouchedTeamIds } from "@/lib/teams/team-view";
 
 describe("parseScope", () => {
   it("reads the team view only from its exact value", () => {
@@ -11,10 +11,13 @@ describe("parseScope", () => {
   });
 });
 
-describe("scopeHref", () => {
-  it("carries the team view into a link, and leaves 'me' bare", () => {
-    expect(scopeHref("/history/s1", "team")).toBe("/history/s1?view=team");
-    expect(scopeHref("/history/s1", "me")).toBe("/history/s1");
+describe("scopeSearch", () => {
+  it("writes the team view, and nothing for 'me', so it reads back as it was written", () => {
+    expect(scopeSearch("team")).toBe("view=team");
+    expect(scopeSearch("me")).toBe("");
+    for (const scope of ["me", "team"] as const) {
+      expect(parseScope(new URLSearchParams(scopeSearch(scope)))).toBe(scope);
+    }
   });
 });
 
