@@ -105,10 +105,12 @@ order gets an index.
   every visit a function render. _Trade-off:_ the cache grows with every id a signed-in
   user asks for, invalid ids included. Units in view are now prefetched in full.
   _Research:_ R-255.
-- **D-252-13 · `/blocks/[id]` stays rendered per request, until the owner decides.**
+- **D-252-13 · `/blocks/[id]` stays rendered per request (owner, 2026-11-22).**
   _Why:_ it reads `?unit=` for D-117-24's follow-up rows. Read on the client instead, the
   unit would not be in the server's HTML that D-113-1 adopts on mount, so the change
-  would reach typing before the page is live (Open questions).
+  would reach typing before the page is live, on the most-used screen. At about 2 ms to
+  the database in sin1, the cold start it would avoid costs little. The owner chose to
+  skip it; `/households/[id]` stays the cached static page (D-252-12).
 - **D-252-14 · Tests: unit, component and integration tests, and no new E2E spec
   (D-37-6).** _Why:_ the existing suite covers these screens, and the verifier's device
   pass covered the hidden tab, the shared read and the cached unit page on both engines.
@@ -177,10 +179,10 @@ D-83-13, D-85-7, D-85-8, D-113-1, D-117-24, D-131-9, D-131-10, D-249-4, D-249-5,
 
 ## Open questions
 
-- **`/blocks/[id]` (D-252-13).** Should it become a static shell that reads `?unit=` on
-  the client, which changes when the unit field is filled on a full load (D-113-1)? Or
-  should it stay per request? Until you decide, item 6 is unfinished, and the PR should
-  say `Refs #252`, not `Closes #252`.
+- **Resolved (owner, 2026-11-22): `/blocks/[id]` stays per request, as D-252-13.** It
+  asked whether the page should become a static shell that reads `?unit=` on the client,
+  which changes when the unit field is filled on a full load (D-113-1). With that
+  settled, item 6 is finished and the PR may close #252.
 - **Acceptance.** The issue asks the stage check (#244) to show fewer queries per route.
   That check measures latency, not query counts, and it was not run here (it needs
   Docker). The tracer shows 2 queries down to 1 on admin pages, and the same counts with
