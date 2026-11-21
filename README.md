@@ -960,8 +960,9 @@ docs/           architecture, research and per-issue decisions
 | `stage`     | The release candidate                       | A pull request from `dev`, merged with a merge commit                |
 | `main`      | Production: Vercel deploys it to d2dsrg.com | A pull request from `stage`, once tested, merged with a merge commit |
 
-`dev` and `stage` are protected: a change needs a pull request and the four
-[CI](#ci) checks, and neither branch can be force-pushed or deleted. Feature pull
+`dev`, `stage` and `main` are protected: a change needs a pull request and the four
+[CI](#ci) checks, and none of them can be force-pushed or deleted. `dev` takes squash or
+rebase merges; `stage` and `main` take merge commits only. Feature pull
 requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test it in the
 [stage environment](#stage-environment), then merge `stage` to `main`.
 

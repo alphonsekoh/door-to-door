@@ -30,6 +30,7 @@ load into it, and a check that measures it, with or without a far database.
   merge method and no checks. The ruleset named `main` targets no branch. _Why:_ recorded
   so a later task knows which part of D-244-1 is enforced and which is convention (Open
   questions).
+  _`main`'s part superseded by D-244-30._
 - **D-244-3 · Dependabot's four entries set `target-branch: dev`.** _Why:_ a bump merged
   into `main` would reach production without passing through `dev` and `stage`.
   _Trade-off:_ Dependabot reads its config from the default branch, so the change takes
@@ -50,6 +51,21 @@ load into it, and a check that measures it, with or without a far database.
   PR there. _Why:_ the owner chose this flow with the note that CLAUDE.md and the
   pipelines switch their base to `dev`; the text is the builder's proposal, unchanged.
   Supersedes D-244-4 and resolves Open question 2.
+- **D-244-29 · Dependabot security updates are on and open against `main` (owner,
+  2026-11-21).** GitHub ignores `target-branch` for security updates and applies none of
+  an entry's options to them (R-228): no group, no ignores, no `chore` prefix, no labels.
+  Each security PR is retargeted to `dev` by hand (`gh pr edit <N> --base dev`) and then
+  follows D-244-1. Supersedes D-118-7's `npm-security` group and D-166-11 for security
+  updates; both still hold for version updates. _Why:_ the owner chose to keep `main` the
+  default branch and still receive security fixes, over making `dev` the default or
+  leaving security updates off. Resolves Open question 1.
+- **D-244-30 · `main` requires the four checks and merge commits (owner, 2026-11-21).**
+  The ruleset named `main` (24659361), which had targeted no branch, now targets
+  `refs/heads/main`: a PR, the four checks, merge commits only, no deletion or
+  force-push. "D2D Branch Rule" is unchanged; where rulesets overlap, GitHub applies the
+  strictest, so `main` takes merge commits only. _Why:_ nothing untested or squashed
+  reaches production, which Vercel deploys from `main`. Supersedes `main`'s part of
+  D-244-2 and resolves Open question 3.
 
 ### The stack
 
@@ -190,16 +206,16 @@ load into it, and a check that measures it, with or without a far database.
 
 ## How existing decisions are handled
 
-| Decision          | Effect                                                                                          | By           |
-| ----------------- | ----------------------------------------------------------------------------------------------- | ------------ |
-| D-124-1, D-124-2  | Kept for `db:seed`; the stage seed guards differently, on purpose                               | D-244-16, 17 |
-| D-124-14          | Kept for `db:seed`; the stage seed hashes before its emptiness check                            | D-244-18     |
-| D-124-7           | Applied: no `${VAR:?}`; the runner still refuses the dev secret                                 | D-244-11     |
-| D-75-7, D-124-9   | Scope stated: Compose and tooling variables are outside                                         | D-244-26     |
-| D-122-5           | Kept: production sends HSTS; the stage edge drops it                                            | D-244-8      |
-| D-131-4, D-131-6  | Extended to the stage file's images and its postgres                                            | D-244-13     |
-| D-118-7, D-166-11 | **Conflict, open:** with `target-branch` set, security updates take none of the entry's options | D-244-3      |
-| CLAUDE.md Commits | Rewritten for D-244-1 (owner)                                                                   | D-244-28     |
+| Decision          | Effect                                                                  | By           |
+| ----------------- | ----------------------------------------------------------------------- | ------------ |
+| D-124-1, D-124-2  | Kept for `db:seed`; the stage seed guards differently, on purpose       | D-244-16, 17 |
+| D-124-14          | Kept for `db:seed`; the stage seed hashes before its emptiness check    | D-244-18     |
+| D-124-7           | Applied: no `${VAR:?}`; the runner still refuses the dev secret         | D-244-11     |
+| D-75-7, D-124-9   | Scope stated: Compose and tooling variables are outside                 | D-244-26     |
+| D-122-5           | Kept: production sends HSTS; the stage edge drops it                    | D-244-8      |
+| D-131-4, D-131-6  | Extended to the stage file's images and its postgres                    | D-244-13     |
+| D-118-7, D-166-11 | Superseded for security updates only (owner); version updates unchanged | D-244-29     |
+| CLAUDE.md Commits | Rewritten for D-244-1 (owner)                                           | D-244-28     |
 
 ## Known limits
 
@@ -225,7 +241,7 @@ D-241-1, D-241-2.
 
 ## Open questions
 
-1. **Dependabot security updates against D-118-7 and D-166-11 (conflict).** Once
+1. **Resolved (owner, 2026-11-21): option (a), as D-244-29.** Dependabot security updates against D-118-7 and D-166-11. Once
    `target-branch` is set, GitHub applies none of the entry's options to security
    updates (R-228). Those options are its groups, ignores, labels and commit prefix.
    - D-118-7 reads: "npm has three groups: security, minor-and-patch, major". Its
@@ -251,7 +267,7 @@ D-241-1, D-241-2.
    - **`builder.md`.** Step 1 bases off `dev` when no branch is open. Step 8 uses
      `--base <parent branch>`, which is `dev` for the first branch.
 
-3. **`main`'s protection (D-244-2).** "D2D Branch Rule" requires a PR on `main` but none
+3. **Resolved (owner, 2026-11-21): as D-244-30.** `main`'s protection (D-244-2). "D2D Branch Rule" requires a PR on `main` but none
    of the four checks, and allows squash and rebase. So a PR opened against `main` by
    mistake could reach production without CI, and a squashed promotion breaks D-244-1.
    Requiring the checks and merge-only on `main` would close both.
