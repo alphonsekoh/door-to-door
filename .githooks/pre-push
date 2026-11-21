@@ -8,12 +8,12 @@
 #
 # Skipped: branch deletions, pushes that change only docs (docs/, a top-level
 # *.md or .claude/), and trees that have passed a whole-suite run, or differ
-# from one only in docs. SKIP_E2E_LINUX=1 skips it for one push; CI still runs
-# the suite.
+# from one only in docs. SKIP_E2E_LINUX=1 skips it for one push; CI runs the
+# suite only on a pull request into stage or main, or one labelled e2e (#248).
 set -euo pipefail
 
 if [ "${SKIP_E2E_LINUX:-}" = 1 ]; then
-  echo "pre-push: SKIP_E2E_LINUX=1, so the Linux E2E gate is skipped (CI still runs it)" >&2
+  echo "pre-push: SKIP_E2E_LINUX=1, so the Linux E2E gate is skipped (CI runs it only into stage or main, or with the e2e label)" >&2
   exit 0
 fi
 
