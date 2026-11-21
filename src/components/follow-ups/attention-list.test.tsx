@@ -24,7 +24,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 /* The address as Next's router last read it; a test says when that moves.
-   No useRouter: a router navigation waits on the server (see show()). */
+   No useRouter: a router navigation waits on the server (useAddressFilters). */
 const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
@@ -411,6 +411,31 @@ describe("filtering by block and interest", () => {
       expect(address()).toBe(href);
     },
   );
+
+  it("shows each change at once and keeps it through the next, before the router reports either", async () => {
+    // Read from the router's copy, a second change made before it caught up
+    // was built on the first's old value and dropped it.
+    const user = userEvent.setup();
+    serveRows([row("#05-123")]);
+    render(<AttentionList />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    await blocksListed();
+
+    await user.click(screen.getByRole("button", { name: "Include medium interest" }));
+    await user.selectOptions(blockPicker(), BLOCK_B);
+
+    expect(screen.getByRole("button", { name: "High interest only" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(blockPicker()).toHaveValue(BLOCK_B);
+    expect(address()).toBe(`/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`);
+    await waitFor(() => {
+      expect(listRequests()).toContain(
+        `/households/attention?limit=50&offset=0&minimumInterest=medium&blockId=${BLOCK_B}`,
+      );
+    });
+  });
 
   it("keeps the rows and the picker's focus while the block's doors load, and reads the blocks once", async () => {
     // Swapped for "Loading…", the picker would leave the page mid-choice.

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { AdminFollowUps, parseFollowUpTab } from "@/components/admin/admin-follow-ups";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -16,9 +16,10 @@ vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
 
-const { replace, search } = vi.hoisted(() => ({ replace: vi.fn(), search: { value: "" } }));
+/* The router's copy of the address, which a test moves only as Back or
+   Forward would. No useRouter: a tab that went through it would throw here. */
+const { search } = vi.hoisted(() => ({ search: { value: "" } }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => new URLSearchParams(search.value),
 }));
 
@@ -75,12 +76,20 @@ function serve(pages: Partial<Record<"review" | "list" | "dismissed", FollowUp[]
   });
 }
 
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   search.value = "";
   localStorage.clear();
   useRole.mockReturnValue({ userId: "a1", isAdmin: true });
   useOnline.mockReturnValue(true);
+  window.history.replaceState(null, "", "/admin/follow-ups");
+  replaceState = vi.spyOn(window.history, "replaceState");
+});
+
+afterEach(() => {
+  replaceState.mockRestore();
 });
 
 describe("parseFollowUpTab", () => {
@@ -382,14 +391,25 @@ describe("AdminFollowUps", () => {
     if (detail !== null) expect(screen.getByText(detail)).toBeInTheDocument();
   });
 
-  it("switches tabs through the URL", async () => {
-    serve({});
+  /* Not router.replace: the page checks the admin on the server, so that
+     waited on a round trip, and with no signal the screen became Offline. */
+  it("switches tabs at once through the address, before the router reports it", async () => {
+    serve({ list: [note("1", { status: "listed" })] });
     render(<AdminFollowUps />);
     await screen.findByText("No suggestions to review.");
+
     fireEvent.click(screen.getByRole("button", { name: /^On the list/ }));
-    expect(replace).toHaveBeenCalledWith("/admin/follow-ups?tab=list");
-    fireEvent.click(screen.getByRole("button", { name: /^To review/ }));
-    expect(replace).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /^On the list/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", "/admin/follow-ups?tab=list");
+    expect(window.location.search).toBe("?tab=list");
+    expect(await screen.findByText("Note 1")).toBeInTheDocument();
+
+    // The tab already shown writes nothing.
+    fireEvent.click(screen.getByRole("button", { name: /^On the list/ }));
+    expect(replaceState).toHaveBeenCalledOnce();
   });
 
   /* Open the follow-up list, from New session and Add households, asks for

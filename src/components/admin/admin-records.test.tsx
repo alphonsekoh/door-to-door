@@ -1,6 +1,6 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { AdminRecords } from "@/components/admin/admin-records";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 import { focusDropped, pressByKey } from "../../../test/focus-dropped";
@@ -20,12 +20,15 @@ const { apiFetch, ApiRequestError } = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/api-client", () => ({ apiFetch, ApiRequestError }));
 
-const { replace, searchParams } = vi.hoisted(() => ({
-  replace: vi.fn(),
+/* The router's copy of the address. A test moves it only where the router
+   would: on a link, Back or Forward. Next reports the screen's own writes
+   back a render later, and router.replace did not until the server answered,
+   so here it never does, and the screen must not need it. No useRouter: a
+   pick that went through it would throw here. */
+const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => searchParams.value,
 }));
 
@@ -162,10 +165,61 @@ function serve(entries: HistoryEntry[], total = entries.length) {
   });
 }
 
+const page = (entries: HistoryEntry[], total = entries.length) => ({
+  data: entries,
+  pagination: { limit: 100, offset: 0, total, hasMore: entries.length < total },
+});
+
+type Held = { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
+
+/* Everything but the records answers at once; each records request waits,
+   keyed by its interest level ("any" for none), for the test to settle it in
+   whatever order it likes. */
+function holdRecords() {
+  const held = new Map<string, Held>();
+  apiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+    if (path === "/sessions/s1/teams") return Promise.resolve(teamList);
+    if (path.startsWith("/users")) return Promise.resolve(userPage);
+    return new Promise((resolve, reject) => {
+      held.set(new URLSearchParams(path.split("?")[1]).get("interestLevel") ?? "any", {
+        resolve,
+        reject,
+      });
+    });
+  });
+  async function waiting(name: string): Promise<Held> {
+    let found: Held | undefined;
+    await waitFor(() => {
+      found = held.get(name);
+      expect(found, `a request for ${name}`).toBeDefined();
+    });
+    if (found === undefined) throw new Error(`no request for ${name}`);
+    return found;
+  }
+  return {
+    waiting,
+    async answer(name: string, value: unknown) {
+      const request = await waiting(name);
+      await act(async () => {
+        request.resolve(value);
+        await Promise.resolve();
+      });
+    },
+  };
+}
+
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams.value = new URLSearchParams();
-  window.history.replaceState(null, "", "/");
+  window.history.replaceState(null, "", "/admin/records");
+  replaceState = vi.spyOn(window.history, "replaceState");
+});
+
+afterEach(() => {
+  replaceState.mockRestore();
 });
 
 /* An old link, in the address and so in what useSearchParams reads. */
@@ -214,7 +268,152 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
-    expect(replace).toHaveBeenCalledWith("/admin/records?interestLevel=high");
+    expect(address()).toBe("/admin/records?interestLevel=high");
+  });
+
+  /* router.replace waited on a server round trip: until it answered the
+     field read its old value, a second pick, built on stale filters, dropped
+     the first, and with no signal the screen became Offline (#257). */
+  it("shows each pick at once and keeps it through the next, before the router reports either", async () => {
+    const user = userEvent.setup();
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    const block = screen.getByLabelText("Filter by block");
+    const interest = screen.getByLabelText("Filter by interest level");
+
+    await user.selectOptions(block, "b1");
+    expect(block).toHaveValue("b1");
+
+    await user.selectOptions(interest, "high");
+    expect(block).toHaveValue("b1");
+    expect(interest).toHaveValue("high");
+    expect(address()).toBe("/admin/records?blockId=b1&interestLevel=high");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history?sessionId=s1&limit=100&blockId=b1&interestLevel=high",
+      );
+    });
+  });
+
+  it("moves the address through Next's replaceState with no state, never the router", async () => {
+    // Given Next's own state, its patch would not tell useSearchParams.
+    const user = userEvent.setup();
+    serve([entry("#05-123")]);
+    render(<AdminRecords />);
+    await screen.findByText("#05-123");
+    replaceState.mockClear();
+
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
+
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(
+      null,
+      "",
+      "/admin/records?interestLevel=high",
+    );
+  });
+
+  it("takes an address that changes under it, as Back or Forward does", async () => {
+    serve([entry("#05-123")]);
+    const { rerender } = render(<AdminRecords />);
+    await screen.findByText("#05-123");
+
+    searchParams.value = new URLSearchParams("interestLevel=high");
+    rerender(<AdminRecords />);
+
+    expect(screen.getByLabelText("Filter by interest level")).toHaveValue("high");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/history?sessionId=s1&limit=100&interestLevel=high");
+    });
+  });
+
+  it.each([
+    [
+      "answers",
+      (late: Held) => {
+        late.resolve(page([entry("#05-125")]));
+      },
+    ],
+    [
+      "fails",
+      (late: Held) => {
+        late.reject(new TypeError("Load failed"));
+      },
+    ],
+    [
+      "finds no session",
+      (late: Held) => {
+        late.reject(new ApiRequestError(404));
+      },
+    ],
+  ])("keeps the newest pick's records when an older pick %s last", async (_, settle) => {
+    const user = userEvent.setup();
+    const held = holdRecords();
+    render(<AdminRecords />);
+    await held.answer("any", page([entry("#05-123")]));
+    await screen.findByText("#05-123");
+
+    const interest = screen.getByLabelText("Filter by interest level");
+    await user.selectOptions(interest, "high");
+    const late = await held.waiting("high");
+    await user.selectOptions(interest, "low");
+    await held.answer("low", page([entry("#05-124")]));
+    await screen.findByText("#05-124");
+
+    await act(async () => {
+      settle(late);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("#05-124")).toBeInTheDocument();
+    expect(screen.queryByText("#05-125")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByText("No session is running.")).not.toBeInTheDocument();
+  });
+
+  it("never draws a read for the filters just left that lands before the next pick's load starts", async () => {
+    // The pick's load waits a tick; the screen already shows the new filter.
+    vi.useFakeTimers();
+    try {
+      const held = new Map<string, Held>();
+      apiFetch.mockImplementation((path: string) => {
+        if (path.startsWith("/sessions/active")) return Promise.resolve(activeSession);
+        if (path === "/sessions/s1/teams") return Promise.resolve(teamList);
+        if (path.startsWith("/users")) return Promise.resolve(userPage);
+        if (!path.includes("interestLevel=")) return Promise.resolve(page([entry("#05-123")]));
+        return new Promise((resolve, reject) => {
+          held.set(new URLSearchParams(path.split("?")[1]).get("interestLevel") ?? "", {
+            resolve,
+            reject,
+          });
+        });
+      });
+      render(<AdminRecords />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(screen.getByText("#05-123")).toBeInTheDocument();
+
+      const interest = screen.getByLabelText("Filter by interest level");
+      fireEvent.change(interest, { target: { value: "high" } });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      const high = held.get("high");
+      expect(high).toBeDefined();
+
+      fireEvent.change(interest, { target: { value: "low" } });
+      await act(async () => {
+        high?.resolve(page([entry("#05-125")]));
+        for (let tick = 0; tick < 5; tick += 1) await Promise.resolve();
+      });
+
+      expect(held.has("low")).toBe(false);
+      expect(screen.queryByText("#05-125")).not.toBeInTheDocument();
+      expect(interest).toHaveValue("low");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears back to a bare URL", async () => {
@@ -225,7 +424,8 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(replace).toHaveBeenCalledWith("/admin/records");
+    expect(address()).toBe("/admin/records");
+    expect(screen.getByLabelText("Filter by interest level")).toHaveValue("");
   });
 
   it("goes back to a bare URL when the only filter is set back to Any", async () => {
@@ -236,7 +436,7 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "");
-    expect(replace).toHaveBeenCalledWith("/admin/records");
+    expect(address()).toBe("/admin/records");
   });
 
   it("offers no clear button when nothing is filtered", async () => {
@@ -260,7 +460,7 @@ describe("AdminRecords", () => {
 
     expect(screen.getByText("#05-124")).toBeInTheDocument();
     expect(screen.queryByText("#05-123")).not.toBeInTheDocument();
-    expect(replace).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
     // Let any deferred load run: typing must not start one.
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
     expect(apiFetch).not.toHaveBeenCalled();
@@ -276,9 +476,6 @@ describe("AdminRecords", () => {
     expect(screen.queryByText("#05-123")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("124");
     expect(address()).toBe("/admin/records?interestLevel=low");
-    // The router's replace waits on the server, and reloads the page, search
-    // emptied, if that fails.
-    expect(replace).not.toHaveBeenCalled();
     const asked = apiFetch.mock.calls.map(([path]) => String(path));
     expect(asked.filter((path) => /q=|124/.test(path))).toEqual([]);
   });
@@ -304,7 +501,7 @@ describe("AdminRecords", () => {
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
 
-    expect(replace).toHaveBeenCalledWith("/admin/records");
+    expect(address()).toBe("/admin/records");
     expect(search).toHaveValue("");
     expect(screen.getByText("#05-123")).toBeInTheDocument();
   });
@@ -693,10 +890,10 @@ describe("AdminRecords", () => {
     await screen.findByText("#05-123");
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
-    expect(replace).toHaveBeenCalledWith("/admin/records?blockId=b1");
+    expect(address()).toBe("/admin/records?blockId=b1");
 
     await user.selectOptions(screen.getByLabelText("Filter by member"), "u1");
-    expect(replace).toHaveBeenCalledWith("/admin/records?memberId=u1");
+    expect(address()).toBe("/admin/records?blockId=b1&memberId=u1");
   });
 
   it("keeps the search term out of the URL when another filter is chosen", async () => {
@@ -709,7 +906,7 @@ describe("AdminRecords", () => {
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
 
-    expect(replace).toHaveBeenLastCalledWith("/admin/records?blockId=b1");
+    expect(address()).toBe("/admin/records?blockId=b1");
     expect(search).toHaveValue("123");
   });
 
@@ -766,7 +963,7 @@ describe("AdminRecords", () => {
 
     expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
     await user.selectOptions(screen.getByLabelText("Filter by team"), TEAM_ID);
-    expect(replace).toHaveBeenCalledWith(`/admin/records?teamId=${TEAM_ID}`);
+    expect(address()).toBe(`/admin/records?teamId=${TEAM_ID}`);
   });
 
   it("asks the server for one team's records when the URL names it", async () => {
@@ -806,11 +1003,21 @@ describe("AdminRecords", () => {
   });
 
   it.each([
-    ["with the other filters kept", "interestLevel=high&", "/admin/records?interestLevel=high"],
-    ["back to a bare URL when it was the only filter", "", "/admin/records"],
+    [
+      "with the other filters kept",
+      "interestLevel=high&",
+      "/admin/records?interestLevel=high",
+      "/history?sessionId=s1&limit=100&interestLevel=high",
+    ],
+    [
+      "back to a bare URL when it was the only filter",
+      "",
+      "/admin/records",
+      "/history?sessionId=s1&limit=100",
+    ],
   ])(
     "drops a team that is not one of this outing's teams from the URL, %s",
-    async (_, rest, url) => {
+    async (_, rest, url, request) => {
       // A real-looking id from an earlier outing would filter to nothing while
       // the picker said "Any team".
       const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
@@ -819,7 +1026,11 @@ describe("AdminRecords", () => {
       render(<AdminRecords />);
 
       await waitFor(() => {
-        expect(replace).toHaveBeenCalledWith(url);
+        expect(address()).toBe(url);
+      });
+      // Read again without it, with no wait for the router to report it.
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledWith(request);
       });
     },
   );
@@ -830,7 +1041,7 @@ describe("AdminRecords", () => {
     render(<AdminRecords />);
     await screen.findByText("#05-123");
     expect(screen.getByLabelText("Filter by team")).toHaveValue(TEAM_ID);
-    expect(replace).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("keeps the team while the teams cannot be listed, since nothing is known", async () => {
@@ -847,7 +1058,7 @@ describe("AdminRecords", () => {
     });
     render(<AdminRecords />);
     await screen.findByText("Nothing here matches those filters.");
-    expect(replace).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it.each([`teamId=${TEAM_ID}`, "memberId=u1", "blockId=b1", "interestLevel=low"])(

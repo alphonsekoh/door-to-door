@@ -77,7 +77,9 @@ export function ConsolidatedHistory() {
   const filters: HistoryFilters = { ...parseHistoryFilters(new URLSearchParams(search)), q };
 
   const [state, setState] = useState<State>({ status: "loading" });
-  const [offset, setOffset] = useState(0);
+  /* A read of the list is out. Show more waits for it: tapped while a pick's
+     first page loaded, its page went onto the old list. */
+  const [busy, setBusy] = useState(false);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
@@ -97,6 +99,7 @@ export function ConsolidatedHistory() {
 
   const load = useCallback(async (current: HistoryFilters, at: number) => {
     const mine = at === 0 ? ++generation.current : generation.current;
+    setBusy(true);
     try {
       const page = await apiFetch<HistoryList>(
         `/history?${toHistoryRequest(current, { limit: PAGE_SIZE, offset: at })}`,
@@ -114,6 +117,8 @@ export function ConsolidatedHistory() {
         status: "error",
         message: failureLine(error, "Could not load the records."),
       });
+    } finally {
+      if (mine === generation.current) setBusy(false);
     }
   }, []);
 
@@ -135,12 +140,14 @@ export function ConsolidatedHistory() {
     /* Deferred with the loads rather than run inline: React warns that setting
        state synchronously in an effect triggers a cascading render. */
     const timer = setTimeout(() => {
-      setOffset(0);
       void load(current, 0);
       void loadPickers();
     }, 0);
     return () => {
       clearTimeout(timer);
+      /* The next pick's load waits a tick; a read for the filters just left
+         that lands in it must not be drawn (D-246-13). */
+      generation.current += 1;
     };
   }, [load, loadPickers, search]);
 
@@ -539,17 +546,16 @@ export function ConsolidatedHistory() {
         </ul>
       )}
 
+      {/* From the rows loaded, not a count of taps: a reload after an
+          amendment or Try again starts the list again from its first page. */}
       {entries.length < total ? (
         <button
           type="button"
-          onClick={() => {
-            const next = offset + PAGE_SIZE;
-            setOffset(next);
-            void load(filters, next);
-          }}
+          disabled={busy}
+          onClick={() => void load(filters, entries.length)}
           className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
-          Show more ({entries.length} of {total})
+          {busy ? "Loading…" : `Show more (${String(entries.length)} of ${String(total)})`}
         </button>
       ) : null}
 
