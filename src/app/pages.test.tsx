@@ -15,7 +15,7 @@ import AdminMemberPage from "@/app/admin/team/[id]/page";
 import AdminSessionsPage from "@/app/admin/sessions/page";
 import BlockLoading from "@/app/blocks/[id]/loading";
 import BlockPage from "@/app/blocks/[id]/page";
-import HouseholdPage from "@/app/households/[id]/page";
+import HouseholdPage, { generateStaticParams } from "@/app/households/[id]/page";
 import NotFound from "@/app/not-found";
 import SessionPage from "@/app/page";
 import WaitingPage from "@/app/waiting/page";
@@ -32,6 +32,7 @@ vi.mock("next/navigation", () => ({
   useSelectedLayoutSegment: () => null,
   useRouter: () => ({ replace: vi.fn() }),
   useSearchParams: () => new URLSearchParams(),
+  useParams: () => ({ id: "h1" }),
 }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
@@ -104,14 +105,18 @@ describe("history screens", () => {
     expect(await screen.findByRole("alert")).toBeInTheDocument();
   });
 
-  it("renders a unit's timeline", async () => {
-    render(
-      await HouseholdPage({
-        params: Promise.resolve({ id: "h1" }),
-        searchParams: Promise.resolve({}),
-      }),
-    );
+  it("renders the timeline of the unit in the address", async () => {
+    const { apiFetch } = await import("@/lib/api-client");
+    render(<HouseholdPage />);
     expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(expect.stringMatching(/^\/households\/h1\?/));
+  });
+
+  /* Read on the client, the unit leaves nothing for the server to draw per
+     request, so no unit is drawn at build time either: each is drawn when
+     first asked for (#252). */
+  it("draws no unit's page at build time", () => {
+    expect(generateStaticParams()).toEqual([]);
   });
 });
 

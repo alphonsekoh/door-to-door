@@ -17,7 +17,7 @@ import {
 } from "@/lib/teams/team-ui";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
-import { loadCurrentUser } from "@/lib/session/users";
+import { loadCurrentUser, sharedCurrentUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 
 type Loaded = { me: User; participants: Participant[]; teams: Team[] };
@@ -53,6 +53,10 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
   /* Set synchronously: state is not updated between two taps in one frame. */
   const inFlight = useRef(false);
   const wasOnline = useRef(online);
+  /* The first read takes the account read the shell's check made as the page
+     loaded (#252); each after asks again, so a changed role or name still
+     shows by the next poll. */
+  const readMe = useRef(sharedCurrentUser);
   /* Join, and Leave, which is noted on the card, never on its confirm: a
      refusal ends on it, where D-90-9 returns focus too. A sheet's refusal
      keeps the sheet open, and the sheet gives focus back itself. */
@@ -61,8 +65,10 @@ export function OutingTeam({ sessionId, tick }: { sessionId: string; tick: numbe
   const load = useCallback(async () => {
     const mine = ++generation.current;
     try {
+      const reading = readMe.current();
+      readMe.current = loadCurrentUser;
       const [me, participants, teams] = await Promise.all([
-        loadCurrentUser(),
+        reading,
         apiFetch<ParticipantList>(`/sessions/${sessionId}/participants`),
         apiFetch<TeamList>(`/sessions/${sessionId}/teams`),
       ]);

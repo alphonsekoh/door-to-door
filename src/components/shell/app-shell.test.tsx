@@ -22,7 +22,7 @@ vi.mock("@/lib/hooks/use-role", () => ({
 
 /* The shell reads /users/me once on load; that read is the gate's to test. */
 vi.mock("@/lib/session/users", () => ({
-  loadCurrentUser: () => Promise.resolve({ id: "u1", role: "member" }),
+  sharedCurrentUser: () => Promise.resolve({ id: "u1", role: "member" }),
 }));
 
 afterEach(() => {

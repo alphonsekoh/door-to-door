@@ -39,7 +39,9 @@ injected a session object.
   when its sign-in check fails.
 - **D-83-6 · No cache, not even a short TTL.** _Why:_ a TTL is a window where a
   deactivated account still works, and a per-process cache cannot bound it across
-  instances.
+  instances. _Refined by D-252-4 (#252, owner):_ `currentSession` goes through React
+  `cache()`, so an admin page's layout and page share one check per server render.
+  Nothing is kept across requests or in route handlers.
 - **D-83-7 · Cost accepted.** One indexed lookup per request; two on `GET /users/me`
   (it also loads `lastRecordedAt`). _Why:_ correctness over a saved query on a small table.
   _Extended by D-125-3 and D-125-6:_ the same query also checks the token's sign-in, and

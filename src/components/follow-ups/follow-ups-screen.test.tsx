@@ -204,6 +204,103 @@ describe("FollowUpsScreen", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
+  /* The list names nobody, so it need not wait for the session to ask (#252);
+     its notes carry the viewer's controls, so they wait to be drawn. */
+  it.each([
+    ["the list", "", "listed", LIST, "Remove from list"],
+    [
+      "review",
+      "view=review",
+      "suggested",
+      "/follow-ups?status=suggested&limit=20&offset=0",
+      "Add to list",
+    ],
+  ] as const)(
+    "asks for %s before the session names the viewer, once, and draws it only for a viewer",
+    async (_, view, status, path, adminAction) => {
+      search.value = view;
+      useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+      apiFetch.mockResolvedValue(page([note("1", { status })]));
+      const { rerender } = render(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+
+      useRole.mockReturnValue({ userId: "u1", isAdmin: true });
+      rerender(<FollowUpsScreen />);
+      expect(await screen.findByRole("button", { name: adminAction })).toBeInTheDocument();
+      expect(screen.getByText("Note 1")).toBeInTheDocument();
+      expect(screen.queryByText("Loading…")).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(apiFetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  /* The list is asked for while Mine still waits for the viewer, so its answer
+     can land after Mine is chosen. The tap and the address are guarded apart:
+     the address follows a tap a moment later, and a link changes it alone. */
+  it.each([
+    ["tapped, and the list answers before the address follows", true],
+    ["reached by the address, and the list answers after", false],
+  ])(
+    "never draws the list under Mine when Mine is %s and the session names the viewer late",
+    async (_, tapped) => {
+      useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+      const answers = new Map<string, (value: FollowUpList) => void>();
+      apiFetch.mockImplementation(
+        (path: string) =>
+          new Promise<FollowUpList>((resolve) => {
+            answers.set(path, resolve);
+          }),
+      );
+      const MINE = "/follow-ups?authorId=u1&outstanding=true&limit=20&offset=0";
+      const answer = (path: string, value: FollowUpList) => {
+        const resolve = answers.get(path);
+        expect(resolve).toBeDefined();
+        resolve?.(value);
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+      const { rerender } = render(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledExactlyOnceWith(LIST);
+      });
+      const toMine = () => {
+        search.value = "view=mine";
+        rerender(<FollowUpsScreen />);
+      };
+      if (tapped) {
+        fireEvent.click(screen.getByRole("button", { name: "Mine" }));
+        answer(LIST, page([note("1")], 2));
+        await settle();
+        toMine();
+      } else {
+        toMine();
+        await settle();
+        answer(LIST, page([note("1")], 2));
+      }
+      await settle();
+
+      useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+      rerender(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenLastCalledWith(MINE);
+      });
+      expect(screen.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+
+      answer(MINE, page([note("2", { status: "suggested" })]));
+      expect(await screen.findByText("Note 2")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+    },
+  );
+
   it("says so when nothing is on the list, and who adds to it", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);

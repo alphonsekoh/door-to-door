@@ -41,10 +41,12 @@ import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
 const PAGE_SIZE = 100;
-/* An export walks the whole filtered set a page at a time. The cap stops a
-   careless filter turning into a hundred round trips; the screen says when it
-   bites, so the file is never quietly short. */
-const EXPORT_MAX_PAGES = 20;
+/* An export walks the whole filtered set a page at a time, in the largest
+   pages /history gives (#252). The cap stops a careless filter turning into a
+   hundred round trips; the screen says when it bites, so the file is never
+   quietly short. Eight pages hold the 2,000 records twenty of 100 did. */
+const EXPORT_PAGE_SIZE = 250;
+const EXPORT_MAX_PAGES = 8;
 
 const LEVELS: { value: InterestLevel; label: string }[] = [
   { value: "high", label: "High" },
@@ -123,8 +125,12 @@ export function ConsolidatedHistory() {
   }, []);
 
   /* The three pickers are a convenience; losing any of them must not take the
-     records with it. */
+     records with it. They do not change with the filters, so they are read
+     once (#252); after a failure, the next filter asks again. */
+  const pickersRead = useRef(false);
   const loadPickers = useCallback(async () => {
+    if (pickersRead.current) return;
+    pickersRead.current = true;
     const [block, session, user] = await Promise.allSettled([
       apiFetch<BlockList>("/blocks?limit=100"),
       apiFetch<SessionList>("/sessions?limit=100"),
@@ -133,6 +139,9 @@ export function ConsolidatedHistory() {
     if (block.status === "fulfilled") setBlocks(block.value.data);
     if (session.status === "fulfilled") setSessions(session.value.data);
     if (user.status === "fulfilled") setMembers(user.value);
+    if ([block, session, user].some((read) => read.status === "rejected")) {
+      pickersRead.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -215,7 +224,7 @@ export function ConsolidatedHistory() {
       let more = true;
       while (more && page < EXPORT_MAX_PAGES) {
         const result = await apiFetch<HistoryList>(
-          `/history?${toHistoryRequest(filters, { limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`,
+          `/history?${toHistoryRequest(filters, { limit: EXPORT_PAGE_SIZE, offset: collected.length })}`,
         );
         collected.push(...result.data);
         more = result.pagination.hasMore;

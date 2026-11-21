@@ -171,6 +171,22 @@ describe("AccountScreen: renaming", () => {
     expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "admin" });
   });
 
+  /* Home's team card takes the record the page already has (#252). */
+  it("hands the saved record on, so the next screen shows the new name without asking", async () => {
+    const user = userEvent.setup();
+    const input = await loaded();
+    apiFetch.mockResolvedValueOnce({ ...alice, name: "Alice Tan" });
+    await user.clear(input);
+    await user.type(input, "Alice Tan");
+    await user.click(screen.getByRole("button", { name: "Save name" }));
+    await screen.findByRole("status");
+
+    const { sharedCurrentUser } = await import("@/lib/session/users");
+    const asked = apiFetch.mock.calls.length;
+    expect(await sharedCurrentUser()).toMatchObject({ name: "Alice Tan" });
+    expect(apiFetch).toHaveBeenCalledTimes(asked);
+  });
+
   it("drops the saved note once the name is edited again", async () => {
     const user = userEvent.setup();
     const input = await loaded();

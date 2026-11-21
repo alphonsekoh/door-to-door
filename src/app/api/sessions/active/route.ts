@@ -24,9 +24,11 @@ export const GET = withContract(
       throw new NotFoundError("No session is active.");
     }
 
-    const blocks = await listSessionBlocks(db, session.id);
-    /* A regular session picks none, so this is empty for it. */
-    const picks = await listPicks(db, session.id);
+    const [blocks, picks] = await Promise.all([
+      listSessionBlocks(db, session.id),
+      /* A regular session picks none, so this is empty for it. */
+      listPicks(db, session.id),
+    ]);
     return {
       status: 200,
       body: {

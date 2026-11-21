@@ -62,10 +62,26 @@ export function ActiveSessionScreen() {
      * that doing so synchronously inside an effect triggers a cascading render.
      */
     const initial = setTimeout(() => void load(), 0);
-    const timer = setInterval(() => void load(true), POLL_INTERVAL_MS);
+    /* Nobody sees a hidden tab, so its poll asks nothing (#252). One missed
+       while hidden is made up the moment the tab is seen again. */
+    let missed = false;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "hidden") {
+        missed = true;
+        return;
+      }
+      void load(true);
+    }, POLL_INTERVAL_MS);
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || !missed) return;
+      missed = false;
+      void load(true);
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [load]);
 

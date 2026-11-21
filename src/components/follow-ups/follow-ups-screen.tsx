@@ -46,15 +46,21 @@ const EMPTY: Record<FollowUpView, { title: string; detail: string | null }> = {
   },
 };
 
-/* What each view asks the server for; Mine needs the viewer's id. */
-function queryFor(view: FollowUpView, userId: string): URLSearchParams {
+/*
+ * What each view asks the server for. Only Mine needs the viewer's id, so
+ * only Mine waits for the session to name them; the others ask at once
+ * (#252). Null until Mine can ask.
+ */
+function queryFor(view: FollowUpView, userId: string | undefined): string | null {
   switch (view) {
     case "list":
-      return new URLSearchParams({ status: "listed", outstanding: "true" });
+      return new URLSearchParams({ status: "listed", outstanding: "true" }).toString();
     case "review":
-      return new URLSearchParams({ status: "suggested" });
+      return new URLSearchParams({ status: "suggested" }).toString();
     case "mine":
-      return new URLSearchParams({ authorId: userId, outstanding: "true" });
+      return userId === undefined
+        ? null
+        : new URLSearchParams({ authorId: userId, outstanding: "true" }).toString();
   }
 }
 
@@ -78,6 +84,9 @@ export function FollowUpsScreen() {
   );
   const view = parseFollowUpView(new URLSearchParams(search));
   const { userId } = useRole();
+  /* A string, so the session answering does not ask again for a view that
+     never needed it. */
+  const query = queryFor(view, userId);
   const active = useActiveSession();
   const [now] = useState(() => new Date());
   const [state, setState] = useState<State>({ status: "loading" });
@@ -88,9 +97,11 @@ export function FollowUpsScreen() {
 
   const load = useCallback(
     async (offset: number) => {
-      if (userId === undefined) return;
+      /* Before the wait for the viewer, or the view left behind answers into
+         Mine while Mine's own request is still out. */
       const mine = ++generation.current;
-      const params = queryFor(view, userId);
+      if (query === null) return;
+      const params = new URLSearchParams(query);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
       try {
@@ -108,7 +119,7 @@ export function FollowUpsScreen() {
         if (mine === generation.current) setState({ status: "error" });
       }
     },
-    [view, userId],
+    [query],
   );
 
   useEffect(() => {
@@ -140,6 +151,9 @@ export function FollowUpsScreen() {
               aria-pressed={on}
               onClick={() => {
                 if (on) return;
+                /* The address changes after the tap; an answer landing
+                   between them is for the view being left. */
+                generation.current += 1;
                 setState({ status: "loading" });
                 chooseView(viewSearch(option.value));
               }}
@@ -155,7 +169,10 @@ export function FollowUpsScreen() {
 
       {userId === undefined ? null : <DeclinedNotice userId={userId} />}
 
-      {state.status === "loading" ? (
+      {/* Each note's controls and bylines are the viewer's, so an answer that
+          lands before the session names them waits: drawn as a member's, an
+          admin's buttons would appear under a thumb a moment later. */}
+      {state.status === "loading" || userId === undefined ? (
         <p className="text-body text-foreground-muted">Loading…</p>
       ) : state.status === "error" ? (
         <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
