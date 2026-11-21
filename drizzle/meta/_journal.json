@@ -50,6 +50,13 @@
       "when": 1793863511337,
       "tag": "0006_sign_ins",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795253266828,
+      "tag": "0007_users_approval",
+      "breakpoints": true
     }
   ]
 }

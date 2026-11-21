@@ -9,6 +9,7 @@ import { authorizeFromRawCredentials } from "@/server/auth/credentials";
 import { SignInRefused, allowGoogleSignIn, googleProviders, linkByEmailOnly } from "@/auth/google";
 import { asUuid, checkSignIn, startSignIn } from "@/server/auth/sign-ins";
 import { endThisSignIn } from "@/server/auth/sign-out";
+import { WAITING_PATH } from "@/server/auth/routes";
 import { getConfig } from "@/server/config";
 
 /*
@@ -34,6 +35,9 @@ export function buildAuthConfig(
   const db = getDatabase();
   return {
     ...base,
+    /* A first Google sign-in lands on the page that says it waits for an
+       admin (#249); every later one goes where it was going. */
+    pages: { ...base.pages, newUser: WAITING_PATH },
     adapter: linkByEmailOnly(
       DrizzleAdapter(db, {
         usersTable: users,
@@ -43,6 +47,7 @@ export function buildAuthConfig(
         sessionsTable: authSessions,
         verificationTokensTable: verificationTokens,
       }),
+      db,
     ),
     providers: [
       Credentials({
@@ -68,9 +73,11 @@ export function buildAuthConfig(
         /*
          * Each sign-in gets its own record, named on the token for good. An
          * account deactivated since it was judged is refused here, under the
-         * lock startSignIn takes.
+         * lock startSignIn takes. A first Google sign-in, which has just
+         * made its account, is a sign-up to Auth.js, and needs one as much
+         * (#249).
          */
-        if (trigger === "signIn") {
+        if (trigger === "signIn" || trigger === "signUp") {
           const userId = asUuid(user.id);
           const signInId =
             userId === null

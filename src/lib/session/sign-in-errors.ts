@@ -6,17 +6,19 @@ import { listDomains } from "@/lib/session/google-domains";
  * is anyone's to write, so it only ever picks between two fixed messages and
  * is never shown itself.
  *
- * AccessDenied is every refusal: an address nobody added, one Google has not
- * verified or does not vouch for, a deactivated account. One message for all
- * of them, so the page says nothing about who has an account (D-15-1). It
- * names the domains Google sign-in is for, which are the same for everyone.
+ * AccessDenied is every refusal: an address Google has not verified or does
+ * not vouch for, a deactivated account. Anyone else Google vouches for may
+ * ask to join (#249), so the message no longer speaks of addresses an admin
+ * added. It stays one message, as Auth.js passes the page nothing but its
+ * own error type, and names the domains Google sign-in is for, which are the
+ * same for everyone.
  */
 
 /* Kept short: at the largest text, less to scroll past to the sign-in buttons. */
 export function googleRefusedMessage(domains: readonly string[]): string {
   return (
     "That Google account can't sign in here. Google sign-in is for " +
-    `${listDomains(domains)} addresses your admin added; otherwise, use your email and password.`
+    `${listDomains(domains)} accounts; otherwise, use your email and password.`
   );
 }
 

@@ -741,12 +741,12 @@ describe("SignInForm with Google (#14)", () => {
       get.mockImplementation((key) => (key === "error" ? error : null));
     };
 
-    it("gives every refusal one message, whoever has an account, naming Google's domains (D-15-1)", () => {
+    it("gives every refusal one message, naming Google's domains (#249)", () => {
       withError("AccessDenied");
       render(<SignInForm googleDomains={DOMAINS} />);
       expect(screen.getByRole("alert")).toHaveTextContent(
         "That Google account can't sign in here. Google sign-in is for " +
-          "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
+          "gmail.com, tjc.sg or tjc.org accounts; otherwise, use your email and password.",
       );
     });
 

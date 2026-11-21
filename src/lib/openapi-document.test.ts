@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalEnum,
   followUpStatusEnum,
   interestLevelEnum,
   religionEnum,
@@ -35,6 +36,7 @@ describe("enums mirror the database", () => {
     ["SessionStatus", sessionStatusEnum],
     ["SessionKind", sessionKindEnum],
     ["FollowUpStatus", followUpStatusEnum],
+    ["Approval", approvalEnum],
   ])("%s matches the Drizzle pgEnum exactly", (name, pgEnum) => {
     expect(schemaEnum(doc, name)).toEqual([...pgEnum.enumValues]);
   });
@@ -81,6 +83,13 @@ describe("every operation", () => {
     for (const { path, method, operation } of operations) {
       const responses = operation["responses"] as Record<string, unknown>;
       expect(Object.keys(responses), `${method.toUpperCase()} ${path}`).toContain("401");
+    }
+  });
+
+  it("documents a 403, since every operation refuses a deactivated or unapproved account", () => {
+    for (const { path, method, operation } of operations) {
+      const responses = operation["responses"] as Record<string, unknown>;
+      expect(Object.keys(responses), `${method.toUpperCase()} ${path}`).toContain("403");
     }
   });
 
