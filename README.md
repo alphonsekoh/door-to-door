@@ -407,6 +407,8 @@ both is a startup error (D-75-2).
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
 | `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
 | `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                                       |
+| `STAGE_PORT`, `STAGE_TOXIPROXY_PORT`       | `3400`, `3401`                                                   | Stage stack only: where its edge and toxiproxy's API are published, for Compose and `stage:perf`                                                                                 |
+| `STAGE_AUTH_SECRET`                        | made once per stack                                              | Stage stack only: its app's `AUTH_SECRET`, in place of the one it makes                                                                                                          |
 | `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | `true` in Compose                                                | Compose only: watch files by polling, for bind mounts on macOS and Windows                                                                                                       |
 | `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8)                      |
 | `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                                      |
@@ -627,14 +629,17 @@ The jobs' token can only read the repository, and checkout leaves it nowhere on 
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
-copy the digest into `ci.yml` (the test fails until you do).
+copy the digest into `ci.yml` (the test fails until you do). Its `docker-compose` entry
+reads the [stage stack](#stage-environment)'s file too, and `src/stage-stack.test.ts`
+fails if the stage postgres differs from the dev stack's.
 
 ## Deployment
 
 The app ships as a Docker image: the `runner` stage of the [`Dockerfile`](Dockerfile),
 Next.js standalone output on `node:24-alpine` (pinned by digest), running as uid 1001 on
-port 3000. No hosting target has been chosen; anything that runs a container next to
-PostgreSQL will do.
+port 3000. Production does not use it: it is the same app on Vercel, with settings from
+`CONFIG_YAML`, and PostgreSQL 17 on Neon. The image runs anywhere that runs a container
+next to PostgreSQL.
 
 ```bash
 docker build -t door-to-door .
@@ -774,7 +779,7 @@ npm run stage:down     # stop it and delete its data
 
 | Service     | Stands in for                  | What it is                                                                                                                                                       |
 | ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `edge`      | Vercel's edge                  | Caddy: HTTPS on `127.0.0.1:3400` from its own certificate authority, gzip, and `X-Forwarded-For`, `-Proto` and `-Host` to the app                                |
+| `edge`      | Vercel's edge                  | Caddy: HTTPS on `127.0.0.1:3400` from its own certificate authority, zstd and gzip, and `X-Forwarded-For`, `-Proto` and `-Host` to the app                       |
 | `app`       | The Vercel function            | The Dockerfile's `runner` stage, the production build on Node 24, with one CPU and 2 GB. Settings from `CONFIG_YAML`: secure cookies, `trustHost`, one proxy hop |
 | `toxiproxy` | The network between them       | Relays every query the app makes; its API on `127.0.0.1:3401` adds a delay for `--db-latency`                                                                    |
 | `db`        | Neon                           | PostgreSQL 17, the dev stack's image, published nowhere                                                                                                          |
@@ -785,7 +790,8 @@ npm run stage:down     # stop it and delete its data
 **The seed** loads 30 blocks, about 3,000 households and about 14,500 visits over the past
 year: 48 weekly sessions, 4 follow-up sessions, one session active today and one waiting
 to start, about 1,250 follow-ups (suggested, listed, done and removed), and 3 admins and
-40 members, 2 of whom have left. The same day gives the same records. It first prints
+40 members, 2 of whom have left. Every run makes the same counts, ending at the moment it
+runs, and the same moment gives the same records. It first prints
 `Stage seed target: host:port/database`, then refuses, writing nothing, any database not
 named `door_to_door_stage`, and any that holds a user, block, session, household, visit or
 follow-up. It is not the demo seed and never runs against production. Its logins share
@@ -876,8 +882,10 @@ src/
                 history, follow-ups, hooks, session, sync (offline queue), offline
                 (local copy)
   auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
-  server/       server-only services, auth (sign-ins, sign-out, guards), withContract
-  db/           Drizzle schema, client, seed data and the seed's guard
+  server/       server-only services, auth (sign-ins, sign-out, guards), withContract,
+                and the stage check (stage/)
+  db/           Drizzle schema, client, seed data and the seed's guard, and the stage
+                seed
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware); under
                 next dev, also refuses a Host that is not localhost
@@ -885,7 +893,9 @@ drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
-                check-standalone (postbuild)
+                check-standalone (postbuild), record-migration-checksums, e2e-linux,
+                stage-seed, stage-perf
+docker/stage/   the stage stack's edge (Caddyfile) and toxiproxy settings
 docs/           architecture, research and per-issue decisions
 ```
 
@@ -906,7 +916,9 @@ requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test i
 Dependabot's version updates target `dev` too (`target-branch` in
 [`.github/dependabot.yml`](.github/dependabot.yml)). Its security updates ignore that
 setting and open against `main`, the default branch: retarget each to `dev` before
-merging it (`gh pr edit <number> --base dev`).
+merging it (`gh pr edit <number> --base dev`). None of the entry's other settings apply
+to them either: they come without its groups, labels or commit prefix, and past its
+`ignore` rules.
 
 Promotions are the only merge commits. Squashed or rebased, a promotion would give `dev`
 and `stage` the same changes under different commits, and every later promotion would
