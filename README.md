@@ -642,9 +642,13 @@ what reaches `main`, and Vercel deploys it. A ready pull request runs four jobs
   from a clone has already passed it in the [pre-push gate](#on-linux-as-ci-runs-it), but
   a commit made on GitHub (a web edit, **Update branch**) has not, so label that pull
   request. Dependabot labels its version updates itself; a security update comes with no
-  labels, so label it when you retarget it to `dev`. Add the label while the pull request
-  is a draft and the ready run includes E2E; added later, it runs E2E at once
-  ([`e2e-catch-up.yml`](.github/workflows/e2e-catch-up.yml)), and later pushes run it too.
+  labels, so label it when you retarget it to `dev`. The lint job reads the labels and
+  base as they are when it starts ([`scripts/ci-e2e.sh`](scripts/ci-e2e.sh) decides), so
+  a label added while the pull request is a draft takes effect in the ready run. Added
+  later, it runs E2E at once ([`e2e-catch-up.yml`](.github/workflows/e2e-catch-up.yml)),
+  and later pushes run it too. A label added in the seconds before lint reads it runs E2E
+  in both workflows, on the same commit; Dependabot's and `gh pr create --label`'s
+  usually do.
 - **Retargeting** a ready pull request to `stage` or `main` runs E2E at once, in the same
   workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
   base: close and reopen the pull request for that.
@@ -655,14 +659,19 @@ what reaches `main`, and Vercel deploys it. A ready pull request runs four jobs
   and the E2E job takes that name only when it runs. `e2e-catch-up.yml`'s job is likewise
   named **End-to-end smoke** only when it runs the suite, and any other label or edit
   starts no job.
-- **Re-running** a run from the Actions tab reads the labels and base the pull request had
-  when that run began. After labelling, re-run the **E2E catch-up** run rather than all of
-  CI's jobs: those would report the placeholder's skip anew, newer than the label's run.
+- **Re-running** all of a CI run's jobs (**Re-run all jobs**, or `gh run rerun <id>`)
+  runs every job, even in a draft's run, and reads the labels and base afresh, so E2E
+  runs if the pull request is labelled or into `stage` or `main` now. A re-run otherwise
+  replays the event that started the run: a draft's run would skip every check over a
+  newer failure, and a run from before a label or a retarget would skip E2E. **Re-run
+  failed jobs** keeps the lint job's decision unless lint is among them.
 - Every job has a timeout, and a pull request's newer run cancels its older one. The E2E
   job caches Playwright's browsers by version. Only pull request runs write caches, and
   no other pull request reads them, so a pull request's first run usually starts without.
 
-The jobs' token can only read the repository, and checkout leaves it nowhere on disk.
+The jobs' token can only read the repository and its pull requests, and checkout leaves
+it nowhere on disk. Only the lint job's first step is given it, to read the pull
+request's labels and base, before any of the pull request's code or `npm ci` runs.
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,

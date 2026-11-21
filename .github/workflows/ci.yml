@@ -2,7 +2,7 @@ name: CI
 
 # Pull requests only (#248). A merge runs nothing: the promotion's pull request
 # tested what reaches main, and Vercel deploys it. Labelling or retargeting a
-# pull request runs nothing here either; e2e-catch-up.yml answers those.
+# pull request starts nothing here either; e2e-catch-up.yml answers those.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -13,9 +13,11 @@ concurrency:
 
 # Nothing here writes to the repository. With checkout's
 # persist-credentials: false the token also stays out of .git/config, where
-# npm ci's install scripts could read it.
+# npm ci's install scripts could read it. The lint job reads the pull request's
+# labels and base.
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: "24"
@@ -24,15 +26,27 @@ jobs:
   # Every other job that can run needs this one, so a lint failure stops the run
   # in about two minutes, and a draft, which skips it, runs nothing. Its skipped
   # checks pass, but a draft cannot be merged, and marking it ready runs
-  # everything.
+  # everything. A re-run replays the event, so a draft's run re-run after the
+  # pull request was marked ready would skip all four required checks over the
+  # ready run's: a re-run runs everything.
   static:
     name: Lint, types and format
-    if: ${{ !github.event.pull_request.draft }}
+    if: ${{ !github.event.pull_request.draft || github.run_attempt != '1' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
       code: ${{ steps.changes.outputs.code }}
+      e2e: ${{ steps.e2e.outputs.e2e }}
     steps:
+      # The base and labels as they are now, not as the event recorded them: a
+      # re-run replays its event, so it would miss a label or a retarget since.
+      # The token is in this step's environment alone, before npm ci.
+      - name: Read the pull request as it is now
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.base.ref, .labels[].name' > "$RUNNER_TEMP/pull-request"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -46,6 +60,11 @@ jobs:
         id: changes
         shell: bash
         run: git diff --no-renames --name-only HEAD^1 HEAD | scripts/ci-changes.sh >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether E2E runs
+        id: e2e
+        shell: bash
+        run: scripts/ci-e2e.sh < "$RUNNER_TEMP/pull-request" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -166,13 +185,13 @@ jobs:
       - run: exit 0
 
   # Into stage or main always: a promotion is the last check before users see
-  # a change. Elsewhere only with the e2e label, which this run reads as the
-  # pull request had it when the run began; adding it later runs
-  # e2e-catch-up.yml. It takes the required name only when it runs.
+  # a change. Elsewhere only with the e2e label. The lint job reads both as
+  # they are when it starts (scripts/ci-e2e.sh); a label or a retarget after
+  # that runs e2e-catch-up.yml. It takes the required name only when it runs.
   e2e:
-    name: ${{ !github.event.pull_request.draft && (github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')) && 'End-to-end smoke' || 'No end-to-end run' }}
+    name: ${{ needs.static.result == 'success' && needs.static.outputs.e2e == 'true' && 'End-to-end smoke' || 'No end-to-end run' }}
     needs: static
-    if: ${{ !github.event.pull_request.draft && (github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')) }}
+    if: needs.static.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

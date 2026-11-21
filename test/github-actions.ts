@@ -8,9 +8,10 @@ import { z } from "zod";
  * What GitHub Actions decides for a pull request event, read from the
  * workflows themselves (#248): which workflows run, which jobs run or skip,
  * the check name each reports, and when. Only what .github/workflows uses is
- * modelled: pull_request triggers, needs, a job's if, name and outputs, and
- * the expression syntax below. Anything else throws, so a new construct fails
- * a test instead of being misread.
+ * modelled: pull_request triggers, re-runs, needs, a job's if, name and
+ * outputs, the two scripts whose output a job passes on, and the expression
+ * syntax below. Anything else throws, so a new construct fails a test instead
+ * of being misread.
  */
 
 type Value = string | number | boolean | null | Value[] | { [key: string]: Value };
@@ -202,7 +203,12 @@ export type PullRequestEvent = {
   label?: string;
   /** An edited event's base before it, when the edit retargeted the pull request. */
   previousBase?: string;
+  /** The pull request as the event recorded it, which a re-run replays. */
   pullRequest: PullRequest;
+  /** Its base and labels when a job asks the API for them; as recorded unless given. */
+  now?: Pick<PullRequest, "base" | "labels">;
+  /** 1 for the run the event starts, and 2 on for each re-run of all its jobs. */
+  attempt?: number;
 };
 /**
  * `stage` is when GitHub creates the check: 0 as the run begins, and a job
@@ -216,22 +222,31 @@ export type Check = {
 };
 export type Run = { workflow: string; concurrency: string | null; checks: Check[] };
 
-// The one step the model runs: the docs filter, fed the changed paths, once per list.
-const changesPrinted = new Map<string, string>();
-function stepOutputs(job: Job, pullRequest: PullRequest): Context {
+/*
+ * The only steps the model runs: the docs filter, fed the changed paths, and
+ * the E2E rule, fed the base and labels as the API lists them, one per line.
+ * Each is run once per input.
+ */
+const SCRIPTS: Record<string, (event: PullRequestEvent) => readonly string[]> = {
+  "scripts/ci-changes.sh": ({ pullRequest }) => pullRequest.changed,
+  "scripts/ci-e2e.sh": ({ pullRequest, now = pullRequest }) => [now.base, ...now.labels],
+};
+const printed = new Map<string, string>();
+function stepOutputs(job: Job, event: PullRequestEvent): Context {
   const steps: Record<string, Value> = {};
   for (const step of job.steps) {
     if (step.id === undefined) continue;
     const outputs: Record<string, string> = {};
-    if (step.run?.includes("scripts/ci-changes.sh")) {
-      const input = pullRequest.changed.join("\n");
-      const printed =
-        changesPrinted.get(input) ??
-        execFileSync("bash", ["scripts/ci-changes.sh"], { input, encoding: "utf8" });
-      changesPrinted.set(input, printed);
-      for (const line of printed.trim().split("\n")) {
-        const [key = "", ...rest] = line.split("=");
-        outputs[key] = rest.join("=");
+    for (const [script, input] of Object.entries(SCRIPTS)) {
+      if (!step.run?.includes(script)) continue;
+      const lines = input(event).join("\n");
+      const key = `${script}\0${lines}`;
+      const out =
+        printed.get(key) ?? execFileSync("bash", [script], { input: lines, encoding: "utf8" });
+      printed.set(key, out);
+      for (const line of out.trim().split("\n")) {
+        const [name = "", ...rest] = line.split("=");
+        outputs[name] = rest.join("=");
       }
     }
     steps[step.id] = { outputs };
@@ -244,6 +259,7 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
   const github: Value = {
     event_name: "pull_request",
     ref: "refs/pull/1/merge",
+    run_attempt: String(event.attempt ?? 1),
     base_ref: base,
     event: {
       action: event.action,
@@ -272,9 +288,10 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
       needsOf(job).every((need) => done.get(need)?.result === "success") &&
       (job.if === undefined || condition(job.if, context));
     const result = !runs ? "skipped" : failing.includes(id) ? "failure" : "success";
+    // A failed job's outputs are what its steps set before the failure: all of them, at worst.
     const outputs: Record<string, string> = {};
-    if (result === "success") {
-      const steps = stepOutputs(job, event.pullRequest);
+    if (runs) {
+      const steps = stepOutputs(job, event);
       for (const [key, text] of Object.entries(job.outputs ?? {})) {
         outputs[key] = interpolate(text, { ...steps, github });
       }
