@@ -23,8 +23,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - [How the API is built](#how-the-api-is-built-openapi-first)
 - [Configuration](#configuration) · [Environment variables](#environment-variables)
 - [Database](#database) · [Scripts](#scripts) · [Testing](#testing) · [CI](#ci)
-- [Deployment](#deployment) · [Troubleshooting](#troubleshooting) ·
-  [Contributing](#contributing)
+- [Deployment](#deployment) · [Stage environment](#stage-environment) ·
+  [Troubleshooting](#troubleshooting) · [Branches](#branches) · [Contributing](#contributing)
 
 ## Features
 
@@ -490,6 +490,12 @@ to `medium` between March and June.
 | `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                                  |
 | `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                                          |
 | `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                                               |
+| `npm run stage:up`         | Build and start the [stage stack](#stage-environment) at https://localhost:3400               |
+| `npm run stage:seed`       | Load a year of records into the stage stack's empty database; refused anywhere else           |
+| `npm run stage:perf`       | Measure the stage stack; `-- --db-latency 220` adds a database round trip                     |
+| `npm run stage:logs`       | The stage stack's logs (`-- app` for one service)                                             |
+| `npm run stage:psql`       | `psql` in the stage stack's database, to `EXPLAIN` a slow query                               |
+| `npm run stage:down`       | Stop the stage stack and delete its data                                                      |
 
 The `npm run build` check of the standalone output runs as an npm `postbuild` hook, so
 running `next build` directly skips it: always build with `npm run build`.
@@ -750,6 +756,85 @@ docker run -p 3000:3000 \
   The script refuses, changing nothing, if any admin already exists, deactivated ones
   included: later admins are added in the app.
 
+## Stage environment
+
+`stage` is the release candidate (see [Branches](#branches)). Before it is merged to
+`main`, run it in a stack shaped like production, with a year of records in it, and
+measure it. The stack is [`docker-compose.stage.yml`](docker-compose.stage.yml), its own
+Compose project (`door-to-door-stage`) with its own volumes and network, so it never
+touches the dev stack, the test databases or their ports.
+
+```bash
+git switch stage       # or whichever branch you want to measure
+npm run stage:up       # build and start it, waiting until it is healthy
+npm run stage:seed     # load a year of records into its empty database
+npm run stage:perf     # measure it; add -- --db-latency 220 for a far database
+npm run stage:down     # stop it and delete its data
+```
+
+| Service     | Stands in for                  | What it is                                                                                                                                                       |
+| ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edge`      | Vercel's edge                  | Caddy: HTTPS on `127.0.0.1:3400` from its own certificate authority, gzip, and `X-Forwarded-For`, `-Proto` and `-Host` to the app                                |
+| `app`       | The Vercel function            | The Dockerfile's `runner` stage, the production build on Node 24, with one CPU and 2 GB. Settings from `CONFIG_YAML`: secure cookies, `trustHost`, one proxy hop |
+| `toxiproxy` | The network between them       | Relays every query the app makes; its API on `127.0.0.1:3401` adds a delay for `--db-latency`                                                                    |
+| `db`        | Neon                           | PostgreSQL 17, the dev stack's image, published nowhere                                                                                                          |
+| `migrate`   | Migrating before a deploy      | The real migration runner (`npm run db:migrate`); `app` starts only once it succeeds                                                                             |
+| `secret`    | The deployment's `AUTH_SECRET` | Made once per stack and kept in its volume, or `STAGE_AUTH_SECRET` from your shell; never in the repository                                                      |
+| `seed`      | -                              | Runs only for `npm run stage:seed`                                                                                                                               |
+
+**The seed** loads 30 blocks, about 3,000 households and about 14,500 visits over the past
+year: 48 weekly sessions, 4 follow-up sessions, one session active today and one waiting
+to start, about 1,250 follow-ups (suggested, listed, done and removed), and 3 admins and
+40 members, 2 of whom have left. The same day gives the same records. It first prints
+`Stage seed target: host:port/database`, then refuses, writing nothing, any database not
+named `door_to_door_stage`, and any that holds a user, block, session, household, visit or
+follow-up. It is not the demo seed and never runs against production. Its logins share
+one published password, `stage-password`: `admin@stage.example.com` (admin) and
+`member01@stage.example.com` to `member38@stage.example.com` (`member39` and `member40`
+have left); the stack is on this machine's loopback only.
+
+**The check** signs in as that admin and a member, then makes the requests each
+screen makes, a page and then its API reads, in a phone's order: sign-in, home and the
+active session, a block's units, a household's history, recording a visit, follow-ups,
+Admin Sessions with its notices, All records (`/admin/history`) and Needs a return visit
+(`/admin/attention`). It prints p50, p95 and maximum latency per route and the median
+response size, decoded and as sent, as a Markdown table. It runs 20 rounds after 2
+warm-up rounds, one phone at a time: it measures latency, not load. Each round records
+a visit, so the stack's data grows a little with every run.
+
+```bash
+npm run stage:perf -- --iterations 10 --warmup 1 --db-latency 220 --json stage-results.json
+```
+
+Each round signs in as the next member, since one member may save only 30 visits a
+minute, and a refusal shows in the `failed` column with its status. `STAGE_PORT` and
+`STAGE_TOXIPROXY_PORT` move the published ports, for both Compose and the check.
+
+`--db-latency <ms>` adds that round trip to every query the app makes, half each way,
+and takes it off when the check ends. With none, the database is on the same Docker
+network, as a function in Neon's region (`sin1` beside `ap-southeast-1`) nearly is. A
+function in Vercel's default region for new projects, Washington, D.C. (`iad1`), is
+about 220 ms from Singapore, and a request that makes several queries pays it each time.
+
+**In a browser**, open https://localhost:3400. The certificate is the stack's own, so the
+browser warns once; Chrome then refuses the service worker unless you trust the stack's
+root certificate, which `stage:down` deletes with the stack:
+
+```bash
+docker compose -p door-to-door-stage -f docker-compose.stage.yml exec -T edge \
+  cat /data/caddy/pki/authorities/local/root.crt > stage-root.crt
+```
+
+The edge drops the app's HSTS header, which would otherwise pin every port of `localhost`
+to HTTPS, the dev server's included.
+
+**What it does not model:** Vercel's cold starts, when a new function instance boots and
+opens its database connections on its first request; Vercel's edge network and the
+distance from a phone in Singapore to it (the check runs on this machine); Neon waking
+from scale-to-zero, its TLS connections and its connection pooler; Google sign-in, which
+needs a real OAuth client; many phones at once; mobile networks; and the browser's own
+work, since the check fetches pages and API responses but runs no JavaScript.
+
 ## Troubleshooting
 
 | Symptom                                                         | Cause and fix                                                                                                                                                                                        |
@@ -804,12 +889,32 @@ scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
 docs/           architecture, research and per-issue decisions
 ```
 
+## Branches
+
+| Branch      | Holds                                       | Changes arrive by                                                    |
+| ----------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| a feature's | One issue                                   | Commits                                                              |
+| `dev`       | New features                                | A pull request per feature, squash or rebase merged                  |
+| `stage`     | The release candidate                       | A pull request from `dev`, merged with a merge commit                |
+| `main`      | Production: Vercel deploys it to d2dsrg.com | A pull request from `stage`, once tested, merged with a merge commit |
+
+`dev` and `stage` are protected: a change needs a pull request and the four
+[CI](#ci) checks, and neither branch can be force-pushed or deleted. Feature pull
+requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test it in the
+[stage environment](#stage-environment), then merge `stage` to `main`.
+
+Promotions are the only merge commits. Squashed or rebased, a promotion would give `dev`
+and `stage` the same changes under different commits, and every later promotion would
+conflict over them. Work never flows back: a fix goes to `dev` and is promoted like
+anything else.
+
 ## Contributing
 
 Read [CLAUDE.md](CLAUDE.md): it holds the domain model and the working rules, each marked
 as CI-enforced or convention. Check [`docs/tasks/`](docs/tasks/README.md) for prior
 decisions before making one.
 
-Branches are stacked: a feature branch bases off the previous one and its PR targets that
-branch rather than `main`. Merge top-down, and squash or rebase rather than creating a
-merge commit.
+Branches are stacked: the first branch of a stack bases off `dev` and its PR targets
+`dev`; each later one bases off the branch before it and targets that. Merge top-down,
+and squash or rebase into `dev`: a merge commit there gives every branch above it phantom
+conflicts. Only promotions are merge commits (see [Branches](#branches)).
