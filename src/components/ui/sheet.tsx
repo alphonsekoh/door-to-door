@@ -410,8 +410,10 @@ export function ConfirmDialog({
       draggable={false}
       bodyClassName="pt-4"
     >
-      <p className="text-title font-semibold">{title}</p>
-      <p className="mt-1 text-body text-foreground-muted">{detail}</p>
+      {/* Broken inside a word only where it alone is wider than the line,
+          as an email address in the question can be. */}
+      <p className="text-title font-semibold break-words">{title}</p>
+      <p className="mt-1 text-body break-words text-foreground-muted">{detail}</p>
 
       <div className="mt-4 space-y-2 pb-4">
         <button

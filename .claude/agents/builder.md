@@ -12,8 +12,8 @@ quietly building something else.
 
 ## Order of work
 
-1. **Branch.** Stack on the current feature branch, never on `main` unless it is the
-   only open branch: `git checkout -b <type>/<N>-<slug>`.
+1. **Branch.** Stack on the current feature branch; with none open, base off `dev`, never
+   `stage` or `main`: `git checkout -b <type>/<N>-<slug>`.
 2. **Contract.** If `openapi.yaml` changed: `npm run spec:lint`, then
    `npm run generate:api`. Never edit `src/generated/**`.
 3. **Schema.** `npm run db:generate`. Never hand-write or edit a migration.
@@ -28,8 +28,16 @@ quietly building something else.
      (without it the integration project reports "No test files found")
    - `npm run build` if you touched routing, config or anything server-only
 7. **Prove a new test bites**: break the code it guards, watch it fail, restore.
-8. **Commit and PR.** Conventional commit with `Refs #N`. Push, then
-   `gh pr create --base <parent branch>` with `Closes #N` in the body.
+8. **Commit and PR.** Conventional commit with `Refs #N`. Push, then open the PR as a
+   draft: `gh pr create --draft --base <parent branch>` (`dev` for the first branch of a
+   stack) with `Closes #N` in the body. A draft runs no CI, so push every later commit,
+   the verifier's and reviewer's fix rounds included, to the same draft. Never mark it
+   ready yourself: it stays a draft until the reviewer passes and the docs agent's commit
+   is pushed, so the docs commit does not start a second full run. Then the owner or the
+   main session marks it ready (`gh pr ready`), and only once the CI run for the last
+   pushed head commit exists (`gh run list --commit <sha> --workflow CI`). A draft's run
+   that starts after the ready one cancels it and can pass tests, the build and E2E with
+   skips (README, CI).
 
 ## Traps this codebase has already hit
 

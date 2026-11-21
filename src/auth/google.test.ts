@@ -1,10 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Adapter, AdapterUser } from "next-auth/adapters";
 import type * as Credentials from "@/server/auth/credentials";
 import type { Database } from "@/db/client";
-import { allowGoogleSignIn, googleDomains } from "@/auth/google";
+import {
+  SignInRefused,
+  allowGoogleSignIn,
+  googleDomains,
+  googleName,
+  linkByEmailOnly,
+} from "@/auth/google";
 
 const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }));
 vi.mock("@/server/config", () => ({ getConfig }));
+
+const { createAccessRequest } = vi.hoisted(() => ({ createAccessRequest: vi.fn() }));
+vi.mock("@/server/users/service", () => ({ createAccessRequest }));
 
 const { findUserForSignIn } = vi.hoisted(() => ({ findUserForSignIn: vi.fn() }));
 vi.mock("@/server/auth/credentials", async (importOriginal) => ({
@@ -58,9 +68,7 @@ describe("allowGoogleSignIn (#14)", () => {
     expect(findUserForSignIn).not.toHaveBeenCalled();
   });
 
-  it("refuses an address nobody added, and a deactivated account", async () => {
-    findUserForSignIn.mockResolvedValueOnce(undefined);
-    expect(await allowGoogleSignIn(db, GOOGLE, { email: "alice@gmail.com" }, verified)).toBe(false);
+  it("refuses a deactivated account, which is never put back in the queue", async () => {
     findUserForSignIn.mockResolvedValueOnce({ ...ALICE, deactivatedAt: new Date() });
     expect(await allowGoogleSignIn(db, GOOGLE, { email: "alice@gmail.com" }, verified)).toBe(false);
   });
@@ -69,6 +77,114 @@ describe("allowGoogleSignIn (#14)", () => {
     expect(await allowGoogleSignIn(db, GOOGLE, { email: "ben@gmail.com" }, verified)).toBe(false);
     expect(await allowGoogleSignIn(db, GOOGLE, { email: null }, verified)).toBe(false);
     expect(await allowGoogleSignIn(db, GOOGLE, undefined, verified)).toBe(false);
+  });
+});
+
+/* #249: a first sign-in asks to join, where it used to be refused. */
+describe("allowGoogleSignIn: an address with no account", () => {
+  const verified = { email: "New@Gmail.com", email_verified: true };
+
+  beforeEach(() => {
+    findUserForSignIn.mockResolvedValue(undefined);
+  });
+
+  it("lets a first sign-in through to ask to join", async () => {
+    expect(await allowGoogleSignIn(db, GOOGLE, { email: "new@gmail.com" }, verified)).toBe(true);
+  });
+
+  it("refuses a Google account already linked to someone else, whose address it now carries", async () => {
+    // Auth.js hands over the linked account, Alice, for a Google account now at a new address.
+    expect(await allowGoogleSignIn(db, GOOGLE, { email: "alice@gmail.com" }, verified)).toBe(false);
+  });
+
+  it("still refuses where Google does not vouch for the address, without a lookup", async () => {
+    const consumer = { email: "new@tjc.sg", email_verified: true };
+    expect(await allowGoogleSignIn(db, GOOGLE, { email: "new@tjc.sg" }, consumer)).toBe(false);
+    expect(findUserForSignIn).not.toHaveBeenCalled();
+  });
+});
+
+describe("allowGoogleSignIn: an account nobody has approved", () => {
+  const verified = { email: "pat@gmail.com", email_verified: true };
+
+  it.each(["pending", "blocked"])(
+    "lets an account that is %s sign in, to see where it stands",
+    async (approval) => {
+      findUserForSignIn.mockResolvedValueOnce({ ...ALICE, email: "pat@gmail.com", approval });
+      expect(await allowGoogleSignIn(db, GOOGLE, { email: "pat@gmail.com" }, verified)).toBe(true);
+    },
+  );
+});
+
+describe("googleName (#249)", () => {
+  it("keeps a name a member could give themselves, trimmed", () => {
+    expect(googleName("  Pat Tan ")).toBe("Pat Tan");
+  });
+
+  it.each([
+    ["no name at all", undefined],
+    ["a name that is not a string", 42],
+    ["a blank name", "   "],
+    ["a name that renders as nothing", "\u200b\u200b"],
+    ["a name past the limit", "x".repeat(81)],
+  ])("keeps none for %s", (_case, name) => {
+    expect(googleName(name)).toBeNull();
+  });
+});
+
+describe("linkByEmailOnly", () => {
+  const getUser = vi.fn();
+  const getUserByEmail = vi.fn();
+  const createUser = vi.fn();
+  const base = { getUser, getUserByEmail, createUser } as unknown as Adapter;
+  const profile: AdapterUser = {
+    id: "google-sub-123",
+    email: "New@Gmail.com",
+    emailVerified: null,
+    name: "Pat",
+    image: "https://example.com/picture.png",
+  };
+
+  it("never reads a user from a cookie already on the phone", async () => {
+    const adapter = linkByEmailOnly(base, db);
+    expect(await adapter.getUser?.("someone-signed-in")).toBeNull();
+    expect(getUser).not.toHaveBeenCalled();
+    // Finding the account by its address is the adapter's own.
+    await adapter.getUserByEmail?.("pat@gmail.com");
+    expect(getUserByEmail).toHaveBeenCalledWith("pat@gmail.com");
+  });
+
+  it("makes a first sign-in a request waiting for approval, never with Google's id or picture", async () => {
+    const created = {
+      id: "6006e000-0000-4000-8000-000000000009",
+      email: "new@gmail.com",
+      emailVerified: null,
+      name: "Pat",
+      image: null,
+      role: "member",
+      deactivatedAt: null,
+    };
+    createAccessRequest.mockResolvedValueOnce(created);
+    expect(await linkByEmailOnly(base, db).createUser?.(profile)).toBe(created);
+    expect(createAccessRequest).toHaveBeenCalledWith(db, { email: "new@gmail.com", name: "Pat" });
+    expect(createUser).not.toHaveBeenCalled();
+  });
+
+  it("names nobody when Google gave no name", async () => {
+    createAccessRequest.mockResolvedValueOnce({});
+    await linkByEmailOnly(base, db).createUser?.({
+      id: profile.id,
+      email: profile.email,
+      emailVerified: null,
+    });
+    expect(createAccessRequest).toHaveBeenCalledWith(db, { email: "new@gmail.com", name: null });
+  });
+
+  it("refuses the later of two first sign-ins at the same address", async () => {
+    createAccessRequest.mockResolvedValueOnce(null);
+    await expect(linkByEmailOnly(base, db).createUser?.(profile)).rejects.toBeInstanceOf(
+      SignInRefused,
+    );
   });
 });
 

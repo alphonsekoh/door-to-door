@@ -8,10 +8,10 @@ describe("googleSignInMessage", () => {
     expect(googleSignInMessage(null, DOMAINS)).toBeNull();
   });
 
-  it("gives every refusal the one message, whoever has an account, naming the domains (D-15-1)", () => {
+  it("gives every refusal the one message, naming the domains (#249)", () => {
     expect(googleSignInMessage("AccessDenied", DOMAINS)).toBe(
       "That Google account can't sign in here. Google sign-in is for " +
-        "gmail.com, tjc.sg or tjc.org addresses your admin added; otherwise, use your email and password.",
+        "gmail.com, tjc.sg or tjc.org accounts; otherwise, use your email and password.",
     );
   });
 

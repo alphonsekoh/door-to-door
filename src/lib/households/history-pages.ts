@@ -31,18 +31,21 @@ export type EarlierVisits = {
 };
 
 /*
- * A page added to what is held. What is held for another unit is dropped, so
- * a late answer never mixes two doors.
+ * A page added to what is held, above it or below it, so what is held stays
+ * newest first. What is held for another unit is dropped, so a late answer
+ * never mixes two doors.
  */
 function gather(
   current: EarlierVisits | null,
   page: HouseholdHistory,
+  at: "above" | "below",
   ended: (same: EarlierVisits | null) => boolean,
 ): EarlierVisits {
   const same = current !== null && current.householdId === page.household.id ? current : null;
+  const held = same?.visits ?? [];
   return {
     householdId: page.household.id,
-    visits: same === null ? page.visits : [...same.visits, ...page.visits],
+    visits: at === "above" ? [...page.visits, ...held] : [...held, ...page.visits],
     /* The spec's rule for the next page: its offset plus the visits received. */
     next: Math.max(same?.next ?? 0, page.pagination.offset + page.visits.length),
     total: Math.max(same?.total ?? 0, page.pagination.total),
@@ -52,20 +55,21 @@ function gather(
 
 /* An older page, read on request. */
 export function addEarlier(current: EarlierVisits | null, page: HouseholdHistory): EarlierVisits {
-  return gather(current, page, () => page.visits.length === 0);
+  return gather(current, page, "below", () => page.visits.length === 0);
 }
 
 /*
- * A first page the parent has since read again. Its visits stay held: one
- * stored in between pushes the oldest of them off the new first page, and an
- * older page read from an offset counted before that would not have it
- * either. An empty first page says nothing about older ones.
+ * A first page the parent has since read again. Its visits stay held, above
+ * the older pages, which it is newer than: one stored in between pushes the
+ * oldest of them off the new first page, and an older page read from an
+ * offset counted before that would not have it either. An empty first page
+ * says nothing about older ones.
  */
 export function keepFirstPage(
   current: EarlierVisits | null,
   outgoing: HouseholdHistory,
 ): EarlierVisits {
-  return gather(current, outgoing, (same) => same?.ended ?? false);
+  return gather(current, outgoing, "above", (same) => same?.ended ?? false);
 }
 
 export type HeldVisits = {
@@ -84,6 +88,11 @@ const newer = (a: Visit, b: Visit) => Date.parse(a.updatedAt) > Date.parse(b.upd
  * skip one (visits are never removed): each is kept once, the copy amended
  * last, and the first page's on a tie. The order is for showing only; the
  * next offset comes from what each read received, never from this list.
+ *
+ * Visits in one millisecond keep the order they came in, which is the
+ * server's: it orders by the microseconds the API's times drop, and a batch's
+ * records are stored a microsecond apart (D-251-7), so their ids, made at the
+ * door, need not follow it.
  */
 export function holdVisits(first: HouseholdHistory, earlier: EarlierVisits | null): HeldVisits {
   const older = earlier !== null && earlier.householdId === first.household.id ? earlier : null;
@@ -93,7 +102,7 @@ export function holdVisits(first: HouseholdHistory, earlier: EarlierVisits | nul
     if (held === undefined || newer(visit, held)) byId.set(visit.id, visit);
   }
   const visits = [...byId.values()].sort(
-    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || (a.id < b.id ? 1 : -1),
+    (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
   );
   const next = Math.max(first.pagination.offset + first.visits.length, older?.next ?? 0);
   const total = Math.max(first.pagination.total, older?.total ?? 0);

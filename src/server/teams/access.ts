@@ -109,12 +109,22 @@ export async function stampVisit(
   teamId: string | null,
   authorId: string,
 ): Promise<void> {
+  await stampVisits(db, [visitId], teamId, authorId);
+}
+
+/* stampVisit for visits one author just inserted together: one snapshot, one insert. */
+export async function stampVisits(
+  db: Database,
+  visitIds: readonly string[],
+  teamId: string | null,
+  authorId: string,
+): Promise<void> {
   if (teamId === null) return;
   const mates = await snapshotTeammates(db, teamId, authorId);
   if (mates.length === 0) return;
   await db
     .insert(visitTeammates)
-    .values(mates.map((userId) => ({ visitId, userId })))
+    .values(visitIds.flatMap((visitId) => mates.map((userId) => ({ visitId, userId }))))
     .onConflictDoNothing();
 }
 

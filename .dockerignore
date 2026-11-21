@@ -18,3 +18,6 @@ e2e-linux-results
 README.md
 CLAUDE.md
 AGENTS.md
+# The stage stack mounts these at runtime; in the context they would only
+# rebuild the app on an edit.
+/docker

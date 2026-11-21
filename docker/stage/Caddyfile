@@ -1,0 +1,24 @@
+# The stage stack's stand-in for Vercel's edge (#244): HTTPS in front of the
+# app, forwarding X-Forwarded-For, -Proto and -Host as Vercel's proxy does, so
+# the app runs with production's secure cookies and one trusted proxy hop.
+{
+	# Its own certificate authority, never added to this machine's trust store:
+	# a browser warns once, and the stage check reads the root from the volume.
+	skip_install_trust
+	# Only the HTTPS port is published, so there is nothing to redirect from.
+	auto_https disable_redirects
+	# A client that dials 127.0.0.1 sends no server name.
+	default_sni 127.0.0.1
+	admin off
+}
+
+localhost, 127.0.0.1 {
+	tls internal
+	# Vercel compresses what the app sends uncompressed, its API's JSON included.
+	encode zstd gzip
+	reverse_proxy app:3000 {
+		# The app's two-year HSTS would pin every localhost port to HTTPS in a
+		# browser that trusts this certificate, the dev server's included.
+		header_down -Strict-Transport-Security
+	}
+}

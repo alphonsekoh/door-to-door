@@ -129,7 +129,22 @@ describe("checkSignIn", () => {
     expect(await checkSignIn(db, ALICE, id)).toEqual({
       status: "live",
       signInId: id,
-      account: { email: "alice@t.local", name: "Alice", role: "member", deactivatedAt: null },
+      account: {
+        email: "alice@t.local",
+        name: "Alice",
+        role: "member",
+        approval: "approved",
+        deactivatedAt: null,
+      },
+    });
+  });
+
+  it("reads the account's approval in the same query (#249)", async () => {
+    const id = await seed(ALICE);
+    await pool.query(`UPDATE users SET approval = 'pending' WHERE id = $1`, [ALICE]);
+    expect(await checkSignIn(db, ALICE, id)).toMatchObject({
+      status: "live",
+      account: { approval: "pending" },
     });
   });
 

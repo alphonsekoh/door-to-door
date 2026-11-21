@@ -1,11 +1,22 @@
-# Weekly and grouped: every pull request runs the whole CI, E2E included, and
-# Actions minutes are scarce, so a pull request per package would cost too much.
+# Monthly and grouped, and never rebased unasked: each pull request and each
+# rebase is a CI run, and Dependabot would otherwise rebase every open one
+# whenever dev moves (#248). Comment "@dependabot rebase" on one to update it.
+#
+# Each carries the e2e label, so CI runs E2E on it into dev: its commits never
+# pass through .githooks/pre-push, where a push from a clone runs E2E first.
+#
+# Every entry targets dev, like any other change: a bump merged into main would
+# reach production without passing through dev and stage. Security updates
+# ignore target-branch and still open against main; retarget those to dev.
+# They take none of an entry's options, its labels included, so label one e2e.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     # A new release waits a week before it is proposed: a hijacked publish is
     # usually caught and pulled by then. Security updates are not held back.
     cooldown:
@@ -34,12 +45,14 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:setup"]
+    labels: ["type:chore", "area:setup", "e2e"]
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     groups:
@@ -48,15 +61,17 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:ci"]
+    labels: ["type:chore", "area:ci", "e2e"]
 
   # Images are pinned by digest, and these keep the digests current. A new
   # major waits for the owner: node moves with CI's NODE_VERSION, and postgres
   # 18 cannot open a 17 data directory.
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     ignore:
@@ -72,14 +87,17 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:docker"]
+    labels: ["type:chore", "area:docker", "e2e"]
 
-  # Its postgres is also CI's service image, which Dependabot cannot see:
-  # copy the new digest into ci.yml (src/supply-chain.test.ts fails until then).
+  # Its postgres is also CI's service image, which Dependabot cannot see: copy
+  # the new digest into ci.yml and e2e-catch-up.yml (src/supply-chain.test.ts
+  # fails until then).
   - package-ecosystem: docker-compose
     directory: /
+    target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     ignore:
@@ -91,4 +109,4 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:docker"]
+    labels: ["type:chore", "area:docker", "e2e"]

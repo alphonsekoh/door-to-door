@@ -49,6 +49,7 @@ const alice: User = {
   name: "Alice",
   image: null,
   role: "member",
+  approval: "approved",
   deactivatedAt: null,
   lastRecordedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",

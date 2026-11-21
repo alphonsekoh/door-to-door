@@ -93,3 +93,24 @@ describe("every API route resolves its caller through the database", () => {
     expect(readFileSync(file, "utf8")).toMatch(/from "@\/server\/auth\/session"/);
   });
 });
+
+/*
+ * requireOwnAccount lets in an account nobody has approved yet (#249). It is
+ * for the caller's own state and name, and nothing else: a handler that
+ * reached for it would hand the queue whatever it serves.
+ */
+describe("only /users/me lets in an account nobody has approved", () => {
+  const OWN_ACCOUNT = new Set(["src/server/auth/guards.ts", "src/app/api/users/me/route.ts"]);
+  const mentions = (file: string) => /\brequireOwnAccount\b/.test(readFileSync(file, "utf8"));
+
+  it("is named nowhere else", () => {
+    const offenders = files.filter((file) => !OWN_ACCOUNT.has(rel(file))).filter(mentions);
+    expect(offenders.map(rel)).toEqual([]);
+  });
+
+  it("is named where it is allowed, so the list stays honest", () => {
+    for (const allowed of OWN_ACCOUNT) {
+      expect(mentions(resolve(ROOT, allowed)), allowed).toBe(true);
+    }
+  });
+});

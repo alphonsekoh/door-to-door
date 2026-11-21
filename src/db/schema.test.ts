@@ -2,6 +2,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 import {
   accounts,
+  approvalEnum,
   authSessions,
   blocks,
   followUpStatusEnum,
@@ -81,6 +82,10 @@ describe("enums", () => {
   it("follow-up status is a suggestion or a list entry", () => {
     expect(followUpStatusEnum.enumValues).toEqual(["suggested", "listed"]);
   });
+
+  it("approval is waiting, approved or blocked", () => {
+    expect(approvalEnum.enumValues).toEqual(["pending", "approved", "blocked"]);
+  });
 });
 
 describe("users", () => {
@@ -99,6 +104,11 @@ describe("users", () => {
 
   it("deactivates rather than deletes, so records stay attributed", () => {
     expect(columnNames(users)).toContain("deactivated_at");
+  });
+
+  it("approves by default, so an account an admin adds needs no approval (#249)", () => {
+    expect(column(users, "approval")?.default).toBe("approved");
+    expect(column(users, "approval")?.notNull).toBe(true);
   });
 });
 

@@ -167,7 +167,9 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
 - **D-74-29 · Disbanded mid-record.** If the team is deleted between reading and
   stamping, the FK fails. Sync retries once, re-reading the author's team (now none or
   another). `POST /visits` has the same race and returns a retryable `500`. _Why:_ a
-  good record must not be held for a team's disbanding.
+  good record must not be held for a team's disbanding. _Refined by D-251-4:_ a run of
+  new records reads the team once; if the run fails, each record's fallback can read it
+  twice more.
 - **D-74-30 · Unexpected failures in sync are `rejected` with `internal_error`, which
   is RETRYABLE, never `conflict`.** The cause is logged server-side with the item id
   only; the client sees a generic message. _Why:_ `conflict` is held for review
@@ -182,6 +184,9 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   statement's snapshot; the lock then a fresh statement sees it (R-34, R-35).
   _Lock mode refined by D-123-2 (owner):_ the code now takes
   `FOR NO KEY UPDATE`, and `canAmend` reads the membership `FOR KEY SHARE` (D-123-3).
+  _Refined by D-251-3:_ consecutive new records insert in one statement, in one
+  transaction. All rows back is the trigger, and fewer sends the records again one at a
+  time (D-251-4).
 - **D-74-32 · A sync item cannot move a stored visit.** A different block, unit or outing
   is `conflict` for EVERYONE, the author included, and is also enforced under the lock
   (a concurrent first insert on another unit no longer leaves identity written to the
@@ -321,7 +326,9 @@ invisible to B until it syncs cannot run until the queue (#33) exists.
   101st person.
 - **D-74-62 · Native selects carry `h-12`.** iOS WebKit ignores `min-height` on a
   `<select>`; the admin filters measured 26px, now 48px, guarded in `e2e/pwa.spec.ts`.
-  Extends D-30-8. _Research:_ R-39.
+  Extends D-30-8. _Research:_ R-39. _Noted by D-245-3:_ a date input needs no `h-12`.
+  Without its native look (D-245-1) it honours `min-h-12`, so the follow-up sheet's
+  input dropped the `h-12` that cited this decision.
 - **D-74-63 · Double-tap tests click twice inside one `act`.** _Why:_ the earlier tests
   passed with the in-flight guards removed; each guard was broken on purpose and its test
   now fails (D-74-44).

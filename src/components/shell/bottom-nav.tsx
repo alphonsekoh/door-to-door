@@ -5,7 +5,8 @@ import { NavIcon } from "@/components/ui/nav-icon";
 import { isActiveRoute, visibleNavItems } from "@/lib/session/nav";
 import { useShellState } from "@/lib/offline/shell-state";
 import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
-import { isPublicPath } from "@/server/auth/routes";
+import { badgeCount, useApprovalCount } from "@/lib/session/approval-count";
+import { isPublicPath, isWaitingPath } from "@/server/auth/routes";
 import { useRole } from "@/lib/hooks/use-role";
 
 export function BottomNav() {
@@ -13,6 +14,11 @@ export function BottomNav() {
   const { isAdmin } = useRole();
   const items = visibleNavItems(isAdmin);
   const shell = useShellState();
+  /* The waiting page leads nowhere else: every tab would only send its
+     account back there (#249). */
+  const hidden = isPublicPath(pathname) || isWaitingPath(pathname) || shell.active;
+  /* Who waits for an admin's approval, on the Admin tab (#249). */
+  const waiting = useApprovalCount(isAdmin && !hidden);
 
   /*
    * Nothing to navigate to on a public route, and rendering it there does
@@ -23,7 +29,7 @@ export function BottomNav() {
    */
   /* On the offline shell every link would be a cold reload, offline, back
      into the shell, losing the form on the way (D-77-12). */
-  if (isPublicPath(pathname) || shell.active) {
+  if (hidden) {
     return null;
   }
 
@@ -46,16 +52,36 @@ export function BottomNav() {
       <ul className="mx-auto flex h-(--nav-height) max-w-screen-sm">
         {items.map((item) => {
           const active = isActiveRoute(pathname, item);
+          const badge = item.adminOnly === true && waiting !== null && waiting > 0 ? waiting : null;
           return (
             <li key={item.href} className="@container flex-1">
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
+                /* The count in words, as the badge is not read: in the name,
+                   as text in the link would be read with a break in it. */
+                aria-label={
+                  badge === null
+                    ? undefined
+                    : `${item.label}, ${String(badge)} waiting for approval`
+                }
                 className={`flex h-full flex-col items-center justify-center gap-0.5 text-caption font-semibold ${
                   active ? "text-primary" : "text-foreground"
                 }`}
               >
-                <NavIcon name={item.href} />
+                {/* On the icon, out of the flow, so it never makes the nav
+                    taller, and there when the label is not. */}
+                <span className="relative">
+                  <NavIcon name={item.href} />
+                  {badge === null ? null : (
+                    <span
+                      aria-hidden="true"
+                      className="absolute -top-1.5 left-1/2 ml-1.5 min-w-5 rounded-full bg-danger px-1 text-center text-caption leading-5 font-semibold text-danger-foreground tabular-nums"
+                    >
+                      {badgeCount(badge)}
+                    </span>
+                  )}
+                </span>
                 <span className="whitespace-nowrap @max-[68px]:sr-only">{item.label}</span>
               </Link>
             </li>

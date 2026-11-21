@@ -6,13 +6,20 @@ import { z } from "zod";
 
 /*
  * CI and the images run what a pin names by content, not a tag its owner can
- * move, and CI's token can read the repository and nothing more (#131).
- * Dependabot keeps the pins current; this keeps every new line pinned.
+ * move, and CI's token can only read: the repository (#131), and in ci.yml
+ * its pull requests (#248). Dependabot keeps the pins current; this keeps
+ * every new line pinned.
  */
 
 const read = (path: string): string => readFileSync(path, "utf8");
 
 const WORKFLOWS = readdirSync(".github/workflows").map((name) => join(".github/workflows", name));
+
+// Every grant is read-only. CI's lint job reads a pull request's labels and base
+// as they are now, which a re-run's replayed event would not show (#248).
+const GRANTS: Readonly<Record<string, Record<string, string>>> = {
+  ".github/workflows/ci.yml": { contents: "read", "pull-requests": "read" },
+};
 
 const Workflow = z.object({
   permissions: z.unknown(),
@@ -54,7 +61,7 @@ describe("GitHub Actions workflows", () => {
       .flatMap((job) => job.steps)
       .filter((step) => step.uses?.startsWith("actions/checkout@"));
 
-    expect(permissions).toEqual({ contents: "read" });
+    expect(permissions).toEqual(GRANTS[path] ?? { contents: "read" });
     // A job-level grant replaces the top-level one for that job.
     const ownGrants = Object.entries(jobs).filter(([, job]) => job.permissions !== undefined);
     expect(ownGrants.map(([name]) => name)).toEqual([]);
@@ -69,9 +76,13 @@ describe("container images", () => {
       Object.values(job.services ?? {}).map((service) => service.image),
     ),
   );
-  const composeImages = Object.values(
-    Compose.parse(parse(read("docker-compose.yml"))).services,
-  ).flatMap((service) => service.image ?? []);
+  const imagesOf = (path: string) =>
+    Object.values(Compose.parse(parse(read(path))).services).flatMap(
+      (service) => service.image ?? [],
+    );
+  const composeImages = imagesOf("docker-compose.yml");
+  // The stage stack's (#244): built services have no image line, and every other is pinned.
+  const stageImages = imagesOf("docker-compose.stage.yml");
   const dockerfile = read("Dockerfile");
   const stages = new Set(Array.from(dockerfile.matchAll(/^FROM .+ AS (\S+)$/gm), ([, s]) => s));
   const baseImages = Array.from(dockerfile.matchAll(/^FROM (\S+)/gm), ([, image]) => image).filter(
@@ -79,8 +90,10 @@ describe("container images", () => {
   );
 
   it("are pinned by digest, wherever they run", () => {
-    for (const found of [ciImages, composeImages, baseImages]) expect(found).not.toEqual([]);
-    for (const image of [...ciImages, ...composeImages, ...baseImages]) {
+    for (const found of [ciImages, composeImages, stageImages, baseImages]) {
+      expect(found).not.toEqual([]);
+    }
+    for (const image of [...ciImages, ...composeImages, ...stageImages, ...baseImages]) {
       expect(image).toMatch(PINNED_IMAGE);
     }
   });

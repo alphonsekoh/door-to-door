@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AddMemberForm } from "@/components/admin/add-member-form";
+import { type ApprovalChange, ApprovalRequests } from "@/components/admin/approval-requests";
 import type { User, UserList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
@@ -63,6 +64,31 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
     };
   }, [load]);
 
+  /* Who waits for approval, and who was turned down (#249), each read by its
+     own section. A change in one moves someone into the team or the other
+     section, which reads again; one refused as stale reads all three. */
+  const [versions, setVersions] = useState({ pending: 0, blocked: 0 });
+  const approvalChanged = useCallback(
+    (change: ApprovalChange) => {
+      if (change === "approved" || change === "stale") void load();
+      setVersions((current) => ({
+        pending: current.pending + (change === "unblocked" || change === "stale" ? 1 : 0),
+        blocked: current.blocked + (change === "rejected" || change === "stale" ? 1 : 0),
+      }));
+    },
+    [load],
+  );
+
+  /* Waiting for approval first, as what most needs an admin; those turned
+     down last, as what least does. Drawn whatever state the team is in. */
+  const withRequests = (team: ReactNode) => (
+    <div className="space-y-4">
+      <ApprovalRequests approval="pending" version={versions.pending} onChanged={approvalChanged} />
+      {team}
+      <ApprovalRequests approval="blocked" version={versions.blocked} onChanged={approvalChanged} />
+    </div>
+  );
+
   /* Brought into view before it is painted, clear of the nav and a banner
      floating on it, and no further: no Save bar docks here (as on the member
      page, D-195-1). The alert takes no focus. */
@@ -89,11 +115,11 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
   }
 
   if (state.status === "loading") {
-    return <p className="text-body text-foreground-muted">Loading…</p>;
+    return withRequests(<p className="text-body text-foreground-muted">Loading…</p>);
   }
 
   if (state.status === "error") {
-    return (
+    return withRequests(
       <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">
         <p className="text-body">{state.message}</p>
         <button
@@ -103,11 +129,11 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
         >
           Try again
         </button>
-      </div>
+      </div>,
     );
   }
 
-  return (
+  return withRequests(
     <div className="space-y-4">
       <AddMemberForm onAdded={() => void load()} googleDomains={googleDomains} />
 
@@ -234,6 +260,6 @@ export function MemberList({ googleDomains }: { googleDomains: readonly string[]
           />
         )}
       </SheetPresence>
-    </div>
+    </div>,
   );
 }

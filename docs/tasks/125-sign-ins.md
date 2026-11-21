@@ -36,7 +36,8 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
     caller and that id to the admin handlers.
 
   _Why:_ this keeps D-83-1, D-83-6, D-83-7's one lookup and D-85-2: a deactivated member
-  is told so, not "Signed out".
+  is told so, not "Signed out". _Extended by D-249-5 (#249):_ the same query reads the
+  account's approval.
 
 - **D-125-4 · Auth.js's own routes check the sign-in too, and only they do.** Auth.js
   passes a request only to its route handlers (`NextAuth((request) => buildAuthConfig(request))`),
@@ -77,7 +78,8 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   none back (owner, 2026-11-05).** `updateUser` deletes them in its transaction, after
   D-132-2's locks. A role change ends none. The Deactivate confirmation now reads "They
   will be signed out on every phone and will not be able to sign in. …" **Supersedes
-  D-83-4's "Reactivated: works again without signing in".**
+  D-83-4's "Reactivated: works again without signing in".** _Kept by D-249-5 (#249):_ a
+  rejection, unlike a deactivation, ends no sign-ins.
 - **D-125-11 · Lock order.** Nothing locks a user after a `sign_ins` row, so no wait
   cycle can form with `updateUser` or `updateOwnName`. D-117-45 and D-123-1 to D-123-4
   touch neither table.

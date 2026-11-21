@@ -1053,8 +1053,10 @@ test.describe("without signal", () => {
     adminApi,
   }, testInfo) => {
     /* One door per browser, so each has exactly one visit past the page. In
-       one batch: one save at a time would meet the per-member limit. Each
-       item lands in a transaction of its own, so the first is the oldest. */
+       one batch: one save at a time would meet the per-member limit. Items
+       are stored a microsecond apart in request order (D-251-7), and the
+       phone keeps that order within the millisecond its times carry, so the
+       first is the oldest. */
     const unit = testInfo.project.name.includes("webkit") ? "#61-02" : "#61-01";
     const now = new Date().toISOString();
     const synced = await adminApi.post("/api/visits/sync", {

@@ -298,6 +298,37 @@ describe("database.url", () => {
   });
 });
 
+describe("database.migrationUrl (#250)", () => {
+  it("takes the direct host beside a pooled url", () => {
+    const config = parseConfig(
+      `database:
+  url: postgresql://ep-x-pooler.example.net/app?sslmode=require
+  migrationUrl: postgresql://ep-x.example.net/app?sslmode=require
+`,
+      SOURCE,
+    );
+    expect(config.database).toEqual({
+      url: "postgresql://ep-x-pooler.example.net/app?sslmode=require",
+      migrationUrl: "postgresql://ep-x.example.net/app?sslmode=require",
+    });
+  });
+
+  it("holds it to url's rules, naming the key and never the value", () => {
+    const sentinel = "SENTINEL-migration-secret";
+    const problems = problemsOf(
+      `${MINIMAL}  migrationUrl: postgresql://admin:${sentinel}@db/x?password=${sentinel}\n`,
+    );
+    expect(problems).toEqual([
+      'database.migrationUrl: query parameter "password" is not allowed; only sslmode, application_name may be set here',
+      expect.stringMatching(/^database\.migrationUrl: must not contain a username or password/),
+    ]);
+    expect(problems.join()).not.toContain(sentinel);
+    expect(problemsOf(`${MINIMAL}  migrationUrl: mysql://db/x\n`)).toEqual([
+      "database.migrationUrl: must start with postgresql://",
+    ]);
+  });
+});
+
 describe("never echoing a value", () => {
   it("keeps a sentinel out of every kind of message", () => {
     const sentinel = "SENTINEL-s3cr3t-value";

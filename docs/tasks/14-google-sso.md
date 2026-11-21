@@ -31,18 +31,20 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   (CLAUDE.md, D-75). **Supersedes D-38-4 and D-38-18** ("not built"). _Extended by
   D-14-20:_ `auth.google.domains` is required with it.
 
-- **D-14-3 · Only an address an admin has added can sign in with Google, and signing in
-  creates nobody (owner, 2026-11-05).** The `signIn` callback (`allowGoogleSignIn`)
+- **D-14-3 · ~~Only an address an admin has added can sign in with Google, and signing
+  in creates nobody~~ (owner, 2026-11-05).** The `signIn` callback (`allowGoogleSignIn`)
   refuses unless all three hold:
   - Google's `email_verified` is true.
-  - An active account has that address.
+  - ~~An active account has that address.~~
   - The account Auth.js resolved is that same account. So a Google account linked
     earlier, whose address has since changed, cannot sign in as the old account.
 
-  The adapter's `createUser` is refused as well, and D-13-3 stays as a backstop. The
-  issue's "new Google users default to `member`" and its first acceptance criterion are
-  dropped. _Research:_ R-156. _Extended by D-14-19 (owner, 2026-11-12):_ Google must also
-  vouch for the address.
+  ~~The adapter's `createUser` is refused as well, and~~ D-13-3 stays as a backstop.
+  ~~The issue's "new Google users default to `member`" and its first acceptance
+  criterion are dropped.~~ _Research:_ R-156. _Extended by D-14-19 (owner, 2026-11-12):_
+  Google must also vouch for the address. _Superseded in part by D-249-2 (owner,
+  2026-11-21):_ with no account at the address, a first sign-in makes a pending member
+  through `createUser`; a deactivated account is still refused (D-249-3).
 
 - **D-14-4 · The first verified sign-in links by email, never by cookie.**
   `allowDangerousEmailAccountLinking` is on. That is safe here, because D-14-3 admits only
@@ -50,7 +52,10 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   Auth.js never links the Google account to whoever's cookie is already on the phone.
   _Why:_ on a shared phone, A's stale cookie plus B's Google sign-in would otherwise link
   B's Google to A's account. _Research:_ R-156. _Extended by D-14-19:_ only an address
-  Google vouches for is linked, since the link is permanent.
+  Google vouches for is linked, since the link is permanent. _Reason restated by D-249-2
+  (#249):_ no admin need have added the address now; the link is safe because Google
+  vouches for it (D-14-19), so it goes to whoever holds the mailbox. `getUser` still
+  returns `null`.
 - **D-14-5 · Every Google refusal gets the same message (`googleRefusedMessage`):** "That
   Google account can't sign in here. Google sign-in is for gmail.com, tjc.sg or tjc.org
   addresses your admin added; otherwise, use your email and password." The domains are
@@ -61,15 +66,19 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   _Why:_ that wording would send a Google user looking for a password they never had.
   _Changed in review (2026-11-12):_ it was the constant `GOOGLE_REFUSED`, "That Google
   account can't sign in here. Use the email address your admin added." It now names the
-  domains (D-14-19).
+  domains (D-14-19). _Refined by D-249-19 (#249):_ it ends "… is for gmail.com, tjc.sg or
+  tjc.org accounts; otherwise, use your email and password." An unknown address is no
+  longer refused, so it covers the unverified, the not-vouched-for and the deactivated.
 - **D-14-6 · Callback errors show one of two fixed messages, never the raw value**
   (`googleSignInMessage`). `?error=AccessDenied` shows D-14-5's message. Any other value
   shows "Google sign-in didn't finish. Try again, or sign in with your email and
   password." _Why:_ anyone can write the query string, and a callback error must read
   as a usable message, never a stack trace.
-- **D-14-7 · No Google tokens are kept** (`account()` returns `{}`). The profile sets no
-  name and no picture, so Google never changes an account. _Why:_ nothing calls Google
-  on anyone's behalf, and the name is the admin's or the member's to set (D-74-4).
+- **D-14-7 · No Google tokens are kept** (`account()` returns `{}`). The profile sets
+  ~~no name and~~ no picture, so Google never changes an account. _Why:_ nothing calls
+  Google on anyone's behalf, and the name is the admin's or the member's to set (D-74-4).
+  _Superseded in part by D-249-18 (owner, 2026-11-21):_ Google's name names a new
+  request, once, if D-74-4 accepts it; no later sign-in changes a name.
 - **D-14-8 · Every Google sign-in sends `prompt=select_account`.** _Why:_ on a shared
   phone, the next member must pick their own account, never be signed in silently as the
   last one.
@@ -189,8 +198,9 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   the form without Google ("Enter an initial password.") and outside the domains
   (D-14-22's message). These checks are affordance only; `POST /users` decides (D-16-2).
   Refines D-14-12. _Why:_ the hint promised Google where the server would refuse it.
-- **D-14-25 · The `jwt` callback no longer handles a `signUp` trigger.** _Why:_ it cannot
-  happen, because linking by email never creates a user (D-14-3).
+- ~~**D-14-25 · The `jwt` callback no longer handles a `signUp` trigger.** _Why:_ it
+  cannot happen, because linking by email never creates a user (D-14-3).~~ Superseded by
+  D-249-2: a first sign-in creates a user again.
 
 ### Owner ruling of 2026-11-18, and the image's public URL
 
@@ -223,7 +233,8 @@ addresses Google vouches for (D-14-19), and settle the two conflicts this file r
   app can give one a password (D-125-1).
 - A Gmail address must be added exactly as Google has it, dots included.
   `jane.doe@gmail.com` and `janedoe@gmail.com` share a mailbox, but only the spelling
-  Google reports matches.
+  Google reports matches. _Changed by #249:_ the other spelling is no longer refused; it
+  asks to join as a second, pending account (#249's Known limits).
 - Real Google is unverified until the owner supplies credentials. The production
   redirect URI waits on the deployment domain (#146).
 

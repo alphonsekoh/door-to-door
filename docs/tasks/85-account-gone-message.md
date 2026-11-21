@@ -19,7 +19,8 @@ without signing in again. No contract, schema or server change.
 - **D-85-2 · Any `401` means signed out; only `403 account_deactivated` means
   deactivated.** A plain `403` or `404` raises nothing. _Why:_ a plain `403` refuses one
   action (a team change, an admin route after a demotion, D-83-4) and the screen that asked
-  already explains it.
+  already explains it. _Extended by D-249-11 (#249):_ `403 account_pending` or
+  `account_blocked` is "unapproved", which shows no message: the gate moves to `/waiting`.
 - **D-85-3 · The first failure wins and sticks until the next full page load.** _Why:_
   every way out is a full navigation (D-74-10), and flipping between two messages would
   only confuse.
@@ -42,6 +43,8 @@ without signing in again. No contract, schema or server change.
   on a non-public path; a failure is swallowed (offline stays silent). _Why:_
   server-rendered and not-found pages make no API call of their own, so without it a
   deactivated member could sit on one unwarned; the same read refreshes the role (D-85-8).
+  _Extended by D-249-11, D-249-21 (#249):_ an explicit `approval` of `pending` or
+  `blocked` there moves the page to `/waiting`.
 - **D-85-8 · `useRole` prefers the role from the latest `/users/me` when its id matches
   the token's.** Reads go through `loadCurrentUser()` (`src/lib/users.ts`; used by the
   gate, Account and Outing team), and Account records the role a `PATCH` returns. The

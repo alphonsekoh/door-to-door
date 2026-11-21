@@ -18,7 +18,9 @@ Keep signed-out visitors out of pages, and enforce roles in handlers.
   is a network guard for the dev server, not authorization, so D-16-2 holds.
 - **D-16-2 · `requireUser` / `requireRole` in every handler are the real guard.** Client
   role checks (`useRole`) are affordance only. **Invariant.** _Amended by D-83-2, D-83-12:_
-  the session passed to the guards must come from `currentSession`.
+  the session passed to the guards must come from `currentSession`. _Extended by D-249-4
+  (#249):_ `requireUser` refuses an unapproved account, failing closed; only `/users/me`
+  uses `requireOwnAccount`, pinned by a scan test.
 - **D-16-3 · Deactivation is checked per request and returns `403`, not `401`.** _Why:_
   a deactivated user should be told to see an admin, not to sign in again. _Amended by
   D-83-1:_ the check reads the database; until #83 it only read the token flag.

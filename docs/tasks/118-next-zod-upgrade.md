@@ -65,7 +65,8 @@ and add Dependabot.
   _Exposure narrowed again by D-126-7 (#126):_ a 256 KiB body cap bounds one request at
   about 6,700 ids, with `413` above that, and inserts are chunked (D-126-3), so the `500`
   is out of reach. `memberIds` stays uncapped.
-- **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** npm has
+- **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** _Security
+  updates: the `npm-security` group superseded by D-244-29._ npm has
   three groups: security, minor-and-patch, major. GitHub Actions has one. Version
   updates wait out a 7-day cooldown. PRs get a `chore` prefix and the existing
   `type:chore` and `area:setup`/`area:ci` labels. _Why:_ each PR runs the full CI,
@@ -75,7 +76,9 @@ and add Dependabot.
   D-131-5:_ `docker` and `docker-compose` entries, one group each, for the image
   digests; actions are now pinned by SHA (D-131-3). _Extended by D-166-9 to D-166-11:_
   npm ignores TypeScript majors and `@types/node` above 24, and those ignores hold back
-  security updates too.
+  security updates too. _Schedule superseded by D-248-14 (owner):_ monthly, and never
+  rebased unasked. Its PRs still run the full CI, E2E included, through the `e2e` label
+  (D-248-15).
 - **D-118-8 · `next dev` 16.4.3's rewrite of AGENTS.md's generated block (its heading
   `#` became `##`) is committed.** _Why:_ D-02-3. Reverting it only recreates an
   uncommitted change.

@@ -86,7 +86,15 @@ const domainName = z.string().regex(DOMAIN_NAME, {
  * a rate limit ends up not being the one the operator thought they set.
  */
 export const appConfigSchema = z.strictObject({
-  database: z.strictObject({ url: databaseUrl }),
+  database: z.strictObject({
+    url: databaseUrl,
+    /*
+     * Where db:migrate and drizzle-kit connect instead: the direct host, when
+     * url is a pooler in transaction mode, which Neon advises against
+     * migrating through (#250). The app never reads it.
+     */
+    migrationUrl: databaseUrl.optional(),
+  }),
   auth: z
     .strictObject({
       trustHost: z.boolean().default(true),
@@ -336,4 +344,7 @@ export function composeDatabaseUrl(base: string, { user, password }: DatabaseCre
   return url.toString();
 }
 
-export type RuntimeConfig = AppConfig & AuthSecrets & { databaseUrl: string };
+/* The app's view of the settings: database.migrationUrl is for migrations only. */
+export type RuntimeConfig = Omit<AppConfig, "database"> & {
+  database: Omit<AppConfig["database"], "migrationUrl">;
+} & AuthSecrets & { databaseUrl: string };
