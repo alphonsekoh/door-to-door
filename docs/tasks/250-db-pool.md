@@ -24,7 +24,7 @@ purpose.
   `DATABASE_PASSWORD`. _Why:_ the owner approved a settings key that holds no credentials
   (D-75-2, D-75-3), and one Neon role signs in on both hosts. Leaving it unset changes
   nothing for Compose, the image, the stage stack or the tests, which each have one host.
-  _Research:_ R-228.
+  _Research:_ R-236.
 - **D-250-2 · The app never sees `migrationUrl`, by type or by value.** `RuntimeConfig`'s
   `database` leaves it out, and `loadConfig` rebuilds `database` as `{ url }`. _Why:_
   every connection the app makes must go through the pooler. A direct connection per
@@ -37,7 +37,7 @@ purpose.
   the schema just as `migrate` does. The other scripts keep nothing past a transaction.
   `create-admin`'s `pg_advisory_xact_lock` (D-105-5) is released at commit or rollback,
   so it still holds through transaction pooling, and `check-blank` only reads.
-  _Research:_ R-228.
+  _Research:_ R-236.
 - **D-250-4 · Two URLs naming different databases are not refused (scope cut).** Each URL
   is checked against its own rules only. The README says to keep the same database and
   query string in both. _Why:_ the hosts differ by design. A check on the database name
@@ -53,7 +53,7 @@ purpose.
   `first-admin.ts`'s transaction-scoped one, `FOR UPDATE` locks end with their
   transaction, and Drizzle names a statement only through `.prepare()`, which nothing
   calls. _Why:_ through the pooler, session state lands on whichever server connection
-  the next transaction is given. _Research:_ R-228, R-229.
+  the next transaction is given. _Research:_ R-236, R-237.
 
 ### The pool
 
@@ -64,7 +64,7 @@ purpose.
   (D-250-7), and a reconnect from sin1 costs about 10–20 ms, so it is short. Vercel
   suggests about 5 s. _Why:_ pg's defaults (10, 10 s) were never chosen.
   _Trade-off:_ wherever the app runs, a gap of over 5 s now pays a reconnect.
-  _Research:_ R-226, R-229.
+  _Research:_ R-234, R-237.
 - **D-250-7 · The app's pool goes to `attachDatabasePool`, after
   `attachPoolErrorHandler`.** On Vercel each release keeps the instance awake through
   `waitUntil` for the idle timeout plus 100 ms. So no connection survives a suspension for
@@ -72,12 +72,12 @@ purpose.
   are set. In the image, Compose, the stage stack and the tests it does nothing. The
   scripts' one-connection pools are not attached, because they never run on Vercel. The
   app pool is still the process-wide singleton (D-87-3), attached once. _Why:_ an idle
-  timer does not run while an instance is suspended. _Research:_ R-226.
+  timer does not run while an instance is suspended. _Research:_ R-234.
 - **D-250-8 · Imported from `@vercel/functions/db-connections`, not the package root.**
   _Why:_ the root loads every module, one of which pulls in `@vercel/oidc` and a CLI
   helper that spawns processes. The subpath loads only the request context and the
   deadline. The builder checked the build output: it holds the attach code and no
-  `@vercel/oidc`. _Research:_ R-227.
+  `@vercel/oidc`. _Research:_ R-235.
 - **D-250-9 · `@vercel/functions` is pinned exactly at `3.11.3` (new dependency, owner
   approved).** It is pinned like D-111-2, D-118-1 and D-131-7. The lockfile gains 18
   packages, all from `registry.npmjs.org` and none with an install script. Six packages
@@ -85,7 +85,7 @@ purpose.
   `@vercel/cli-exec` → `execa` needs them: `cross-spawn`, `isexe`, `path-key`,
   `shebang-command`, `shebang-regex` and `which`. `src/supply-chain.test.ts` passes
   unchanged. _Why:_ since D-131-8 a new package is the owner's call, and nothing in its
-  tree runs at install. _Research:_ R-227.
+  tree runs at install. _Research:_ R-235.
 
 ### Environment and the owner's edit
 
@@ -94,7 +94,7 @@ purpose.
   does. This refines D-75-7: the app adds no variable of its own, and the table now names
   two that the platform sets, as D-38-6 names `AUTH_URL` for Auth.js. _Why:_ set
   anywhere other than Vercel, they make the attach look for a request context that is
-  not there, and it logs a warning on every release. _Research:_ R-226.
+  not there, and it logs a warning on every release. _Research:_ R-234.
 - **D-250-11 · The owner's one-time `CONFIG_YAML` edit on Vercel, in this order.**
   (1) Production first runs a build that includes #250. Preview's `CONFIG_YAML` changes
   only once every branch it deploys includes #250 too. (2) Under `database`, add

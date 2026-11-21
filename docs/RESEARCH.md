@@ -2838,7 +2838,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
 
-### R-226 · `attachDatabasePool` keeps a Vercel instance awake for a pg pool's idle timeout after each release, and does nothing off Vercel (read)
+### R-234 · `attachDatabasePool` keeps a Vercel instance awake for a pg pool's idle timeout after each release, and does nothing off Vercel (read)
 
 - **Finding:** for a pg `Pool`, it wraps `connect` so that each client remembers the
   request it was checked out for. On every `release` it hands that request's `waitUntil`
@@ -2858,7 +2858,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   `src/db/client.integration.test.ts` runs the 5000 + 100 ms wait on a real pool.
 - **Used by:** D-250-6, D-250-7, D-250-10
 
-### R-227 · `@vercel/functions`' root entry loads `@vercel/oidc`, and its `db-connections` subpath does not (read)
+### R-235 · `@vercel/functions`' root entry loads `@vercel/oidc`, and its `db-connections` subpath does not (read)
 
 - **Finding:** the package is CommonJS. Its `index.js` requires every module, among them
   `affinity.js`, which requires `@vercel/oidc` 4.0.9. That in turn depends on
@@ -2871,7 +2871,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   again.
 - **Used by:** D-250-8, D-250-9
 
-### R-228 · Neon's pooled host is PgBouncer in transaction mode, recommended for serverless, with migrations on the direct host (read)
+### R-236 · Neon's pooled host is PgBouncer in transaction mode, recommended for serverless, with migrations on the direct host (read)
 
 - **Finding:** Neon says "Use the pooled connection string … for serverless functions".
   The pooled host runs PgBouncer in transaction mode, which gives each transaction
@@ -2885,7 +2885,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   read them. The docs step re-read none of it.
 - **Used by:** D-250-1, D-250-3, D-250-5, D-250-11
 
-### R-229 · Drizzle over node-postgres names a statement only through `.prepare()`, and pg-pool defaults to 10 connections and 10 s idle (read)
+### R-237 · Drizzle over node-postgres names a statement only through `.prepare()`, and pg-pool defaults to 10 connections and 10 s idle (read)
 
 - **Finding:** in drizzle-orm 0.45.4, a query builder's `execute()` calls `_prepare()`
   with no name, and `NodePgPreparedQuery` passes that `name` on to pg. pg 8.23.1 sends a
