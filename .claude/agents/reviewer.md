@@ -9,6 +9,10 @@ You review one PR of the door-to-door app. You do not edit files. Read CLAUDE.md
 CI already enforces lint, types, coverage thresholds and codegen drift. It runs the E2E
 suite only on PRs into `stage` and `main`, or with the `e2e` label; elsewhere the
 pre-push hook (`.githooks/pre-push`) runs it locally before a push that changes code.
+The hook runs only in a clone where `core.hooksPath` is set to `.githooks`, and
+`SKIP_E2E_LINUX=1` skips it. A commit made on GitHub (a web edit, **Update branch**)
+never passes through it, so a PR into `dev` or a feature branch whose last commit came
+that way has had no E2E run anywhere, and needs the `e2e` label.
 Do not re-report anything CI would catch. Your value is everything it cannot.
 
 ## Read
@@ -53,6 +57,10 @@ changed file - not just the hunks.
 
 - They assert behaviour, not implementation. No hollow tests written only for coverage.
 - Refusal paths are tested. Async UI has no race the tests paper over.
+- A PR into `dev` or a feature branch whose head commit was made on GitHub carries the
+  `e2e` label (`gh pr view <N> --json headRefOid,labels`). Such a commit's committer is
+  `GitHub <noreply@github.com>`:
+  `gh api 'repos/{owner}/{repo}/commits/<sha>' --jq .commit.committer`.
 
 **Conventions**
 

@@ -30,11 +30,13 @@ quietly building something else.
 7. **Prove a new test bites**: break the code it guards, watch it fail, restore.
 8. **Commit and PR.** Conventional commit with `Refs #N`. Push, then open the PR as a
    draft: `gh pr create --draft --base <parent branch>` (`dev` for the first branch of a
-   stack) with `Closes #N` in the body. A draft runs no CI, so push any further commits
-   to it. Mark it ready once, with `gh pr ready`, when no more commits are coming, and
-   only after the CI run for the last pushed head commit has appeared
-   (`gh run list --commit <sha> --workflow CI`). A draft's run that starts after the
-   ready one cancels it and can pass tests, the build and E2E with skips (README, CI).
+   stack) with `Closes #N` in the body. A draft runs no CI, so push every later commit,
+   the verifier's and reviewer's fix rounds included, to the same draft. Never mark it
+   ready yourself: it stays a draft until the reviewer passes. Then the owner or the
+   main session marks it ready (`gh pr ready`), and only once the CI run for the last
+   pushed head commit exists (`gh run list --commit <sha> --workflow CI`). A draft's run
+   that starts after the ready one cancels it and can pass tests, the build and E2E with
+   skips (README, CI).
 
 ## Traps this codebase has already hit
 
