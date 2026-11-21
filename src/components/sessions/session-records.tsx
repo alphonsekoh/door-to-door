@@ -1,13 +1,19 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { OwnRecords, TEAM_VIEW_NOTE } from "@/components/history/own-records";
 import { ScopeToggle } from "@/components/ui/scope-toggle";
 import type { Block, HistoryEntry, HistoryList, InterestLevel } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
-import { ownHistoryRequest, parseScope, scopeHref, type RecordScope } from "@/lib/teams/team-view";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
+import {
+  ownHistoryRequest,
+  parseScope,
+  scopeSearch,
+  type RecordScope,
+} from "@/lib/teams/team-view";
 
 const PAGE_SIZE = 50;
 
@@ -34,8 +40,12 @@ function blocksIn(entries: HistoryEntry[]): Block[] {
 }
 
 export function SessionRecords({ sessionId }: { sessionId: string }) {
-  const router = useRouter();
-  const scope = parseScope(new URLSearchParams(useSearchParams().toString()));
+  const params = useSearchParams();
+  const [search, chooseScope] = useAddressFilters(
+    `/history/${sessionId}`,
+    scopeSearch(parseScope(new URLSearchParams(params.toString()))),
+  );
+  const scope = parseScope(new URLSearchParams(search));
   const [state, setState] = useState<State>({ status: "loading" });
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [blockId, setBlockId] = useState("");
@@ -81,12 +91,14 @@ export function SessionRecords({ sessionId }: { sessionId: string }) {
     };
   }, [load, scope, blockId, interestLevel]);
 
-  /* In the URL, so the choice survives opening a unit and coming back. */
+  /* In the URL, so the choice survives opening a unit and coming back.
+     Not router.replace: this page is dynamic, so that waited on the server,
+     and with no signal left the screen for Offline. */
   const toggle = (
     <ScopeToggle
       scope={scope}
       onChange={(next) => {
-        router.replace(scopeHref(`/history/${sessionId}`, next));
+        chooseScope(scopeSearch(next));
       }}
     />
   );

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { FollowUpsScreen, parseFollowUpView } from "@/components/follow-ups/follow-ups-screen";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -33,9 +33,10 @@ vi.mock("@/components/follow-ups/declined-notice", () => ({
   DeclinedNotice: ({ userId }: { userId: string }) => <p>{`declined notice for ${userId}`}</p>,
 }));
 
-const { replace, search } = vi.hoisted(() => ({ replace: vi.fn(), search: { value: "" } }));
+/* The router's copy of the address, which a test moves only as Back or
+   Forward would. No useRouter: a tab that went through it would throw here. */
+const { search } = vi.hoisted(() => ({ search: { value: "" } }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => new URLSearchParams(search.value),
 }));
 
@@ -74,6 +75,8 @@ const page = (data: FollowUp[], total = data.length, offset = 0): FollowUpList =
   pagination: { limit: 20, offset, total, hasMore: offset + data.length < total },
 });
 
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   search.value = "";
@@ -81,6 +84,12 @@ beforeEach(() => {
   useOnline.mockReturnValue(true);
   useActiveSession.mockReturnValue(FOLLOW_UP);
   localStorage.clear();
+  window.history.replaceState(null, "", "/follow-ups");
+  replaceState = vi.spyOn(window.history, "replaceState");
+});
+
+afterEach(() => {
+  replaceState.mockRestore();
 });
 
 const LIST = "/follow-ups?status=listed&outstanding=true&limit=20&offset=0";
@@ -195,6 +204,103 @@ describe("FollowUpsScreen", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
+  /* The list names nobody, so it need not wait for the session to ask (#252);
+     its notes carry the viewer's controls, so they wait to be drawn. */
+  it.each([
+    ["the list", "", "listed", LIST, "Remove from list"],
+    [
+      "review",
+      "view=review",
+      "suggested",
+      "/follow-ups?status=suggested&limit=20&offset=0",
+      "Add to list",
+    ],
+  ] as const)(
+    "asks for %s before the session names the viewer, once, and draws it only for a viewer",
+    async (_, view, status, path, adminAction) => {
+      search.value = view;
+      useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+      apiFetch.mockResolvedValue(page([note("1", { status })]));
+      const { rerender } = render(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+
+      useRole.mockReturnValue({ userId: "u1", isAdmin: true });
+      rerender(<FollowUpsScreen />);
+      expect(await screen.findByRole("button", { name: adminAction })).toBeInTheDocument();
+      expect(screen.getByText("Note 1")).toBeInTheDocument();
+      expect(screen.queryByText("Loading…")).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(apiFetch).toHaveBeenCalledOnce();
+    },
+  );
+
+  /* The list is asked for while Mine still waits for the viewer, so its answer
+     can land after Mine is chosen. The tap and the address are guarded apart:
+     the address follows a tap a moment later, and a link changes it alone. */
+  it.each([
+    ["tapped, and the list answers before the address follows", true],
+    ["reached by the address, and the list answers after", false],
+  ])(
+    "never draws the list under Mine when Mine is %s and the session names the viewer late",
+    async (_, tapped) => {
+      useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+      const answers = new Map<string, (value: FollowUpList) => void>();
+      apiFetch.mockImplementation(
+        (path: string) =>
+          new Promise<FollowUpList>((resolve) => {
+            answers.set(path, resolve);
+          }),
+      );
+      const MINE = "/follow-ups?authorId=u1&outstanding=true&limit=20&offset=0";
+      const answer = (path: string, value: FollowUpList) => {
+        const resolve = answers.get(path);
+        expect(resolve).toBeDefined();
+        resolve?.(value);
+      };
+      const settle = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+      const { rerender } = render(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledExactlyOnceWith(LIST);
+      });
+      const toMine = () => {
+        search.value = "view=mine";
+        rerender(<FollowUpsScreen />);
+      };
+      if (tapped) {
+        fireEvent.click(screen.getByRole("button", { name: "Mine" }));
+        answer(LIST, page([note("1")], 2));
+        await settle();
+        toMine();
+      } else {
+        toMine();
+        await settle();
+        answer(LIST, page([note("1")], 2));
+      }
+      await settle();
+
+      useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+      rerender(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenLastCalledWith(MINE);
+      });
+      expect(screen.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+
+      answer(MINE, page([note("2", { status: "suggested" })]));
+      expect(await screen.findByText("Note 2")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+    },
+  );
+
   it("says so when nothing is on the list, and who adds to it", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
@@ -204,27 +310,60 @@ describe("FollowUpsScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("switches views through the URL", async () => {
+  /* Not router.replace: once Next's copy of the route is five minutes old,
+     that asks the server again, and with no signal the screen became Offline. */
+  it("switches views at once through the address, before the router reports it", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
     await screen.findByText("Nothing is on the follow-up list.");
 
     fireEvent.click(screen.getByRole("button", { name: "Mine" }));
-    expect(replace).toHaveBeenCalledWith("/follow-ups?view=mine");
-    fireEvent.click(screen.getByRole("button", { name: "Waiting for review" }));
-    expect(replace).toHaveBeenCalledWith("/follow-ups?view=review");
+    expect(screen.getByRole("button", { name: "Mine" })).toHaveAttribute("aria-pressed", "true");
+    expect(replaceState).toHaveBeenLastCalledWith(null, "", "/follow-ups?view=mine");
+    expect(await screen.findByText("You have no follow-ups or suggestions.")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/follow-ups?authorId=u1&outstanding=true&limit=20&offset=0",
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: "On the list" }));
-    expect(replace).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Waiting for review" }));
+    expect(replaceState).toHaveBeenLastCalledWith(null, "", "/follow-ups?view=review");
+    expect(window.location.search).toBe("?view=review");
+    expect(await screen.findByText("No suggestions waiting.")).toBeInTheDocument();
+
+    // The view already shown writes nothing.
+    fireEvent.click(screen.getByRole("button", { name: "Waiting for review" }));
+    expect(replaceState).toHaveBeenCalledTimes(2);
   });
 
   it("goes back to the list without a query", async () => {
+    window.history.replaceState(null, "", "/follow-ups?view=mine");
+    replaceState.mockClear();
     search.value = "view=mine";
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);
     await screen.findByText("You have no follow-ups or suggestions.");
     fireEvent.click(screen.getByRole("button", { name: "On the list" }));
-    expect(replace).toHaveBeenCalledWith("/follow-ups");
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", "/follow-ups");
+    expect(window.location.search).toBe("");
+    expect(await screen.findByText("Nothing is on the follow-up list.")).toBeInTheDocument();
+  });
+
+  it("takes the view from an address that changes under it, as Back or Forward does", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    const { rerender } = render(<FollowUpsScreen />);
+    await screen.findByText("Nothing is on the follow-up list.");
+
+    search.value = "view=review";
+    rerender(<FollowUpsScreen />);
+
+    expect(screen.getByRole("button", { name: "Waiting for review" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/follow-ups?status=suggested&limit=20&offset=0");
+    });
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("pages with Show more", async () => {

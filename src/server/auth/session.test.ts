@@ -1,3 +1,4 @@
+import * as React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Database } from "@/db/client";
 import type { SessionLike } from "@/server/auth/guards";
@@ -11,6 +12,15 @@ vi.mock("@/db/client", () => ({ getDatabase }));
 
 const { checkSignIn } = vi.hoisted(() => ({ checkSignIn: vi.fn() }));
 vi.mock("@/server/auth/sign-ins", () => ({ checkSignIn }));
+
+/* React as Next's server renderer loads it, whose cache keeps answers for
+   one render. Vitest would load the browser build, whose cache keeps none. */
+vi.mock("react", async () => {
+  const nodeModule = await import("node:module");
+  return nodeModule.createRequire(import.meta.url)(
+    `${process.cwd()}/node_modules/react/react.react-server.js`,
+  ) as unknown;
+});
 
 const { currentSession, currentSignIn, currentUser, resolveSession } =
   await import("@/server/auth/session");
@@ -172,5 +182,74 @@ describe("currentSignIn", () => {
 
     checkSignIn.mockResolvedValue(live());
     await expect(currentSignIn("admin")).rejects.toMatchObject({ code: "forbidden" });
+  });
+});
+
+/*
+ * What the renderer does for each request it renders: hands React a cache
+ * that lasts as long as the render. Outside one, as in a route handler, the
+ * cache keeps nothing.
+ */
+type Dispatcher = { getCacheForType: <T>(create: () => T) => T };
+const internals = (
+  React as unknown as {
+    __SERVER_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE: { A: Dispatcher | null };
+  }
+).__SERVER_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+
+async function oneRender(work: () => Promise<unknown>): Promise<void> {
+  const caches = new Map<unknown, unknown>();
+  internals.A = {
+    getCacheForType<T>(create: () => T): T {
+      if (!caches.has(create)) caches.set(create, create());
+      return caches.get(create) as T;
+    },
+  };
+  try {
+    await work();
+  } finally {
+    internals.A = null;
+  }
+}
+
+describe("one sign-in check per render (#252)", () => {
+  beforeEach(() => {
+    auth.mockResolvedValue({ user: { id: "u1" }, signInId: SIGN_IN });
+    getDatabase.mockReturnValue(db);
+  });
+
+  it("is shared by an admin page's layout and the page itself", async () => {
+    checkSignIn.mockResolvedValue(live({ role: "admin" }));
+    await oneRender(async () => {
+      await currentUser("admin");
+      await currentSession();
+    });
+    expect(checkSignIn).toHaveBeenCalledOnce();
+  });
+
+  it("is made again by the next request's render", async () => {
+    checkSignIn.mockResolvedValue(live({ role: "admin" }));
+    await oneRender(() => currentUser("admin"));
+    checkSignIn.mockResolvedValue({ status: "deactivated", account });
+    await oneRender(async () => {
+      await expect(currentUser("admin")).rejects.toMatchObject({ code: "account_deactivated" });
+    });
+    expect(checkSignIn).toHaveBeenCalledTimes(2);
+  });
+
+  it("is made by every call outside a render, as a route handler makes them", async () => {
+    checkSignIn.mockResolvedValue(live());
+    await currentSignIn();
+    await currentUser();
+    expect(checkSignIn).toHaveBeenCalledTimes(2);
+  });
+
+  it("fails every caller in the render when the lookup fails, never letting one through", async () => {
+    checkSignIn.mockRejectedValue(new Error("db down"));
+    await oneRender(async () => {
+      await expect(currentUser("admin")).rejects.toThrow("db down");
+      await expect(currentSession()).rejects.toThrow("db down");
+    });
+    expect(checkSignIn).toHaveBeenCalledOnce();
   });
 });

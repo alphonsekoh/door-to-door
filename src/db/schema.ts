@@ -373,6 +373,14 @@ export const visits = pgTable(
     index("visits_session_idx").on(table.sessionId),
     index("visits_member_idx").on(table.memberId),
     index("visits_team_idx").on(table.teamId),
+    /* All records' order (listHistory), newest first with the id settling a
+       tie (#212): read off the index rather than sorting every visit.
+       NULLS FIRST is what a plain DESC sorts by; Drizzle's default, NULLS
+       LAST, would leave the planner sorting anyway. */
+    index("visits_created_id_idx").on(
+      table.createdAt.desc().nullsFirst(),
+      table.id.desc().nullsFirst(),
+    ),
   ],
 );
 

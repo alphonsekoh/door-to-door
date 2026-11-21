@@ -59,3 +59,74 @@ describe("loadCurrentUser", () => {
     expect(accountStore.getSnapshot().serverUser).toEqual({ id: "u1", role: "admin" });
   });
 });
+
+/* Each starts from a fresh document: what was read is kept per page load. */
+async function freshDocument() {
+  vi.resetModules();
+  const users = await import("@/lib/session/users");
+  const { accountStore: store } = await import("@/lib/session/account-state");
+  return { ...users, store };
+}
+
+describe("sharedCurrentUser (#252)", () => {
+  it("shares a read still on its way, so two asking at once make one request", async () => {
+    const { sharedCurrentUser } = await freshDocument();
+    const me = { id: "u1", role: "member" };
+    apiFetch.mockResolvedValueOnce(me);
+    const [first, second] = await Promise.all([sharedCurrentUser(), sharedCurrentUser()]);
+    expect(first).toBe(me);
+    expect(second).toBe(me);
+    expect(apiFetch).toHaveBeenCalledOnce();
+  });
+
+  it("shares the read the page already made, and a fresh read replaces it", async () => {
+    const { loadCurrentUser, sharedCurrentUser } = await freshDocument();
+    apiFetch.mockResolvedValueOnce({ id: "u1", role: "member" });
+    await loadCurrentUser();
+    expect(await sharedCurrentUser()).toEqual({ id: "u1", role: "member" });
+    expect(apiFetch).toHaveBeenCalledOnce();
+
+    apiFetch.mockResolvedValueOnce({ id: "u1", role: "admin" });
+    await loadCurrentUser();
+    expect(await sharedCurrentUser()).toEqual({ id: "u1", role: "admin" });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not share a read that failed: the next one asks again", async () => {
+    const { sharedCurrentUser } = await freshDocument();
+    apiFetch.mockRejectedValueOnce(new Error("offline"));
+    await expect(sharedCurrentUser()).rejects.toThrow("offline");
+    apiFetch.mockResolvedValueOnce({ id: "u1", role: "member" });
+    expect(await sharedCurrentUser()).toEqual({ id: "u1", role: "member" });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps sharing a newer read when an older one fails after it", async () => {
+    const { loadCurrentUser, sharedCurrentUser } = await freshDocument();
+    let fail: (reason: unknown) => void = () => undefined;
+    apiFetch.mockReturnValueOnce(
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+    );
+    const older = loadCurrentUser();
+    apiFetch.mockResolvedValueOnce({ id: "u1", role: "member" });
+    const newer = loadCurrentUser();
+    fail(new Error("offline"));
+    await expect(older).rejects.toThrow("offline");
+    await newer;
+    expect(await sharedCurrentUser()).toEqual({ id: "u1", role: "member" });
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("shares what a save of the record answered, and shows its role", async () => {
+    const { noteSavedUser, sharedCurrentUser, store } = await freshDocument();
+    const saved = { id: "u1", role: "admin", name: "Ann Tan" } as Parameters<
+      typeof noteSavedUser
+    >[0];
+    noteSavedUser(saved);
+    expect(await sharedCurrentUser()).toBe(saved);
+    expect(apiFetch).not.toHaveBeenCalled();
+    expect(store.getSnapshot().serverUser).toEqual({ id: "u1", role: "admin" });
+  });
+});

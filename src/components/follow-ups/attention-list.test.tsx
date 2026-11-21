@@ -24,7 +24,7 @@ vi.mock("@/lib/api-client", async () => {
 });
 
 /* The address as Next's router last read it; a test says when that moves.
-   No useRouter: a router navigation waits on the server (see show()). */
+   No useRouter: a router navigation waits on the server (useAddressFilters). */
 const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
@@ -412,6 +412,31 @@ describe("filtering by block and interest", () => {
     },
   );
 
+  it("shows each change at once and keeps it through the next, before the router reports either", async () => {
+    // Read from the router's copy, a second change made before it caught up
+    // was built on the first's old value and dropped it.
+    const user = userEvent.setup();
+    serveRows([row("#05-123")]);
+    render(<AttentionList />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    await blocksListed();
+
+    await user.click(screen.getByRole("button", { name: "Include medium interest" }));
+    await user.selectOptions(blockPicker(), BLOCK_B);
+
+    expect(screen.getByRole("button", { name: "High interest only" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(blockPicker()).toHaveValue(BLOCK_B);
+    expect(address()).toBe(`/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`);
+    await waitFor(() => {
+      expect(listRequests()).toContain(
+        `/households/attention?limit=50&offset=0&minimumInterest=medium&blockId=${BLOCK_B}`,
+      );
+    });
+  });
+
   it("keeps the rows and the picker's focus while the block's doors load, and reads the blocks once", async () => {
     // Swapped for "Loading…", the picker would leave the page mid-choice.
     const user = userEvent.setup();
@@ -515,6 +540,52 @@ describe("filtering by block and interest", () => {
     await next.answer(page([row("#01-02")], 2));
     expect(doors()).toEqual(["#07-07"]);
     expect(screen.queryByRole("button", { name: /Show more/ })).not.toBeInTheDocument();
+  });
+
+  /* Enabled again by the overtaken read, Show more sat under the old doors and
+     asked the new block for the page after them, skipping its first ones. */
+  it.each([
+    ["a Show more page", "more"],
+    ["an older pick's first page", "pick"],
+  ])("keeps Show more waiting when %s lands while a newer pick loads", async (_, overtaken) => {
+    const user = userEvent.setup();
+    const late = held();
+    const blockB = held();
+    serve((query) => {
+      if (query.get("blockId") === BLOCK_B) {
+        return query.get("offset") === "0" ? blockB.promise : page([row("#07-09")], 3);
+      }
+      if (query.get("blockId") === BLOCK_A || query.get("offset") !== "0") return late.promise;
+      return page([row("#01-01")], 3);
+    });
+    render(<AttentionList />);
+    await screen.findByText(door("Blk 123, #01-01"));
+    await blocksListed();
+
+    if (overtaken === "more") {
+      await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    } else {
+      await user.selectOptions(blockPicker(), BLOCK_A);
+    }
+    await waitFor(() => {
+      expect(listRequests()).toHaveLength(2);
+    });
+    await user.selectOptions(blockPicker(), BLOCK_B);
+    await waitFor(() => {
+      expect(listRequests()).toHaveLength(3);
+    });
+    await late.answer(page([row("#09-09")], 3));
+
+    const waiting = screen.getByRole("button", { name: "Loading…" });
+    expect(waiting).toBeDisabled();
+    await user.click(waiting);
+    expect(listRequests()).toHaveLength(3);
+
+    await blockB.answer(page([row("#07-07"), row("#07-08")], 3));
+    await user.click(await screen.findByRole("button", { name: "Show more (2 of 3)" }));
+    expect(listRequests().at(-1)).toBe(
+      `/households/attention?limit=50&offset=2&blockId=${BLOCK_B}`,
+    );
   });
 });
 

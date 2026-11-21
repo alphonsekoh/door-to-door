@@ -226,16 +226,19 @@ authoritative, and a change to any of them needs the owner.
    uncapped (D-74-15, D-118-6); the 256 KiB cap bounds it at about 6,700 ids (D-126-7).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation, and the token's sign-in, from the
-   database on every request (one query, no cache), then calls the pure `requireUser` /
-   `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
+   database on every request (one query, nothing kept across requests; an admin page's
+   layout and page share it through React `cache()`, D-252-4), then calls the pure
+   `requireUser` / `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
    `403 account_deactivated`, whatever its sign-in. One not approved is
    `403 account_pending` or `403 account_blocked`, failing closed; only `GET` and
    `PATCH /users/me` take it, through `requireOwnAccount` (D-249-4, D-249-5). "Last
    used" is written at most every 15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
    budget, 30 a minute, and are `429 rate_limited` once it is spent
    (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
-4. The service does the work. Text that must say something (a unit number, note, block
-   name or street) is refused blank before anything is read (D-119-3). Sync and
+4. The service does the work. Reads that need nothing from one another go out together,
+   never on a transaction's client (D-252-1). Text that must say something (a unit
+   number, note, block name or street) is refused blank before anything is read
+   (D-119-3). Sync and
    `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
    transaction `POST /visits` first locks its author's user row (`FOR SHARE`) and
@@ -400,7 +403,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
-  per document load. A `403 account_pending` or `account_blocked`, or that read naming
+  per document load, and Home's team card takes the same read (`sharedCurrentUser`,
+  D-252-9). A `403 account_pending` or `account_blocked`, or that read naming
   either, shows no message: once that answer is in, the gate draws nothing and replaces
   the page with `/waiting`, and does nothing there (D-249-11, D-249-21, D-249-22,
   D-249-36).
@@ -492,7 +496,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Active-session screen: "Join this session" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/teams/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
-  stored. The card refreshes with the screen's 30s poll and Refresh.
+  stored. The card refreshes with the screen's 30s poll and Refresh. The poll asks
+  nothing while the tab is hidden, and reads once when it is seen again (D-252-11).
 - Records show who made them through `VisitByline` (`src/lib/teams/team-label.ts`): the author
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
@@ -539,7 +544,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   under the unit field says its key facts and leads down to it
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
-  (`showHistoryLine`, D-196-36 to D-196-38).
+  (`showHistoryLine`, D-196-36 to D-196-38). `/households/[id]` is a static shell that
+  reads its id on the client: each unit's page is built on its first request and kept
+  until the next deploy, still behind the proxy (D-252-12). `/blocks/[id]` still renders
+  per request, for `?unit=` (D-252-13).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select. A date
   input needs no height: `field` drops its native appearance, which iOS draws
   content-box past its cell (D-245-1, D-245-3).
@@ -585,12 +593,15 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
   trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
-  (D-163-8). All records also writes its filters that way: `useAddressFilters` holds a
-  pick on screen and moves the address through Next's patched `replaceState`, and only
-  the newest first page is drawn (D-245-5, D-245-6). Needs a return visit moves its block
-  and toggle the same way, so a filter change reads only the list, with no page round
-  trip (D-246-10). The records screen still writes them with `router.replace`, which
-  waits for the server (D-245-7).
+  (D-163-8). Every filter, tab and view kept in the address moves through
+  `useAddressFilters` (`src/lib/hooks/use-address-filters.ts`), never `router.replace`.
+  That covers these three screens, both follow-up lists' tabs, and Me / My team on
+  `/history` and a session's records. The hook holds a pick on screen and moves the
+  address through Next's patched `replaceState(null, …)` with no page round trip. A
+  quick second pick keeps the first, and a pick with no signal fails in place (D-245-5,
+  D-246-10, D-257-1 to D-257-3). These lists draw only their newest read (D-245-6,
+  D-246-8, D-257-7). All records' and Needs a return visit's Show more waits while any
+  read of the list is out (D-246-12, D-257-5).
 
 ## PWA and service worker
 

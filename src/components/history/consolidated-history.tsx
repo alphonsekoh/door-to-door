@@ -41,10 +41,12 @@ import { SheetPresence } from "@/components/ui/sheet";
 import { UnitNumber } from "@/components/ui/unit-number";
 
 const PAGE_SIZE = 100;
-/* An export walks the whole filtered set a page at a time. The cap stops a
-   careless filter turning into a hundred round trips; the screen says when it
-   bites, so the file is never quietly short. */
-const EXPORT_MAX_PAGES = 20;
+/* An export walks the whole filtered set a page at a time, in the largest
+   pages /history gives (#252). The cap stops a careless filter turning into a
+   hundred round trips; the screen says when it bites, so the file is never
+   quietly short. Eight pages hold the 2,000 records twenty of 100 did. */
+const EXPORT_PAGE_SIZE = 250;
+const EXPORT_MAX_PAGES = 8;
 
 const LEVELS: { value: InterestLevel; label: string }[] = [
   { value: "high", label: "High" },
@@ -77,7 +79,9 @@ export function ConsolidatedHistory() {
   const filters: HistoryFilters = { ...parseHistoryFilters(new URLSearchParams(search)), q };
 
   const [state, setState] = useState<State>({ status: "loading" });
-  const [offset, setOffset] = useState(0);
+  /* A read of the list is out. Show more waits for it: tapped while a pick's
+     first page loaded, its page went onto the old list. */
+  const [busy, setBusy] = useState(false);
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [sessions, setSessions] = useState<OutingSession[]>([]);
   const [members, setMembers] = useState<User[]>([]);
@@ -97,6 +101,7 @@ export function ConsolidatedHistory() {
 
   const load = useCallback(async (current: HistoryFilters, at: number) => {
     const mine = at === 0 ? ++generation.current : generation.current;
+    setBusy(true);
     try {
       const page = await apiFetch<HistoryList>(
         `/history?${toHistoryRequest(current, { limit: PAGE_SIZE, offset: at })}`,
@@ -114,12 +119,18 @@ export function ConsolidatedHistory() {
         status: "error",
         message: failureLine(error, "Could not load the records."),
       });
+    } finally {
+      if (mine === generation.current) setBusy(false);
     }
   }, []);
 
   /* The three pickers are a convenience; losing any of them must not take the
-     records with it. */
+     records with it. They do not change with the filters, so they are read
+     once (#252); after a failure, the next filter asks again. */
+  const pickersRead = useRef(false);
   const loadPickers = useCallback(async () => {
+    if (pickersRead.current) return;
+    pickersRead.current = true;
     const [block, session, user] = await Promise.allSettled([
       apiFetch<BlockList>("/blocks?limit=100"),
       apiFetch<SessionList>("/sessions?limit=100"),
@@ -128,6 +139,9 @@ export function ConsolidatedHistory() {
     if (block.status === "fulfilled") setBlocks(block.value.data);
     if (session.status === "fulfilled") setSessions(session.value.data);
     if (user.status === "fulfilled") setMembers(user.value);
+    if ([block, session, user].some((read) => read.status === "rejected")) {
+      pickersRead.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -135,12 +149,14 @@ export function ConsolidatedHistory() {
     /* Deferred with the loads rather than run inline: React warns that setting
        state synchronously in an effect triggers a cascading render. */
     const timer = setTimeout(() => {
-      setOffset(0);
       void load(current, 0);
       void loadPickers();
     }, 0);
     return () => {
       clearTimeout(timer);
+      /* The next pick's load waits a tick; a read for the filters just left
+         that lands in it must not be drawn (D-246-13). */
+      generation.current += 1;
     };
   }, [load, loadPickers, search]);
 
@@ -208,7 +224,7 @@ export function ConsolidatedHistory() {
       let more = true;
       while (more && page < EXPORT_MAX_PAGES) {
         const result = await apiFetch<HistoryList>(
-          `/history?${toHistoryRequest(filters, { limit: PAGE_SIZE, offset: page * PAGE_SIZE })}`,
+          `/history?${toHistoryRequest(filters, { limit: EXPORT_PAGE_SIZE, offset: collected.length })}`,
         );
         collected.push(...result.data);
         more = result.pagination.hasMore;
@@ -410,13 +426,16 @@ export function ConsolidatedHistory() {
 
           {/* Spans the row: nested in a grid cell each date input lost half
               its width and rendered as a clipped "dd/mm/". */}
+          {/* The visible label is short to fit a half-width cell; aria-label
+              keeps the full name a screen reader announced before. */}
           <div className="col-span-2 grid grid-cols-2 gap-2">
             <div>
-              <label htmlFor="history-from" className="sr-only">
-                Recorded from
+              <label htmlFor="history-from" className="mb-1 block text-body font-medium">
+                From
               </label>
               <input
                 id="history-from"
+                aria-label="Recorded from"
                 type="date"
                 value={filters.from}
                 onChange={(event) => {
@@ -426,11 +445,12 @@ export function ConsolidatedHistory() {
               />
             </div>
             <div>
-              <label htmlFor="history-to" className="sr-only">
-                Recorded to
+              <label htmlFor="history-to" className="mb-1 block text-body font-medium">
+                To
               </label>
               <input
                 id="history-to"
+                aria-label="Recorded to"
                 type="date"
                 value={filters.to}
                 onChange={(event) => {
@@ -539,17 +559,16 @@ export function ConsolidatedHistory() {
         </ul>
       )}
 
+      {/* From the rows loaded, not a count of taps: a reload after an
+          amendment or Try again starts the list again from its first page. */}
       {entries.length < total ? (
         <button
           type="button"
-          onClick={() => {
-            const next = offset + PAGE_SIZE;
-            setOffset(next);
-            void load(filters, next);
-          }}
+          disabled={busy}
+          onClick={() => void load(filters, entries.length)}
           className="min-h-12 w-full btn-secondary rounded-xl text-body font-medium"
         >
-          Show more ({entries.length} of {total})
+          {busy ? "Loading…" : `Show more (${String(entries.length)} of ${String(total)})`}
         </button>
       ) : null}
 

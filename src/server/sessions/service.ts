@@ -300,30 +300,32 @@ export async function listSessionBlocks(
   /*
    * Visits reach a block through households, so both joins are needed. Counts
    * come from one grouped query rather than a lookup per block, which would be
-   * N+1 on the member landing screen.
+   * N+1 on the member landing screen. Who recorded where is read alongside
+   * (#252).
    */
-  const rows = await db
-    .select({
-      blockId: blocks.id,
-      blockName: blocks.name,
-      blockStreet: blocks.street,
-      blockPostalCode: blocks.postalCode,
-      blockCreatedAt: blocks.createdAt,
-      visitCount: sql<number>`count(distinct ${visits.id})::int`,
-      householdCount: sql<number>`count(distinct ${visits.householdId})::int`,
-    })
-    .from(sessionBlocks)
-    .innerJoin(blocks, eq(blocks.id, sessionBlocks.blockId))
-    .leftJoin(households, eq(households.blockId, blocks.id))
-    .leftJoin(
-      visits,
-      and(eq(visits.householdId, households.id), eq(visits.sessionId, sessionBlocks.sessionId)),
-    )
-    .where(eq(sessionBlocks.sessionId, sessionId))
-    .groupBy(blocks.id, blocks.name, blocks.street, blocks.postalCode, blocks.createdAt)
-    .orderBy(blocks.name);
-
-  const members = await listBlockMembers(db, sessionId);
+  const [rows, members] = await Promise.all([
+    db
+      .select({
+        blockId: blocks.id,
+        blockName: blocks.name,
+        blockStreet: blocks.street,
+        blockPostalCode: blocks.postalCode,
+        blockCreatedAt: blocks.createdAt,
+        visitCount: sql<number>`count(distinct ${visits.id})::int`,
+        householdCount: sql<number>`count(distinct ${visits.householdId})::int`,
+      })
+      .from(sessionBlocks)
+      .innerJoin(blocks, eq(blocks.id, sessionBlocks.blockId))
+      .leftJoin(households, eq(households.blockId, blocks.id))
+      .leftJoin(
+        visits,
+        and(eq(visits.householdId, households.id), eq(visits.sessionId, sessionBlocks.sessionId)),
+      )
+      .where(eq(sessionBlocks.sessionId, sessionId))
+      .groupBy(blocks.id, blocks.name, blocks.street, blocks.postalCode, blocks.createdAt)
+      .orderBy(blocks.name),
+    listBlockMembers(db, sessionId),
+  ]);
 
   return rows.map((row) => ({
     ...row,

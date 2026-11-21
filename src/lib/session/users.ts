@@ -2,12 +2,39 @@ import type { User, UserList } from "@/generated/types.gen";
 import { accountStore } from "@/lib/session/account-state";
 import { apiFetch } from "@/lib/api-client";
 
+/* The latest answer about the member's own record in this document, or the
+   read on its way. A full page load starts afresh, and every way to another
+   account is one. */
+let latest: Promise<User> | undefined;
+
 /* Every read of the member's own record also refreshes the role the UI shows:
    the token's role is only a hint and cannot be updated from here (D-74-6). */
-export async function loadCurrentUser(): Promise<User> {
-  const user = await apiFetch<User>("/users/me");
+export function loadCurrentUser(): Promise<User> {
+  const read = apiFetch<User>("/users/me").then((user) => {
+    accountStore.noteCurrentUser(user);
+    return user;
+  });
+  latest = read;
+  /* A failed read is not one to share: the next caller asks again. */
+  read.catch(() => {
+    if (latest === read) latest = undefined;
+  });
+  return read;
+}
+
+/*
+ * The latest read, answered or still on its way, else a new one (#252). The
+ * shell's account check and Home's team card each want the record at much
+ * the same moment of a page load, and one read serves both.
+ */
+export function sharedCurrentUser(): Promise<User> {
+  return latest ?? loadCurrentUser();
+}
+
+/* What saving the member's own record answered, for the next to share. */
+export function noteSavedUser(user: User): void {
+  latest = Promise.resolve(user);
   accountStore.noteCurrentUser(user);
-  return user;
 }
 
 /*

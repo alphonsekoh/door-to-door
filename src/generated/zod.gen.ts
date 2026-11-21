@@ -630,6 +630,14 @@ export const zHouseholdAttentionList = z.object({
 export const zLimit = z.int().gte(1).lte(100).default(50);
 
 /**
+ * Rows per page. Up to 250 here, so the CSV export reads a large filtered
+ * set in few requests. Even with every description at its longest, 250
+ * records stay within a few megabytes.
+ *
+ */
+export const zHistoryLimit = z.int().gte(1).lte(250).default(50);
+
+/**
  * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
  */
 export const zOffset = z.int().gte(0).lte(10000).default(0);
@@ -1008,7 +1016,7 @@ export const zListHistoryQuery = z.object({
     religion: zReligion.optional(),
     from: z.iso.datetime().optional(),
     to: z.iso.datetime().optional(),
-    limit: z.int().gte(1).lte(100).optional().default(50),
+    limit: z.int().gte(1).lte(250).optional().default(50),
     offset: z.int().gte(0).lte(10000).optional().default(0)
 });
 

@@ -1,6 +1,6 @@
 # #245 · All records' date fields on iPhone, and its filters without a round trip
 
-- **Status:** In progress
+- **Status:** In progress (PR #254, merged to `dev`)
 - **Phase:** 7 - Hardening
 - **Depends on:** #30, #74, #163
 
@@ -70,12 +70,15 @@ schema or server change.
   arrived or failed, which extends D-88-3 to All records. _Why:_ with D-245-5 each pick
   loads at once, so on a slow line an older pick's answer could land last and draw the
   old filters' records under the new fields. The limit is under Known limits.
-- **D-245-7 · Only All records changes. `/admin/records` keeps `router.replace`**, as do
+  _Refined by D-257-5 and D-257-6:_ Show more waits for any read of the list, and asks
+  for the page after the rows loaded.
+- ~~**D-245-7 · Only All records changes. `/admin/records` keeps `router.replace`**, as do
   the follow-up list's tabs (admin and member) and the scope toggle on `/history` and a
   session's records. _Why:_ the issue is All records, and the race the verifier found was
   there. The reviewer found that `/admin/records` has the same race (see Open questions).
   The tabs and toggles each write a single value, so a quick second pick cannot drop the
-  first.
+  first.~~ Superseded by D-257-1 and D-257-2 (owner, 2026-11-21): Records and every tab
+  and toggle named here use `useAddressFilters`, because offline each left the screen.
 
 ## How existing decisions are handled
 
@@ -110,24 +113,27 @@ schema or server change.
 
 ## Known limits
 
-- **Show more tapped while a pick's first page loads can skip a page.** A further page
+- ~~**Show more tapped while a pick's first page loads can skip a page.** A further page
   takes the in-flight generation (D-245-6). If the new filter's page 2 lands before its
   page 1, it is appended to the old list. Page 1 then replaces that list while the offset
   stays at 100, so records 101 to 200 never appear and the next Show more asks for 200.
   It needs more than 100 matches, a tap mid-load and answers out of order. The reviewer
   says it was already possible before this branch. Unfixed. Either fix is small: hide
   Show more while a first page loads, or drop a further page that lands before its first
-  page.
+  page.~~ Fixed by D-257-5 and D-257-6 (owner, 2026-11-21; #257).
 - **Nothing shows a pick's list is loading.** The fields show the pick at once, but the
   list and its count stay on the old results until the answer lands. Before, the fields
   stayed stale instead.
 - **No E2E drives a pick through the real router.** Vitest mocks `next/navigation`.
   `old-search-link.spec.ts` covers the same patched `replaceState` for the `?q=` strip
-  only. The verifier drafted a 20-line spec and left it out (D-37-6).
+  only. The verifier drafted a 20-line spec and left it out (D-37-6). _Narrowed by
+  D-257-3:_ `attention-filters.spec.ts` now drives the same hook through the real router,
+  on Needs a return visit; no spec picks on All records.
 - Every pick reloads the three picker lists along with the records, as before (#252).
 - At 32px on iOS, a filled date wraps to two lines inside its cell.
-- An empty date field on iOS is a blank box, because iOS shows no placeholder and the
-  labels are screen-reader only. This was true before (see Open questions).
+- ~~An empty date field on iOS is a blank box, because iOS shows no placeholder and the
+  labels are screen-reader only. This was true before (see Open questions).~~ Fixed by
+  D-258-1 (#258): From and To are visible.
 - Chromium's calendar icon is near-black in dark mode, as before.
 - The iOS evidence comes from a simulator, not a real device. The simulator could not
   tap, so the picker opening is unchecked.
@@ -144,12 +150,8 @@ D-163-5, D-163-6, D-163-7.
 
 ## Open questions
 
-- **Visible labels for the date filters.** "Recorded from" and "Recorded to" are
+- ~~**Visible labels for the date filters.** "Recorded from" and "Recorded to" are
   `sr-only`. When both are empty, iOS shows two identical blank boxes. This was true
-  before #245.
-- **A follow-up issue for `/admin/records`.** It still writes its filters with
-  `router.replace`, so it has the same blank-until-answered field and the same dropped
-  second pick (D-245-7).
+  before #245.~~ Answered by D-258-1 and D-258-2 (#258).
 - **This PR is wider than the date pickers.** Every filter on All records changes how it
   writes the URL (D-245-5, D-245-6), so the PR body should say so.
-- **The Show more limit:** accept it, or fix it in this PR (Known limits).

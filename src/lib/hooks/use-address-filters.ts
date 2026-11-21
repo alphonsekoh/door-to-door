@@ -3,15 +3,17 @@
 import { useCallback, useState } from "react";
 
 /*
- * A screen's filters, which live in the address, shown as last chosen.
+ * A screen's filters, tab or view, which live in the address, shown as last
+ * chosen.
  *
  * A choice goes to the address through the History API, not router.replace:
  * that waited on a server round trip the page has no use for, the field
  * showing its old value until the server answered, and a second choice made
- * meanwhile was built on stale filters and dropped the first (#245). Next's
- * own replaceState tells useSearchParams a render later, so the choice is held
- * here until then. An address that changes any other way - Back, Forward, a
- * link - is taken as it comes.
+ * meanwhile was built on stale filters and dropped the first (#245). With no
+ * signal it fell back to a page load, which the worker answers with Offline.
+ * Next's own replaceState tells useSearchParams a render later, so the choice
+ * is held here until then. An address that changes any other way - Back,
+ * Forward, a link - is taken as it comes.
  *
  * `linked` is the filters the address holds, written as the screen writes
  * them, so the router reporting a choice back changes nothing.
