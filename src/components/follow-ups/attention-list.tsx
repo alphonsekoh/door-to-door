@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
 import { InterestChip } from "@/components/ui/interest-chip";
@@ -64,7 +64,6 @@ function addMode(row: HouseholdAttention): FollowUpSheetMode {
 }
 
 export function AttentionList() {
-  const router = useRouter();
   const filters = parseAttentionFilters(new URLSearchParams(useSearchParams().toString()));
   const search = toAttentionSearch(filters);
   /* Held here, never in the address (attention-filters). */
@@ -126,9 +125,16 @@ export function AttentionList() {
     );
   }, []);
 
+  /*
+   * The History API, not router.replace, which waits on a server round trip
+   * this page has no use for: the controls show the filter just left until it
+   * answers, and offline it falls back to a page load the worker answers with
+   * Offline (D-163-6). Null state, or Next's patch skips telling
+   * useSearchParams.
+   */
   function show(next: AttentionFilters): void {
     const query = toAttentionSearch(next);
-    router.replace(query === "" ? PATH : `${PATH}?${query}`);
+    window.history.replaceState(null, "", query === "" ? PATH : `${PATH}?${query}`);
   }
 
   if (state.status === "loading") {

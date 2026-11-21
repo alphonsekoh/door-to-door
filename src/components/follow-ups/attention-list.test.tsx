@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import {
   AttentionList,
   daysSince,
@@ -23,12 +23,12 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-const { replace, searchParams } = vi.hoisted(() => ({
-  replace: vi.fn(),
+/* The address as Next's router last read it; a test says when that moves.
+   No useRouter: a router navigation waits on the server (see show()). */
+const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => searchParams.value,
 }));
 
@@ -152,12 +152,14 @@ function held() {
   };
 }
 
-/* The router's replace moves the address, and the screen reads it back. */
+/* Next's patched replaceState hands the new address to useSearchParams; here
+   the test does, and the screen reads it back. */
 function follow(rerender: (ui: ReactElement) => void) {
-  const [href] = replace.mock.lastCall as [string];
-  searchParams.value = new URL(href, "https://test.local").searchParams;
+  searchParams.value = new URLSearchParams(window.location.search);
   rerender(<AttentionList />);
 }
+
+const address = () => `${window.location.pathname}${window.location.search}`;
 
 const listRequests = () =>
   apiFetch.mock.calls
@@ -176,12 +178,22 @@ async function blocksListed(): Promise<void> {
   });
 }
 
+/* What Next's router keeps in the history entry. */
+const NEXT = { __NA: true, __PRIVATE_NEXTJS_INTERNALS_TREE: { tree: "t" } };
+
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams.value = new URLSearchParams();
-  window.history.replaceState(null, "", "/admin/attention");
+  window.history.replaceState(NEXT, "", "/admin/attention");
+  replaceState = vi.spyOn(window.history, "replaceState");
   useRole.mockReturnValue({ userId: "a1", isAdmin: true });
   useOnline.mockReturnValue(true);
+});
+
+afterEach(() => {
+  replaceState.mockRestore();
 });
 
 describe("daysSince", () => {
@@ -330,9 +342,7 @@ describe("filtering by block and interest", () => {
     await blocksListed();
 
     await user.selectOptions(blockPicker(), BLOCK_B);
-    expect(replace).toHaveBeenLastCalledWith(
-      `/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`,
-    );
+    expect(address()).toBe(`/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`);
   });
 
   it("goes back to every block", async () => {
@@ -344,7 +354,7 @@ describe("filtering by block and interest", () => {
     await blocksListed();
 
     await user.selectOptions(blockPicker(), "");
-    expect(replace).toHaveBeenLastCalledWith("/admin/attention");
+    expect(address()).toBe("/admin/attention");
   });
 
   it("writes the toggle to the address and keeps the block", async () => {
@@ -357,9 +367,7 @@ describe("filtering by block and interest", () => {
     const toggle = screen.getByRole("button", { name: "Include medium interest" });
     expect(toggle).toHaveAttribute("aria-pressed", "false");
     await user.click(toggle);
-    expect(replace).toHaveBeenLastCalledWith(
-      `/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`,
-    );
+    expect(address()).toBe(`/admin/attention?blockId=${BLOCK_B}&minimumInterest=medium`);
   });
 
   it("narrows back to high interest", async () => {
@@ -370,8 +378,39 @@ describe("filtering by block and interest", () => {
     await screen.findByText(door("Blk 123, #05-123"));
 
     await user.click(screen.getByRole("button", { name: "High interest only" }));
-    expect(replace).toHaveBeenLastCalledWith("/admin/attention");
+    expect(address()).toBe("/admin/attention");
   });
+
+  it.each([
+    [
+      "a block",
+      () => userEvent.selectOptions(blockPicker(), BLOCK_B),
+      `/admin/attention?blockId=${BLOCK_B}`,
+    ],
+    [
+      "the toggle",
+      () => userEvent.click(screen.getByRole("button", { name: "Include medium interest" })),
+      "/admin/attention?minimumInterest=medium",
+    ],
+  ])(
+    "moves the address itself for %s, handing it to Next with no state",
+    async (_, change, href) => {
+      // Not router.replace, which waits on the server: the controls would show
+      // the filter just left until it answered, and offline the screen would
+      // become Offline. Given Next's own state, its patch would not tell
+      // useSearchParams.
+      serveRows([row("#05-123")]);
+      render(<AttentionList />);
+      await screen.findByText(door("Blk 123, #05-123"));
+      await blocksListed();
+      replaceState.mockClear();
+
+      await change();
+
+      expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", href);
+      expect(address()).toBe(href);
+    },
+  );
 
   it("keeps the rows and the picker's focus while the block's doors load, and reads the blocks once", async () => {
     // Swapped for "Loading…", the picker would leave the page mid-choice.
@@ -515,8 +554,8 @@ describe("searching by unit, name or contact", () => {
     // Let any deferred load run: typing must not start one.
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
     expect(apiFetch).not.toHaveBeenCalled();
-    expect(replace).not.toHaveBeenCalled();
-    expect(`${window.location.pathname}${window.location.search}`).toBe("/admin/attention");
+    expect(replaceState).not.toHaveBeenCalled();
+    expect(address()).toBe("/admin/attention");
   });
 
   it("keeps the search through a block change and searches the block's doors", async () => {
@@ -533,7 +572,7 @@ describe("searching by unit, name or contact", () => {
 
     await user.selectOptions(blockPicker(), BLOCK_A);
     // Nor is the term written along with the block.
-    expect(replace).toHaveBeenLastCalledWith(`/admin/attention?blockId=${BLOCK_A}`);
+    expect(address()).toBe(`/admin/attention?blockId=${BLOCK_A}`);
     follow(rerender);
 
     expect(await screen.findByText(door("Blk 123, #01-01"))).toBeInTheDocument();
@@ -552,10 +591,7 @@ describe("searching by unit, name or contact", () => {
     expect(await screen.findByText(door("Blk 123, #05-12"))).toBeInTheDocument();
     expect(doors()).toEqual(["#05-12"]);
     expect(searchBox()).toHaveValue("Tan");
-    expect(`${window.location.pathname}${window.location.search}`).toBe(
-      "/admin/attention?minimumInterest=medium",
-    );
-    expect(replace).not.toHaveBeenCalled();
+    expect(address()).toBe("/admin/attention?minimumInterest=medium");
     expect(listRequests()).toEqual([
       "/households/attention?limit=50&offset=0&minimumInterest=medium",
     ]);
@@ -589,7 +625,7 @@ describe("clearing the filters", () => {
     expect(searchBox()).toHaveValue("");
     expect(doors()).toEqual(["#05-12", "#07-34"]);
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
-    expect(replace).not.toHaveBeenCalled();
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("clears the block and the search, and keeps the toggle", async () => {
@@ -602,7 +638,7 @@ describe("clearing the filters", () => {
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
 
-    expect(replace).toHaveBeenLastCalledWith("/admin/attention?minimumInterest=medium");
+    expect(address()).toBe("/admin/attention?minimumInterest=medium");
     expect(searchBox()).toHaveValue("");
   });
 });
