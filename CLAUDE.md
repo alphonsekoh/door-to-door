@@ -76,10 +76,11 @@ are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/
 **[CI]** A Playwright suite (`e2e/`) runs against the production build in a real browser
 at phone viewports, on Chromium (Pixel 5) and WebKit (iPhone 13): signing in (Google
 through a local stand-in, never the real one), ending sign-ins, recording a visit online
-and offline, a session's lifecycle, a follow-up session, teams, the account screen and
-the PWA. CI runs it on every pull request into `stage` or `main`, and on one into `dev`
-or a feature branch only with the `e2e` label; once enabled, `.githooks/pre-push` runs it
-in CI's Linux container before each push that changes code, unless that tree has passed
+and offline, a session's lifecycle, a follow-up session, teams, the account screen, the
+PWA, the largest text, and the admin lists' address (an old `?q=` link, Needs a return
+visit's filters). CI runs it on every pull request into `stage` or `main`, and on one into
+`dev` or a feature branch only with the `e2e` label; once enabled, `.githooks/pre-push` runs
+it in CI's Linux container before each push that changes code, unless that tree has passed
 or `SKIP_E2E_LINUX=1` is set.
 It exists for what jsdom cannot see - layout, stacking, and client-side navigation -
 after a sheet's save button shipped underneath the bottom nav through three PRs and 1100
