@@ -2837,3 +2837,76 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-226 · Caddy's `reverse_proxy` writes `X-Forwarded-For`, `-Proto` and `-Host` itself, ignoring a client's values (read)
+
+- **Finding:** by default `reverse_proxy` passes headers through, except that it sets or
+  augments `X-Forwarded-For` and sets `X-Forwarded-Proto` and `X-Forwarded-Host`. It
+  ignores incoming values for all three unless the sender is in `trusted_proxies`. So
+  behind one Caddy with no trusted proxies, the client's address is the last
+  `X-Forwarded-For` entry the app sees, and a client cannot choose it.
+- **Source:** [Caddy, `reverse_proxy` › Headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers)
+  (caddyserver/website `reverse_proxy.md`, read through `gh api` on 2026-11-21). Not
+  measured by the docs step; the #244 builder's sign-ins through the edge worked.
+- **Used by:** D-244-7
+
+### R-227 · A toxiproxy latency toxic delays one direction only (read)
+
+- **Finding:** a `latency` toxic adds `latency` ± `jitter` to the data on one stream:
+  `downstream` (server to client) by default, or `upstream`. For a round-trip delay, put
+  one on each stream. Toxics are added and removed through the HTTP API at runtime, with
+  no restart of the proxy or its clients.
+- **Source:** [Shopify/toxiproxy README, Toxics › latency](https://github.com/Shopify/toxiproxy#latency)
+  (read through `gh api` on 2026-11-21).
+- **Used by:** D-244-10
+
+### R-228 · With `target-branch`, Dependabot's security updates take none of the entry's options, and the config is read from the default branch (read)
+
+- **Finding:** when an entry sets `target-branch`, its version updates check and target
+  that branch. Its options then no longer apply to security updates, "because security
+  updates always use the default branch". That covers groups (`applies-to:
+security-updates` included), ignores, labels, assignees and the commit-message prefix.
+  `dependabot.yml` must sit on the default branch. Its `docker-compose` updater picks
+  files by `/(docker-)?compose(-[\w]+)?(?>\.[\w-]+)?\.ya?ml/i`, which matches
+  `docker-compose.stage.yml`.
+- **Source:** github/docs `dependabot-options-reference.md` (commit 92ac1df), sections
+  `target-branch` and the shield-marked options;
+  `about-the-dependabot-yml-file.md` ("in the default branch");
+  dependabot-core `docker/lib/dependabot/docker_compose/file_fetcher.rb`
+  (`FILENAME_REGEX`, commit 2e6fcea). All read through `gh api` on 2026-11-21.
+  Security updates were off on the repository (`automated-security-fixes`: `enabled:
+false`) on that date.
+- **Used by:** D-244-3, D-244-13; the conflict with D-118-7 and D-166-11 in #244's open
+  questions
+
+### R-229 · A Vercel function's default size is 1 vCPU and 2 GB
+
+- **Finding:** Vercel's Standard function size, the default, is 1 vCPU and 2 GB of memory.
+  New projects run their functions in `iad1` (Washington, D.C.) unless a region is chosen.
+- **Source:** [Vercel, configuring memory and CPU](https://vercel.com/docs/functions/configuring-functions/memory)
+  and [Vercel, configuring regions](https://vercel.com/docs/functions/configuring-functions/region),
+  as the #244 builder and #247 read them. The docs step could not reach vercel.com, so
+  neither was re-read.
+- **Used by:** D-244-14
+
+### R-230 · The stage stack with a year of records: what the check measured (measured)
+
+- **Finding:** in one phone's requests, the latency comes from database round trips, not
+  rows.
+  - **No added delay:** API reads took 16 to 48 ms at p50, and pages 9 to 21 ms.
+  - **2 ms round trip:** API reads took 24 to 74 ms.
+  - **220 ms round trip:** every API read took at least about 700 ms. A block's units took
+    2.1 s, a unit's history 1.6 s, a save 3.0 s and a sign-in 1.7 s. Member pages that
+    read nothing stayed at 8 to 19 ms. Admin pages took 250 to 960 ms, as they read the
+    database.
+
+  The app sends API JSON uncompressed: before the edge had `encode`, every API route's
+  size as sent equalled its decoded size, and `/api/history` was 126.6 KB a page. With
+  `encode zstd gzip` it went out at 11.0 KB. One member making every round's save had 14
+  of 20 refused by the 30-a-minute limit. `/api/auth/csrf` behind the edge set a second
+  `__Host-authjs.csrf-token` cookie with a `callback-url` of `https://0.0.0.0:3000`.
+
+- **Source:** measured by the #244 builder on 2026-11-21 with `npm run stage:perf`, using
+  20 rounds (8 at 220 ms) on a freshly seeded stack. Other builds shared the machine, so
+  single milliseconds are noise. Not re-measured by the docs step.
+- **Used by:** D-244-9, D-244-23

@@ -69,9 +69,13 @@ describe("container images", () => {
       Object.values(job.services ?? {}).map((service) => service.image),
     ),
   );
-  const composeImages = Object.values(
-    Compose.parse(parse(read("docker-compose.yml"))).services,
-  ).flatMap((service) => service.image ?? []);
+  const imagesOf = (path: string) =>
+    Object.values(Compose.parse(parse(read(path))).services).flatMap(
+      (service) => service.image ?? [],
+    );
+  const composeImages = imagesOf("docker-compose.yml");
+  // The stage stack's (#244): built services have no image line, and every other is pinned.
+  const stageImages = imagesOf("docker-compose.stage.yml");
   const dockerfile = read("Dockerfile");
   const stages = new Set(Array.from(dockerfile.matchAll(/^FROM .+ AS (\S+)$/gm), ([, s]) => s));
   const baseImages = Array.from(dockerfile.matchAll(/^FROM (\S+)/gm), ([, image]) => image).filter(
@@ -79,8 +83,10 @@ describe("container images", () => {
   );
 
   it("are pinned by digest, wherever they run", () => {
-    for (const found of [ciImages, composeImages, baseImages]) expect(found).not.toEqual([]);
-    for (const image of [...ciImages, ...composeImages, ...baseImages]) {
+    for (const found of [ciImages, composeImages, stageImages, baseImages]) {
+      expect(found).not.toEqual([]);
+    }
+    for (const image of [...ciImages, ...composeImages, ...stageImages, ...baseImages]) {
       expect(image).toMatch(PINNED_IMAGE);
     }
   });
