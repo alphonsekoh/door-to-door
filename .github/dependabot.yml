@@ -1,5 +1,6 @@
-# Weekly and grouped: every pull request runs the whole CI, E2E included, and
-# Actions minutes are scarce, so a pull request per package would cost too much.
+# Monthly and grouped, and never rebased unasked: each pull request and each
+# rebase is a CI run, and Dependabot would otherwise rebase every open one
+# whenever dev moves (#248). Comment "@dependabot rebase" on one to update it.
 #
 # Every entry targets dev, like any other change: a bump merged into main would
 # reach production without passing through dev and stage. Security updates
@@ -10,7 +11,8 @@ updates:
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     # A new release waits a week before it is proposed: a hijacked publish is
     # usually caught and pulled by then. Security updates are not held back.
     cooldown:
@@ -45,7 +47,8 @@ updates:
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     groups:
@@ -63,7 +66,8 @@ updates:
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     ignore:
@@ -81,13 +85,15 @@ updates:
       include: scope
     labels: ["type:chore", "area:docker"]
 
-  # Its postgres is also CI's service image, which Dependabot cannot see:
-  # copy the new digest into ci.yml (src/supply-chain.test.ts fails until then).
+  # Its postgres is also CI's service image, which Dependabot cannot see: copy
+  # the new digest into ci.yml and e2e-label.yml (src/supply-chain.test.ts
+  # fails until then).
   - package-ecosystem: docker-compose
     directory: /
     target-branch: dev
     schedule:
-      interval: weekly
+      interval: monthly
+    rebase-strategy: disabled
     cooldown:
       default-days: 7
     ignore:

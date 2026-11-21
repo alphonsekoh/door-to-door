@@ -1,9 +1,11 @@
 name: CI
 
+# Pull requests only (#248). A merge runs nothing: the promotion's pull request
+# tested what reaches main, and Vercel deploys it. Labelling a pull request
+# runs nothing here either; e2e-label.yml answers the e2e label.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,13 +21,30 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  # Every other job needs this one, so a lint failure stops the run in about two
+  # minutes, and a draft, which skips it, runs nothing. Its skipped checks pass,
+  # but a draft cannot be merged, and marking it ready runs everything.
   static:
     name: Lint, types and format
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The test merge commit and its first parent, the base it merges into.
+          fetch-depth: 2
+
+      # Docs only: tests and the build are skipped, and report it. A skipped job
+      # satisfies a ruleset's required check where paths-ignore would leave it
+      # pending. The shell is named for pipefail: a failed diff fails the job.
+      - name: Find what this pull request changes
+        id: changes
+        shell: bash
+        run: git diff --no-renames --name-only HEAD^1 HEAD | scripts/ci-changes.sh >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -80,7 +99,10 @@ jobs:
 
   test:
     name: Tests and coverage
+    needs: static
+    if: needs.static.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # Dependabot updates docker-compose.yml's postgres but never a workflow's
     # service images, so src/supply-chain.test.ts holds these two to it.
@@ -128,9 +150,16 @@ jobs:
           path: coverage/
           retention-days: 7
 
+  # Into stage or main always: a promotion is the last check before users see
+  # a change. Elsewhere only with the e2e label, which this run reads as the
+  # pull request had it when the run began; adding it later runs e2e-label.yml.
+  # Every push runs the suite first anyway, in .githooks/pre-push.
   e2e:
     name: End-to-end smoke
+    needs: static
+    if: github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -166,10 +195,30 @@ jobs:
 
       - run: npm ci
 
+      # Each Playwright release pins its browser builds, and those are built per
+      # OS release, so both name the cache.
+      - name: Name the browsers' cache
+        id: browsers-key
+        run: |
+          . /etc/os-release
+          echo "key=playwright-$ID-$VERSION_ID-$(uname -m)-$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers-key.outputs.key }}
+
       # Only the engines the suite actually uses: Chromium for Android, WebKit
       # for every browser on iOS. Firefox is not run.
       - name: Install the browsers
+        if: steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium webkit
+
+      # The cache holds the browsers, not the system packages they need.
+      - name: Install the browsers' system packages
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
 
       - name: Flows that must never break
         run: npm run test:e2e
@@ -186,7 +235,10 @@ jobs:
 
   build:
     name: Production build
+    needs: static
+    if: needs.static.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

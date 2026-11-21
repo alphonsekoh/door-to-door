@@ -77,7 +77,9 @@ are enforced per-glob: **100%** for `src/server/**`, `src/lib/**`, `src/app/api/
 at phone viewports, on Chromium (Pixel 5) and WebKit (iPhone 13): signing in (Google
 through a local stand-in, never the real one), ending sign-ins, recording a visit online
 and offline, a session's lifecycle, a follow-up session, teams, the account screen and
-the PWA.
+the PWA. CI runs it on every pull request into `stage` or `main`, and on one into `dev`
+or a feature branch only with the `e2e` label; `.githooks/pre-push` runs it in CI's Linux
+container before each push.
 It exists for what jsdom cannot see - layout, stacking, and client-side navigation -
 after a sheet's save button shipped underneath the bottom nav through three PRs and 1100
 passing tests. Keep the suite thin; Vitest owns coverage. Add a spec only for a flow it
