@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OutingTeam } from "@/components/teams/outing-team";
 import { ApiRequestError } from "@/lib/api-client";
 import type * as ApiClientModule from "@/lib/api-client";
+import { loadCurrentUser } from "@/lib/session/users";
+import type * as UsersModule from "@/lib/session/users";
 import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
@@ -13,6 +15,13 @@ vi.mock("@/lib/api-client", async () => {
 });
 const { useOnline } = vi.hoisted(() => ({ useOnline: vi.fn() }));
 vi.mock("@/lib/hooks/use-online", () => ({ useOnline }));
+/* The read the page shares is kept for the document, which here would be
+   every test in the file: each test reads afresh unless it says otherwise. */
+const { sharedCurrentUser } = vi.hoisted(() => ({ sharedCurrentUser: vi.fn() }));
+vi.mock("@/lib/session/users", async (importOriginal) => ({
+  ...(await importOriginal<typeof UsersModule>()),
+  sharedCurrentUser,
+}));
 
 const person = (id: string, name: string | null) => ({ id, name, image: null });
 const ME = { ...person("me", "Ann Tan"), role: "member" };
@@ -37,6 +46,7 @@ let writes: ((path: string, init: RequestInit) => unknown) | undefined;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  sharedCurrentUser.mockImplementation(() => loadCurrentUser());
   useOnline.mockReturnValue(true);
   world = { me: ME, participants: [], teams: [] };
   writes = undefined;
@@ -629,6 +639,20 @@ describe("coming back online", () => {
 });
 
 describe("refreshing", () => {
+  /* The shell's account check reads the same record as the page loads. */
+  it("takes its first read of the account from the page's, and asks itself on the next (#252)", async () => {
+    sharedCurrentUser.mockResolvedValueOnce(ME);
+    const view = render(<OutingTeam sessionId="s1" tick={0} />);
+    await screen.findByRole("button", { name: "Join this session" });
+    expect(apiFetch).not.toHaveBeenCalledWith("/users/me");
+
+    view.rerender(<OutingTeam sessionId="s1" tick={1} />);
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/users/me");
+    });
+    expect(sharedCurrentUser).toHaveBeenCalledOnce();
+  });
+
   it("shows a teammate who added me when the screen re-reads", async () => {
     world.participants = [participant("me", "Ann Tan"), participant("ben", "Ben Lim")];
     const view = render(<OutingTeam sessionId="s1" tick={0} />);

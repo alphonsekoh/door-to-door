@@ -195,6 +195,24 @@ describe("FollowUpsScreen", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
+  /* The list names nobody, so it need not wait for the session (#252). */
+  it.each([
+    ["the list", "", LIST],
+    ["review", "view=review", "/follow-ups?status=suggested&limit=20&offset=0"],
+  ])("asks for %s before the session names the viewer, and once", async (_, view, path) => {
+    search.value = view;
+    useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+    apiFetch.mockResolvedValue(page([note("1")]));
+    const { rerender } = render(<FollowUpsScreen />);
+    expect(await screen.findByText("Note 1")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path);
+
+    useRole.mockReturnValue({ userId: "u1", isAdmin: false });
+    rerender(<FollowUpsScreen />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(apiFetch).toHaveBeenCalledOnce();
+  });
+
   it("says so when nothing is on the list, and who adds to it", async () => {
     apiFetch.mockResolvedValue(page([]));
     render(<FollowUpsScreen />);

@@ -6,13 +6,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
-import { accountStore } from "@/lib/session/account-state";
 import { MAX_NAME_LENGTH, checkOwnName, nameLength } from "@/lib/session/own-name";
 import { signOutAndForget } from "@/lib/session/sign-out";
 import { hasUnsyncedItems } from "@/lib/pwa/sw-update";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
-import { loadCurrentUser } from "@/lib/session/users";
+import { loadCurrentUser, noteSavedUser } from "@/lib/session/users";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 
@@ -88,7 +87,7 @@ export function AccountScreen() {
         method: "PATCH",
         body: JSON.stringify({ name: checked.name }),
       });
-      accountStore.noteCurrentUser(updated);
+      noteSavedUser(updated);
       setUser(updated);
       setName(updated.name ?? "");
       setSaved(true);

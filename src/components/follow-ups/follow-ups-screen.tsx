@@ -40,15 +40,21 @@ const EMPTY: Record<FollowUpView, { title: string; detail: string | null }> = {
   },
 };
 
-/* What each view asks the server for; Mine needs the viewer's id. */
-function queryFor(view: FollowUpView, userId: string): URLSearchParams {
+/*
+ * What each view asks the server for. Only Mine needs the viewer's id, so
+ * only Mine waits for the session to name them; the others ask at once
+ * (#252). Null until Mine can ask.
+ */
+function queryFor(view: FollowUpView, userId: string | undefined): string | null {
   switch (view) {
     case "list":
-      return new URLSearchParams({ status: "listed", outstanding: "true" });
+      return new URLSearchParams({ status: "listed", outstanding: "true" }).toString();
     case "review":
-      return new URLSearchParams({ status: "suggested" });
+      return new URLSearchParams({ status: "suggested" }).toString();
     case "mine":
-      return new URLSearchParams({ authorId: userId, outstanding: "true" });
+      return userId === undefined
+        ? null
+        : new URLSearchParams({ authorId: userId, outstanding: "true" }).toString();
   }
 }
 
@@ -66,6 +72,9 @@ export function FollowUpsScreen() {
   const router = useRouter();
   const view = parseFollowUpView(new URLSearchParams(useSearchParams().toString()));
   const { userId } = useRole();
+  /* A string, so the session answering does not ask again for a view that
+     never needed it. */
+  const query = queryFor(view, userId);
   const active = useActiveSession();
   const [now] = useState(() => new Date());
   const [state, setState] = useState<State>({ status: "loading" });
@@ -76,9 +85,9 @@ export function FollowUpsScreen() {
 
   const load = useCallback(
     async (offset: number) => {
-      if (userId === undefined) return;
+      if (query === null) return;
       const mine = ++generation.current;
-      const params = queryFor(view, userId);
+      const params = new URLSearchParams(query);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
       try {
@@ -96,7 +105,7 @@ export function FollowUpsScreen() {
         if (mine === generation.current) setState({ status: "error" });
       }
     },
-    [view, userId],
+    [query],
   );
 
   useEffect(() => {
