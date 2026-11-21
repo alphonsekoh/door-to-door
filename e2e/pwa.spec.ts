@@ -566,6 +566,8 @@ test.describe("phone layout", () => {
     for (const label of ["Recorded from", "Recorded to"]) {
       const date = adminPage.getByLabel(label);
       await expect(date, label).toHaveCSS("appearance", "none");
+      const text = label === "Recorded from" ? "From" : "To";
+      await expect(adminPage.locator("main").getByText(text, { exact: true }), label).toBeVisible();
       expect((await date.boundingBox())?.height ?? 0, label).toBeGreaterThanOrEqual(44);
     }
     await endActiveSession(adminApi);
