@@ -418,7 +418,7 @@ describe("AdminRecords", () => {
 
   it("clears back to a bare URL", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("interestLevel=high");
+    openAt("/admin/records?interestLevel=high");
     serve([entry("#05-123")]);
     render(<AdminRecords />);
     await screen.findByText("#05-123");
@@ -430,7 +430,7 @@ describe("AdminRecords", () => {
 
   it("goes back to a bare URL when the only filter is set back to Any", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("blockId=b1");
+    openAt("/admin/records?blockId=b1");
     serve([entry("#05-123")]);
     render(<AdminRecords />);
     await screen.findByText("#05-123");
@@ -491,7 +491,7 @@ describe("AdminRecords", () => {
 
   it("clears the search along with the filters", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("interestLevel=low");
+    openAt("/admin/records?interestLevel=low");
     serve([entry("#05-123"), entry("#05-124")]);
     render(<AdminRecords />);
     await screen.findByText("#05-123");
@@ -1021,7 +1021,7 @@ describe("AdminRecords", () => {
       // A real-looking id from an earlier outing would filter to nothing while
       // the picker said "Any team".
       const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
-      searchParams.value = new URLSearchParams(`${rest}teamId=${other}`);
+      openAt(`/admin/records?${rest}teamId=${other}`);
       serve([]);
       render(<AdminRecords />);
 

@@ -393,6 +393,54 @@ describe("ConsolidatedHistory", () => {
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
   });
 
+  /* Enabled again by the overtaken read, Show more sat under the old list and
+     asked the new filters for the page after it: after 200 old rows, records
+     101 to 200 of the new ones never appeared (#257). */
+  it.each([
+    ["a Show more page", "any@1"],
+    ["an older pick's first page", "buddhist@0"],
+  ])("keeps Show more waiting when %s lands while a newer pick loads", async (_, overtaken) => {
+    const user = userEvent.setup();
+    const held = holdHistory((path) => {
+      const query = new URLSearchParams(path.split("?")[1]);
+      return `${query.get("religion") ?? "any"}@${query.get("offset") ?? ""}`;
+    });
+    const asked = () =>
+      apiFetch.mock.calls
+        .map(([path]) => new URLSearchParams(String(path).split("?")[1]))
+        .filter((query) => query.get("religion") === "hindu")
+        .map((query) => query.get("offset"));
+    render(<ConsolidatedHistory />);
+    await held.answer("any@0", list([entry("h1")], 3));
+    await card("Blk 123, #05-123");
+
+    const religion = screen.getByLabelText("Filter by religion");
+    if (overtaken === "any@1") {
+      await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    } else {
+      await user.selectOptions(religion, "buddhist");
+    }
+    const late = await held.waiting(overtaken);
+    await user.selectOptions(religion, "hindu");
+    await held.waiting("hindu@0");
+    await act(async () => {
+      late.resolve(list([entry("h9", { unitNumber: "#05-129" })], 3));
+      await Promise.resolve();
+    });
+
+    const waiting = screen.getByRole("button", { name: "Loading…" });
+    expect(waiting).toBeDisabled();
+    await user.click(waiting);
+    expect(asked()).toEqual(["0"]);
+
+    await held.answer(
+      "hindu@0",
+      list([entry("h2", { unitNumber: "#05-124" }), entry("h3", { unitNumber: "#05-125" })], 3),
+    );
+    await user.click(await screen.findByRole("button", { name: "Show more (2 of 3)" }));
+    expect(asked()).toEqual(["0", "2"]);
+  });
+
   /* Tapped while a pick's first page loaded, Show more's page went onto the
      old list, and the first page then replaced it while the count of pages
      moved on: records 101 to 200 never appeared (#257). Each request runs on

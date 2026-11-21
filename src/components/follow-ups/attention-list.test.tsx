@@ -541,6 +541,52 @@ describe("filtering by block and interest", () => {
     expect(doors()).toEqual(["#07-07"]);
     expect(screen.queryByRole("button", { name: /Show more/ })).not.toBeInTheDocument();
   });
+
+  /* Enabled again by the overtaken read, Show more sat under the old doors and
+     asked the new block for the page after them, skipping its first ones. */
+  it.each([
+    ["a Show more page", "more"],
+    ["an older pick's first page", "pick"],
+  ])("keeps Show more waiting when %s lands while a newer pick loads", async (_, overtaken) => {
+    const user = userEvent.setup();
+    const late = held();
+    const blockB = held();
+    serve((query) => {
+      if (query.get("blockId") === BLOCK_B) {
+        return query.get("offset") === "0" ? blockB.promise : page([row("#07-09")], 3);
+      }
+      if (query.get("blockId") === BLOCK_A || query.get("offset") !== "0") return late.promise;
+      return page([row("#01-01")], 3);
+    });
+    render(<AttentionList />);
+    await screen.findByText(door("Blk 123, #01-01"));
+    await blocksListed();
+
+    if (overtaken === "more") {
+      await user.click(screen.getByRole("button", { name: "Show more (1 of 3)" }));
+    } else {
+      await user.selectOptions(blockPicker(), BLOCK_A);
+    }
+    await waitFor(() => {
+      expect(listRequests()).toHaveLength(2);
+    });
+    await user.selectOptions(blockPicker(), BLOCK_B);
+    await waitFor(() => {
+      expect(listRequests()).toHaveLength(3);
+    });
+    await late.answer(page([row("#09-09")], 3));
+
+    const waiting = screen.getByRole("button", { name: "Loading…" });
+    expect(waiting).toBeDisabled();
+    await user.click(waiting);
+    expect(listRequests()).toHaveLength(3);
+
+    await blockB.answer(page([row("#07-07"), row("#07-08")], 3));
+    await user.click(await screen.findByRole("button", { name: "Show more (2 of 3)" }));
+    expect(listRequests().at(-1)).toBe(
+      `/households/attention?limit=50&offset=2&blockId=${BLOCK_B}`,
+    );
+  });
 });
 
 describe("searching by unit, name or contact", () => {

@@ -337,6 +337,7 @@ describe("Me or My team", () => {
 
   it("goes back to Me from the team view", async () => {
     const user = userEvent.setup();
+    window.history.replaceState(null, "", "/history/s1?view=team");
     searchParams.value = new URLSearchParams("view=team");
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
