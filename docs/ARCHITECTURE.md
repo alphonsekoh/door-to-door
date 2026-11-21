@@ -730,7 +730,9 @@ CSP violation (D-122-8).
   runs into `stage` or `main`, or with the `e2e` label (`scripts/ci-e2e.sh`, D-248-6).
   `.github/workflows/e2e-catch-up.yml` runs it when that label or base arrives later
   (D-248-8). A skipped job passes a required check, so only a job that runs reports
-  "End-to-end smoke" after a run begins (D-248-9). The token can only read the
+  "End-to-end smoke" after a run begins (D-248-9), a draft's lint job is named "Lint,
+  types and format (draft, not run)" (D-248-18), and a required check is skipped only
+  under a fixed name (D-248-19). The token can only read the
   repository and, in `ci.yml`, its pull requests, and checkout leaves it nowhere on disk
   (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
   `src/supply-chain.test.ts` refuses a new line that is not (D-131-3, D-131-4).

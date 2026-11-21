@@ -1,6 +1,7 @@
 # #248 · CI: run only where it can catch something
 
-- **Status:** In progress (branch `chore/248-ci-runs`, stacked on `chore/244-stage-stack`, not yet a PR)
+- **Status:** In progress (PR #260 into `dev`, retargeted from `chore/244-stage-stack`
+  once #253 merged; the owner's rulings D-248-21 and D-248-22 land in fix round 2)
 - **Phase:** none (no milestone)
 - **Depends on:** #6, #37, #131, #201, #244
 
@@ -20,11 +21,13 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   (owner).** `ci.yml` triggers on `opened`, `synchronize`, `reopened` and
   `ready_for_review`. _Why:_ the `stage` → `main` promotion PR already tested the same
   tree, and Vercel deploys `main`. Changes #6's task line ("every PR and push to
-  `main`"). _Research:_ R-240.
+  `main`"). _Research:_ R-240. _Refined by D-248-21 (owner):_ a push to `dev` runs a
+  workflow that only warms caches and reports no required check.
 - **D-248-2 · A draft runs no job, and marking it ready runs CI once (owner).** The lint
   job skips while `draft` is true, and every other job needs it. _Why:_ PRs take review
-  fixes as drafts. _Trade-off:_ the draft's skipped checks pass, and only the draft
-  state stops a merge (Open question 4).
+  fixes as drafts. ~~_Trade-off:_ the draft's skipped checks pass, and only the draft
+  state stops a merge (Open question 4).~~ _Trade-off superseded by D-248-18:_ a draft's
+  lint check is not a required one; what is left is in Known limits.
 - **D-248-3 · The lint job runs first, and the others need it (owner).** _Why:_ a lint,
   type or format failure stops the run in about two minutes. _Trade-off:_ a green run
   takes about two minutes longer.
@@ -72,7 +75,7 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   lint, so its skip would come about two minutes in. That skip would outrank an E2E run
   started by a label in the meantime (review r0). With a fixed name, the required check
   never depends on how GitHub names a skipped job whose name is an expression.
-  _Research:_ R-238.
+  _Research:_ R-238, R-250.
 - **D-248-10 · The lint job reads the PR's base and labels from the API, as they are
   now.** Its first step calls `gh api …/pulls/<n>` before checkout and `npm ci`. Only
   that step's environment holds the token. `ci.yml` gains `pull-requests: read`. _Why:_
@@ -96,7 +99,8 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   `playwright-core`'s version. On a hit, only `playwright install-deps` runs, for the
   system packages. _Why:_ the issue estimated a minute saved per run. _Trade-off:_
   Playwright advises against it, because a restore takes about as long as a download
-  (R-243). With no push runs, a PR's first run finds no cache (R-241, Open question 3).
+  (R-243). With no push runs, a PR's first run finds no cache (R-241); D-248-21 (owner)
+  answers that.
 - **D-248-14 · Dependabot runs monthly with `rebase-strategy: disabled`, and keeps
   `target-branch: dev` (owner).** Comment `@dependabot rebase` on a PR to update it.
   _Why:_ each rebase is a CI run, and Dependabot rebases every open PR whenever `dev`
@@ -105,11 +109,12 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   waits for a promotion (as D-244-3). Security updates take none of these options
   (D-244-29), so they are still rebased. D-131's image cooldown gets one try a month
   instead of four. _Research:_ R-242, R-228.
-- **D-248-15 · Every Dependabot entry adds the `e2e` label (builder; for the owner,
-  Open question 1).** _Why:_ Dependabot's commits never pass `.githooks/pre-push`, so a
-  bump into `dev` would get no E2E before promotion. A commit made on GitHub (a web edit,
-  **Update branch**) has the same gap. README asks for the label by hand there, and on a
-  retargeted security update, which arrives with no labels (D-244-29). _Trade-off:_ each
+- **D-248-15 · Every Dependabot entry adds the `e2e` label (builder; kept by the owner,
+  2026-11-21).** _Why:_ Dependabot's commits never pass `.githooks/pre-push`, so a
+  bump into `dev` would get no E2E before promotion, and a bump can break the running
+  app. A commit made on GitHub (a web edit, **Update branch**) has the same gap. README
+  asks for the label by hand there, and on a retargeted security update, which arrives
+  with no labels (D-244-29). _Trade-off:_ each
   Dependabot PR still runs the full CI, as D-118-7 and D-131-5 assumed. Its label lands
   seconds after it opens, so E2E usually runs twice on its first commit, once in each
   workflow. _Research:_ R-242.
@@ -119,9 +124,53 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   scripts, and the expression syntax. It throws on anything else. _Why:_ Vitest cannot
   run GitHub, and a new construct should fail a test rather than be misread.
   _Trade-off:_ the model holds R-238 to R-240 as they were read. Only GitHub can prove
-  the real behaviour, after the push (the PR body lists the checks).
+  the real behaviour, after the push (the PR body lists the checks). _Extended by
+  D-248-20._
 - **D-248-17 · CLAUDE.md's Playwright rule and README's CI section describe the triggers
   (owner).** No other CLAUDE.md rule changed. _Why:_ the issue's acceptance asks for it.
+
+### Drafts and check names (review r2)
+
+- **D-248-18 · On a draft's first attempt, the lint job takes a name no ruleset
+  requires,** "Lint, types and format (draft, not run)". A re-run takes the required
+  name, as it runs lint (D-248-11). _Why:_ a skip passes a required check (R-238). Under
+  the required name, a draft's run passed Lint with nothing run, so a PR could merge on
+  four skips until the ready run's lint check appeared, or after a draft's run that began
+  later cancelled the ready one (review r2). A skipped job's name expression shows as
+  written (R-250), which no ruleset requires either. Supersedes D-248-2's trade-off.
+  _Research:_ R-238, R-250.
+- **D-248-19 · A required check is skipped only under a fixed name.** Tests, the build
+  and the E2E placeholder keep fixed names, and `src/ci-runs.test.ts` fails if any
+  required check is skipped under an expression name. _Why:_ a docs-only or not-due run
+  must pass those checks with skips (D-248-4, D-248-9), and a skipped expression name
+  shows as written (R-250), so the check would stay pending. _Trade-off:_ a draft's run
+  skips those three under their required names (Known limits). _Research:_ R-250.
+- **D-248-20 · The model plays runs over time and cancels in progress.** `play()` starts
+  each event's runs at a moment; a later run in the same concurrency group cancels a job
+  still running, and the jobs that need it skip. A group without `cancel-in-progress`
+  fails the parse. Extends D-248-16. _Why:_ the draft races depend on order, which one
+  run at a time cannot show. _Trade-off:_ every job that runs takes one equal length, so
+  it tests orderings, not durations. It evaluates a skipped job's name, unlike GitHub;
+  D-248-19's test covers that.
+
+### The owner's rulings for fix round 2
+
+Recorded from the owner's comment on #248 (2026-11-21). Not on the branch at `ebb62ad`.
+
+- **D-248-21 · A workflow on push to `dev` warms the shared caches (owner).** npm,
+  `.next` and Playwright's browsers, in `dev`'s scope, which every PR into `dev` can
+  restore (R-241). Its job names match none of the four required checks; it has no
+  secrets and read permissions only. Refines D-248-1; answers Open question 3. _Why:_
+  with no post-merge run, each PR's caches are its own, so every first run starts cold.
+  _Note:_ the model refuses a push trigger (D-248-16), so the round must extend it or
+  keep this workflow out of it. _Research:_ R-241.
+- **D-248-22 · The agent prompts follow the new CI (owner).** `.claude/agents/reviewer.md`
+  stops saying CI enforces E2E on every PR: CI runs it into `stage` or `main` or with the
+  `e2e` label, and the pre-push hook runs it locally. `.claude/agents/builder.md` step 8
+  opens a draft, pushes later commits to it, and marks it ready once (`gh pr ready`) after
+  the last push's run has appeared. Answers Open question 2; keeps D-244-28. _Why:_
+  D-248-2 saves nothing while agents open ready PRs, and waiting for the push's run
+  avoids the first draft limit below.
 
 ## How existing decisions are handled
 
@@ -134,6 +183,8 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
 | D-131-2                              | Kept: the one `gh` call comes before checkout                                                    | D-248-10      |
 | D-131-6                              | Extended: `e2e-catch-up.yml`'s postgres too. `supply-chain.test.ts` reads every workflow         | D-248-8       |
 | D-201-6, #201's "Keep CI's E2E job?" | "CI still runs the suite" superseded, and the question answered (owner). The gate is unchanged   | D-248-6       |
+| D-244-2                              | Relied on: no required check is named for a draft's lint or the cache workflow's jobs            | D-248-18, 21  |
+| D-244-28                             | Kept: `builder.md` keeps the branch flow; step 8 opens a draft (owner, round 2)                  | D-248-22      |
 | D-244-29                             | Kept: `dependabot.yml` says security updates take none of an entry's options                     | D-248-14, 15  |
 | D-244-30                             | Relied on: `main` requires the four checks, so E2E into `main` counts there                      | D-248-6       |
 
@@ -145,31 +196,34 @@ on ready PRs, with lint first, the suite only for code, and E2E only into `stage
   reads it runs E2E in both workflows.
 - **A conflicting PR runs nothing** (R-240). With rebases off, a conflicting Dependabot
   PR shows no checks until `@dependabot rebase`.
-- **Cold caches.** npm's cache, `.next/cache` and the browsers are now kept per PR
-  (Open question 3).
-- **Unproven on GitHub until the push.** Until then, only the model (D-248-16) supports
-  any of this.
+- **Cold caches.** npm's cache, `.next/cache` and the browsers are kept per PR until
+  D-248-21 lands.
+- **A draft's run that GitHub starts after the ready run cancels it.** If the ready
+  run's lint has finished, the draft's skips pass tests, the build and E2E under their
+  required names (D-248-19), and the PR can merge untested. If lint is still running,
+  Lint is left cancelled until a re-run, which blocks the merge. README's rule: mark a
+  draft ready only once the run for its last push appears
+  (`gh run list --commit <sha> --workflow CI`), and D-248-22 makes `builder.md` wait for
+  it. `src/ci-runs.test.ts` pins both cases (Open question 5).
+- **Reopening a PR as a draft** does the same over its last ready run's checks, until it
+  is marked ready and the new run's checks appear (Open question 5).
+- **Partly shown on GitHub.** #260's runs on `24406e6` (44908665916, 44908763351) match
+  the model for a ready PR opened into a feature branch, then retargeted to `dev`
+  (R-250). The rest of the PR body's checks, and D-248-18 itself, are still owed.
 
 ## Relies on
 
 D-06-2, D-131-1, D-131-2, D-131-3, D-131-4, D-131-6, D-201-1, D-201-6, D-201-7, D-244-1,
-D-244-3, D-244-29, D-244-30.
+D-244-2, D-244-3, D-244-28, D-244-29, D-244-30.
 
 ## Open questions
 
-1. **Dependabot's `e2e` label (D-248-15)** is the builder's choice, outside the "Decided"
-   list. Should Dependabot PRs keep it, or skip E2E into `dev` until promotion?
-2. **Agent prompts are stale.** `.claude/agents/builder.md` step 8 opens a ready PR, so
-   D-248-2 saves agents nothing until it opens a draft and marks it ready at the end, as
-   the issue expects. `.claude/agents/reviewer.md:9` says CI already enforces the E2E
-   suite, which now holds only into `stage` or `main`, or with the label. Changing
-   either needs the owner (the D-244-28 precedent).
-3. **Caches.** Only PR runs write caches now, and each is scoped to its own PR (R-241), so
-   every PR's first run starts cold. A workflow on push to `dev` would warm `dev`'s cache
-   for every PR into it, but it brings back a push run.
-4. **Review r2's should-fix, not fixed on this branch at `9b387df`.** A draft's run
-   reports the required **Lint, types and format** check skipped. After a PR is marked
-   ready, it can be merged on those skips until the ready run's checks appear. A draft's
-   run that starts after the ready run also cancels it, through the concurrency group.
-   The reviewer proposed a name no ruleset requires for lint in a draft. Record the fix
-   here once it is made.
+1. ~~**Dependabot's `e2e` label (D-248-15)**~~ Answered (owner): kept.
+2. ~~**Agent prompts are stale.**~~ Answered by D-248-22 (owner).
+3. ~~**Caches.**~~ Answered by D-248-21 (owner).
+4. ~~**Review r2's should-fix, not fixed on this branch at `9b387df`.**~~ Fixed by
+   D-248-18 (`46384fe`); what remains is Open question 5.
+5. **Accept the two draft limits?** A draft's run that GitHub starts after the ready
+   run's lint, and a reopen as a draft, still pass tests, the build and E2E with skips
+   (Known limits). The branch relies on README's rule and D-248-22 rather than the YAML.
+   Accept them as known limits, or ask for a fix in the workflow?

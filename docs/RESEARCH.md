@@ -3020,7 +3020,7 @@ false`) on that date.
   each pull request's first run finds none.
 - **Source:** github/docs `dependency-caching.md` (commit 6d84733), "Restrictions for
   accessing a cache". Read through `gh api` on 2026-11-21.
-- **Used by:** D-248-13; #248's Open question 3
+- **Used by:** D-248-13, D-248-21
 
 ### R-242 · Dependabot's `rebase-strategy`, monthly schedule and labels (read)
 
@@ -3045,3 +3045,16 @@ false`) on that date.
   ([Playwright, CI](https://playwright.dev/docs/ci#caching-browsers)). Read through
   `gh api` on 2026-11-21.
 - **Used by:** D-248-13
+
+### R-250 · A skipped job's name expression shows as written (measured)
+
+- **Finding:** when a job whose `name:` is an expression is skipped, its check run is
+  named by the expression's text, the inside of `${{ }}`, not its value. A fixed name
+  shows as is. So a skipped job with an expression name never reports, or passes, a
+  required check. The same runs show CI's placeholder skip at the run's start and its
+  E2E job's skip after lint, about two minutes later. No docs page read states the
+  naming either way, and an expression name on a job that runs was not seen here.
+- **Source:** #260's runs on `24406e6`: CI 44908665916 (its `e2e` job) and E2E catch-up
+  44908763351 (its one job, on the retarget to `dev`), through `gh run view --json jobs`
+  and `gh api …/commits/<sha>/check-runs` on 2026-11-21.
+- **Used by:** D-248-9, D-248-18, D-248-19, D-248-20
