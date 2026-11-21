@@ -7,7 +7,7 @@ import { z } from "zod";
 /*
  * What GitHub Actions decides for a pull request event, read from the
  * workflows themselves (#248): which workflows run, which jobs run or skip,
- * and the check name each reports. Only what .github/workflows uses is
+ * the check name each reports, and when. Only what .github/workflows uses is
  * modelled: pull_request triggers, needs, a job's if, name and outputs, and
  * the expression syntax below. Anything else throws, so a new construct fails
  * a test instead of being misread.
@@ -175,7 +175,7 @@ const Job = z.object({
 const Workflow = z.object({
   name: z.string(),
   on: z.strictObject({ pull_request: z.strictObject({ types: z.array(z.string()) }) }),
-  concurrency: z.object({ group: z.string() }),
+  concurrency: z.object({ group: z.string() }).optional(),
   jobs: z.record(z.string(), Job),
 });
 type Workflow = z.infer<typeof Workflow>;
@@ -185,8 +185,10 @@ export const WORKFLOW_FILES = readdirSync(".github/workflows").map((name) =>
   join(".github/workflows", name),
 );
 
+// Read once: the tests play hundreds of events through the same files.
+let parsed: Workflow[] | undefined;
 const workflows = (): Workflow[] =>
-  WORKFLOW_FILES.map((path) => Workflow.parse(parse(readFileSync(path, "utf8"))));
+  (parsed ??= WORKFLOW_FILES.map((path) => Workflow.parse(parse(readFileSync(path, "utf8")))));
 
 export type PullRequest = {
   draft: boolean;
@@ -195,21 +197,38 @@ export type PullRequest = {
   /** What `git diff HEAD^1 HEAD` lists on the test merge commit. */
   changed: readonly string[];
 };
-export type PullRequestEvent = { action: string; label?: string; pullRequest: PullRequest };
-export type Check = { job: string; name: string; result: "success" | "failure" | "skipped" };
-export type Run = { workflow: string; concurrency: string; checks: Check[] };
+export type PullRequestEvent = {
+  action: string;
+  label?: string;
+  /** An edited event's base before it, when the edit retargeted the pull request. */
+  previousBase?: string;
+  pullRequest: PullRequest;
+};
+/**
+ * `stage` is when GitHub creates the check: 0 as the run begins, and a job
+ * that needs others only once they have finished, one stage after the last.
+ */
+export type Check = {
+  job: string;
+  name: string;
+  result: "success" | "failure" | "skipped";
+  stage: number;
+};
+export type Run = { workflow: string; concurrency: string | null; checks: Check[] };
 
-// The one step the model runs: the docs filter, fed the changed paths.
+// The one step the model runs: the docs filter, fed the changed paths, once per list.
+const changesPrinted = new Map<string, string>();
 function stepOutputs(job: Job, pullRequest: PullRequest): Context {
   const steps: Record<string, Value> = {};
   for (const step of job.steps) {
     if (step.id === undefined) continue;
     const outputs: Record<string, string> = {};
     if (step.run?.includes("scripts/ci-changes.sh")) {
-      const printed = execFileSync("bash", ["scripts/ci-changes.sh"], {
-        input: pullRequest.changed.join("\n"),
-        encoding: "utf8",
-      });
+      const input = pullRequest.changed.join("\n");
+      const printed =
+        changesPrinted.get(input) ??
+        execFileSync("bash", ["scripts/ci-changes.sh"], { input, encoding: "utf8" });
+      changesPrinted.set(input, printed);
       for (const line of printed.trim().split("\n")) {
         const [key = "", ...rest] = line.split("=");
         outputs[key] = rest.join("=");
@@ -229,10 +248,14 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
     event: {
       action: event.action,
       label: event.label === undefined ? null : { name: event.label },
+      changes:
+        event.previousBase === undefined ? {} : { base: { ref: { from: event.previousBase } } },
       pull_request: { draft, base: { ref: base }, labels: labels.map((name) => ({ name })) },
     },
   };
+  // What the needs context holds of a finished job, and apart, the stage of its check.
   const done = new Map<string, { result: Check["result"]; outputs: Record<string, string> }>();
+  const stages = new Map<string, number>();
   const checks: Check[] = [];
   const pending = Object.entries(workflow.jobs);
   while (pending.length > 0) {
@@ -256,12 +279,17 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
         outputs[key] = interpolate(text, { ...steps, github });
       }
     }
+    const stage = Math.max(-1, ...needsOf(job).map((need) => stages.get(need) ?? 0)) + 1;
     done.set(id, { result, outputs });
-    checks.push({ job: id, name: interpolate(job.name, context), result });
+    stages.set(id, stage);
+    checks.push({ job: id, name: interpolate(job.name, context), result, stage });
   }
   return {
     workflow: workflow.name,
-    concurrency: interpolate(workflow.concurrency.group, { github }),
+    concurrency:
+      workflow.concurrency === undefined
+        ? null
+        : interpolate(workflow.concurrency.group, { github }),
     checks,
   };
 }

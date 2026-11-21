@@ -2,9 +2,13 @@
 # rebase is a CI run, and Dependabot would otherwise rebase every open one
 # whenever dev moves (#248). Comment "@dependabot rebase" on one to update it.
 #
+# Each carries the e2e label, so CI runs E2E on it into dev: its commits never
+# pass through .githooks/pre-push, where a push from a clone runs E2E first.
+#
 # Every entry targets dev, like any other change: a bump merged into main would
 # reach production without passing through dev and stage. Security updates
 # ignore target-branch and still open against main; retarget those to dev.
+# They take none of an entry's options, its labels included, so label one e2e.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -41,7 +45,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:setup"]
+    labels: ["type:chore", "area:setup", "e2e"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -57,7 +61,7 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:ci"]
+    labels: ["type:chore", "area:ci", "e2e"]
 
   # Images are pinned by digest, and these keep the digests current. A new
   # major waits for the owner: node moves with CI's NODE_VERSION, and postgres
@@ -83,10 +87,10 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:docker"]
+    labels: ["type:chore", "area:docker", "e2e"]
 
   # Its postgres is also CI's service image, which Dependabot cannot see: copy
-  # the new digest into ci.yml and e2e-label.yml (src/supply-chain.test.ts
+  # the new digest into ci.yml and e2e-catch-up.yml (src/supply-chain.test.ts
   # fails until then).
   - package-ecosystem: docker-compose
     directory: /
@@ -105,4 +109,4 @@ updates:
     commit-message:
       prefix: chore
       include: scope
-    labels: ["type:chore", "area:docker"]
+    labels: ["type:chore", "area:docker", "e2e"]

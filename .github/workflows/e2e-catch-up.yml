@@ -1,22 +1,23 @@
-name: E2E on label
+name: E2E catch-up
 
-# Adding the e2e label runs CI's E2E job now, not at the pull request's next
-# push (#248). It is apart from ci.yml so that labelling never touches the
-# other checks: a run there would cancel CI's run in progress, and skip jobs.
+# Runs CI's E2E job when a pull request becomes due one after CI's run began
+# (#248): the e2e label is added, or it is retargeted to stage or main. CI
+# reads its labels and base from the event that started it, and editing a
+# pull request does not start it. It is apart from ci.yml so that neither
+# event touches the other checks: a run there would cancel CI's run in
+# progress, and skip jobs.
 #
-# A skipped job reports success to a ruleset, and the latest check of a name
+# A skipped job reports success to a ruleset, and the newest check of a name
 # is the one that counts. So this job takes the required name, End-to-end
-# smoke, only when it runs: then its result counts like CI's. Any other label,
-# or a draft, gets a name no ruleset requires and replaces nothing.
+# smoke, only when it runs: then its result counts like CI's. Any other label
+# or edit, or a draft, gets a name no ruleset requires and replaces nothing.
 on:
   pull_request:
-    types: [labeled]
+    types: [labeled, edited]
 
-# Apart from ci.yml's group, so labelling cancels nothing there, and by label,
-# so another label cannot cancel this run.
-concurrency:
-  group: e2e-label-${{ github.ref }}-${{ github.event.label.name }}
-  cancel-in-progress: true
+# No concurrency group. A title edit must not cancel a retarget's E2E run, as
+# both are edited events and a cancelled check would block the merge; two E2E
+# runs at once are rare, and the newer one counts.
 
 permissions:
   contents: read
@@ -28,8 +29,8 @@ jobs:
   # Everything below `if:` is ci.yml's e2e job, and src/ci-runs.test.ts holds
   # the two equal.
   e2e:
-    name: ${{ github.event.label.name == 'e2e' && !github.event.pull_request.draft && 'End-to-end smoke' || 'No end-to-end run' }}
-    if: github.event.label.name == 'e2e' && !github.event.pull_request.draft
+    name: ${{ !github.event.pull_request.draft && (github.event.action == 'labeled' && github.event.label.name == 'e2e' || github.event.action == 'edited' && github.event.changes.base && (github.base_ref == 'stage' || github.base_ref == 'main')) && 'End-to-end smoke' || 'No end-to-end run' }}
+    if: ${{ !github.event.pull_request.draft && (github.event.action == 'labeled' && github.event.label.name == 'e2e' || github.event.action == 'edited' && github.event.changes.base && (github.base_ref == 'stage' || github.base_ref == 'main')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

@@ -1,8 +1,8 @@
 name: CI
 
 # Pull requests only (#248). A merge runs nothing: the promotion's pull request
-# tested what reaches main, and Vercel deploys it. Labelling a pull request
-# runs nothing here either; e2e-label.yml answers the e2e label.
+# tested what reaches main, and Vercel deploys it. Labelling or retargeting a
+# pull request runs nothing here either; e2e-catch-up.yml answers those.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -21,9 +21,10 @@ env:
   NODE_VERSION: "24"
 
 jobs:
-  # Every other job needs this one, so a lint failure stops the run in about two
-  # minutes, and a draft, which skips it, runs nothing. Its skipped checks pass,
-  # but a draft cannot be merged, and marking it ready runs everything.
+  # Every other job that can run needs this one, so a lint failure stops the run
+  # in about two minutes, and a draft, which skips it, runs nothing. Its skipped
+  # checks pass, but a draft cannot be merged, and marking it ready runs
+  # everything.
   static:
     name: Lint, types and format
     if: ${{ !github.event.pull_request.draft }}
@@ -150,14 +151,28 @@ jobs:
           path: coverage/
           retention-days: 7
 
+  # Reports End-to-end smoke, skipped, the moment the run begins, and never
+  # runs. The e2e job waits for lint, so its check comes about two minutes
+  # later and takes this name only when it runs: a late skip under it would be
+  # the newest, and outrank an E2E run that a label or a retarget started
+  # meanwhile (e2e-catch-up.yml). This name is fixed, so the required check
+  # never rests on how GitHub names a skipped job.
+  e2e-placeholder:
+    name: End-to-end smoke
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: exit 0
+
   # Into stage or main always: a promotion is the last check before users see
   # a change. Elsewhere only with the e2e label, which this run reads as the
-  # pull request had it when the run began; adding it later runs e2e-label.yml.
-  # Every push runs the suite first anyway, in .githooks/pre-push.
+  # pull request had it when the run began; adding it later runs
+  # e2e-catch-up.yml. It takes the required name only when it runs.
   e2e:
-    name: End-to-end smoke
+    name: ${{ !github.event.pull_request.draft && (github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')) && 'End-to-end smoke' || 'No end-to-end run' }}
     needs: static
-    if: github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')
+    if: ${{ !github.event.pull_request.draft && (github.base_ref == 'stage' || github.base_ref == 'main' || contains(github.event.pull_request.labels.*.name, 'e2e')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 

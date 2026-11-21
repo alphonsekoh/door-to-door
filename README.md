@@ -638,18 +638,26 @@ what reaches `main`, and Vercel deploys it. A ready pull request runs four jobs
   ([`scripts/ci-changes.sh`](scripts/ci-changes.sh) decides). `README.md` counts as code,
   because tests read it.
 - **E2E** runs on every pull request into `stage` or `main`, the last check before users
-  see a change. Into `dev` or a feature branch it runs only with the `e2e` label, since
-  each push has already passed it in the [pre-push gate](#on-linux-as-ci-runs-it). Adding
-  the label runs it at once ([`e2e-label.yml`](.github/workflows/e2e-label.yml)), and later
-  pushes run it too. Re-running a run from the Actions tab reads the labels the pull
-  request had when that run began, so it does not see one added since.
-- **A skipped job passes a required check,** and the latest check of each name is the one
-  that counts. So no event that changes no code starts a run that skips one: labelling
-  runs only `e2e-label.yml`, whose job is named **End-to-end smoke** only when it runs the
-  suite, and any other label starts no job.
-- **Editing or retargeting a pull request runs nothing.** Close and reopen it to test it
-  against its new base; a pull request moved to `stage` or `main` needs that for its E2E
-  run.
+  see a change. Into `dev` or a feature branch it runs only with the `e2e` label. A push
+  from a clone has already passed it in the [pre-push gate](#on-linux-as-ci-runs-it), but
+  a commit made on GitHub (a web edit, **Update branch**) has not, so label that pull
+  request. Dependabot labels its version updates itself; a security update comes with no
+  labels, so label it when you retarget it to `dev`. Add the label while the pull request
+  is a draft and the ready run includes E2E; added later, it runs E2E at once
+  ([`e2e-catch-up.yml`](.github/workflows/e2e-catch-up.yml)), and later pushes run it too.
+- **Retargeting** a ready pull request to `stage` or `main` runs E2E at once, in the same
+  workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
+  base: close and reopen the pull request for that.
+- **A skipped job passes a required check,** and the newest check of each name is the one
+  that counts. So no event that changes no code starts a run that skips one, and no run
+  reports a skip under a required name late. CI's E2E job waits for lint, so a
+  placeholder job that never runs reports **End-to-end smoke** skipped as the run begins,
+  and the E2E job takes that name only when it runs. `e2e-catch-up.yml`'s job is likewise
+  named **End-to-end smoke** only when it runs the suite, and any other label or edit
+  starts no job.
+- **Re-running** a run from the Actions tab reads the labels and base the pull request had
+  when that run began. After labelling, re-run the **E2E catch-up** run rather than all of
+  CI's jobs: those would report the placeholder's skip anew, newer than the label's run.
 - Every job has a timeout, and a pull request's newer run cancels its older one. The E2E
   job caches Playwright's browsers by version. Only pull request runs write caches, and
   no other pull request reads them, so a pull request's first run usually starts without.
@@ -658,7 +666,7 @@ The jobs' token can only read the repository, and checkout leaves it nowhere on 
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
-copy the digest into `ci.yml` and `e2e-label.yml` (the test fails until you do). Its
+copy the digest into `ci.yml` and `e2e-catch-up.yml` (the test fails until you do). Its
 `docker-compose` entry reads the [stage stack](#stage-environment)'s file too, and
 `src/stage-stack.test.ts` fails if the stage postgres differs from the dev stack's.
 
