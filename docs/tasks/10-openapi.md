@@ -17,7 +17,9 @@ The API contract every handler and form validates against.
   `name` or `contact` of only spaces.
 - **D-10-4 · Every operation may return `403 account_deactivated`.** _Why:_ JWTs issued
   before deactivation stay valid, so deactivation is re-checked per request. _Research:_ R-2. _Since D-83-1:_ the `403` comes
-  from the database row, not the token.
+  from the database row, not the token. _Refined by D-249-38 (#249):_ any operation may
+  also answer `403 account_pending` or `account_blocked`, and every one declares a
+  `403`, which a contract test requires.
 - **D-10-5 · Reused id on `POST /visits` is `409`; replay via `/visits/sync` is
   `unchanged`.** _Why:_ that difference is the offline story.
 - **D-10-6 · `/history/mine` is its own operation, not a `memberId` filter.** _Why:_ no

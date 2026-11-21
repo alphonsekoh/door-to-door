@@ -59,8 +59,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Installable on a phone. Visits are saved on the phone first and sent when there is
   signal; a cold start with no signal opens an offline recording screen.
 
-**Signing in** is with Google, for the addresses an admin has added, with email and
-password as the fallback. Signing out ends that device's sign-in only.
+**Signing in** is with Google, where a newcomer waits for an admin's approval, with
+email and password as the fallback. Signing out ends that device's sign-in only.
 
 ## Known limits
 
@@ -355,7 +355,9 @@ elsewhere sign in with email and password, so add them with one.
 - Google vouches for an address only at `gmail.com`, or for a Workspace account. On any
   other listed domain a member must use their Workspace account; a personal Google
   account made on that address is refused, since that mailbox could have changed hands.
-- Add a Gmail address exactly as Google has it, dots included.
+- Add a Gmail address exactly as Google has it, dots included. Spelled otherwise, the
+  member's Google sign-in asks to join as a second account: reject that request and
+  correct the address.
 - If a listed domain is a Workspace **alias** of another (as `tjc.org` may be of
   `tjc.sg`), rather than a secondary domain, Google reports the member's address at the
   primary domain. Add those members at the primary domain.

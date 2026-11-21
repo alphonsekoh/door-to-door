@@ -1764,7 +1764,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   The provider's `account()` decides which token fields are stored on the link.
 
 - **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
-- **Used by:** D-14-3, D-14-4, D-14-7
+- **Used by:** D-14-3, D-14-4, D-14-7, D-249-2
 
 ### R-157 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
 
@@ -2837,3 +2837,27 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-244 · On a first OAuth sign-in Auth.js calls `jwt` with `signUp` and goes to `pages.newUser`
+
+- **Finding:** in `@auth/core` 0.41.3's OAuth callback, the `signIn` callback is called
+  before any account is made, with `user` the account already linked to this provider id
+  or, failing that, the provider's own `profile()` result. It may return `false` (refused
+  as `AccessDenied`), `true`, or a URL to redirect to. When `handleLoginOrRegister` then
+  calls `createUser` (R-156), it passes that profile, the provider's id included, and
+  reports `isNewUser`. With JWT sessions the `jwt` callback gets `trigger: "signUp"`
+  instead of `"signIn"`, and with `pages.newUser` set the answer redirects there with the
+  `callbackUrl`, not to it.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/index.js` (`handleAuthorized`,
+  the OAuth branch), `node_modules/@auth/core/lib/actions/callback/handle-login.js`
+- **Used by:** D-249-2, D-249-10, and #249's open question on a deactivated account
+
+### R-245 · Chromium reads hidden text inside a link laid out as blocks with a break (measured)
+
+- **Finding:** with the count as visually hidden text inside the Admin tab's link,
+  Chromium read the link's name as "Admin , 1 …". The builder's reading: the link lays
+  its children out as blocks, so a break is read between them. An `aria-label` on the
+  link reads "Admin, 1 waiting for approval".
+- **Source:** measured (#249 builder, Chromium); not re-measured, nor tried in WebKit,
+  by the docs step.
+- **Used by:** D-249-24

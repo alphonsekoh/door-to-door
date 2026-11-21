@@ -16,7 +16,7 @@ injected a session object.
 - **D-83-1 · Role and deactivation are read from the database on every API request and
   every admin page.** One primary-key lookup in `resolveSession` / `currentSession` /
   `currentUser` (`src/server/auth/session.ts`). _Why:_ the token cannot know about changes
-  made after sign-in. _Research:_ R-32.
+  made after sign-in. _Research:_ R-32. _Extended by D-249-5 (#249):_ so is approval.
 - **D-83-2 · The guards stay pure.** `requireUser`, `requireRole`, `requireAdmin`,
   `isAdmin` and `resolveMemberScope` receive a session built from the DB row and do no I/O.
   _Why:_ unit-testable, and the lookup lives in one place.
@@ -29,7 +29,9 @@ injected a session object.
   _Partly superseded by D-125-10 (owner, 2026-11-05):_ deactivation ends every sign-in,
   so a reactivated member signs in again. _Refined by D-125-17:_ a request with no live
   sign-in, a deleted account's included, is sent from admin pages to sign in, not to a
-  `404`.
+  `404`. _Extended by D-249-4 (#249):_ waiting for approval is `403 account_pending`,
+  rejected `403 account_blocked`, except on `/users/me`; admin pages send both to
+  `/waiting`.
 - **D-83-5 · A lookup failure rejects and surfaces as `500`; it never fails open.** A
   session with no usable user id resolves to `null`, and `isAdmin` also requires an id.
   _Why:_ an outage must not grant access. _Scope stated by D-125-13:_ this governs
