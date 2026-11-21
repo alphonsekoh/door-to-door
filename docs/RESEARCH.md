@@ -2837,3 +2837,63 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-226 · `attachDatabasePool` keeps a Vercel instance awake for a pg pool's idle timeout after each release, and does nothing off Vercel (read)
+
+- **Finding:** for a pg `Pool`, it wraps `connect` so that each client remembers the
+  request it was checked out for. On every `release` it hands that request's `waitUntil`
+  a promise that resolves after `idleTimeoutMillis` plus 100 ms. The wait is cut short
+  1 s before the request's deadline, with a floor of 100 ms, and a later release
+  replaces the earlier timer. It returns at once unless `VERCEL_URL` and `VERCEL_REGION`
+  are both set. With both set and no request context, it logs "Pool release event
+  triggered outside of request scope." Attaching the same pool twice does nothing (a
+  `WeakSet`), `DEBUG` set to any value logs each release, and a pool type it does not
+  recognise throws. Vercel's guide says idle timers do not run while an instance is
+  suspended, so a connection stays open until the database drops it. The attach makes
+  "idle connections close before suspension", and the guide suggests an idle timeout of
+  about 5 s.
+- **Source:** `node_modules/@vercel/functions/db-connections/index.js` and
+  `get-context.js` (3.11.3). Vercel's guide to connection pooling with Functions, as
+  quoted in #247's report; the docs step did not re-read it.
+  `src/db/client.integration.test.ts` runs the 5000 + 100 ms wait on a real pool.
+- **Used by:** D-250-6, D-250-7, D-250-10
+
+### R-227 · `@vercel/functions`' root entry loads `@vercel/oidc`, and its `db-connections` subpath does not (read)
+
+- **Finding:** the package is CommonJS. Its `index.js` requires every module, among them
+  `affinity.js`, which requires `@vercel/oidc` 4.0.9. That in turn depends on
+  `@vercel/cli-config` and `@vercel/cli-exec`, and through `execa` 5 on `cross-spawn`
+  and its helpers. The `./db-connections` export requires only `../get-context` and
+  `../deadline`.
+- **Source:** `node_modules/@vercel/functions/package.json` (`exports`), `index.js`,
+  `affinity.js` and `db-connections/index.js` (3.11.3), and `package-lock.json`. The
+  builder found no `@vercel/oidc` in the build output; the docs step did not check that
+  again.
+- **Used by:** D-250-8, D-250-9
+
+### R-228 · Neon's pooled host is PgBouncer in transaction mode, recommended for serverless, with migrations on the direct host (read)
+
+- **Finding:** Neon says "Use the pooled connection string … for serverless functions".
+  The pooled host runs PgBouncer in transaction mode, which gives each transaction
+  whatever server connection is free. Neon advises running migrations against the
+  direct, non-pooler host. The pooled hostname is the endpoint's name with `-pooler`
+  added, and Neon's Connect dialog shows it when "Connection pooling" is on. Neon's
+  connection strings carry `channel_binding`, which `database.url`'s rules refuse
+  (D-75-3).
+- **Source:** Neon docs, Connection pooling, as quoted in #247's report (recommendation
+  2); the hostname, Connect dialog and `channel_binding` details are as the #250 builder
+  read them. The docs step re-read none of it.
+- **Used by:** D-250-1, D-250-3, D-250-5, D-250-11
+
+### R-229 · Drizzle over node-postgres names a statement only through `.prepare()`, and pg-pool defaults to 10 connections and 10 s idle (read)
+
+- **Finding:** in drizzle-orm 0.45.4, a query builder's `execute()` calls `_prepare()`
+  with no name, and `NodePgPreparedQuery` passes that `name` on to pg. pg 8.23.1 sends a
+  named statement, which lasts as long as the server connection, only when `name` is
+  set. So only a `.prepare("name")` call makes one. pg-pool 3.14.0 defaults `max` to 10
+  and `idleTimeoutMillis` to 10000.
+- **Source:** `node_modules/drizzle-orm/pg-core/query-builders/select.js` (`_prepare`,
+  `execute`), `node_modules/drizzle-orm/node-postgres/session.js` (`rawQueryConfig`),
+  `node_modules/pg/lib/query.js` (`name`) and `node_modules/pg-pool/index.js` (the
+  constructor's defaults).
+- **Used by:** D-250-5, D-250-6

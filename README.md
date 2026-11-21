@@ -668,7 +668,7 @@ docker run -p 3000:3000 \
   ```
 
   `migrate` only migrates, and `--no-deps` keeps Compose from starting its own `db`. It
-  runs in a container, so the file's `database.url` must name a host the container can
+  runs in a container, so the URL it connects to must name a host the container can
   reach, not `localhost`. Never `docker compose up` against production: that also starts the dev server and the
   demo seed, which refuses a database with users but not a new, empty one. Never run
   `db:seed` in production: it creates the demo logins.

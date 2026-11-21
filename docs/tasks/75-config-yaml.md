@@ -31,6 +31,8 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
   matching `/not.?for.?production/i` is refused too, unless `NODE_ENV` is `development`.
 - **D-75-7 · The only extra env vars are `CONFIG_PATH`** (default `./config.yaml`), plus
   `PORT`, `HOSTNAME`, `NODE_ENV` and `NEXT_*`; `CONFIG_FILE` selects the file for Compose.
+  _Refined by D-250-10:_ `VERCEL_URL` and `VERCEL_REGION`, which Vercel sets and
+  `@vercel/functions` reads, are listed too. The app reads neither.
 - **D-75-8 · `TEST_DATABASE_URL` is the only place a full URL is allowed, and never falls
   back to `DATABASE_URL`.** _Why:_ tests truncate tables; a stray production URL must not
   be reachable.
