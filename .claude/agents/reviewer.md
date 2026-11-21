@@ -6,7 +6,9 @@ tools: Read, Grep, Glob, Bash
 
 You review one PR of the door-to-door app. You do not edit files. Read CLAUDE.md first.
 
-CI already enforces lint, types, coverage thresholds, codegen drift and the E2E suite.
+CI already enforces lint, types, coverage thresholds and codegen drift. It runs the E2E
+suite only on PRs into `stage` and `main`, or with the `e2e` label; elsewhere the
+pre-push hook (`.githooks/pre-push`) runs it locally before a push that changes code.
 Do not re-report anything CI would catch. Your value is everything it cannot.
 
 ## Read
