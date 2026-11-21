@@ -732,19 +732,20 @@ CSP violation (D-122-8).
   pooled host (PgBouncer, transaction mode), so nothing may keep session state on a
   connection (D-250-5). Migrations go to the direct host, `database.migrationUrl`.
 - **CI:** runs on ready pull requests only, never a draft or a merge (D-248-1, D-248-2).
-  A merge into `dev` runs only `.github/workflows/warm-caches.yml`, whose one job fills
-  the npm, `.next` and browser caches that pull requests into `dev` restore, and reports
-  no required check (D-248-21, D-248-24, D-248-25). Static checks (lint, types, format, spec lint, codegen and migration drift) run first,
-  and the other jobs need them (D-248-3). Tests with coverage against Postgres and the
-  production build skip a docs-only PR (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E
-  runs into `stage` or `main`, or with the `e2e` label (`scripts/ci-e2e.sh`, D-248-6).
-  `.github/workflows/e2e-catch-up.yml` runs it when that label or base arrives later
-  (D-248-8). A skipped job passes a required check, so only a job that runs reports
-  "End-to-end smoke" after a run begins (D-248-9), a draft's lint job is named "Lint,
-  types and format (draft, not run)" (D-248-18), and a required check is skipped only
-  under a fixed name (D-248-19). The token can only read the
-  repository and, in `ci.yml`, its pull requests, and checkout leaves it nowhere on disk
-  (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
+  A merge into `dev` or `main` runs only `.github/workflows/warm-caches.yml`, whose one
+  job fills the npm, `.next` and browser caches in that branch's scope and reports no
+  required check. Pull requests into `dev` restore `dev`'s, and the rest `main`'s
+  (D-248-21, D-248-24 to D-248-26). Static checks (lint, types, format, spec lint,
+  codegen and migration drift) run first, and the other jobs need them (D-248-3). Tests
+  with coverage against Postgres and the production build skip a docs-only PR
+  (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E runs into `stage` or `main`, or with
+  the `e2e` label (`scripts/ci-e2e.sh`, D-248-6). `.github/workflows/e2e-catch-up.yml`
+  runs it when that label or base arrives later (D-248-8). A skipped job passes a
+  required check, so only a job that runs reports "End-to-end smoke" after a run begins
+  (D-248-9), a draft's lint job is named "Lint, types and format (draft, not run)"
+  (D-248-18), and a required check is skipped only under a fixed name (D-248-19). The
+  token can only read the repository and, in `ci.yml`, its pull requests, and checkout
+  leaves it nowhere on disk (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
   `src/supply-chain.test.ts` refuses a new line that is not (D-131-3, D-131-4).
   Dependabot (`.github/dependabot.yml`) opens grouped npm, Actions, Docker and Compose
   updates monthly, labelled `e2e` and never rebased unasked (D-118-7, D-131-5, D-248-14,

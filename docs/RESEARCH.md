@@ -3077,11 +3077,11 @@ false`) on that date.
   and only re-runs of that pull request can restore it, not its base or another pull
   request. A pull request run can restore caches from its own ref, its base branch and
   the default branch, here `main`. Only a run on a branch, such as a push, fills that
-  branch's scope; `warm-caches.yml` now fills `dev`'s (D-248-21), and `stage`'s and
-  `main`'s stay empty.
+  branch's scope; `warm-caches.yml` fills `dev`'s and `main`'s (D-248-21, D-248-26), and
+  `stage`'s stays empty.
 - **Source:** github/docs `dependency-caching.md` (commit 6d84733), "Restrictions for
   accessing a cache". Read through `gh api` on 2026-11-21.
-- **Used by:** D-248-13, D-248-21
+- **Used by:** D-248-13, D-248-21, D-248-26
 
 ### R-242 · Dependabot's `rebase-strategy`, monthly schedule and labels (read)
 
@@ -3136,3 +3136,16 @@ false`) on that date.
   github/docs `dependency-caching.md` (commit 6d84733), "Cache key matching". Read
   through `gh api` on 2026-11-21 (#248 docs step).
 - **Used by:** D-248-24, D-248-25
+
+### R-252 · A commit GitHub makes names `GitHub <noreply@github.com>` as its committer (measured)
+
+- **Finding:** on this repository, the commits GitHub made have committer
+  `GitHub <noreply@github.com>`: squash merges, merge commits from the merge button and
+  Dependabot's, 122 in all. The author stays the person or bot, and the four checked
+  (`e49313a`, `3e92d4c`, `7f5ac21`, `0a562a0`) carry a valid signature. GitHub's docs say
+  commits made in the web interface are signed with the web-flow key, but name no
+  committer. A web edit and **Update branch** were not seen here.
+- **Source:** `gh api repos/{owner}/{repo}/commits/<sha> --jq .commit.committer` and
+  `git log --all --committer=noreply@github.com`, on 2026-11-22; github/docs
+  `about-commit-signature-verification.md` (commit 3c5bf3c). #248 docs step.
+- **Used by:** D-248-28
