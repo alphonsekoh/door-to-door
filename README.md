@@ -631,10 +631,16 @@ and `main` rulesets require:
 
 - **A draft runs nothing.** Open a pull request as a draft, push review fixes to it, and
   mark it ready once: that runs CI, and each later push runs it again. A draft's run
-  skips every job, and its lint job reports under a name no ruleset requires, so the run
-  never stands in for a ready one: the merge waits for the ready run's **Lint, types and
-  format**. If a draft's push starts its run after the ready run's and cancels it, that
-  check is left cancelled until you re-run either run (**Re-run all jobs**).
+  skips every job, and its lint job reports under a name no ruleset requires, so the merge
+  waits for a ready run's **Lint, types and format**. Its other three skips carry their
+  required names, though, and pass them. So mark a draft ready only once the run for its
+  last push has appeared (`gh run list --commit <sha> --workflow CI` lists it). GitHub
+  can start the push's run after the ready one, and it then cancels the ready run. If the
+  ready run's lint job is still running, that check is left cancelled until you re-run
+  either run (**Re-run all jobs**). If it has finished, the draft's skips pass tests, the
+  build and E2E over the ready run's results, and the pull request can merge untested.
+  Reopening a pull request while it is a draft does the same over its last ready run's
+  checks, so once you mark it ready again, wait for the new run before merging.
 - **A lint failure stops the run** in about two minutes, before the other jobs start.
 - **Docs only:** a pull request that changes nothing but `docs/`, `.claude/` and
   top-level Markdown skips the tests and the build
@@ -656,10 +662,11 @@ and `main` rulesets require:
   workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
   base: close and reopen the pull request for that.
 - **A skipped job passes a required check,** and the newest check of each name is the one
-  that counts. So no label or edit reports a required check skipped, and no run reports
-  one skipped late. CI's E2E job waits for lint, so a placeholder job that never runs
-  reports **End-to-end smoke** skipped as the run begins, and the E2E job takes that name
-  only when it runs. `e2e-catch-up.yml`'s job is likewise named **End-to-end smoke** only
+  that counts. So no label or edit reports a required check skipped, and CI reports
+  **End-to-end smoke** skipped only as its run begins: its E2E job waits for lint, so a
+  placeholder job that never runs reports that skip, and the E2E job takes the name only
+  when it runs. Only a draft's run reports skips over a ready run's checks (see drafts
+  above). `e2e-catch-up.yml`'s job is likewise named **End-to-end smoke** only
   when it runs the suite: every other label, and every title or body edit, starts a
   catch-up run whose one job is skipped under another name. GitHub shows a skipped job's
   name expression as written, so a required check is skipped only under a fixed name.

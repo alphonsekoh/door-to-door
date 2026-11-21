@@ -22,7 +22,8 @@ import {
  * no label or edit may start a run that skips one under that name, no draft's
  * run may report Lint, no run may report one late enough to outrank a later
  * event's run, and no re-run, which replays its event, may skip one the pull
- * request now needs.
+ * request now needs. A draft's run that GitHub starts after the ready one is
+ * the exception, pinned below, that README's draft rule works around.
  */
 
 const read = (path: string): string => readFileSync(path, "utf8");
@@ -81,6 +82,8 @@ function counted(...moments: Moment[]): Record<string, Played | undefined> {
     REQUIRED.map((name) => [name, checks.findLast((check) => check.name === name)]),
   );
 }
+const resultsOf = (found: Record<string, Played | undefined>) =>
+  REQUIRED.map((name) => found[name]?.result);
 
 const CODE_ACTIONS = ["opened", "synchronize", "reopened", "ready_for_review"];
 const BASES = ["dev", "stage", "main", "chore/244-stage-stack"];
@@ -134,7 +137,7 @@ describe("a pull request's runs", () => {
     }
   });
 
-  it("leave Lint cancelled when a draft's push runs after the ready run and cancels it", () => {
+  it("leave Lint cancelled when a draft's run cancels the ready run while its lint job runs", () => {
     // The push came first, but its run began after the ready run's, while lint ran.
     for (const base of BASES) {
       for (const changed of [CODE, DOCS]) {
@@ -165,6 +168,65 @@ describe("a pull request's runs", () => {
           }
         }
       }
+    }
+  });
+
+  it("let a draft's run that begins after the ready lint pass the other three, so ready waits for the push's run", () => {
+    // The limit README's draft rule covers: the other three skips keep their required names.
+    const failing = ["test", "e2e", "build"];
+    const failed = ["success", "failure", "failure", "failure"];
+    for (const base of BASES) {
+      const pullRequest = pr({ base, labels: ["e2e"] });
+      const ready = on("ready_for_review", pullRequest);
+      const draftPush = on("synchronize", { ...pullRequest, draft: true });
+
+      for (const at of [0.01, 0.5, 3]) {
+        const found = counted({ at: 0, event: draftPush }, { at, event: ready, failing });
+        expect(resultsOf(found), `into ${base}, ready at ${String(at)}`).toEqual(failed);
+      }
+      for (const at of [1, 1.5, 3, 10]) {
+        const found = counted({ at: 0, event: ready, failing }, { at, event: draftPush });
+        expect(resultsOf(found), `into ${base}, draft's run at ${String(at)}`).toEqual([
+          "success",
+          "skipped",
+          "skipped",
+          "skipped",
+        ]);
+        for (const again of [rerun(draftPush, pullRequest), rerun(ready, pullRequest)]) {
+          const after = counted(
+            { at: 0, event: ready, failing },
+            { at, event: draftPush },
+            { at: at + 5, event: again, failing },
+          );
+          expect(resultsOf(after)).toEqual(failed);
+        }
+      }
+    }
+  });
+
+  it("let a reopen as a draft pass the other three, until it is marked ready again", () => {
+    // Only the draft state stops a merge, and then only until the new run's checks appear.
+    const failing = ["test", "e2e", "build"];
+    for (const base of BASES) {
+      const pullRequest = pr({ base, labels: ["e2e"] });
+      const reopened: Moment[] = [
+        { at: 0, event: on("ready_for_review", pullRequest), failing },
+        { at: 5, event: on("reopened", { ...pullRequest, draft: true }) },
+      ];
+
+      expect(resultsOf(counted(...reopened)), base).toEqual([
+        "success",
+        "skipped",
+        "skipped",
+        "skipped",
+      ]);
+      const readyAgain = { at: 6, event: on("ready_for_review", pullRequest), failing };
+      expect(resultsOf(counted(...reopened, readyAgain))).toEqual([
+        "success",
+        "failure",
+        "failure",
+        "failure",
+      ]);
     }
   });
 
