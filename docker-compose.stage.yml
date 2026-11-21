@@ -1,0 +1,148 @@
+name: door-to-door-stage
+
+# The stage stack (#244): production's shape on this machine, to measure a
+# release candidate on the stage branch before it is merged to main.
+#
+#   edge (HTTPS) -> app (the Dockerfile's runner stage) -> toxiproxy -> db
+#
+# Never the dev stack: its own project, volumes and network, the production
+# build rather than next dev, and ports clear of 3000, 5432 and 5433. Every
+# port is on this machine's loopback, and db is published nowhere. Run it
+# through the npm scripts (README, Stage environment):
+#   npm run stage:up, stage:seed, stage:perf, stage:down
+
+# Public, like the dev stack's: only this project's containers reach db.
+x-credentials: &credentials
+  DATABASE_USER: stage
+  DATABASE_PASSWORD: stage
+
+# migrate and seed straight to db, past toxiproxy, so an injected delay never
+# slows them. The dev image has the migration runner and tsx; the runner image
+# has neither.
+x-tools: &tools
+  build:
+    context: .
+    target: dev
+  environment:
+    <<: *credentials
+    CONFIG_YAML: |
+      database:
+        url: postgresql://db:5432/door_to_door_stage
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgres:17-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
+    environment:
+      POSTGRES_USER: stage
+      POSTGRES_PASSWORD: stage
+      POSTGRES_DB: door_to_door_stage
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stage -d door_to_door_stage"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Every app query goes through here. With no toxic it only relays; the
+  # stage check adds a latency toxic through the API to model a function far
+  # from its database (src/server/stage/toxiproxy.ts).
+  toxiproxy:
+    image: ghcr.io/shopify/toxiproxy:2.12.0@sha256:9378ed52a28bc50edc1350f936f518f31fa95f0d15917d6eb40b8e376d1a214e
+    command: ["-host=0.0.0.0", "-config=/config/toxiproxy.json"]
+    volumes:
+      - ./docker/stage/toxiproxy.json:/config/toxiproxy.json:ro
+    ports:
+      - "127.0.0.1:${STAGE_TOXIPROXY_PORT:-3401}:8474"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # The app's AUTH_SECRET: STAGE_AUTH_SECRET when set, otherwise made once and
+  # kept in the volume, so a restart keeps everyone signed in. Never in a file
+  # in the repository. The runner refuses the dev stack's public one.
+  # postgres's image only for its shell; it runs no database.
+  secret:
+    image: postgres:17-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
+    environment:
+      STAGE_AUTH_SECRET: ${STAGE_AUTH_SECRET:-}
+    entrypoint: ["sh", "-ec"]
+    # Hex, so a random draw can never look like a placeholder the app refuses.
+    command:
+      - >-
+        if [ -n "$$STAGE_AUTH_SECRET" ]; then printf %s "$$STAGE_AUTH_SECRET" > /secret/auth_secret;
+        elif [ ! -s /secret/auth_secret ]; then od -An -tx1 -N32 /dev/urandom | tr -d ' \n' > /secret/auth_secret;
+        fi; chown 1001 /secret/auth_secret; chmod 400 /secret/auth_secret
+    volumes:
+      - secret:/secret
+
+  migrate:
+    <<: *tools
+    command: ["npm", "run", "db:migrate"]
+
+  # A year of records, on demand only (npm run stage:seed). It refuses any
+  # database that is not named door_to_door_stage or already holds data.
+  seed:
+    <<: *tools
+    profiles: ["seed"]
+    command: ["node_modules/.bin/tsx", "scripts/stage-seed.ts"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  app:
+    build:
+      context: .
+      target: runner
+    environment:
+      <<: *credentials
+      AUTH_SECRET_FILE: /run/stage/auth_secret
+      # The image names a mounted file; production reads CONFIG_YAML, and the
+      # two together refuse to start (D-241-2).
+      CONFIG_PATH: ""
+      # As production's: secure cookies, and one proxy (edge) appending
+      # X-Forwarded-For. No Google sign-in: that needs a real OAuth client.
+      CONFIG_YAML: |
+        database:
+          url: postgresql://toxiproxy:15432/door_to_door_stage
+        auth:
+          trustHost: true
+          secureCookies: true
+        rateLimit:
+          trustedProxyHops: 1
+    volumes:
+      - secret:/run/stage:ro
+    # A Vercel function's default size.
+    cpus: "1"
+    mem_limit: 2g
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      secret:
+        condition: service_completed_successfully
+      toxiproxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/sign-in"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  edge:
+    image: caddy:2.11-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    ports:
+      - "127.0.0.1:${STAGE_PORT:-3400}:443"
+    volumes:
+      - ./docker/stage/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  secret:
+  caddy:

@@ -12,8 +12,8 @@ quietly building something else.
 
 ## Order of work
 
-1. **Branch.** Stack on the current feature branch, never on `main` unless it is the
-   only open branch: `git checkout -b <type>/<N>-<slug>`.
+1. **Branch.** Stack on the current feature branch; with none open, base off `dev`, never
+   `stage` or `main`: `git checkout -b <type>/<N>-<slug>`.
 2. **Contract.** If `openapi.yaml` changed: `npm run spec:lint`, then
    `npm run generate:api`. Never edit `src/generated/**`.
 3. **Schema.** `npm run db:generate`. Never hand-write or edit a migration.
@@ -29,7 +29,8 @@ quietly building something else.
    - `npm run build` if you touched routing, config or anything server-only
 7. **Prove a new test bites**: break the code it guards, watch it fail, restore.
 8. **Commit and PR.** Conventional commit with `Refs #N`. Push, then
-   `gh pr create --base <parent branch>` with `Closes #N` in the body.
+   `gh pr create --base <parent branch>` (`dev` for the first branch of a stack) with
+   `Closes #N` in the body.
 
 ## Traps this codebase has already hit
 

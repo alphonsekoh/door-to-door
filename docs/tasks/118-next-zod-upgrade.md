@@ -65,7 +65,8 @@ and add Dependabot.
   _Exposure narrowed again by D-126-7 (#126):_ a 256 KiB body cap bounds one request at
   about 6,700 ids, with `413` above that, and inserts are chunked (D-126-3), so the `500`
   is out of reach. `memberIds` stays uncapped.
-- **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** npm has
+- **D-118-7 · Dependabot runs weekly and grouped (`.github/dependabot.yml`).** _Security
+  updates: the `npm-security` group superseded by D-244-29._ npm has
   three groups: security, minor-and-patch, major. GitHub Actions has one. Version
   updates wait out a 7-day cooldown. PRs get a `chore` prefix and the existing
   `type:chore` and `area:setup`/`area:ci` labels. _Why:_ each PR runs the full CI,
