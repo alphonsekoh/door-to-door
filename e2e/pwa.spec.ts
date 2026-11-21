@@ -540,8 +540,11 @@ test.describe("phone layout", () => {
   });
 
   /* iOS WebKit ignores min-height on a native select and drew the admin
-     filters 26px tall, under the 44px rule (D-30-8); selects carry h-12. */
-  test("admin filter selects are at least 44px tall", async ({ adminPage, adminApi }) => {
+     filters 26px tall, under the 44px rule (D-30-8); selects carry h-12.
+     It draws a native date input content-box, 32px tall and past its cell
+     (#245), which neither engine here does, so the date fields are checked
+     for the cause too: no native appearance. */
+  test("admin filters are at least 44px tall", async ({ adminPage, adminApi }) => {
     await ensureActiveSession(adminApi);
     for (const [path, label] of [
       ["/admin/records", "Filter by block"],
@@ -559,6 +562,11 @@ test.describe("phone layout", () => {
           })
           .toBeGreaterThanOrEqual(44);
       }
+    }
+    for (const label of ["Recorded from", "Recorded to"]) {
+      const date = adminPage.getByLabel(label);
+      await expect(date, label).toHaveCSS("appearance", "none");
+      expect((await date.boundingBox())?.height ?? 0, label).toBeGreaterThanOrEqual(44);
     }
     await endActiveSession(adminApi);
   });

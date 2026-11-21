@@ -68,8 +68,9 @@ schema or server change.
   `history.replaceState(null, "", href)`, not `router.replace` (4490b2c).** Next's patch
   moves `useSearchParams` in a transition, with no page round trip and no history
   entry; only the list is read. The state must be `null`: with Next's own `__NA` state
-  the call passes straight through and the screen never hears. This screen only; All
-  records and Records still use `router.replace`. Extends D-163-6 from the `?q=` strip
+  the call passes straight through and the screen never hears. All records does the
+  same through #245's `useAddressFilters` (D-245-5, merged to `dev` first); Records still
+  uses `router.replace` (#257). Extends D-163-6 from the `?q=` strip
   to filter changes, so R-141's reliance on Next internals now sits in a second place.
   _Why:_ `router.replace` waits on an RSC round trip this page has no use for. On a slow
   link the controls showed the filter just left, and offline Next fell back to a page
@@ -177,9 +178,12 @@ schema or server change.
   cleanup's bump removed all 49 component tests passed (verifier r1). A fake-timer test
   could: change the filter, settle the old read before the timer fires, and check its
   page does not land.
-- All records and Records still move their filters through `router.replace`, so they
-  keep what verifier r0 saw here: offline, a filter change shows Offline, and on a slow
-  link the controls lag. Outside #246.
+- Records still moves its filters through `router.replace`, so it keeps what verifier r0
+  saw here: offline, a filter change shows Offline, and on a slow link the controls lag.
+  #257 fixes it. All records was fixed by #245 (D-245-5).
+- Two implementations of the same address move: this screen calls
+  `history.replaceState(null, …)` itself, and All records uses #245's
+  `useAddressFilters`. #257 should move this screen onto the shared hook.
 - `useSearchTerm`'s comment still calls it "the history and records search term"
   (reviewer r0); it now serves this screen too. Code, not changed by the docs step.
 
