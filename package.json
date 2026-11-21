@@ -41,6 +41,7 @@
     "@auth/drizzle-adapter": "^1.11.3",
     "@node-rs/argon2": "^2.2.2",
     "@serwist/turbopack": "^9.5.13",
+    "@vercel/functions": "3.11.3",
     "drizzle-orm": "^0.45.4",
     "esbuild-wasm": "^0.28.2",
     "idb": "^8.0.4",

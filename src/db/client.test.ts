@@ -7,8 +7,13 @@ const URL = "postgresql://postgres:postgres@localhost:5432/nowhere";
    transaction still fits where a client is expected. */
 const clientOf = (db: object): unknown => Reflect.get(db, "$client");
 
-const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }));
+const { getConfig, attachDatabasePool } = vi.hoisted(() => ({
+  getConfig: vi.fn(),
+  attachDatabasePool: vi.fn(),
+}));
 vi.mock("@/server/config", () => ({ getConfig }));
+// What it does with the pool, on Vercel and off it, is in client.integration.test.ts.
+vi.mock("@vercel/functions/db-connections", () => ({ attachDatabasePool }));
 
 beforeEach(() => {
   getConfig.mockReturnValue({ databaseUrl: URL });
@@ -29,6 +34,18 @@ describe("createDatabase", () => {
     expect(clientOf(db)).toBe(pool);
     return pool.end();
   });
+
+  it("sizes the pool for one serverless instance: ten connections, each closed after 5 s idle", () => {
+    const { pool } = createDatabase(URL);
+    expect(pool.options).toMatchObject({ max: 10, idleTimeoutMillis: 5_000 });
+    return pool.end();
+  });
+
+  it("hands the pool to Vercel, so an instance is not suspended holding idle connections", () => {
+    const { pool } = createDatabase(URL);
+    expect(attachDatabasePool).toHaveBeenCalledExactlyOnceWith(pool);
+    return pool.end();
+  });
 });
 
 describe("getDatabase", () => {
@@ -36,11 +53,12 @@ describe("getDatabase", () => {
     expect(getPool().listenerCount("error")).toBe(1);
   });
 
-  it("shares one pool across module graphs", async () => {
+  it("shares one pool across module graphs, handed to Vercel once", async () => {
     const first = getPool();
     vi.resetModules();
     const again = await import("@/db/client");
     expect(again.getPool()).toBe(first);
+    expect(attachDatabasePool).toHaveBeenCalledExactlyOnceWith(first);
   });
 
   it("reuses one client per process", () => {

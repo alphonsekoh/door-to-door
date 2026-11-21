@@ -1,15 +1,16 @@
 import { defineConfig } from "drizzle-kit";
 import { ConfigNotFoundError } from "./src/lib/config";
-import { loadDatabaseUrl } from "./src/server/config";
+import { loadMigrationDatabaseUrl } from "./src/server/config";
 
 /*
  * `generate` needs no database, so a missing config file falls back to a
  * placeholder and lets CI generate with none present. An invalid file still
- * throws: guessing past a typo would point migrate at the wrong place.
+ * throws: guessing past a typo would point migrate at the wrong place. push
+ * changes the schema, so it goes where db:migrate does (#250).
  */
 function databaseUrl(): string {
   try {
-    return loadDatabaseUrl();
+    return loadMigrationDatabaseUrl();
   } catch (error) {
     if (error instanceof ConfigNotFoundError) {
       return "postgresql://localhost:5432/placeholder";
