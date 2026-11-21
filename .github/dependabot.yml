@@ -1,9 +1,14 @@
 # Weekly and grouped: every pull request runs the whole CI, E2E included, and
 # Actions minutes are scarce, so a pull request per package would cost too much.
+#
+# Every entry targets dev, like any other change: a bump merged into main would
+# reach production without passing through dev and stage. Security updates
+# ignore target-branch and still open against main; retarget those to dev.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     # A new release waits a week before it is proposed: a hijacked publish is
@@ -38,6 +43,7 @@ updates:
 
   - package-ecosystem: github-actions
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     cooldown:
@@ -55,6 +61,7 @@ updates:
   # 18 cannot open a 17 data directory.
   - package-ecosystem: docker
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     cooldown:
@@ -78,6 +85,7 @@ updates:
   # copy the new digest into ci.yml (src/supply-chain.test.ts fails until then).
   - package-ecosystem: docker-compose
     directory: /
+    target-branch: dev
     schedule:
       interval: weekly
     cooldown:

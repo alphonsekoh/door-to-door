@@ -903,6 +903,11 @@ docs/           architecture, research and per-issue decisions
 requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test it in the
 [stage environment](#stage-environment), then merge `stage` to `main`.
 
+Dependabot's version updates target `dev` too (`target-branch` in
+[`.github/dependabot.yml`](.github/dependabot.yml)). Its security updates ignore that
+setting and open against `main`, the default branch: retarget each to `dev` before
+merging it (`gh pr edit <number> --base dev`).
+
 Promotions are the only merge commits. Squashed or rebased, a promotion would give `dev`
 and `stage` the same changes under different commits, and every later promotion would
 conflict over them. Work never flows back: a fix goes to `dev` and is promoted like
