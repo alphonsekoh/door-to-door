@@ -25,11 +25,11 @@ schema or server change.
   its appearance, From and To are 194 × 51 like the selects, and the sheet's input fits
   its column. In Chromium and desktop WebKit (Playwright) the box is the same with and
   without the rule (179 × 48, 12px padding, 1px border, 8px radius), and Chromium keeps
-  its calendar icon. _Research:_ R-226.
+  its calendar icon. _Research:_ R-231.
 - **D-245-2 · No rule of our own for an empty date's height or its value's alignment.**
   _Why:_ Tailwind's preflight already gives `::-webkit-date-and-time-value` a `1lh`
   min-height and `text-align: inherit`. After D-245-1 the value starts at the left, and an
-  empty field keeps its height on iOS, at 16 and 32px. _Research:_ R-226.
+  empty field keeps its height on iOS, at 16 and 32px. _Research:_ R-231.
 - **D-245-3 · The follow-up sheet's date input drops `h-12`, and with it the comment that
   applied D-74-62 to date controls.** It is now `min-h-12 field`. D-74-62 stands for
   selects. _Why:_ without its native look a date input honours `min-height`: 51px on iOS
@@ -47,7 +47,7 @@ schema or server change.
   not the hollow class check of D-225-6 and D-230-4, which had a layout test available.
   The rule's test and the class test were each shown to fail with their target removed
   (verifier). The suite grows by one existing test, not a new spec (D-37-6).
-  _Research:_ R-226.
+  _Research:_ R-231.
 - **D-245-5 · All records writes its filters through the History API
   (`src/lib/hooks/use-address-filters.ts`), and the screen holds what was picked.**
   `setFilter`, the unknown-team drop and Clear filters call `chooseFilters`. It sets the

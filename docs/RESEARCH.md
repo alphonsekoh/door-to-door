@@ -2841,7 +2841,7 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
 
-### R-226 · iOS Safari draws a native date input content-box with a 30px min-height, whatever the page sets (measured on a simulator)
+### R-231 · iOS Safari draws a native date input content-box with a 30px min-height, whatever the page sets (measured on a simulator)
 
 - **Finding:** in Safari on iOS, an `<input type="date">` with its native appearance keeps
   a content-box size and a 30px min-height, ignoring the page's `box-sizing`, `width`
