@@ -64,7 +64,9 @@ bar, from where a lapsed session carried it into `/sign-in?callbackUrl=`.
   router installs in an effect (R-141). Vitest models them by hand. _Extended by
   D-245-5:_ All records writes every filter through Next's patched `replaceState`.
   _Extended by D-246-10:_ Needs a return visit moves its block and toggle with
-  `replaceState(null, …)` too; Records keeps `router.replace` for its filters.
+  `replaceState(null, …)` too; ~~Records keeps `router.replace` for its filters~~.
+  _Extended by D-257-1 to D-257-3:_ Records, the follow-up tabs and Me / My team move
+  through the same hook, and Needs a return visit now does too.
 - **D-163-7 · A `q` that appears while the screen is open is taken too, replacing what
   was typed.** Back or Forward onto an older entry with `?q=`, or a pushed `?q=`, fills
   the search and is stripped the same way. _Why:_ it is the same old link; left alone it

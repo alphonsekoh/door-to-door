@@ -1,6 +1,6 @@
 # #246 · Needs a return visit: filter by block, search by unit, name or contact
 
-- **Status:** In progress (branch `feat/246-attention-filters`; PR not yet open)
+- **Status:** In progress (PR #255, merged to `dev`)
 - **Phase:** none (no milestone)
 - **Depends on:** #30, #117, #163, #207
 
@@ -69,15 +69,17 @@ schema or server change.
   moves `useSearchParams` in a transition, with no page round trip and no history
   entry; only the list is read. The state must be `null`: with Next's own `__NA` state
   the call passes straight through and the screen never hears. All records does the
-  same through #245's `useAddressFilters` (D-245-5, merged to `dev` first); Records still
-  uses `router.replace` (#257). Extends D-163-6 from the `?q=` strip
+  same through #245's `useAddressFilters` (D-245-5, merged to `dev` first); ~~Records still
+  uses `router.replace` (#257)~~. Extends D-163-6 from the `?q=` strip
   to filter changes, so R-141's reliance on Next internals now sits in a second place.
   _Why:_ `router.replace` waits on an RSC round trip this page has no use for. On a slow
   link the controls showed the filter just left, and offline Next fell back to a page
   load that the worker answered with Offline, taking the screen and the search with it
   (verifier r0). Now a filter changed offline fails in place to the list's alert and
   Try again, as before #246.
-  _Research:_ R-140, R-141, R-232.
+  _Research:_ R-140, R-141, R-232. _Superseded in part by D-257-3 (owner, 2026-11-21):_
+  this screen moves through `useAddressFilters` too, so the call and its null-state rule
+  live only in the hook; the mechanism and the why above stand.
 - **D-246-11 · `useSearchTerm` (D-163-5, D-163-7) serves `/admin/attention` too.** An
   old `?q=` fills the box, and the address keeps only the block and the toggle.
   `signInRedirect` already strips `q` on every path (D-163-8), and no request or
@@ -86,14 +88,15 @@ schema or server change.
 - **D-246-12 · Show more waits for any read of the list.** It is disabled and reads
   "Loading…" while a filter change, Add to list's reload or another page is out.
   _Why:_ pressed under a reload, it would ask for the next page of rows about to be
-  replaced.
+  replaced. _Applied to All records by D-257-5._
 - **D-246-13 · The list effect's cleanup bumps the generation
   (`attention-list.tsx:113`), unlike D-234-3. Keep it; do not align it with D-234-3.**
   _Why:_ here the effect re-runs on every filter change, not only on unmount, and defers
   its load a tick (`setTimeout(0)`). Without the bump, a read for the filters just left
   that lands in that tick passes its check and is drawn. D-234-3's screens run that
   cleanup only on unmount, where a bump is unobservable; this is D-74-45's team card's
-  case. No test isolates it (Known limits).
+  case. No test isolates it (Known limits). _Applied to All records and Records by
+  D-257-8_, each with a test that isolates it.
 - **D-246-14 · Clear filters changes the address only when a block is set.** _Why:_ the
   term is never in the address, so a search alone has nothing to write there, and the
   rows loaded, Show more's pages included, stay.
@@ -178,14 +181,16 @@ schema or server change.
   cleanup's bump removed all 49 component tests passed (verifier r1). A fake-timer test
   could: change the filter, settle the old read before the timer fires, and check its
   page does not land.
-- Records still moves its filters through `router.replace`, so it keeps what verifier r0
+- ~~Records still moves its filters through `router.replace`, so it keeps what verifier r0
   saw here: offline, a filter change shows Offline, and on a slow link the controls lag.
-  #257 fixes it. All records was fixed by #245 (D-245-5).
-- Two implementations of the same address move: this screen calls
+  #257 fixes it. All records was fixed by #245 (D-245-5).~~ Fixed by D-257-1.
+- ~~Two implementations of the same address move: this screen calls
   `history.replaceState(null, …)` itself, and All records uses #245's
-  `useAddressFilters`. #257 should move this screen onto the shared hook.
-- `useSearchTerm`'s comment still calls it "the history and records search term"
-  (reviewer r0); it now serves this screen too. Code, not changed by the docs step.
+  `useAddressFilters`. #257 should move this screen onto the shared hook.~~ Fixed by
+  D-257-3.
+- ~~`useSearchTerm`'s comment still calls it "the history and records search term"
+  (reviewer r0); it now serves this screen too. Code, not changed by the docs step.~~
+  Fixed by #257: "An admin list's search term".
 
 ## Owner checks (not claimed by the PR)
 

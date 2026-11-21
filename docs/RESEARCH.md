@@ -1565,7 +1565,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** #163 verifier, round 0 (Playwright network logs). #245's verifier r0 saw
   the same wait on All records' filters: a picked date read blank until the server
   answered.
-- **Used by:** D-163-6, D-245-5, D-246-10
+- **Used by:** D-163-6, D-245-5, D-246-10, D-257-1
 
 ### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
 
@@ -1580,7 +1580,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   patch re-read unchanged in 16.4.5, lines 274-324, by #245's docs step);
   `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
   "Native History API"
-- **Used by:** D-163-6, D-245-5, D-246-10
+- **Used by:** D-163-6, D-245-5, D-246-10, D-257-1, D-257-2, D-257-3
 
 ### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
 
@@ -2953,7 +2953,7 @@ false`) on that date.
   verifier r0 at 1c1f036 and r1 at 4490b2c, production build, Pixel 5 on Chromium,
   iPhone 13 and iPhone 15 Pro Max on WebKit, whose offline mode bypasses the worker,
   D-32-18). Extends R-140 from the `?q=` strip to filter changes.
-- **Used by:** D-246-10, D-246-17
+- **Used by:** D-246-10, D-246-17, D-257-1, D-257-2
 
 ### R-233 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
 
@@ -3128,3 +3128,23 @@ false`) on that date.
   "before", and every count matched. The sin1 and iad1 figures are from #247's report
   (2026-11-21, recommendation 3).
 - **Used by:** D-251-3, D-251-12
+
+### R-253 · `router.replace` on a static route stays on the device for 5 minutes; after that, or on a dynamic route, it asks the server, and offline leaves the screen (measured)
+
+- **Finding:** Next keeps its client copy of a static route, which the bottom nav
+  prefetches on load, for `staleTimes.static`: 5 minutes by default. The app does not
+  set it. Within that time a `router.replace` to `/history?view=team` or
+  `/follow-ups?view=mine` sent no RSC request, so offline the screen stayed with its
+  alert. After it, and at once if the prefetch never landed, the replace fetched the RSC
+  payload. Offline that failed, and Next fell back to a page load (R-232). The Pixel
+  showed the worker's Offline page, and Playwright's WebKit, which has no worker
+  offline (D-32-18), ignored the tap. On the Pixel, the dynamic routes
+  `/admin/follow-ups` and `/history/[sessionId]` (`dynamic` defaults to 0 s) showed
+  Offline on the first tap.
+  Through `useAddressFilters` all four stayed on screen with no RSC request: warm, cold,
+  with every prefetch refused, and 6 minutes after load.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/staleTimes.md`
+  (next 16.4.5). Measured by #257's builder (warm, Chromium with the worker) and by its
+  verifier r1 and r2 using Playwright's clock (4 and 6 minutes after load). Production
+  build, Pixel 5 on Chromium, iPhone 13 and iPhone 15 Pro Max on WebKit.
+- **Used by:** D-257-2
