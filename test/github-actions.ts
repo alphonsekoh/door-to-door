@@ -5,14 +5,14 @@ import { parse } from "yaml";
 import { z } from "zod";
 
 /*
- * What GitHub Actions decides for a pull request event, read from the
- * workflows themselves (#248): which workflows run, which jobs run or skip,
- * the check name each reports, and when. Only what .github/workflows uses is
- * modelled: pull_request triggers, re-runs, needs, a job's if, name and
- * outputs, a concurrency group that cancels the run in progress, the two
- * scripts whose output a job passes on, and the expression syntax below.
- * Anything else throws, so a new construct fails a test instead of being
- * misread.
+ * What GitHub Actions decides for a pull request event or a push, read from
+ * the workflows themselves (#248): which workflows run, which jobs run or
+ * skip, the check name each reports, and when. Only what .github/workflows
+ * uses is modelled: pull_request triggers, push triggers on named branches,
+ * re-runs, needs, a job's if, name and outputs, a concurrency group that
+ * cancels the run in progress, the two scripts whose output a job passes on,
+ * and the expression syntax below. Anything else throws, so a new construct
+ * fails a test instead of being misread.
  *
  * A skipped job's name is evaluated here, though GitHub shows its expression
  * as written (#260's runs 44908665916 and 44908763351). A name must be safe
@@ -178,11 +178,15 @@ const Job = z.object({
   outputs: z.record(z.string(), z.string()).optional(),
   steps: z.array(z.object({ id: z.string().optional(), run: z.string().optional() })),
 });
-// Strict: a trigger the model does not know, a push for one, fails the parse,
-// and so does a group that queues runs instead of cancelling the older one.
+// Strict: a trigger the model does not know, a schedule for one, fails the
+// parse, and so do a push filter beyond plain branch names and a group that
+// queues runs instead of cancelling the older one.
 const Workflow = z.object({
   name: z.string(),
-  on: z.strictObject({ pull_request: z.strictObject({ types: z.array(z.string()) }) }),
+  on: z.strictObject({
+    pull_request: z.strictObject({ types: z.array(z.string()) }).optional(),
+    push: z.strictObject({ branches: z.array(z.string().regex(/^[\w./-]+$/)) }).optional(),
+  }),
   concurrency: z
     .strictObject({ group: z.string(), "cancel-in-progress": z.literal(true) })
     .optional(),
@@ -219,6 +223,9 @@ export type PullRequestEvent = {
   /** 1 for the run the event starts, and 2 on for each re-run of all its jobs. */
   attempt?: number;
 };
+/** A push to a branch, as a merge into it is. */
+export type PushEvent = { push: string };
+export type WorkflowEvent = PullRequestEvent | PushEvent;
 /**
  * `stage` is when GitHub creates the check, in job lengths from the run's
  * start: 0 as the run begins, and a job that needs others once the last of
@@ -242,13 +249,14 @@ const SCRIPTS: Record<string, (event: PullRequestEvent) => readonly string[]> = 
   "scripts/ci-e2e.sh": ({ pullRequest, now = pullRequest }) => [now.base, ...now.labels],
 };
 const printed = new Map<string, string>();
-function stepOutputs(job: Job, event: PullRequestEvent): Context {
+function stepOutputs(job: Job, event: WorkflowEvent): Context {
   const steps: Record<string, Value> = {};
   for (const step of job.steps) {
     if (step.id === undefined) continue;
     const outputs: Record<string, string> = {};
     for (const [script, input] of Object.entries(SCRIPTS)) {
       if (!step.run?.includes(script)) continue;
+      if ("push" in event) throw new Error(`The model feeds ${script} only a pull request`);
       const lines = input(event).join("\n");
       const key = `${script}\0${lines}`;
       const out =
@@ -264,7 +272,11 @@ function stepOutputs(job: Job, event: PullRequestEvent): Context {
   return { steps };
 }
 
-function githubContext(event: PullRequestEvent): Value {
+function githubContext(event: WorkflowEvent): Value {
+  if ("push" in event) {
+    const ref = `refs/heads/${event.push}`;
+    return { event_name: "push", ref, ref_name: event.push, run_attempt: "1", event: { ref } };
+  }
   const { draft, base, labels } = event.pullRequest;
   return {
     event_name: "pull_request",
@@ -281,7 +293,7 @@ function githubContext(event: PullRequestEvent): Value {
   };
 }
 
-const groupOf = (workflow: Workflow, event: PullRequestEvent): string | null =>
+const groupOf = (workflow: Workflow, event: WorkflowEvent): string | null =>
   workflow.concurrency === undefined
     ? null
     : interpolate(workflow.concurrency.group, { github: githubContext(event) });
@@ -293,7 +305,7 @@ const groupOf = (workflow: Workflow, event: PullRequestEvent): string | null =>
  */
 function simulate(
   workflow: Workflow,
-  event: PullRequestEvent,
+  event: WorkflowEvent,
   failing: readonly string[],
   cancelledAt = Infinity,
 ): Run {
@@ -347,14 +359,18 @@ const needsOf = (job: Job): string[] =>
  * Every run the event starts, with each job's check. Jobs named in `failing`
  * fail when they run; every other job that runs succeeds.
  */
-export function runsFor(event: PullRequestEvent, failing: readonly string[] = []): Run[] {
+export function runsFor(event: WorkflowEvent, failing: readonly string[] = []): Run[] {
   return startedBy(event).map((workflow) => simulate(workflow, event, failing));
 }
 
-const startedBy = (event: PullRequestEvent): Workflow[] =>
-  workflows().filter((workflow) => workflow.on.pull_request.types.includes(event.action));
+const startedBy = (event: WorkflowEvent): Workflow[] =>
+  workflows().filter((workflow) =>
+    "push" in event
+      ? workflow.on.push?.branches.includes(event.push)
+      : workflow.on.pull_request?.types.includes(event.action),
+  );
 
-export type Moment = { at: number; event: PullRequestEvent; failing?: readonly string[] };
+export type Moment = { at: number; event: WorkflowEvent; failing?: readonly string[] };
 export type Played = Check & { workflow: string; at: number };
 
 /**

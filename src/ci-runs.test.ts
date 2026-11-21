@@ -13,6 +13,7 @@ import {
   type Played,
   type PullRequest,
   type PullRequestEvent,
+  type PushEvent,
 } from "../test/github-actions";
 
 /*
@@ -32,6 +33,7 @@ const read = (path: string): string => readFileSync(path, "utf8");
 const LINT = "Lint, types and format";
 const E2E = "End-to-end smoke";
 const REQUIRED = [LINT, "Tests and coverage", E2E, "Production build"];
+const WARM = "Warm caches";
 
 const CODE = ["src/app/page.tsx", "docs/tasks/248-ci-runs.md"];
 const DOCS = ["docs/tasks/248-ci-runs.md", "CLAUDE.md", ".claude/agents/builder.md"];
@@ -318,15 +320,48 @@ describe("a pull request's runs", () => {
     }
   });
 
-  it("start nothing when one merges", () => {
+  it("start no CI when one merges, and a merge into dev only warms the caches", () => {
     expect(runsFor(on("closed", pr()))).toEqual([]);
-    for (const path of WORKFLOW_FILES) {
-      expect(
-        Object.keys(
-          z.object({ on: z.record(z.string(), z.unknown()) }).parse(parse(read(path))).on,
-        ),
-      ).toEqual(["pull_request"]);
+    for (const branch of ["main", "stage", "chore/244-stage-stack"]) {
+      expect(runsFor({ push: branch }), branch).toEqual([]);
     }
+    expect(runsFor({ push: "dev" }).map((run) => run.workflow)).toEqual([WARM]);
+  });
+});
+
+describe("a merge into dev", () => {
+  // A pull request's caches are its own; one into dev can also restore dev's (R-241).
+  const merged: PushEvent = { push: "dev" };
+
+  it("warms the caches, and reports no check a ruleset requires", () => {
+    const checks = runsFor(merged).flatMap((run) => run.checks);
+
+    expect(checks.map((check) => check.result)).toEqual(["success"]);
+    for (const check of checks) expect(REQUIRED).not.toContain(check.name);
+  });
+
+  it("never warms them for a pull request, a draft's included", () => {
+    for (const event of EVENTS) {
+      expect(runsFor(event).map((run) => run.workflow)).not.toContain(WARM);
+    }
+  });
+
+  it("cancels no pull request's run, and only a later merge's warm-up cancels it", () => {
+    const played = play(
+      { at: 0, event: on("synchronize", pr({ base: "stage" })) },
+      { at: 0.5, event: merged },
+      { at: 0.7, event: merged },
+    );
+
+    expect(
+      played.filter((check) => check.workflow === "CI" && check.result === "cancelled"),
+    ).toEqual([]);
+    expect(
+      played.filter((check) => check.workflow === WARM).map(({ at, result }) => [at, result]),
+    ).toEqual([
+      [0.5, "cancelled"],
+      [0.7, "success"],
+    ]);
   });
 });
 
@@ -668,6 +703,43 @@ describe("the workflows", () => {
 
     expect(withToken).toEqual([{ path: ".github/workflows/ci.yml", id: "static", at: 0 }]);
     for (const { path } of workflows) expect(read(path)).not.toMatch(/secrets\./);
+  });
+
+  it("warm every cache a pull request's jobs restore, under the same key, and fill it as they do", () => {
+    type Step = z.infer<typeof Steps>["steps"][number];
+    const WARMING = join(".github/workflows", "warm-caches.yml");
+    const stepsOf = (path: string) =>
+      Object.values(workflows.find((found) => found.path === path)?.jobs ?? {}).flatMap(
+        (job) => Steps.parse(job).steps,
+      );
+    // What a cache's key and version come from: the action, its inputs, and a step naming the key.
+    const caches = (steps: Step[]) =>
+      steps
+        .filter((step) => /^actions\/(cache|setup-node)@/.test(step.uses ?? ""))
+        .map(({ uses, with: inputs = {} }) => {
+          const { path, key, "restore-keys": restoreKeys, cache, "node-version": node } = inputs;
+          const named = /steps\.([\w-]+)\.outputs/.exec(String(key))?.[1];
+          const keyStep = steps.find((step) => named !== undefined && step.id === named);
+          return { uses, path, key, restoreKeys, cache, node, keyStep };
+        });
+    // The engines a run installs: the cache holds the browsers whichever installed them.
+    const engines = (steps: Step[]) =>
+      steps.flatMap((step) =>
+        (/npx playwright install (.+)$/m.exec(step.run ?? "")?.[1] ?? "")
+          .split(" ")
+          .filter((arg) => arg !== "" && arg !== "--with-deps"),
+      );
+
+    const warm = stepsOf(WARMING);
+    const others = workflows.filter(({ path }) => path !== WARMING);
+    const restored = others.flatMap(({ path }) => caches(stepsOf(path)));
+
+    expect(restored.length).toBeGreaterThan(0);
+    for (const cache of restored) expect(caches(warm)).toContainEqual(cache);
+    for (const { env } of others) expect(env).toEqual(workflow("warm-caches.yml")?.env);
+    expect(new Set(engines(warm))).toEqual(new Set(engines(stepsOf(".github/workflows/ci.yml"))));
+    expect(warm.map((step) => step.run)).toContain("npm ci");
+    expect(warm.map((step) => step.run)).toContain("npm run build");
   });
 });
 

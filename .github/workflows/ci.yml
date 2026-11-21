@@ -1,8 +1,9 @@
 name: CI
 
-# Pull requests only (#248). A merge runs nothing: the promotion's pull request
-# tested what reaches main, and Vercel deploys it. Labelling or retargeting a
-# pull request starts nothing here either; e2e-catch-up.yml answers those.
+# Pull requests only (#248). A merge runs none of this: the promotion's pull
+# request tested what reaches main, and Vercel deploys it. A merge into dev
+# only warms the caches (warm-caches.yml). Labelling or retargeting a pull
+# request starts nothing here either; e2e-catch-up.yml answers those.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
