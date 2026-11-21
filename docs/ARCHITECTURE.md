@@ -768,8 +768,8 @@ CSP violation (D-122-8).
   arrive at runtime. The image optimizer is off, so `/_next/image` is a `404` (D-118-4).
 - **Branches:** features land on `dev` (squash or rebase), `dev` is promoted to `stage`
   and `stage` to `main`, each by a merge commit, and nothing flows back (D-244-1). The
-  rulesets require the four checks on `dev` and `stage`; `main` only needs a PR
-  (D-244-2).
+  rulesets require a PR and the four checks on `dev`, `stage` and `main`; `stage` and
+  `main` take merge commits only (D-244-2, D-244-30).
 - **Stage:** `docker-compose.stage.yml` (project `door-to-door-stage`) runs `edge`
   (Caddy, HTTPS, compressing) → `app` (the `runner` stage, `CONFIG_YAML`, 1 CPU, 2 GB)
   → `toxiproxy` → `db` (the dev stack's postgres), after one-shot `secret` and
@@ -788,13 +788,25 @@ CSP violation (D-122-8).
 - **Production database:** the app runs on Vercel (sin1) and connects through Neon's
   pooled host (PgBouncer, transaction mode), so nothing may keep session state on a
   connection (D-250-5). Migrations go to the direct host, `database.migrationUrl`.
-- **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
-  tests with coverage against Postgres, production build, E2E. The token can only read,
-  and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by
-  commit and images by digest, and `src/supply-chain.test.ts` refuses a new line that
-  is not (D-131-3, D-131-4). Dependabot (`.github/dependabot.yml`) opens grouped npm,
-  Actions, Docker and Compose updates weekly (D-118-7, D-131-5), against `dev` once that
-  setting reaches `main` (D-244-3); CI's postgres image follows Compose's by hand
-  (D-131-6), and the stage stack's is held to it by a test (D-244-13). A test refuses
-  an edited, deleted or unrecorded migration against `drizzle/checksums.sha256`
-  (D-131-9).
+- **CI:** runs on ready pull requests only, never a draft or a merge (D-248-1, D-248-2).
+  A merge into `dev` or `main` runs only `.github/workflows/warm-caches.yml`, whose one
+  job fills the npm, `.next` and browser caches in that branch's scope and reports no
+  required check. Pull requests into `dev` restore `dev`'s, and the rest `main`'s
+  (D-248-21, D-248-24 to D-248-26). Static checks (lint, types, format, spec lint,
+  codegen and migration drift) run first, and the other jobs need them (D-248-3). Tests
+  with coverage against Postgres and the production build skip a docs-only PR
+  (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E runs into `stage` or `main`, or with
+  the `e2e` label (`scripts/ci-e2e.sh`, D-248-6). `.github/workflows/e2e-catch-up.yml`
+  runs it when that label or base arrives later (D-248-8). A skipped job passes a
+  required check, so only a job that runs reports "End-to-end smoke" after a run begins
+  (D-248-9), a draft's lint job is named "Lint, types and format (draft, not run)"
+  (D-248-18), and a required check is skipped only under a fixed name (D-248-19). The
+  token can only read the repository and, in `ci.yml`, its pull requests, and checkout
+  leaves it nowhere on disk (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
+  `src/supply-chain.test.ts` refuses a new line that is not (D-131-3, D-131-4).
+  Dependabot (`.github/dependabot.yml`) opens grouped npm, Actions, Docker and Compose
+  updates monthly, labelled `e2e` and never rebased unasked (D-118-7, D-131-5, D-248-14,
+  D-248-15), against `dev` once that setting reaches `main` (D-244-3); CI's postgres
+  image follows Compose's by hand (D-131-6), and the stage stack's is held to it by a
+  test (D-244-13). A test refuses an edited, deleted or unrecorded migration against
+  `drizzle/checksums.sha256` (D-131-9).

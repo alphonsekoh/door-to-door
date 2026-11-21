@@ -1,0 +1,80 @@
+name: Warm caches
+
+# A pull request run's caches are scoped to its merge ref, so no other pull
+# request can restore them, and CI runs on nothing else (#248). A pull request
+# run can also restore its base branch's caches and main's, so after each merge
+# into dev or main this saves the ones CI's jobs restore, under the same keys,
+# in that branch's scope. main's serve the promotions into stage and main, and
+# pull requests stacked on a feature branch. It runs no check and reports none
+# a ruleset requires.
+on:
+  push:
+    branches: [dev, main]
+
+# Only a branch's newest commit is worth warming.
+concurrency:
+  group: warm-caches-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  # Each cache is saved by its step's post action, when the job succeeds and
+  # the key was not already there. src/ci-runs.test.ts holds every step that
+  # names a key to CI's.
+  warm:
+    name: Warm the npm, Next.js and browser caches
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Each Playwright release pins its browser builds, and those are built per
+      # OS release, so both name the cache.
+      - name: Name the browsers' cache
+        id: browsers-key
+        run: |
+          . /etc/os-release
+          echo "key=playwright-$ID-$VERSION_ID-$(uname -m)-$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Nothing here runs the browsers, so a hit need not download them.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers-key.outputs.key }}
+          lookup-only: true
+
+      # The system packages are not cached, so they are not installed here.
+      - name: Download the browsers
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install chromium webkit
+
+      # A miss restores the last build's cache, so the build is incremental.
+      - name: Cache Next.js build
+        id: next
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            next-${{ runner.os }}-
+
+      # A hit means neither src/ nor the lockfile changed since the last build.
+      - name: Build, to fill the cache
+        if: steps.next.outputs.cache-hit != 'true'
+        run: npm run build
