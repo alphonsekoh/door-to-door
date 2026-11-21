@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 
 /*
@@ -54,6 +54,14 @@ async function askToJoin(page: Page, baseURL: string | undefined, email: string)
   await expect(page).toHaveURL(/\/waiting(\?|$)/);
 }
 
+/* Drawn whole: nothing cut off by an ellipsis or spilling out of its box. */
+async function expectWhole(target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  await expect
+    .poll(() => target.evaluate((element) => element.scrollWidth <= element.clientWidth + 1))
+    .toBe(true);
+}
+
 /* The request's row on Admin > Team, in the section `heading` names. The
    admin's saved sign-in is on the harness's own address, not localhost. */
 function requestRow(page: Page, heading: string, email: string) {
@@ -93,7 +101,7 @@ test("a new address asks to join, waits with no way into the app, and is let in 
   await adminPage.goto("/admin/team");
   const row = requestRow(adminPage, "Waiting for approval", email);
   await expect(row).toContainText("Newcomer Tan");
-  await row.getByRole("button", { name: "Approve Newcomer Tan" }).click();
+  await row.getByRole("button", { name: `Approve Newcomer Tan (${email})` }).click();
   await expect(row).toHaveCount(0);
 
   // No new sign-in: the next request is let through.
@@ -108,14 +116,24 @@ test("a rejected address is told so, even signing in again, until an admin unblo
   baseURL,
   browserName,
 }) => {
-  const email = `turned-down-${browserName}-${String(Date.now())}@gmail.com`;
+  // Long, so at the largest text it is wider than the screen.
+  const email = `turned-down-with-a-long-address-${browserName}-${String(Date.now())}@gmail.com`;
   await askToJoin(page, baseURL, email);
 
   await adminPage.goto("/admin/team");
-  await requestRow(adminPage, "Waiting for approval", email)
-    .getByRole("button", { name: /^Reject/ })
-    .click();
-  const confirm = adminPage.getByRole("alertdialog", { name: "Reject Name From Google?" });
+  // The whole address, which ends in the domain that tells requests apart.
+  await adminPage.evaluate(() => {
+    document.documentElement.style.fontSize = "32px";
+  });
+  const waiting = requestRow(adminPage, "Waiting for approval", email);
+  await expectWhole(waiting.getByText(email, { exact: true }));
+  await waiting.getByRole("button", { name: `Reject Name From Google (${email})` }).click();
+  const question = `Reject Name From Google (${email})?`;
+  const confirm = adminPage.getByRole("alertdialog", { name: question });
+  await expectWhole(confirm.getByText(question, { exact: true }));
+  await adminPage.evaluate(() => {
+    document.documentElement.style.fontSize = "";
+  });
   await confirm.getByRole("button", { name: "Reject" }).click();
   await expect(requestRow(adminPage, "Not approved", email)).toBeVisible();
 

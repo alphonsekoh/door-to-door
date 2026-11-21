@@ -113,3 +113,14 @@ export async function runCreateAdmin(db: Database, io: CreateAdminIo): Promise<C
   const password = await readPassword(io, args.email);
   return createFirstAdmin(db, { ...args, password }, io.googleDomains);
 }
+
+/* What the script says once it is done; it says when a request was taken over (#249). */
+export function describeCreated(admin: CreatedAdmin): string {
+  const made = admin.fromRequest
+    ? `${admin.email} had asked to join with Google, and is now the admin.`
+    : `Created admin ${admin.email}.`;
+  const way = admin.googleOnly
+    ? `Sign in with Google as ${admin.email}.`
+    : "Sign in with that email and the password given.";
+  return `${made} ${way}`;
+}

@@ -730,9 +730,10 @@ docker run -p 3000:3000 \
   still refused `413`; on Auth.js's sign-in routes the cut is the only bound.
 - **Database connections:** one `pg` pool per process; changing `database.url` needs a
   restart. A dropped connection fails that request with a `500` and is replaced.
-- **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
-  database has no admin, so after migrating, create the first one from the same place you
-  ran `db:migrate`, with the same `config.yaml` and credentials:
+- **Accounts:** admins add members on **Admin → Team**, and approve there anyone who
+  asks to join with Google. A fresh database has no admin to do either, so after
+  migrating, create the first one from the same place you ran `db:migrate`, with the same
+  `config.yaml` and credentials:
 
   ```bash
   npm run create-admin -- --email lead@example.org --name "Lead Organiser"
@@ -751,7 +752,10 @@ docker run -p 3000:3000 \
   **Admin → Team** (a valid address, and a password of 8 to 200 characters when there is
   one). A Google-only admin needs a terminal.
   The script refuses, changing nothing, if any admin already exists, deactivated ones
-  included: later admins are added in the app.
+  included: later admins are added in the app. It also refuses an address that already
+  belongs to an account, with one exception: if the address asked to join with Google
+  before there was an admin to approve it, that request becomes the admin, keeping
+  Google's name unless `--name` gives another (#249).
 
 ## Troubleshooting
 

@@ -15,6 +15,7 @@ import {
   adminExists,
   createFirstAdmin,
 } from "@/server/users/first-admin";
+import { createAccessRequest } from "@/server/users/service";
 
 /* Room for the lock holder, the blocked run and the poller at once. */
 const pool = new Pool({ connectionString: requireTestDatabaseUrl(), max: 4 });
@@ -76,6 +77,102 @@ describe("createFirstAdmin on an empty database", () => {
     const created = await createFirstAdmin(db, { ...INPUT, name: null }, null);
     const { rows } = await pool.query("SELECT name FROM users WHERE id = $1", [created.id]);
     expect(rows).toEqual([{ name: null }]);
+  });
+});
+
+/*
+ * On a fresh database the would-be admin may try Google before running
+ * create-admin, which asks to join (#249) with no admin to approve it.
+ */
+describe("createFirstAdmin at an address that asked to join with Google", () => {
+  const GOOGLE_ADDRESS = "lead@gmail.com";
+
+  async function askToJoin(email = GOOGLE_ADDRESS) {
+    const request = await createAccessRequest(db, { email, name: "Name From Google" });
+    if (request === null) throw new Error("the request was not made");
+    return request;
+  }
+
+  async function account(id: string) {
+    const { rows } = await pool.query<{
+      role: string;
+      approval: string;
+      name: string | null;
+      password_hash: string | null;
+    }>("SELECT role, approval, name, password_hash FROM users WHERE id = $1", [id]);
+    return rows;
+  }
+
+  it("makes the request the admin, the same account, with the name it has", async () => {
+    const request = await askToJoin();
+
+    const created = await createFirstAdmin(
+      db,
+      { email: "Lead@Gmail.com", name: null, password: null },
+      ["gmail.com"],
+    );
+
+    expect(created).toEqual({
+      id: request.id,
+      email: GOOGLE_ADDRESS,
+      googleOnly: true,
+      fromRequest: true,
+    });
+    expect(await account(request.id)).toEqual([
+      { role: "admin", approval: "approved", name: "Name From Google", password_hash: null },
+    ]);
+    expect(await snapshotUsers()).toHaveLength(1);
+  });
+
+  it("gives it the name and the password given, which then sign it in", async () => {
+    const request = await askToJoin();
+
+    const created = await createFirstAdmin(
+      db,
+      { email: GOOGLE_ADDRESS, name: "Lead", password: "correct-horse" },
+      ["gmail.com"],
+    );
+
+    expect(created).toMatchObject({ id: request.id, googleOnly: false, fromRequest: true });
+    expect(await account(request.id)).toMatchObject([
+      { role: "admin", approval: "approved", name: "Lead" },
+    ]);
+    const signedIn = await authorizeCredentials(
+      { email: GOOGLE_ADDRESS, password: "correct-horse" },
+      { db, limiter: createRateLimiter({ limit: 5, windowMs: 60_000 }) },
+    );
+    expect(signedIn).toMatchObject({ id: request.id, role: "admin" });
+  });
+
+  it("takes over only that address's request, leaving anyone else waiting", async () => {
+    const other = await askToJoin("someone@gmail.com");
+
+    const created = await createFirstAdmin(db, INPUT, null);
+
+    expect(created.fromRequest).toBe(false);
+    expect(await account(other.id)).toMatchObject([{ role: "member", approval: "pending" }]);
+  });
+
+  it("never lets a request past the queue once an admin exists", async () => {
+    await pool.query(
+      "INSERT INTO users (email, role, password_hash) VALUES ('first@t.local', 'admin', 'h')",
+    );
+    const request = await askToJoin();
+
+    await expect(
+      createFirstAdmin(db, { email: GOOGLE_ADDRESS, name: null, password: null }, ["gmail.com"]),
+    ).rejects.toThrow(ADMIN_EXISTS_MESSAGE);
+    expect(await account(request.id)).toMatchObject([{ role: "member", approval: "pending" }]);
+  });
+
+  it("refuses a rejected one, as any other account, and changes nothing", async () => {
+    const request = await askToJoin();
+    await pool.query("UPDATE users SET approval = 'blocked' WHERE id = $1", [request.id]);
+
+    await expect(
+      createFirstAdmin(db, { email: GOOGLE_ADDRESS, name: null, password: null }, ["gmail.com"]),
+    ).rejects.toThrow(`${GOOGLE_ADDRESS} already belongs to an account, so nothing was changed.`);
+    expect(await account(request.id)).toMatchObject([{ role: "member", approval: "blocked" }]);
   });
 });
 

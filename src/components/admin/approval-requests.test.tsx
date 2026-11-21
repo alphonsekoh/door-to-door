@@ -80,6 +80,31 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
     ).toBeInTheDocument();
   });
 
+  it("tells apart two requests Google gave the same name, in their controls and in the question", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    const first = person("twin.a", "Twin");
+    const second = person("twin.b", "Twin");
+    serve({ pending: [first, second] }, { ...second, approval: "blocked" });
+    render(<ApprovalRequests approval="pending" version={0} onChanged={onChanged} />);
+
+    expect(
+      await screen.findByRole("button", { name: "Approve Twin (twin.a@gmail.com)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Approve Twin (twin.b@gmail.com)" }),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reject Twin (twin.b@gmail.com)" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Reject Twin (twin.b@gmail.com)?" });
+    await user.click(within(dialog).getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => {
+      expect(onChanged).toHaveBeenCalledWith("rejected");
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/users/twin.b/reject", { method: "POST" });
+  });
+
   it("keeps the Admin tab's count to what it read", async () => {
     serve({ pending: [PAT, QUINN] });
     render(<ApprovalRequests approval="pending" version={0} onChanged={vi.fn()} />);
@@ -123,7 +148,7 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
     await screen.findByText("Pat");
 
     serve({ pending: [QUINN] }, { ...PAT, approval: "approved" });
-    await user.click(screen.getByRole("button", { name: "Approve Pat" }));
+    await user.click(screen.getByRole("button", { name: "Approve Pat (pat@gmail.com)" }));
 
     await waitFor(() => {
       expect(onChanged).toHaveBeenCalledWith("approved");
@@ -140,8 +165,8 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
     render(<ApprovalRequests approval="pending" version={0} onChanged={vi.fn()} />);
     await screen.findByText("Pat");
 
-    await user.click(screen.getByRole("button", { name: "Reject Pat" }));
-    const dialog = screen.getByRole("alertdialog", { name: "Reject Pat?" });
+    await user.click(screen.getByRole("button", { name: "Reject Pat (pat@gmail.com)" }));
+    const dialog = screen.getByRole("alertdialog", { name: "Reject Pat (pat@gmail.com)?" });
     expect(
       within(dialog).getByText(
         "They won't be able to use the app or ask again. You can unblock them under Not approved.",
@@ -193,7 +218,7 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
       const approve = screen.getByRole("button", { name: "Approve quinn@gmail.com" });
       await user.click(approve);
       expect(approve).toBeDisabled();
-      expect(screen.getByRole("button", { name: "Approve Pat" })).toBeDisabled();
+      expect(screen.getByRole("button", { name: "Approve Pat (pat@gmail.com)" })).toBeDisabled();
       await nextFrame();
 
       refuse(new TypeError("Failed to fetch"));
@@ -218,7 +243,7 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
     await screen.findByText("Pat");
 
     apiFetch.mockRejectedValueOnce(conflict("Their request was rejected. Unblock them first."));
-    await user.click(screen.getByRole("button", { name: "Approve Pat" }));
+    await user.click(screen.getByRole("button", { name: "Approve Pat (pat@gmail.com)" }));
 
     expect(await within(row("Pat")).findByRole("alert")).toHaveTextContent(
       "Their request was rejected. Unblock them first.",
@@ -239,7 +264,7 @@ describe("ApprovalRequests, waiting for approval (#249)", () => {
 
       serve({ pending: [] });
       apiFetch.mockRejectedValueOnce(conflict("They've already been approved."));
-      await user.click(screen.getByRole("button", { name: "Approve Pat" }));
+      await user.click(screen.getByRole("button", { name: "Approve Pat (pat@gmail.com)" }));
 
       const alert = await screen.findByRole("alert");
       expect(alert).toHaveTextContent("They've already been approved.");
@@ -328,7 +353,7 @@ describe("ApprovalRequests, not approved (#249)", () => {
     expect(within(row("Rob")).queryByRole("button", { name: /Approve|Reject/ })).toBeNull();
 
     serve({ blocked: [] }, { ...ROB, approval: "pending" });
-    await user.click(screen.getByRole("button", { name: "Unblock Rob" }));
+    await user.click(screen.getByRole("button", { name: "Unblock Rob (rob@gmail.com)" }));
     await waitFor(() => {
       expect(onChanged).toHaveBeenCalledWith("unblocked");
     });

@@ -30,8 +30,9 @@ const COPY = {
 } as const;
 
 const named = (user: User) => user.name ?? "No name given";
-/* For a control's name: two people with no name still read apart. */
-const called = (user: User) => user.name ?? user.email;
+/* For a control's name and the Reject question: Google names two people
+   alike as readily as it leaves them unnamed, so the address goes too. */
+const called = (user: User) => (user.name === null ? user.email : `${user.name} (${user.email})`);
 
 /*
  * The people who asked to join with Google and wait for an admin, or whom an
@@ -147,8 +148,11 @@ export function ApprovalRequests({
           const failed = failure?.at === user.id;
           return (
             <li key={user.id} className="rounded-xl border border-border bg-surface p-4">
-              <span className="block truncate text-body font-semibold">{named(user)}</span>
-              <span className="block truncate text-caption text-foreground-muted">
+              {/* Wrapped, never cut: the end of a long address is its
+                  domain, what tells a gmail.com account from a Workspace
+                  one, and cut short two requests read the same. */}
+              <span className="block text-body font-semibold break-words">{named(user)}</span>
+              <span className="block text-caption break-words text-foreground-muted">
                 {user.email}
               </span>
               <p className="mt-1 text-caption text-foreground-muted">
