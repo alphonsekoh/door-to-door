@@ -191,6 +191,51 @@ describe("GET /api/households/attention", () => {
     expect(body.pagination).toMatchObject({ total: 4, hasMore: true });
   });
 
+  describe("narrowed to a block (#246)", () => {
+    it("combines the block with the medium toggle", async () => {
+      asAdmin();
+      const listed = await units(await call(`?blockId=${BLOCK_A}&minimumInterest=medium`));
+      expect(listed).toContain("#06-06");
+      expect(listed).not.toContain("#07-07");
+      // The list rule still holds inside the block.
+      expect(listed).not.toContain("#02-02");
+      expect(listed).not.toContain("#04-04");
+    });
+
+    it("counts only that block's doors when paging", async () => {
+      asAdmin();
+      const body = (await (await call(`?blockId=${BLOCK_A}&limit=1`)).json()) as {
+        data: unknown[];
+        pagination: { total: number; hasMore: boolean };
+      };
+      expect(body.data).toHaveLength(1);
+      // #01-01, #03-03 and #05-05; the other block's #07-07 is not counted.
+      expect(body.pagination).toMatchObject({ total: 3, hasMore: true });
+    });
+
+    it("gives an empty list for a block that does not exist, as a filter does", async () => {
+      asAdmin();
+      const response = await call("?blockId=abababab-0000-4000-8001-0000000000ff");
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        data: unknown[];
+        pagination: { total: number; hasMore: boolean };
+      };
+      expect(body.data).toEqual([]);
+      expect(body.pagination).toMatchObject({ total: 0, hasMore: false });
+    });
+
+    it("rejects a block id that is not one", async () => {
+      asAdmin();
+      expect((await call("?blockId=125")).status).toBe(400);
+    });
+
+    it("still refuses a member", async () => {
+      asMember();
+      expect((await call(`?blockId=${BLOCK_A}`)).status).toBe(403);
+    });
+  });
+
   it("keeps doors whose last visits tie in one order from page to page (#207)", async () => {
     const home = (n: number) => `abababab-0000-4000-8003-${String(n).padStart(12, "0")}`;
     const visit = (n: number) => `01960000-0000-7000-8021-${String(n).padStart(12, "0")}`;

@@ -1,5 +1,6 @@
 import type { HistoryEntry, InterestLevel, Religion } from "@/generated/types.gen";
 import { asUuid } from "@/lib/history/record-filters";
+import { matchesHouseholdSearch } from "@/lib/households/search";
 
 /*
  * Filters for the admin's long-term history view, held in the URL, apart from
@@ -115,14 +116,7 @@ export function toHistoryRequest(
 }
 
 export function matchesHistorySearch(entry: HistoryEntry, q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  if (needle === "") {
-    return true;
-  }
-  const { unitNumber, name, contact } = entry.household;
-  return [unitNumber, unitNumber.replace(/[#-]/g, ""), name ?? "", contact ?? ""].some((value) =>
-    value.toLowerCase().includes(needle),
-  );
+  return matchesHouseholdSearch(entry.household, q);
 }
 
 export function hasHistoryFilter(filters: HistoryFilters): boolean {

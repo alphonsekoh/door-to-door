@@ -60,7 +60,8 @@ change; no app code.
   26, whose types admit APIs Node 24 lacks. Not bumped here: 20 to 24 comes in the next
   npm-major group PR, with eslint 10, vitest 5 and jsdom 31. It lands only when that
   whole group passes. _Research:_ R-168. _Taken in #187 (D-187-3, D-187-6)._
-- **D-166-11 · These two ignores hold back security updates too. Extends D-118-7.** The
+- **D-166-11 · These two ignores hold back security updates too. Extends D-118-7.**
+  _Superseded by D-244-29: security updates take none of the entry's options._ The
   file's "Security updates are not held back" is true of the cooldown only. _Why:_
   acceptable for a dev-only compiler and a types-only package. _Research:_ R-168, R-95.
 

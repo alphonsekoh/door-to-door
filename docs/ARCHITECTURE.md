@@ -45,13 +45,15 @@ flowchart LR
 | `src/auth/`           | Auth.js entrypoint (`@/auth`); Google sign-in (`google.ts`)     | 100%     | Server-only (D-14-18); `@/auth` only in `session.ts` and the auth route (D-83-12).    |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
 | `src/db/`             | Drizzle schema, client, test env, seed data and its guard       | 100%     | Constraints carry the invariants the API cannot race.                                 |
+| `src/db/stage-seed*`  | The stage stack's year of records and its guards                | 100%     | Never the demo seed; refuses all but the stack's own empty database (D-244-16).       |
+| `src/server/stage/`   | The stage check: HTTP client, percentiles, toxiproxy            | 100%     | Tooling for `npm run stage:perf`; nothing in the app imports it (D-244-27).           |
 | `src/lib/`            | Framework-free helpers, one folder per domain                   | 100%     | Where UI logic goes so it can be tested without rendering (D-115-1).                  |
 | `src/lib/sync/`       | Offline queue and sync engine                                   | 100%     | Pure functions over a `SyncQueue`; memory and `idb` adapters.                         |
 | `src/lib/offline/`    | Offline shell's local copy and shell state                      | 100%     | Reducers, a `door-to-door-local` store, `shellState`.                                 |
 | `src/components/`     | React components, one folder per domain; shared pieces in `ui/` | 90%      | Client components; call the API with `fetch` (D-115-1).                               |
 | `src/app/**` (pages)  | Routes                                                          | 90%      | Admin pages call `requireAdminPage()`: 404 for members, sign-in with no live sign-in. |
 | `drizzle/`            | Generated migrations and their checksums                        | excluded | From `npm run db:generate` only, which appends `checksums.sha256` (D-131-9).          |
-| `scripts/`            | migrate, seed, create-admin, check-blank-text, generate-icons   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
+| `scripts/`            | migrate, seed, create-admin, check-blank-text, icons, stage-*   | excluded | Glue over `src/db` and `src/server`; `check-standalone.ts` runs as npm's `postbuild`. |
 | `src/app/sw.ts`       | Service worker source (Serwist)                                 | —        | Served at `/serwist/sw.js` by `src/app/serwist/[path]/route.ts`.                      |
 | `e2e/`                | Playwright specs                                                | —        | Pixel 5 and iPhone 13 profiles, standalone production build.                          |
 | `test/`               | Vitest setup, global setup and shared test helpers              | —        | Migrates the test database and makes the run's config folder (D-109-1).               |
@@ -289,7 +291,9 @@ per 5 s burst. The sync catch uses the same helpers.
 
 ## Configuration
 
-- Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`).
+- Settings are a YAML file read at runtime (`CONFIG_PATH`, default `./config.yaml`), or
+  the same YAML in `CONFIG_YAML` on a host with no file, such as Vercel; both together
+  refuse to start (D-241-1, D-241-2).
   `config.example.yaml` and `config.docker.yaml` are committed; `config.yaml` is not.
   Pure parsing and validation is `src/lib/config.ts`; file access and caching is
   `src/server/config.ts`.
@@ -510,7 +514,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
   (`showHistoryLine`, D-196-36 to D-196-38).
-- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
+- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select. A date
+  input needs no height: `field` drops its native appearance, which iOS draws
+  content-box past its cell (D-245-1, D-245-3).
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
@@ -546,12 +552,19 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `/offline`, which is not `no-store`, `RestoreGuard` (in `AppShell`, outside
   `AccountGate`, so on every document) hides and reloads it (`reloadWhenRestored` in
   `src/lib/session/navigate.ts`, D-129-1).
-- The admin history and records screens keep their filters in the URL, except the search
-  term, which the screen holds in state and never writes to the URL (D-29-4, D-129-7).
+- The admin history, records and Needs a return visit screens keep their filters in the
+  URL, except the search term, which the screen holds in state and never writes to the
+  URL (D-29-4, D-129-7, D-246-3). It runs over the rows loaded, through one matcher,
+  `matchesHouseholdSearch` (`src/lib/households/search.ts`, D-246-1, D-246-2).
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
   trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
-  (D-163-8).
+  (D-163-8). All records also writes its filters that way: `useAddressFilters` holds a
+  pick on screen and moves the address through Next's patched `replaceState`, and only
+  the newest first page is drawn (D-245-5, D-245-6). Needs a return visit moves its block
+  and toggle the same way, so a filter change reads only the list, with no page round
+  trip (D-246-10). The records screen still writes them with `router.replace`, which
+  waits for the server (D-245-7).
 
 ## PWA and service worker
 
@@ -718,11 +731,22 @@ CSP violation (D-122-8).
   `seed` (`--demo`, after `migrate`), `web` (waits on `migrate` only), every port on
   `127.0.0.1` (D-124-5, D-124-6). `npm run dev` binds `127.0.0.1` (D-124-10). The seed
   refuses without `--demo` or on a database with users of its own (D-124-1, D-124-2).
-- **Prod:** multi-stage `Dockerfile`, `output: "standalone"`, served by
-  `node .next/standalone/server.js`.
+- **Prod:** Vercel deploys `main` to d2dsrg.com, with settings from `CONFIG_YAML` and
+  PostgreSQL 17 on Neon (ap-southeast-1). The image is the multi-stage `Dockerfile`,
+  `output: "standalone"`, served by `node .next/standalone/server.js`.
   The output never holds `config.yaml` or a `.env`: `postbuild` deletes the `.env` Next
   copies and fails the build on anything else (D-106-2, D-106-3). Settings and secrets
   arrive at runtime. The image optimizer is off, so `/_next/image` is a `404` (D-118-4).
+- **Branches:** features land on `dev` (squash or rebase), `dev` is promoted to `stage`
+  and `stage` to `main`, each by a merge commit, and nothing flows back (D-244-1). The
+  rulesets require the four checks on `dev` and `stage`; `main` only needs a PR
+  (D-244-2).
+- **Stage:** `docker-compose.stage.yml` (project `door-to-door-stage`) runs `edge`
+  (Caddy, HTTPS, compressing) → `app` (the `runner` stage, `CONFIG_YAML`, 1 CPU, 2 GB)
+  → `toxiproxy` → `db` (the dev stack's postgres), after one-shot `secret` and
+  `migrate`. `npm run stage:seed` loads a year of records, and `stage:perf` reports
+  latency and sizes per route, optionally with a database delay (D-244-5 to D-244-25).
+  It does not model Vercel's cold starts or edge, or Neon (README, Stage environment).
 - **Database pool:** one `pg` pool per process, cached on a `Symbol.for` global so
   Next's separate module graphs share it; changing `database.url` needs a restart. Every
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`
@@ -734,6 +758,8 @@ CSP violation (D-122-8).
   and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by
   commit and images by digest, and `src/supply-chain.test.ts` refuses a new line that
   is not (D-131-3, D-131-4). Dependabot (`.github/dependabot.yml`) opens grouped npm,
-  Actions, Docker and Compose updates weekly (D-118-7, D-131-5); CI's postgres image
-  follows Compose's by hand (D-131-6). A test refuses an edited, deleted or unrecorded
-  migration against `drizzle/checksums.sha256` (D-131-9).
+  Actions, Docker and Compose updates weekly (D-118-7, D-131-5), against `dev` once that
+  setting reaches `main` (D-244-3); CI's postgres image follows Compose's by hand
+  (D-131-6), and the stage stack's is held to it by a test (D-244-13). A test refuses
+  an edited, deleted or unrecorded migration against `drizzle/checksums.sha256`
+  (D-131-9).

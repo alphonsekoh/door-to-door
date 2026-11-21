@@ -31,7 +31,8 @@ that landed last drew "Running now" over a session already read as ended. UI onl
 - **D-234-3 · No generation bump in the effects' cleanup**, unlike D-74-45's team card.
   _Why:_ the list's `load` never changes, so its cleanup runs only on unmount; the page
   remounts for each session, and React ignores a state set after unmount. A test of the
-  bump would assert nothing (D-117-50). _Research:_ R-222.
+  bump would assert nothing (D-117-50). _Research:_ R-222. _Not so on Needs a return
+  visit (D-246-13):_ its effect re-runs on each filter change, so its cleanup bumps.
 - **D-234-4 · A superseded read's failure is dropped too, on both screens.** Extends
   D-88-3. _Why:_ an older read failing after a newer one had drawn swapped the screen for
   its load error, and the button with its sentence and focus went with it.

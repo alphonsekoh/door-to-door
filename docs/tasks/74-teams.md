@@ -326,7 +326,9 @@ invisible to B until it syncs cannot run until the queue (#33) exists.
   101st person.
 - **D-74-62 · Native selects carry `h-12`.** iOS WebKit ignores `min-height` on a
   `<select>`; the admin filters measured 26px, now 48px, guarded in `e2e/pwa.spec.ts`.
-  Extends D-30-8. _Research:_ R-39.
+  Extends D-30-8. _Research:_ R-39. _Noted by D-245-3:_ a date input needs no `h-12`.
+  Without its native look (D-245-1) it honours `min-h-12`, so the follow-up sheet's
+  input dropped the `h-12` that cited this decision.
 - **D-74-63 · Double-tap tests click twice inside one `act`.** _Why:_ the earlier tests
   passed with the in-flight guards removed; each guard was broken on purpose and its test
   now fails (D-74-44).

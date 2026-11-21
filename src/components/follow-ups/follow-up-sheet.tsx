@@ -309,8 +309,6 @@ export function FollowUpSheet({
           <label htmlFor="follow-up-due" className="mb-1 block text-body font-medium">
             {copy.due}
           </label>
-          {/* h-12, not min-h: iOS WebKit ignores min-height on native date
-            and select controls (D-74-62). */}
           <input
             id="follow-up-due"
             type="date"
@@ -318,7 +316,7 @@ export function FollowUpSheet({
             onChange={(event) => {
               setDay(event.target.value);
             }}
-            className="h-12 min-h-12 field"
+            className="min-h-12 field"
           />
         </div>
 
