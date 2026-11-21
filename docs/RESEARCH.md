@@ -334,8 +334,8 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** A `<select>` styled `min-h-12` rendered 26px tall in Playwright's WebKit at a
   phone viewport; adding `height` (`h-12`) rendered it 48px. Chromium honoured
   `min-height`. Observed in Playwright WebKit only; unverified on a real iPhone.
-- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filter selects are at
-  least 44px tall")
+- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filters are at least
+  44px tall", named "admin filter selects are at least 44px tall" until #245)
 - **Used by:** D-74-62
 
 ### R-40 · Linux WebKit's worker update check is cookieless, but it stores cookies set on the reply
@@ -1562,8 +1562,10 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   the first load carried the old URL in `Referer` (`same-origin`): 23 on Chromium, 13 on
   WebKit. An aborted or `500` RSC fetch gave a second document load, search empty; with
   no signal, the Offline page. Next 16.4.3, production build, both phone projects.
-- **Source:** #163 verifier, round 0 (Playwright network logs)
-- **Used by:** D-163-6
+- **Source:** #163 verifier, round 0 (Playwright network logs). #245's verifier r0 saw
+  the same wait on All records' filters: a picked date read blank until the server
+  answered.
+- **Used by:** D-163-6, D-245-5
 
 ### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
 
@@ -1574,10 +1576,11 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   which is what moves `useSearchParams`. On `popstate`, an entry with no state is ignored
   and one without `__NA` reloads the page. So a call before the patch must carry
   `history.state` itself. The docs promise the sync, not when the patch is in place.
-- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3);
+- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3; the
+  patch re-read unchanged in 16.4.5, lines 274-324, by #245's docs step);
   `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
   "Native History API"
-- **Used by:** D-163-6
+- **Used by:** D-163-6, D-245-5
 
 ### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
 
@@ -2910,6 +2913,25 @@ false`) on that date.
   20 rounds (8 at 220 ms) on a freshly seeded stack. Other builds shared the machine, so
   single milliseconds are noise. Not re-measured by the docs step.
 - **Used by:** D-244-9, D-244-23
+
+### R-231 · iOS Safari draws a native date input content-box with a 30px min-height, whatever the page sets (measured on a simulator)
+
+- **Finding:** in Safari on iOS, an `<input type="date">` with its native appearance keeps
+  a content-box size and a 30px min-height, ignoring the page's `box-sizing`, `width`
+  and `min-height`. On All records at 430px, From and To were 221 × 32 in 194px cells
+  beside 194 × 51 selects, so To ran from x 219 to 441. The follow-up sheet's input was
+  28px wider than its column. With `appearance: none` each takes the field's box: 194 ×
+  51, and 96px tall at 32px text, where a filled date wraps to two lines. Playwright's
+  WebKit and Chromium do not draw iOS's control and never showed the overflow. With and
+  without the rule both gave the same 179 × 48 box, 12px padding, 1px border and 8px
+  radius, and Chromium kept its calendar icon. Tailwind 4.3.5's preflight already sets
+  `::-webkit-date-and-time-value { min-height: 1lh; text-align: inherit }`. That keeps an
+  empty date's height on iOS and lets its value start-align.
+- **Source:** measured in Safari on an iOS 26.5 simulator, iPhone 15 Pro Max, 430px (#245
+  builder; before and after at 16 and 32px by the verifier r0), not on a real device.
+  Chromium and desktop WebKit compared with and without the rule by the #245 reviewer.
+  `node_modules/tailwindcss/preflight.css` lines 319-327 (4.3.5).
+- **Used by:** D-245-1, D-245-2, D-245-4
 
 ### R-238 · A job skipped by `if:` passes a required check; a skipped workflow leaves it pending (read)
 

@@ -60,7 +60,8 @@ bar, from where a lapsed session carried it into `/sign-in?callbackUrl=`.
   stayed in the address and in the `Referer` of the first load's API calls, and a failed
   round trip reloaded the page with the search empty, or showed Offline (R-140).
   _Trade-off:_ it leans on Next 16 internals, the `__NA` entry state and the patch its
-  router installs in an effect (R-141). Vitest models them by hand.
+  router installs in an effect (R-141). Vitest models them by hand. _Extended by
+  D-245-5:_ All records writes every filter through Next's patched `replaceState`.
 - **D-163-7 · A `q` that appears while the screen is open is taken too, replacing what
   was typed.** Back or Forward onto an older entry with `?q=`, or a pushed `?q=`, fills
   the search and is stripped the same way. _Why:_ it is the same old link; left alone it

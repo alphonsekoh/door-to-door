@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { InterestChip } from "@/components/ui/interest-chip";
@@ -23,6 +23,7 @@ import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { historyToCsv } from "@/lib/csv";
 import { asHouseholdSummary } from "@/lib/history/history";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
 import { loadAllUsers } from "@/lib/session/users";
@@ -66,13 +67,14 @@ type State =
   | { status: "error"; message: string };
 
 export function ConsolidatedHistory() {
-  const router = useRouter();
   const params = useSearchParams();
-  const inUrl = parseHistoryFilters(new URLSearchParams(params.toString()));
-  const search = toHistorySearch(inUrl);
+  const [search, chooseFilters] = useAddressFilters(
+    "/admin/history",
+    toHistorySearch(parseHistoryFilters(new URLSearchParams(params.toString()))),
+  );
   /* Held here, never in the URL (history-filters). */
   const [q, setQ] = useSearchTerm("/admin/history", search);
-  const filters: HistoryFilters = { ...inUrl, q };
+  const filters: HistoryFilters = { ...parseHistoryFilters(new URLSearchParams(search)), q };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [offset, setOffset] = useState(0);
@@ -88,12 +90,18 @@ export function ConsolidatedHistory() {
   const [exporting, setExporting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const exportFocus = useRefusalFocus();
+  /* Each pick loads at once, so on a slow line an older answer can land last
+     (D-28-7). A first page supersedes every load before it; a further page
+     belongs to the list it extends. */
+  const generation = useRef(0);
 
   const load = useCallback(async (current: HistoryFilters, at: number) => {
+    const mine = at === 0 ? ++generation.current : generation.current;
     try {
       const page = await apiFetch<HistoryList>(
         `/history?${toHistoryRequest(current, { limit: PAGE_SIZE, offset: at })}`,
       );
+      if (mine !== generation.current) return;
       setState((previous) => ({
         status: "ready",
         entries:
@@ -101,6 +109,7 @@ export function ConsolidatedHistory() {
         total: page.pagination.total,
       }));
     } catch (error) {
+      if (mine !== generation.current) return;
       setState({
         status: "error",
         message: failureLine(error, "Could not load the records."),
@@ -170,13 +179,10 @@ export function ConsolidatedHistory() {
     !teams.some((team) => team.id === filters.teamId);
   useEffect(() => {
     if (!unknownTeam) return;
-    const next = toHistorySearch({
-      ...parseHistoryFilters(new URLSearchParams(search)),
-      teamId: "",
-    });
-    // Teams are only known once a session is chosen, so the session keeps the query non-empty.
-    router.replace(`/admin/history?${next}`);
-  }, [unknownTeam, search, router]);
+    chooseFilters(
+      toHistorySearch({ ...parseHistoryFilters(new URLSearchParams(search)), teamId: "" }),
+    );
+  }, [unknownTeam, search, chooseFilters]);
 
   function setFilter<K extends Exclude<keyof HistoryFilters, "q">>(
     key: K,
@@ -184,8 +190,7 @@ export function ConsolidatedHistory() {
   ): void {
     /* A team from the old session means nothing in the new one. */
     const reset = key === "sessionId" ? { teamId: "" } : {};
-    const next = toHistorySearch({ ...filters, ...reset, [key]: value });
-    router.replace(next === "" ? "/admin/history" : `/admin/history?${next}`);
+    chooseFilters(toHistorySearch({ ...filters, ...reset, [key]: value }));
   }
 
   /*
@@ -451,7 +456,7 @@ export function ConsolidatedHistory() {
               type="button"
               onClick={() => {
                 setQ("");
-                router.replace("/admin/history");
+                chooseFilters("");
               }}
               className="min-h-11 rounded-lg px-3 text-body font-medium btn-text"
             >

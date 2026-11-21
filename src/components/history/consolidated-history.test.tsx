@@ -18,14 +18,25 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-const { replace, searchParams } = vi.hoisted(() => ({
-  replace: vi.fn(),
-  searchParams: { value: new URLSearchParams() },
-}));
+/* The router's copy of the address. A test moves it only where the router
+   would: on a link, Back or Forward. Next reports the screen's own writes
+   back a render later, and router.replace did not until the server answered,
+   so here it never does, and the screen must not need it. */
+const { searchParams } = vi.hoisted(() => ({ searchParams: { value: new URLSearchParams() } }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => searchParams.value,
 }));
+
+function at(query: string) {
+  searchParams.value = new URLSearchParams(query);
+  window.history.replaceState(
+    null,
+    "",
+    query === "" ? "/admin/history" : `/admin/history?${query}`,
+  );
+}
+
+const address = () => `${window.location.pathname}${window.location.search}`;
 
 vi.mock("@/lib/hooks/use-role", () => ({
   useRole: () => ({
@@ -158,12 +169,51 @@ function serve(entries: HistoryEntry[], total = entries.length) {
   });
 }
 
+const list = (entries: HistoryEntry[], total = entries.length) => ({
+  data: entries,
+  pagination: { limit: 100, offset: 0, total, hasMore: entries.length < total },
+});
+
+type Held = { resolve: (value: unknown) => void; reject: (reason: unknown) => void };
+
+/* The pickers answer at once; each records request waits, keyed by `key`,
+   for the test to settle it, in whatever order it likes. */
+function holdHistory(key: (path: string) => string | null) {
+  const held = new Map<string | null, Held>();
+  apiFetch.mockImplementation((path: string) => {
+    if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
+    if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
+    if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+    return new Promise((resolve, reject) => {
+      held.set(key(path), { resolve, reject });
+    });
+  });
+  async function waiting(name: string | null): Promise<Held> {
+    let found: Held | undefined;
+    await waitFor(() => {
+      found = held.get(name);
+      expect(found, `a request for ${String(name)}`).toBeDefined();
+    });
+    if (found === undefined) throw new Error(`no request for ${String(name)}`);
+    return found;
+  }
+  return {
+    waiting,
+    async answer(name: string | null, value: unknown) {
+      const request = await waiting(name);
+      await act(async () => {
+        request.resolve(value);
+        await Promise.resolve();
+      });
+    },
+  };
+}
+
 let csv = "";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  searchParams.value = new URLSearchParams();
-  window.history.replaceState(null, "", "/");
+  at("");
   csv = "";
   /* jsdom has no object URLs and cannot follow a download, so the blob is
      captured here instead - which is also the only way to assert its contents. */
@@ -205,7 +255,7 @@ describe("ConsolidatedHistory", () => {
   });
 
   it("reads its filters from the URL", async () => {
-    searchParams.value = new URLSearchParams("religion=buddhist&from=2026-03-01");
+    at("religion=buddhist&from=2026-03-01");
     serve([]);
     render(<ConsolidatedHistory />);
 
@@ -223,10 +273,10 @@ describe("ConsolidatedHistory", () => {
     await screen.findByText(door("Blk 123, #05-123"));
 
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
-    expect(replace).toHaveBeenCalledWith("/admin/history?religion=hindu");
+    expect(address()).toBe("/admin/history?religion=hindu");
 
     await user.selectOptions(screen.getByLabelText("Filter by session"), "s1");
-    expect(replace).toHaveBeenCalledWith("/admin/history?sessionId=s1");
+    expect(address()).toBe("/admin/history?sessionId=s1&religion=hindu");
   });
 
   it("wires every control to its own parameter", async () => {
@@ -238,19 +288,130 @@ describe("ConsolidatedHistory", () => {
     await screen.findByText(door("Blk 123, #05-123"));
 
     await user.selectOptions(screen.getByLabelText("Filter by block"), "b1");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?blockId=b1");
+    expect(address()).toBe("/admin/history?blockId=b1");
 
     await user.selectOptions(screen.getByLabelText("Filter by member"), "u1");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?memberId=u1");
+    expect(address()).toBe("/admin/history?blockId=b1&memberId=u1");
 
     await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?interestLevel=high");
+    expect(address()).toBe("/admin/history?blockId=b1&memberId=u1&interestLevel=high");
 
     await user.type(screen.getByLabelText("Recorded from"), "2026-03-01");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?from=2026-03-01");
+    expect(address()).toBe(
+      "/admin/history?blockId=b1&memberId=u1&interestLevel=high&from=2026-03-01",
+    );
 
     await user.type(screen.getByLabelText("Recorded to"), "2026-03-31");
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?to=2026-03-31");
+    expect(address()).toBe(
+      "/admin/history?blockId=b1&memberId=u1&interestLevel=high&from=2026-03-01&to=2026-03-31",
+    );
+  });
+
+  /* router.replace waited on a server round trip: until it answered the field
+     read its old value, and a second pick, built on stale filters, dropped
+     the first (#245). */
+  it("shows each pick at once and keeps it through the next, before the router reports either", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    const from = screen.getByLabelText("Recorded from");
+    const to = screen.getByLabelText("Recorded to");
+
+    await user.type(from, "2026-03-01");
+    expect(from).toHaveValue("2026-03-01");
+
+    await user.type(to, "2026-03-31");
+    expect(from).toHaveValue("2026-03-01");
+    expect(to).toHaveValue("2026-03-31");
+    expect(address()).toBe("/admin/history?from=2026-03-01&to=2026-03-31");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history?limit=100&offset=0&from=2026-03-01T00%3A00%3A00.000Z&to=2026-03-31T23%3A59%3A59.999Z",
+      );
+    });
+  });
+
+  it.each([
+    [
+      "answers",
+      (late: Held) => {
+        late.resolve(list([entry("h3", { unitNumber: "#05-125" })]));
+      },
+    ],
+    [
+      "fails",
+      (late: Held) => {
+        late.reject(new TypeError("Load failed"));
+      },
+    ],
+  ])("keeps the newest pick's records when an older pick %s last", async (_, settle) => {
+    const user = userEvent.setup();
+    const held = holdHistory((path) => new URLSearchParams(path.split("?")[1]).get("religion"));
+    render(<ConsolidatedHistory />);
+    await held.answer(null, list([entry("h1")]));
+    await card("Blk 123, #05-123");
+
+    const religion = screen.getByLabelText("Filter by religion");
+    await user.selectOptions(religion, "hindu");
+    const late = await held.waiting("hindu");
+    await user.selectOptions(religion, "buddhist");
+    await held.answer("buddhist", list([entry("h2", { unitNumber: "#05-124" })]));
+    await card("Blk 123, #05-124");
+
+    await act(async () => {
+      settle(late);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-125"))).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("never adds a page of the old filters to the list of a newer pick", async () => {
+    const user = userEvent.setup();
+    const held = holdHistory((path) => {
+      const query = new URLSearchParams(path.split("?")[1]);
+      return `${query.get("religion") ?? "any"}@${query.get("offset") ?? ""}`;
+    });
+    render(<ConsolidatedHistory />);
+    await held.answer("any@0", list([entry("h1")], 2));
+    await card("Blk 123, #05-123");
+
+    await user.click(screen.getByRole("button", { name: /Show more/ }));
+    const late = await held.waiting("any@100");
+    await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
+    await held.answer("hindu@0", list([entry("h2", { unitNumber: "#05-124" })]));
+    await card("Blk 123, #05-124");
+    await act(async () => {
+      late.resolve(list([entry("h3", { unitNumber: "#05-125" })], 2));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText(door("Blk 123, #05-125"))).not.toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
+  });
+
+  it("keeps a pick's records when Show more is tapped while they load", async () => {
+    const user = userEvent.setup();
+    const held = holdHistory((path) => {
+      const query = new URLSearchParams(path.split("?")[1]);
+      return `${query.get("religion") ?? "any"}@${query.get("offset") ?? ""}`;
+    });
+    render(<ConsolidatedHistory />);
+    await held.answer("any@0", list([entry("h1")], 2));
+    await card("Blk 123, #05-123");
+
+    await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
+    await held.waiting("hindu@0");
+    await user.click(screen.getByRole("button", { name: /Show more/ }));
+    await held.answer("hindu@0", list([entry("h2", { unitNumber: "#05-124" })], 2));
+    await held.answer("hindu@100", list([entry("h3", { unitNumber: "#05-125" })], 2));
+
+    expect(await screen.findByText(door("Blk 123, #05-125"))).toBeInTheDocument();
+    expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
+    expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
   });
 
   it("reloads after amending, so the row is not stale", async () => {
@@ -293,13 +454,14 @@ describe("ConsolidatedHistory", () => {
 
   it("clears back to a bare URL", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("religion=hindu");
+    at("religion=hindu");
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
     await screen.findByText(door("Blk 123, #05-123"));
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(replace).toHaveBeenCalledWith("/admin/history");
+    expect(address()).toBe("/admin/history");
+    expect(screen.getByLabelText("Filter by religion")).toHaveValue("");
   });
 
   it("searches within what is loaded, with nothing in the URL and nothing asked of the server", async () => {
@@ -315,7 +477,7 @@ describe("ConsolidatedHistory", () => {
 
     expect(screen.getByText(door("Blk 123, #05-124"))).toBeInTheDocument();
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
-    expect(replace).not.toHaveBeenCalled();
+    expect(address()).toBe("/admin/history");
     // Let any deferred load run: typing must not start one.
     await act(() => new Promise((resolve) => setTimeout(resolve, 10)));
     expect(apiFetch).not.toHaveBeenCalled();
@@ -332,15 +494,13 @@ describe("ConsolidatedHistory", () => {
     await user.selectOptions(screen.getByLabelText("Filter by religion"), "hindu");
 
     // Nor is the term written along with the filter.
-    expect(replace).toHaveBeenLastCalledWith("/admin/history?religion=hindu");
+    expect(address()).toBe("/admin/history?religion=hindu");
     expect(search).toHaveValue("124");
   });
 
   it("moves an old link's search term from the address into the search (#163)", async () => {
     // Left in the address, it would ride into a sign-in's callbackUrl.
-    const link = "/admin/history?q=124&religion=hindu";
-    window.history.replaceState(null, "", link);
-    searchParams.value = new URL(link, window.location.href).searchParams;
+    at("q=124&religion=hindu");
     serve([entry("h1"), entry("h2", { unitNumber: "#05-124" })]);
     render(<ConsolidatedHistory />);
 
@@ -348,12 +508,7 @@ describe("ConsolidatedHistory", () => {
     expect(screen.queryByText(door("Blk 123, #05-123"))).not.toBeInTheDocument();
     expect(screen.getByLabelText("Search by unit, name or contact")).toHaveValue("124");
     expect(screen.getByRole("button", { name: "Clear filters" })).toBeInTheDocument();
-    expect(`${window.location.pathname}${window.location.search}`).toBe(
-      "/admin/history?religion=hindu",
-    );
-    // The router's replace waits on the server, and reloads the page, search
-    // emptied, if that fails.
-    expect(replace).not.toHaveBeenCalled();
+    expect(address()).toBe("/admin/history?religion=hindu");
     const asked = apiFetch.mock.calls.map(([path]) => String(path));
     expect(asked.filter((path) => /q=|124/.test(path))).toEqual([]);
   });
@@ -398,7 +553,7 @@ describe("ConsolidatedHistory", () => {
     // The promise of the button. A file holding the first hundred rows while
     // the filter matched three hundred would be worse than no export.
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("religion=buddhist");
+    at("religion=buddhist");
     const first = Array.from({ length: 100 }, (_, i) =>
       entry(`h${String(i)}`, { unitNumber: `#05-${String(i)}` }),
     );
@@ -509,7 +664,7 @@ describe("ConsolidatedHistory", () => {
   it.each(["religion=hindu", "memberId=u1", "sessionId=s1", "from=2026-01-01"])(
     "says the filters match nothing with %s",
     async (query) => {
-      searchParams.value = new URLSearchParams(query);
+      at(query);
       serve([]);
       render(<ConsolidatedHistory />);
       expect(await screen.findByText("Nothing here matches those filters.")).toBeInTheDocument();
@@ -597,7 +752,7 @@ describe("teams", () => {
 
   it("lists the chosen outing's teams and writes the choice to the URL", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams("sessionId=s1");
+    at("sessionId=s1");
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
 
@@ -606,11 +761,11 @@ describe("teams", () => {
       expect(within(picker).getByRole("option", { name: "Alice & Ben" })).toBeInTheDocument();
     });
     await user.selectOptions(picker, TEAM_ID);
-    expect(replace).toHaveBeenCalledWith(`/admin/history?sessionId=s1&teamId=${TEAM_ID}`);
+    expect(address()).toBe(`/admin/history?sessionId=s1&teamId=${TEAM_ID}`);
   });
 
   it("asks the server for that team's records", async () => {
-    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    at(`sessionId=s1&teamId=${TEAM_ID}`);
     serve([]);
     render(<ConsolidatedHistory />);
 
@@ -623,17 +778,17 @@ describe("teams", () => {
 
   it("forgets the team when the outing changes", async () => {
     const user = userEvent.setup();
-    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    at(`sessionId=s1&teamId=${TEAM_ID}`);
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
     await card("Blk 123, #05-123");
 
     await user.selectOptions(screen.getByLabelText("Filter by session"), "");
-    expect(replace).toHaveBeenCalledWith("/admin/history");
+    expect(address()).toBe("/admin/history");
   });
 
   it("leaves the team picker empty when the teams cannot be listed", async () => {
-    searchParams.value = new URLSearchParams("sessionId=s1");
+    at("sessionId=s1");
     apiFetch.mockImplementation((path: string) => {
       if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
       if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
@@ -658,7 +813,7 @@ describe("teams", () => {
       s1: () => undefined,
       fail: () => undefined,
     };
-    searchParams.value = new URLSearchParams("sessionId=s1");
+    at("sessionId=s1");
     apiFetch.mockImplementation((path: string) => {
       if (path === "/sessions/s1/teams") {
         return new Promise((resolve) => {
@@ -685,12 +840,12 @@ describe("teams", () => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
     });
 
-    searchParams.value = new URLSearchParams("sessionId=s3");
+    at("sessionId=s3");
     rerender(<ConsolidatedHistory />);
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/s3/teams");
     });
-    searchParams.value = new URLSearchParams("sessionId=s2");
+    at("sessionId=s2");
     rerender(<ConsolidatedHistory />);
     const picker = await screen.findByLabelText("Filter by team");
     await waitFor(() => {
@@ -720,28 +875,28 @@ describe("teams", () => {
 
   it("drops a team that is not one of the chosen outing's from the URL", async () => {
     const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
-    searchParams.value = new URLSearchParams(`sessionId=s1&religion=hindu&teamId=${other}`);
+    at(`sessionId=s1&religion=hindu&teamId=${other}`);
     serve([]);
     render(<ConsolidatedHistory />);
     await waitFor(() => {
-      expect(replace).toHaveBeenCalledWith("/admin/history?sessionId=s1&religion=hindu");
+      expect(address()).toBe("/admin/history?sessionId=s1&religion=hindu");
     });
   });
 
   it("keeps a team that belongs to the outing", async () => {
-    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${TEAM_ID}`);
+    at(`sessionId=s1&teamId=${TEAM_ID}`);
     serve([entry("h1")]);
     render(<ConsolidatedHistory />);
     const picker = await screen.findByLabelText("Filter by team");
     await waitFor(() => {
       expect(picker).toHaveValue(TEAM_ID);
     });
-    expect(replace).not.toHaveBeenCalled();
+    expect(address()).toBe(`/admin/history?sessionId=s1&teamId=${TEAM_ID}`);
   });
 
   it("keeps the team while the outing's teams cannot be listed", async () => {
     const other = "0190a1b2-c3d4-7e5f-8a9b-ffffffffffff";
-    searchParams.value = new URLSearchParams(`sessionId=s1&teamId=${other}`);
+    at(`sessionId=s1&teamId=${other}`);
     apiFetch.mockImplementation((path: string) => {
       if (path.endsWith("/teams")) return Promise.reject(new Error("nope"));
       if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
@@ -757,7 +912,7 @@ describe("teams", () => {
     await waitFor(() => {
       expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/teams");
     });
-    expect(replace).not.toHaveBeenCalled();
+    expect(address()).toBe(`/admin/history?sessionId=s1&teamId=${other}`);
   });
 
   it("names the household under its door when a name is known, and the notes under each visit", async () => {
