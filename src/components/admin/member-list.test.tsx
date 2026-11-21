@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemberList, lastActiveLabel } from "@/components/admin/member-list";
@@ -17,6 +17,23 @@ vi.mock("@/lib/api-client", async () => {
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
+/* Each approval section reads and acts for itself (approval-requests.test.tsx);
+   here, where Team puts them and what it does when one reports a change. */
+type SectionProps = { approval: string; version: number; onChanged: (change: string) => void };
+const { sections } = vi.hoisted(() => ({ sections: new Map<string, SectionProps>() }));
+vi.mock("@/components/admin/approval-requests", () => ({
+  ApprovalRequests: (props: SectionProps) => {
+    sections.set(props.approval, props);
+    return <p>{`${props.approval} section, version ${String(props.version)}`}</p>;
+  },
+}));
+
+function section(approval: string): SectionProps {
+  const found = sections.get(approval);
+  if (!found) throw new Error(`no ${approval} section`);
+  return found;
+}
+
 const AT = "2026-03-14T11:00:00.000Z";
 
 function member(
@@ -31,6 +48,7 @@ function member(
     name,
     image: null,
     role,
+    approval: "approved",
     deactivatedAt: deactivated ? AT : null,
     lastRecordedAt,
     createdAt: AT,
@@ -477,6 +495,78 @@ describe("MemberList", () => {
     apiFetch.mockRejectedValue("boom");
     render(<MemberList googleDomains={null} />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the team.");
+  });
+
+  /* #249 */
+  describe("the approval sections", () => {
+    it("puts who waits for approval above Add someone, and who was turned down below the team", async () => {
+      apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+      render(<MemberList googleDomains={null} />);
+      await screen.findByText(/^Alice/);
+
+      const pending = screen.getByText("pending section, version 0");
+      const add = screen.getByRole("button", { name: "Add someone" });
+      const blocked = screen.getByText("blocked section, version 0");
+      expect(pending.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(
+        row("Alice").compareDocumentPosition(blocked) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it("shows them while the team is still loading or failed to", async () => {
+      apiFetch.mockRejectedValue(new TypeError("Failed to fetch"));
+      render(<MemberList googleDomains={null} />);
+      expect(screen.getByText("pending section, version 0")).toBeInTheDocument();
+      expect(await screen.findByRole("alert")).toHaveTextContent("Could not load the team.");
+      expect(screen.getByText("blocked section, version 0")).toBeInTheDocument();
+    });
+
+    it("reads the team again when someone is approved into it", async () => {
+      apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+      render(<MemberList googleDomains={null} />);
+      await screen.findByText(/^Alice/);
+
+      apiFetch.mockResolvedValue(page([member("u1", "Alice"), member("u7", "Pat")]));
+      act(() => {
+        section("pending").onChanged("approved");
+      });
+      expect(await screen.findByText(/^Pat/)).toBeInTheDocument();
+      expect(screen.getByText("pending section, version 0")).toBeInTheDocument();
+      expect(screen.getByText("blocked section, version 0")).toBeInTheDocument();
+    });
+
+    it("has the other section read again when someone moves into it", async () => {
+      apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+      render(<MemberList googleDomains={null} />);
+      await screen.findByText(/^Alice/);
+
+      act(() => {
+        section("pending").onChanged("rejected");
+      });
+      expect(screen.getByText("blocked section, version 1")).toBeInTheDocument();
+      act(() => {
+        section("blocked").onChanged("unblocked");
+      });
+      expect(screen.getByText("pending section, version 1")).toBeInTheDocument();
+      expect(screen.getByText("blocked section, version 1")).toBeInTheDocument();
+      // Neither moved anyone into the team.
+      expect(apiFetch).toHaveBeenCalledOnce();
+    });
+
+    it("reads all three again when a change was refused as stale", async () => {
+      apiFetch.mockResolvedValue(page([member("u1", "Alice")]));
+      render(<MemberList googleDomains={null} />);
+      await screen.findByText(/^Alice/);
+
+      act(() => {
+        section("pending").onChanged("stale");
+      });
+      expect(screen.getByText("pending section, version 1")).toBeInTheDocument();
+      expect(screen.getByText("blocked section, version 1")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 
   it("falls back to the email for somebody with no name, in the row and when deactivating", async () => {

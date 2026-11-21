@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lt, ne, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import { signIns, users, type Role } from "@/db/schema";
+import { signIns, users, type Approval, type Role } from "@/db/schema";
 import { describeDevice } from "@/lib/session/device";
 import { SESSION_MAX_AGE_SECONDS } from "@/server/auth/lifetime";
 import { firstOrThrow } from "@/server/db-utils";
@@ -99,6 +99,7 @@ export type Account = {
   email: string;
   name: string | null;
   role: Role;
+  approval: Approval;
   deactivatedAt: Date | null;
 };
 
@@ -111,7 +112,9 @@ export type SignInCheck =
 /*
  * The per-request check: the account and the token's sign-in in one query.
  * A deactivated account is reported as such whatever its sign-in, so the
- * member is told they are deactivated rather than signed out (D-85-2).
+ * member is told they are deactivated rather than signed out (D-85-2). The
+ * account's approval comes with it, so approving or rejecting someone takes
+ * effect on their next request, as deactivating does (#249).
  *
  * The only write is "last used", and only once it is a quarter of an hour
  * old: a conditional UPDATE, so two requests at once write it once.
@@ -127,6 +130,7 @@ export async function checkSignIn(
       email: users.email,
       name: users.name,
       role: users.role,
+      approval: users.approval,
       deactivatedAt: users.deactivatedAt,
       signInId: signIns.id,
       due: sql<boolean | null>`${signIns.lastUsedAt} < ${touchDue}`,
@@ -149,6 +153,7 @@ export async function checkSignIn(
     email: row.email,
     name: row.name,
     role: row.role,
+    approval: row.approval,
     deactivatedAt: row.deactivatedAt,
   };
   if (row.deactivatedAt !== null) return { status: "deactivated", account };

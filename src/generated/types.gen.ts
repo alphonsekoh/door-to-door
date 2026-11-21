@@ -91,11 +91,39 @@ export const FollowUpStatus = { SUGGESTED: 'suggested', LISTED: 'listed' } as co
  */
 export type FollowUpStatus = typeof FollowUpStatus[keyof typeof FollowUpStatus];
 
+/**
+ * `approved` may use the app; everyone an admin adds is approved from
+ * the start. `pending` was created by a first Google sign-in
+ * and waits for an admin. `blocked` was rejected by an admin, and
+ * cannot ask again until an admin unblocks it, which makes it
+ * `pending`. Only an `approved` account can be an admin or be
+ * deactivated.
+ *
+ */
+export const Approval = {
+    PENDING: 'pending',
+    APPROVED: 'approved',
+    BLOCKED: 'blocked'
+} as const;
+
+/**
+ * `approved` may use the app; everyone an admin adds is approved from
+ * the start. `pending` was created by a first Google sign-in
+ * and waits for an admin. `blocked` was rejected by an admin, and
+ * cannot ask again until an admin unblocks it, which makes it
+ * `pending`. Only an `approved` account can be an admin or be
+ * deactivated.
+ *
+ */
+export type Approval = typeof Approval[keyof typeof Approval];
+
 export const ErrorCode = {
     VALIDATION_FAILED: 'validation_failed',
     UNAUTHENTICATED: 'unauthenticated',
     FORBIDDEN: 'forbidden',
     ACCOUNT_DEACTIVATED: 'account_deactivated',
+    ACCOUNT_PENDING: 'account_pending',
+    ACCOUNT_BLOCKED: 'account_blocked',
     NOT_FOUND: 'not_found',
     CONFLICT: 'conflict',
     SESSION_NOT_ACTIVE: 'session_not_active',
@@ -151,13 +179,16 @@ export type User = {
     id: string;
     email: string;
     /**
-     * Absent until an admin or the member supplies one. Signing in with
-     * Google never sets or changes it.
+     * Absent until an admin or the member supplies one. A first Google
+     * sign-in, which creates a `pending` account, takes the name on the
+     * Google account when it is a valid name; a later sign-in never
+     * sets or changes it.
      *
      */
     name: string | null;
     image?: string | null;
     role: Role;
+    approval: Approval;
     /**
      * Deactivated users cannot sign in, but their records stay attributed
      * to them — history must survive someone leaving the team.
@@ -1139,9 +1170,12 @@ export type ListSessionsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1181,9 +1215,12 @@ export type CreateSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1277,9 +1314,12 @@ export type GetSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1321,9 +1361,12 @@ export type StartSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1374,9 +1417,12 @@ export type EndSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1422,9 +1468,12 @@ export type ReopenSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1510,9 +1559,12 @@ export type AttachSessionBlocksErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1569,9 +1621,12 @@ export type DetachSessionBlockErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1619,9 +1674,12 @@ export type ListSessionRevisitsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1667,9 +1725,12 @@ export type ListSessionHouseholdsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1719,9 +1780,12 @@ export type AddSessionHouseholdsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1781,9 +1845,12 @@ export type RemoveSessionHouseholdErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1835,9 +1902,12 @@ export type ListParticipantsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1879,9 +1949,12 @@ export type JoinSessionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1929,9 +2002,12 @@ export type ListTeamsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -1977,14 +2053,19 @@ export type CreateTeamErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
     /**
-     * No such session, or a listed user does not exist.
+     * No such session, or a listed user does not exist or is not
+     * approved.
+     *
      */
     404: Error;
     /**
@@ -2039,9 +2120,12 @@ export type DeleteTeamErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2093,9 +2177,12 @@ export type UpdateTeamErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2155,14 +2242,17 @@ export type AddTeamMemberErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
     /**
-     * No such team, or no such user.
+     * No such team, or no such approved user.
      */
     404: Error;
     /**
@@ -2217,9 +2307,12 @@ export type RemoveTeamMemberErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2316,9 +2409,12 @@ export type CreateBlockErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2374,9 +2470,12 @@ export type UpdateBlockErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2502,9 +2601,12 @@ export type ListHouseholdsNeedingAttentionErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2611,9 +2713,12 @@ export type ListVisitsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2656,7 +2761,9 @@ export type CreateVisitErrors = {
      */
     403: Error;
     /**
-     * The block, or a named `memberId`, does not exist.
+     * The block does not exist, or a named `memberId` does not exist
+     * or is not approved.
+     *
      */
     404: Error;
     /**
@@ -2903,9 +3010,12 @@ export type ListFollowUpsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -2945,9 +3055,12 @@ export type CreateFollowUpErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3075,9 +3188,12 @@ export type RemoveFollowUpErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3151,9 +3267,12 @@ export type ListHistoryErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3267,6 +3386,10 @@ export type ListUsersData = {
     path?: never;
     query?: {
         role?: Role;
+        approval?: Approval;
+        /**
+         * Only an `approved` user can be deactivated.
+         */
         includeDeactivated?: boolean;
         /**
          * Rows per page.
@@ -3296,9 +3419,12 @@ export type ListUsersErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3338,17 +3464,22 @@ export type CreateUserErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
     /**
-     * That email address already belongs to someone, or no `password`
-     * was given while Google sign-in is not set up on this server, or no
-     * `password` was given for an address outside the server's
-     * `auth.google.domains`. The message names those domains.
+     * That email address already belongs to someone: the message says
+     * so, or that it is waiting for approval, or that it was rejected
+     * and must be unblocked first. Or no `password` was given while
+     * Google sign-in is not set up on this server, or no `password` was
+     * given for an address outside the server's `auth.google.domains`.
+     * The message names those domains.
      *
      */
     409: Error;
@@ -3434,7 +3565,9 @@ export type UpdateOwnProfileErrors = {
      */
     401: Error;
     /**
-     * The account was deactivated after this session was issued.
+     * The account was deactivated after this session was issued
+     * (`account_deactivated`), or its request was rejected
+     * (`account_blocked`).
      *
      */
     403: Error;
@@ -3493,9 +3626,12 @@ export type GetUserErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3541,9 +3677,12 @@ export type UpdateUserErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3552,8 +3691,9 @@ export type UpdateUserErrors = {
      */
     404: Error;
     /**
-     * An admin attempting to demote or deactivate themselves, or a
-     * change that would leave no active admin.
+     * An admin attempting to demote or deactivate themselves, a change
+     * that would leave no active admin, or a user who is not
+     * `approved`.
      *
      */
     409: Error;
@@ -3580,6 +3720,175 @@ export type UpdateUserResponses = {
 
 export type UpdateUserResponse = UpdateUserResponses[keyof UpdateUserResponses];
 
+export type ApproveUserData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/users/{id}/approve';
+};
+
+export type ApproveUserErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * They are not waiting for approval: already approved, or
+     * rejected (unblock them first).
+     *
+     */
+    409: Error;
+};
+
+export type ApproveUserError = ApproveUserErrors[keyof ApproveUserErrors];
+
+export type ApproveUserResponses = {
+    /**
+     * The approved user.
+     */
+    200: User;
+};
+
+export type ApproveUserResponse = ApproveUserResponses[keyof ApproveUserResponses];
+
+export type RejectUserData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/users/{id}/reject';
+};
+
+export type RejectUserErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * They are not waiting for approval: already rejected, or already
+     * approved (deactivate them instead).
+     *
+     */
+    409: Error;
+};
+
+export type RejectUserError = RejectUserErrors[keyof RejectUserErrors];
+
+export type RejectUserResponses = {
+    /**
+     * The rejected user.
+     */
+    200: User;
+};
+
+export type RejectUserResponse = RejectUserResponses[keyof RejectUserResponses];
+
+export type UnblockUserData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/users/{id}/unblock';
+};
+
+export type UnblockUserErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * They are not blocked.
+     */
+    409: Error;
+};
+
+export type UnblockUserError = UnblockUserErrors[keyof UnblockUserErrors];
+
+export type UnblockUserResponses = {
+    /**
+     * The unblocked user, now waiting for approval.
+     */
+    200: User;
+};
+
+export type UnblockUserResponse = UnblockUserResponses[keyof UnblockUserResponses];
+
 export type EndUserSignInsData = {
     body?: never;
     path: {
@@ -3605,9 +3914,12 @@ export type EndUserSignInsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3653,9 +3965,12 @@ export type ListUserSignInsErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;
@@ -3702,9 +4017,12 @@ export type EndUserSignInErrors = {
     401: Error;
     /**
      * Authenticated, but not permitted. Returned to members calling
-     * admin-only operations, to members amending another member's record, and
-     * to any account deactivated after its session was issued. Also returned
-     * to a write sent from another origin (see "Same origin only").
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
      *
      */
     403: Error;

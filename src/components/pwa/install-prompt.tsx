@@ -18,7 +18,7 @@ import {
 } from "@/lib/pwa/install-prompt";
 import { useRole } from "@/lib/hooks/use-role";
 import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
-import { isPublicPath } from "@/server/auth/routes";
+import { isPublicPath, isWaitingPath } from "@/server/auth/routes";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -91,7 +91,10 @@ export function InstallPrompt() {
     };
   }, []);
 
-  const eligible = environment !== null && isSignedIn && !isPublicPath(pathname);
+  /* Not on the waiting page either (#249): it floats on a nav that page
+     does not have, and there is no app to open yet. */
+  const eligible =
+    environment !== null && isSignedIn && !isPublicPath(pathname) && !isWaitingPath(pathname);
   const state = eligible
     ? deriveInstallState({
         path: environment.path,

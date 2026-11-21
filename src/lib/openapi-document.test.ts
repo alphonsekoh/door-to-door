@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalEnum,
   followUpStatusEnum,
   interestLevelEnum,
   religionEnum,
@@ -35,6 +36,7 @@ describe("enums mirror the database", () => {
     ["SessionStatus", sessionStatusEnum],
     ["SessionKind", sessionKindEnum],
     ["FollowUpStatus", followUpStatusEnum],
+    ["Approval", approvalEnum],
   ])("%s matches the Drizzle pgEnum exactly", (name, pgEnum) => {
     expect(schemaEnum(doc, name)).toEqual([...pgEnum.enumValues]);
   });

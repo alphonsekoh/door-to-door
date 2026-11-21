@@ -1,16 +1,19 @@
 import { AuthError, customFetch } from "next-auth";
-import type { Adapter } from "next-auth/adapters";
+import type { Adapter, AdapterUser } from "next-auth/adapters";
 import Google, { type GoogleProfile } from "next-auth/providers/google";
 import type { Database } from "@/db/client";
 import { findUserForSignIn, normaliseEmail } from "@/server/auth/credentials";
 import type { AppConfig, RuntimeConfig } from "@/lib/config";
 import { emailDomain } from "@/lib/session/google-domains";
+import { checkOwnName } from "@/lib/session/own-name";
 import { getConfig } from "@/server/config";
+import { createAccessRequest } from "@/server/users/service";
 
 /*
- * Google sign-in (#14). Only someone an admin has already added can use it,
- * and only at an address Google vouches for: signing in never creates an
- * account, and never says whether one exists.
+ * Google sign-in (#14), only at an address Google vouches for. Someone an
+ * admin added signs in as themselves. Anyone else's first sign-in asks to
+ * join: it makes an account waiting for an admin's approval, which can use
+ * nothing but the waiting page until an admin approves it (#249).
  */
 
 /*
@@ -48,18 +51,20 @@ export function googleProviders(config: RuntimeConfig, fetchImpl?: typeof fetch)
       clientId: google.clientId,
       clientSecret,
       ...(google.issuer === undefined ? {} : { issuer: google.issuer }),
-      /* Safe here, where it is usually not: only an address an admin added can
-         sign in, and only one Google vouches for (allowGoogleSignIn). */
+      /* Safe here, where it is usually not: only an address Google vouches
+         for is linked (allowGoogleSignIn), so the link is to whoever holds
+         the mailbox now. */
       allowDangerousEmailAccountLinking: true,
       /* Every time, so on a shared phone the next member picks their own
          account rather than being signed in silently as the last one. */
       authorization: { params: { prompt: "select_account" } },
-      /* Used only to find the account by email; Google never sets a name,
-         address or picture here. */
+      /* The address finds the account. The name only names a new request,
+         and only when it is one a member could give themselves; no later
+         sign-in changes a name, and no picture is kept (#249). */
       profile: (profile: GoogleProfile) => ({
         id: profile.sub,
         email: normaliseEmail(profile.email),
-        name: null,
+        name: googleName(profile.name),
         image: null,
       }),
       /* No Google tokens are kept: nothing here calls Google on anyone's behalf. */
@@ -67,6 +72,13 @@ export function googleProviders(config: RuntimeConfig, fetchImpl?: typeof fetch)
       ...(fetchImpl === undefined ? {} : { [customFetch]: fetchImpl }),
     }),
   ];
+}
+
+/* Google's name for the account, if D-74-4's rules accept it as a name. */
+export function googleName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  const checked = checkOwnName(name);
+  return checked.ok ? checked.name : null;
 }
 
 type Claimed = { email?: string | null } | undefined;
@@ -96,10 +108,13 @@ function googleVouchesFor(email: string, hd: unknown, domains: readonly string[]
 /*
  * The signIn callback's judgement for Google. `user` is the account Auth.js
  * will sign in: the one already linked to this Google account, or the profile
- * that is about to be linked by email. Refused unless Google has verified the
- * email and vouches for it (googleVouchesFor), an active account has it, and
- * it is that same account, so a Google account linked earlier whose email
- * has since changed cannot sign in as the old one.
+ * that is about to be linked by email, or made into a request. Refused unless
+ * Google has verified the email and vouches for it (googleVouchesFor), and
+ * `user` carries that same address, so a Google account linked earlier whose
+ * email has since changed cannot sign in as the old account. With no account
+ * at the address, that is a first sign-in, which asks to join (#249). A
+ * deactivated account is refused, and never put back in the queue. One
+ * waiting for approval, or rejected, signs in to see where it stands.
  */
 export async function allowGoogleSignIn(
   db: Database,
@@ -112,23 +127,33 @@ export async function allowGoogleSignIn(
   const email = normaliseEmail(profile.email);
   if (!googleVouchesFor(email, profile.hd, google.domains)) return false;
   const found = await findUserForSignIn(db, email);
-  if (found?.deactivatedAt !== null) return false;
-  return (
-    typeof user?.email === "string" && normaliseEmail(user.email) === normaliseEmail(found.email)
-  );
+  if (found !== undefined && found.deactivatedAt !== null) return false;
+  return typeof user?.email === "string" && normaliseEmail(user.email) === email;
 }
 
 /*
- * The adapter as Google sign-in may use it. Nobody is created: an unknown
- * email is refused before this, and this refuses again if that ever slips.
- * And no user is read from a cookie already on the phone, which Auth.js would
+ * The adapter as Google sign-in may use it. A user is created only as a
+ * request waiting for approval, from what allowGoogleSignIn let through, and
+ * Google's own id for the account is never taken as ours. If the address was
+ * taken in the meantime (two first sign-ins at once), the later is refused.
+ *
+ * No user is read from a cookie already on the phone, which Auth.js would
  * otherwise link the Google account to: on a shared phone, member B's Google
  * would become a way into member A's account.
  */
-export function linkByEmailOnly(adapter: Adapter): Adapter {
+export function linkByEmailOnly(adapter: Adapter, db: Database): Adapter {
   return {
     ...adapter,
-    createUser: () => Promise.reject(new SignInRefused("Signing in never creates an account.")),
+    async createUser(user: AdapterUser): Promise<AdapterUser> {
+      const created = await createAccessRequest(db, {
+        email: normaliseEmail(user.email),
+        name: user.name ?? null,
+      });
+      if (created === null) {
+        throw new SignInRefused("That address was taken while signing in.");
+      }
+      return created;
+    },
     getUser: () => Promise.resolve(null),
   };
 }

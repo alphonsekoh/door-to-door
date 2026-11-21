@@ -138,6 +138,7 @@ describe("adminCandidates", () => {
     email: `${id}@t.local`,
     name: id,
     role: "member" as const,
+    approval: "approved" as const,
     deactivatedAt: null,
     lastRecordedAt: null,
     createdAt: "",

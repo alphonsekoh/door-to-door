@@ -17,7 +17,13 @@ const { currentSession, currentSignIn, currentUser, resolveSession } =
 
 const db = {} as Database;
 const SIGN_IN = "22222222-0000-4000-8000-000000000002";
-const account: Account = { email: "a@t.local", name: "A", role: "member", deactivatedAt: null };
+const account: Account = {
+  email: "a@t.local",
+  name: "A",
+  role: "member",
+  approval: "approved",
+  deactivatedAt: null,
+};
 const live = (overrides: Partial<Account> = {}) => ({
   status: "live",
   account: { ...account, ...overrides },
@@ -36,10 +42,23 @@ describe("resolveSession", () => {
       signInId: SIGN_IN,
     });
     expect(session).toEqual({
-      user: { id: "u1", email: "a@t.local", name: "A", role: "member", deactivated: false },
+      user: {
+        id: "u1",
+        email: "a@t.local",
+        name: "A",
+        role: "member",
+        approval: "approved",
+        deactivated: false,
+      },
       signInId: SIGN_IN,
     });
     expect(checkSignIn).toHaveBeenCalledWith(db, "u1", SIGN_IN);
+  });
+
+  it("carries the row's approval, which the token never has (#249)", async () => {
+    checkSignIn.mockResolvedValue(live({ approval: "pending" }));
+    const session = await resolveSession(db, { user: { id: "u1", role: "member" } });
+    expect(session?.user.approval).toBe("pending");
   });
 
   it("marks a deactivated account deactivated, whatever its sign-in, with none on the session", async () => {
@@ -48,7 +67,14 @@ describe("resolveSession", () => {
       user: { id: "u1", role: "member", deactivated: false },
     });
     expect(session).toEqual({
-      user: { id: "u1", email: "a@t.local", name: "A", role: "member", deactivated: true },
+      user: {
+        id: "u1",
+        email: "a@t.local",
+        name: "A",
+        role: "member",
+        approval: "approved",
+        deactivated: true,
+      },
     });
   });
 
@@ -103,6 +129,16 @@ describe("currentSession and currentUser", () => {
     checkSignIn.mockResolvedValue({ status: "deactivated", account });
     await expect(currentUser()).rejects.toMatchObject({ code: "account_deactivated" });
   });
+
+  it("refuses an account nobody has approved, however it signed in (#249)", async () => {
+    getDatabase.mockReturnValue(db);
+    auth.mockResolvedValue({ user: { id: "u1", role: "member" }, signInId: SIGN_IN });
+    checkSignIn.mockResolvedValue(live({ approval: "pending" }));
+    await expect(currentUser()).rejects.toMatchObject({ status: 403, code: "account_pending" });
+    checkSignIn.mockResolvedValue(live({ approval: "blocked" }));
+    await expect(currentUser("admin")).rejects.toMatchObject({ code: "account_blocked" });
+    await expect(currentSignIn()).rejects.toMatchObject({ code: "account_blocked" });
+  });
 });
 
 describe("currentSignIn", () => {
@@ -114,7 +150,14 @@ describe("currentSignIn", () => {
   it("gives the caller and the sign-in making the request", async () => {
     checkSignIn.mockResolvedValue(live({ role: "admin" }));
     expect(await currentSignIn("admin")).toEqual({
-      user: { id: "u1", email: "a@t.local", name: "A", role: "admin", deactivated: false },
+      user: {
+        id: "u1",
+        email: "a@t.local",
+        name: "A",
+        role: "admin",
+        approval: "approved",
+        deactivated: false,
+      },
       signInId: SIGN_IN,
     });
     expect((await currentSignIn()).user.id).toBe("u1");

@@ -77,6 +77,10 @@ describe("session strategy", () => {
     expect(config().pages?.signIn).toBe("/sign-in");
     expect(config().pages?.error).toBe("/sign-in");
   });
+
+  it("lands a first Google sign-in on the waiting page (#249)", () => {
+    expect(config().pages?.newUser).toBe("/waiting");
+  });
 });
 
 describe("providers", () => {
@@ -151,6 +155,21 @@ describe("jwt callback at sign-in (#125)", () => {
       deactivated: false,
       signInId: SIGN_IN,
     });
+    expect(startSignIn).toHaveBeenCalledWith(expect.anything(), USER, PIXEL);
+  });
+
+  it("starts one for a first Google sign-in too, which Auth.js calls a sign-up (#249)", async () => {
+    /* Without it the new account's token names no sign-in, and its every
+       request, the waiting page's included, would be signed out. */
+    startSignIn.mockResolvedValue(SIGN_IN);
+    const token = await jwt(buildAuthConfig(request), {
+      token: {},
+      user: { id: USER, email: "new@gmail.com", role: "member", deactivatedAt: null },
+      account: { provider: "google" },
+      trigger: "signUp",
+      isNewUser: true,
+    });
+    expect(token).toMatchObject({ sub: USER, role: "member", signInId: SIGN_IN });
     expect(startSignIn).toHaveBeenCalledWith(expect.anything(), USER, PIXEL);
   });
 

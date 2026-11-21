@@ -53,11 +53,28 @@ export const zSessionKind = z.enum(['regular', 'follow_up']);
  */
 export const zFollowUpStatus = z.enum(['suggested', 'listed']);
 
+/**
+ * `approved` may use the app; everyone an admin adds is approved from
+ * the start. `pending` was created by a first Google sign-in
+ * and waits for an admin. `blocked` was rejected by an admin, and
+ * cannot ask again until an admin unblocks it, which makes it
+ * `pending`. Only an `approved` account can be an admin or be
+ * deactivated.
+ *
+ */
+export const zApproval = z.enum([
+    'pending',
+    'approved',
+    'blocked'
+]);
+
 export const zErrorCode = z.enum([
     'validation_failed',
     'unauthenticated',
     'forbidden',
     'account_deactivated',
+    'account_pending',
+    'account_blocked',
     'not_found',
     'conflict',
     'session_not_active',
@@ -101,6 +118,7 @@ export const zUser = z.object({
     name: z.string().nullable(),
     image: z.url().nullish(),
     role: zRole,
+    approval: zApproval,
     deactivatedAt: z.iso.datetime().nullable(),
     lastRecordedAt: z.iso.datetime().nullable(),
     createdAt: z.iso.datetime()
@@ -1027,6 +1045,7 @@ export const zListOwnSessionHistoryResponse = zSessionHistoryList;
 
 export const zListUsersQuery = z.object({
     role: zRole.optional(),
+    approval: zApproval.optional().default('approved'),
     includeDeactivated: z.boolean().optional().default(false),
     limit: z.int().gte(1).lte(100).optional().default(50),
     offset: z.int().gte(0).lte(10000).optional().default(0)
@@ -1075,6 +1094,33 @@ export const zUpdateUserPath = z.object({
  * The updated user.
  */
 export const zUpdateUserResponse = zUser;
+
+export const zApproveUserPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The approved user.
+ */
+export const zApproveUserResponse = zUser;
+
+export const zRejectUserPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The rejected user.
+ */
+export const zRejectUserResponse = zUser;
+
+export const zUnblockUserPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The unblocked user, now waiting for approval.
+ */
+export const zUnblockUserResponse = zUser;
 
 export const zEndUserSignInsPath = z.object({
     id: z.uuid()

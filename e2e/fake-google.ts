@@ -25,6 +25,8 @@ export type FakeGoogleAccount = {
    * that is not a string.
    */
   hd?: unknown;
+  /* The name on the account: "Name From Google" unless given; null sends none. */
+  name?: string | null;
 };
 
 export const FAKE_GOOGLE_CLIENT_ID = "fake-client.apps.googleusercontent.com";
@@ -47,11 +49,16 @@ function readCode(code: string): FakeGoogleAccount | null {
       typeof parsed.verified === "boolean"
     ) {
       const sub = "sub" in parsed && typeof parsed.sub === "string" ? parsed.sub : undefined;
+      const name =
+        "name" in parsed && (typeof parsed.name === "string" || parsed.name === null)
+          ? parsed.name
+          : undefined;
       return {
         email: parsed.email,
         verified: parsed.verified,
         ...(sub === undefined ? {} : { sub }),
         ...("hd" in parsed ? { hd: parsed.hd } : {}),
+        ...(name === undefined ? {} : { name }),
       };
     }
   } catch {
@@ -86,7 +93,7 @@ export function createFakeGoogle(issuer: string, clientId = FAKE_GOOGLE_CLIENT_I
       email: account.email,
       email_verified: account.verified,
       ...(account.hd === undefined ? {} : { hd: account.hd }),
-      name: "Name From Google",
+      ...(account.name === null ? {} : { name: account.name ?? "Name From Google" }),
       picture: "https://example.invalid/picture.png",
       iat: now,
       exp: now + 600,

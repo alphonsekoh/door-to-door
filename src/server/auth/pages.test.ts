@@ -13,7 +13,19 @@ const { notFound, redirect } = vi.hoisted(() => ({
 }));
 vi.mock("next/navigation", () => ({ notFound, redirect }));
 
-const { requireAdminPage } = await import("@/server/auth/pages");
+const { requireAdminPage, requireWaitingPage } = await import("@/server/auth/pages");
+
+const account = (user: Record<string, unknown>) => ({
+  user: {
+    id: "u1",
+    email: "u1@t.local",
+    name: "U",
+    role: "member",
+    approval: "approved",
+    deactivated: false,
+    ...user,
+  },
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -21,7 +33,7 @@ beforeEach(() => {
 
 describe("requireAdminPage", () => {
   it("lets an admin through", async () => {
-    auth.mockResolvedValue({ user: { id: "u1", role: "admin", deactivated: false } });
+    auth.mockResolvedValue(account({ role: "admin" }));
     await expect(requireAdminPage()).resolves.toBeUndefined();
     expect(notFound).not.toHaveBeenCalled();
     expect(redirect).not.toHaveBeenCalled();
@@ -29,7 +41,7 @@ describe("requireAdminPage", () => {
 
   it("hides the page from a member", async () => {
     // notFound, not a redirect: the admin area should not advertise itself.
-    auth.mockResolvedValue({ user: { id: "u2", role: "member", deactivated: false } });
+    auth.mockResolvedValue(account({ id: "u2" }));
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
@@ -42,12 +54,42 @@ describe("requireAdminPage", () => {
 
   it("hides the page from a deactivated admin", async () => {
     // The role survives in the JWT until it expires; deactivation must win.
-    auth.mockResolvedValue({ user: { id: "u1", role: "admin", deactivated: true } });
+    auth.mockResolvedValue(account({ role: "admin", deactivated: true }));
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
   });
 
   it("hides the page from an admin claim that names no user", async () => {
-    auth.mockResolvedValue({ user: { role: "admin" } });
+    auth.mockResolvedValue({ user: { role: "admin", approval: "approved" } });
     await expect(requireAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
+  });
+
+  it.each(["pending", "blocked"])(
+    "sends an account that is %s to the waiting page, the one it may see (#249)",
+    async (approval) => {
+      auth.mockResolvedValue(account({ approval }));
+      await expect(requireAdminPage()).rejects.toThrow("NEXT_REDIRECT /waiting");
+      expect(notFound).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe("requireWaitingPage (#249)", () => {
+  it.each(["pending", "blocked"])(
+    "gives an account that is %s its own details",
+    async (approval) => {
+      auth.mockResolvedValue(account({ approval }));
+      expect(await requireWaitingPage()).toEqual({ email: "u1@t.local", name: "U", approval });
+      expect(redirect).not.toHaveBeenCalled();
+    },
+  );
+
+  it("sends an approved account home: it has nothing to wait for", async () => {
+    auth.mockResolvedValue(account({}));
+    await expect(requireWaitingPage()).rejects.toThrow(/^NEXT_REDIRECT \/$/);
+  });
+
+  it("sends a request with no live sign-in to sign in again", async () => {
+    auth.mockResolvedValue(null);
+    await expect(requireWaitingPage()).rejects.toThrow("NEXT_REDIRECT /sign-in?reason=signed-out");
   });
 });
