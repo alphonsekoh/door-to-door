@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { OutstandingFollowUps } from "@/components/follow-ups/outstanding-follow-ups";
 import { PageHeader } from "@/components/ui/page-header";
@@ -14,8 +14,9 @@ import type {
 } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
-import { parseScope, scopeHref } from "@/lib/teams/team-view";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { useRole } from "@/lib/hooks/use-role";
+import { parseScope, scopeSearch } from "@/lib/teams/team-view";
 
 /* Small enough to stay quick on a phone, large enough that most members never
    reach for "Show more". */
@@ -38,15 +39,21 @@ export const HISTORY_SUBTITLE = {
 } as const;
 
 export function OwnHistoryScreen() {
-  const router = useRouter();
   const { userId } = useRole();
   const [notes, setNotes] = useState<FollowUpList["data"]>([]);
-  const scope = parseScope(new URLSearchParams(useSearchParams().toString()));
+  const params = useSearchParams();
+  /* Not router.replace: once Next's copy of this route is five minutes old,
+     that asks the server again, and with no signal left for Offline. */
+  const [search, chooseScope] = useAddressFilters(
+    "/history",
+    scopeSearch(parseScope(new URLSearchParams(params.toString()))),
+  );
+  const scope = parseScope(new URLSearchParams(search));
   const toggle = (
     <ScopeToggle
       scope={scope}
       onChange={(next) => {
-        router.replace(scopeHref("/history", next));
+        chooseScope(scopeSearch(next));
       }}
     />
   );

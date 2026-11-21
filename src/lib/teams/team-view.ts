@@ -19,11 +19,6 @@ export function scopeSearch(scope: RecordScope): string {
   return scope === "team" ? `${PARAM}=team` : "";
 }
 
-export function scopeHref(path: string, scope: RecordScope): string {
-  const search = scopeSearch(scope);
-  return search === "" ? path : `${path}?${search}`;
-}
-
 export type OwnRecordFilters = {
   sessionId?: string;
   blockId?: string;

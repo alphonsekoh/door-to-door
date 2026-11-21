@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { OwnHistoryScreen } from "@/components/history/own-history";
 import type { HistoryEntry, SessionHistorySummary } from "@/generated/types.gen";
 import { ApiRequestError } from "@/lib/api-client";
@@ -15,12 +15,12 @@ vi.mock("@/lib/api-client", async () => {
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
-const { replace, searchParams } = vi.hoisted(() => ({
-  replace: vi.fn(),
+/* The router's copy of the address, which a test moves only as Back or
+   Forward would. No useRouter: a choice that went through it would throw. */
+const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => searchParams.value,
 }));
 
@@ -64,6 +64,8 @@ function serve(sessions: unknown, notes: unknown = notePage([])) {
   );
 }
 
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams.value = new URLSearchParams();
@@ -75,7 +77,15 @@ beforeEach(() => {
     isLoading: false,
     isSignedIn: true,
   });
+  window.history.replaceState(null, "", "/history");
+  replaceState = vi.spyOn(window.history, "replaceState");
 });
+
+afterEach(() => {
+  replaceState.mockRestore();
+});
+
+const address = () => `${window.location.pathname}${window.location.search}`;
 
 describe("OwnHistoryScreen", () => {
   it("lists the outings the member worked", async () => {
@@ -299,23 +309,57 @@ describe("Me or My team", () => {
     });
   });
 
-  it("writes the team view to the URL", async () => {
+  /* Not router.replace: once Next's copy of the route is five minutes old,
+     that asks the server again, and with no signal the screen became Offline. */
+  it("writes the team view to the URL at once, before the router reports it", async () => {
     const user = userEvent.setup();
     serve(sessionPage([]));
     render(<OwnHistoryScreen />);
+    await screen.findByText("Nothing recorded yet.");
 
-    await user.click(await screen.findByRole("button", { name: "My team" }));
-    expect(replace).toHaveBeenCalledWith("/history?view=team");
+    await user.click(screen.getByRole("button", { name: "My team" }));
+    expect(screen.getByRole("button", { name: "My team" })).toHaveAttribute("aria-pressed", "true");
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", "/history?view=team");
+    expect(address()).toBe("/history?view=team");
+    expect(
+      screen.getByText("Records by you and the teams you are on now, newest first."),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/history/mine?limit=20&offset=0&includeTeam=true");
+    });
+
+    // The view already shown writes nothing.
+    await user.click(screen.getByRole("button", { name: "My team" }));
+    expect(replaceState).toHaveBeenCalledOnce();
   });
 
   it("goes back to Me", async () => {
     const user = userEvent.setup();
+    window.history.replaceState(null, "", "/history?view=team");
     searchParams.value = new URLSearchParams("view=team");
     setFallback(recordPage([]));
     render(<OwnHistoryScreen />);
 
     await user.click(await screen.findByRole("button", { name: "Me" }));
-    expect(replace).toHaveBeenCalledWith("/history");
+    expect(address()).toBe("/history");
+    expect(screen.getByRole("button", { name: "Me" })).toHaveAttribute("aria-pressed", "true");
+    expect(await screen.findByText("Nothing recorded yet.")).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledWith("/history/mine/sessions?limit=20&offset=0");
+  });
+
+  it("takes the view from an address that changes under it, as Back or Forward does", async () => {
+    serve(sessionPage([]));
+    const { rerender } = render(<OwnHistoryScreen />);
+    await screen.findByText("Nothing recorded yet.");
+
+    searchParams.value = new URLSearchParams("view=team");
+    rerender(<OwnHistoryScreen />);
+
+    expect(screen.getByRole("button", { name: "My team" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith("/history/mine?limit=20&offset=0&includeTeam=true");
+    });
+    expect(replaceState).not.toHaveBeenCalled();
   });
 
   it("lists records including the team's, and never touches the outing counts", async () => {
