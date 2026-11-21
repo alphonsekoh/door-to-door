@@ -7,8 +7,10 @@ import { z } from "zod";
 import {
   WORKFLOW_FILES,
   evaluate,
+  play,
   runsFor,
-  type Check,
+  type Moment,
+  type Played,
   type PullRequest,
   type PullRequestEvent,
 } from "../test/github-actions";
@@ -17,21 +19,18 @@ import {
  * CI spends a run only where it can catch something (#248). GitHub cannot run
  * here, so each event is played through the workflows themselves. A skipped job
  * passes a ruleset's required check, and the newest check of a name counts, so
- * nothing that changes no code may start a run that skips one under that name,
- * no run may report one late enough to outrank a later event's run, and no
- * re-run, which replays its event, may skip one the pull request now needs.
+ * no label or edit may start a run that skips one under that name, no draft's
+ * run may report Lint, no run may report one late enough to outrank a later
+ * event's run, and no re-run, which replays its event, may skip one the pull
+ * request now needs.
  */
 
 const read = (path: string): string => readFileSync(path, "utf8");
 
-// The checks the dev and stage rulesets require (D-244-2).
-const REQUIRED = [
-  "Lint, types and format",
-  "Tests and coverage",
-  "End-to-end smoke",
-  "Production build",
-];
+// The checks the dev, stage and main rulesets require (D-244-2, D-244-30).
+const LINT = "Lint, types and format";
 const E2E = "End-to-end smoke";
+const REQUIRED = [LINT, "Tests and coverage", E2E, "Production build"];
 
 const CODE = ["src/app/page.tsx", "docs/tasks/248-ci-runs.md"];
 const DOCS = ["docs/tasks/248-ci-runs.md", "CLAUDE.md", ".claude/agents/builder.md"];
@@ -71,22 +70,13 @@ const ran = (event: PullRequestEvent): string[] =>
 const requiredOf = (event: PullRequestEvent) =>
   checksOf(event).filter((check) => REQUIRED.includes(check.name));
 
-type Moment = { at: number; event: PullRequestEvent; failing?: readonly string[] };
-type Counted = Check & { workflow: string };
-
 /*
  * What the merge box reads after events on one head commit: the newest check
  * of each required name. A run's checks are created at its event's moment plus
  * their stage, so an event at 0.5 comes while the first run's lint job runs.
  */
-function counted(...moments: Moment[]): Record<string, Counted | undefined> {
-  const checks = moments
-    .flatMap(({ at, event, failing = [] }) =>
-      runsFor(event, failing).flatMap((run) =>
-        run.checks.map((check) => ({ ...check, workflow: run.workflow, at: at + check.stage })),
-      ),
-    )
-    .toSorted((a, b) => a.at - b.at);
+function counted(...moments: Moment[]): Record<string, Played | undefined> {
+  const checks = play(...moments).toSorted((a, b) => a.at - b.at);
   return Object.fromEntries(
     REQUIRED.map((name) => [name, checks.findLast((check) => check.name === name)]),
   );
@@ -127,6 +117,57 @@ describe("a pull request's runs", () => {
     expect(runsFor(on("converted_to_draft", pr({ draft: true })))).toEqual([]);
   });
 
+  it("report no Lint check while it is a draft, so a draft's skips never pass for a run", () => {
+    // All the merge box has from marking a draft ready until the ready run's checks appear.
+    for (const action of ["opened", "synchronize", "reopened"]) {
+      for (const base of BASES) {
+        for (const changed of [CODE, DOCS]) {
+          for (const labels of LABELS) {
+            const found = counted({
+              at: 0,
+              event: on(action, pr({ draft: true, base, changed, labels })),
+            });
+            expect(found[LINT], `${action} into ${base}`).toBeUndefined();
+          }
+        }
+      }
+    }
+  });
+
+  it("leave Lint cancelled when a draft's push runs after the ready run and cancels it", () => {
+    // The push came first, but its run began after the ready run's, while lint ran.
+    for (const base of BASES) {
+      for (const changed of [CODE, DOCS]) {
+        for (const at of [0, 0.5, 0.99]) {
+          const ready = on("ready_for_review", pr({ base, changed }));
+          const draftPush = on("synchronize", pr({ base, changed, draft: true }));
+          const found = counted({ at: 0, event: ready }, { at, event: draftPush });
+
+          expect(found[LINT], `into ${base}, at ${String(at)}`).toMatchObject({
+            workflow: "CI",
+            job: "static",
+            result: "cancelled",
+          });
+          // Re-running either run all over runs lint, and whatever the pull request calls for.
+          for (const again of [
+            rerun(draftPush, { base, labels: [] }),
+            rerun(ready, { base, labels: [] }),
+          ]) {
+            const after = counted(
+              { at: 0, event: ready },
+              { at, event: draftPush },
+              { at: 5, event: again, failing: ["test"] },
+            );
+            expect(after[LINT]).toMatchObject({ job: "static", result: "success" });
+            expect(after["Tests and coverage"]?.result).toBe(
+              changed === CODE ? "failure" : "skipped",
+            );
+          }
+        }
+      }
+    }
+  });
+
   it("run once when it is marked ready, everything its base calls for", () => {
     const runs = runsFor(on("ready_for_review", pr({ base: "stage" })));
 
@@ -141,7 +182,7 @@ describe("a pull request's runs", () => {
     expect(checks.filter((check) => check.result !== "skipped").map((check) => check.job)).toEqual([
       "static",
     ]);
-    expect(counted({ at: 0, event, failing: ["static"] })["Lint, types and format"]).toMatchObject({
+    expect(counted({ at: 0, event, failing: ["static"] })[LINT]).toMatchObject({
       result: "failure",
     });
   });
@@ -164,10 +205,10 @@ describe("a pull request's runs", () => {
   });
 
   it("run only the first job when only docs change", () => {
-    expect(ran(on("synchronize", pr({ changed: DOCS })))).toEqual(["Lint, types and format"]);
+    expect(ran(on("synchronize", pr({ changed: DOCS })))).toEqual([LINT]);
     // Tests read README.md's sections, so it is code.
     expect(ran(on("synchronize", pr({ changed: ["README.md"] })))).toEqual([
-      "Lint, types and format",
+      LINT,
       "Tests and coverage",
       "Production build",
     ]);
@@ -341,6 +382,17 @@ describe("a label or a retarget while CI runs, or after", () => {
         ["E2E catch-up", null],
       ]);
     }
+    // A title edit while a retarget's E2E runs, and a label while CI's lint runs.
+    const played = play(
+      { at: 0, event: on("synchronize", pr({ base: "dev" })) },
+      { at: 0.2, event: retargeted("dev", pr({ base: "stage" })) },
+      { at: 0.5, event: on("edited", pr({ base: "stage" })) },
+      { at: 0.7, event: labelled("type:chore", pr({ base: "stage", labels: ["type:chore"] })) },
+    );
+    expect(played.filter((check) => check.result === "cancelled")).toEqual([]);
+    expect(played.filter((check) => check.name === E2E && check.result === "success")).toEqual([
+      expect.objectContaining({ workflow: "E2E catch-up", at: 0.2 }),
+    ]);
   });
 });
 
@@ -395,7 +447,7 @@ describe("a re-run, which replays the event that started its run", () => {
   it("of a draft's run, after it was marked ready on the same commit, runs every job", () => {
     const draft = on("synchronize", pr({ base: "stage", draft: true }));
     const jobs = {
-      static: "Lint, types and format",
+      static: LINT,
       test: "Tests and coverage",
       e2e: E2E,
       build: "Production build",
@@ -475,8 +527,8 @@ describe("the workflows", () => {
   });
 
   it("skip a required check only under a fixed name", () => {
-    // Whether GitHub evaluates a skipped job's name is not documented, so no
-    // required check may rest on it.
+    // GitHub shows a skipped job's name expression as written (#260's runs), and
+    // documents neither way, so no required check may rest on evaluating it.
     const Named = z.object({ name: z.string() });
     const nameOf = (run: string, job: string) =>
       Named.parse(workflows.find((found) => found.name === run)?.jobs[job]).name;
@@ -624,6 +676,43 @@ describe("scripts/ci-e2e.sh", () => {
 
   it("runs it when it reads no base: it fails closed", () => {
     expect(e2e("")).toBe("e2e=true\n");
+  });
+});
+
+describe("the model's playback", () => {
+  it("cuts a run short when the next in its concurrency group begins", () => {
+    const push = on("synchronize", pr({ base: "stage" }));
+    // The first run's checks, which come first, by job: the result, and when it was created.
+    const first = (next: number) =>
+      Object.fromEntries(
+        play({ at: 0, event: push }, { at: next, event: push })
+          .slice(0, 5)
+          .map(({ job, result, at }) => [job, [result, at]]),
+      );
+
+    // While lint runs, it is cancelled and the jobs that need it skip.
+    expect(first(0.5)).toEqual({
+      static: ["cancelled", 0],
+      "e2e-placeholder": ["skipped", 0],
+      test: ["skipped", 0.5],
+      e2e: ["skipped", 0.5],
+      build: ["skipped", 0.5],
+    });
+    // After it, lint stands and what was running is cancelled.
+    expect(first(1.5)).toEqual({
+      static: ["success", 0],
+      "e2e-placeholder": ["skipped", 0],
+      test: ["cancelled", 1],
+      e2e: ["cancelled", 1],
+      build: ["cancelled", 1],
+    });
+    expect(first(2)).toEqual({
+      static: ["success", 0],
+      "e2e-placeholder": ["skipped", 0],
+      test: ["success", 1],
+      e2e: ["success", 1],
+      build: ["success", 1],
+    });
   });
 });
 

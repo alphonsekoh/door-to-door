@@ -9,9 +9,15 @@ import { z } from "zod";
  * workflows themselves (#248): which workflows run, which jobs run or skip,
  * the check name each reports, and when. Only what .github/workflows uses is
  * modelled: pull_request triggers, re-runs, needs, a job's if, name and
- * outputs, the two scripts whose output a job passes on, and the expression
- * syntax below. Anything else throws, so a new construct fails a test instead
- * of being misread.
+ * outputs, a concurrency group that cancels the run in progress, the two
+ * scripts whose output a job passes on, and the expression syntax below.
+ * Anything else throws, so a new construct fails a test instead of being
+ * misread.
+ *
+ * A skipped job's name is evaluated here, though GitHub shows its expression
+ * as written (#260's runs 44908665916 and 44908763351). A name must be safe
+ * either way: src/ci-runs.test.ts allows a required check to be skipped only
+ * under a fixed name.
  */
 
 type Value = string | number | boolean | null | Value[] | { [key: string]: Value };
@@ -172,11 +178,14 @@ const Job = z.object({
   outputs: z.record(z.string(), z.string()).optional(),
   steps: z.array(z.object({ id: z.string().optional(), run: z.string().optional() })),
 });
-// Strict: a trigger the model does not know, a push for one, fails the parse.
+// Strict: a trigger the model does not know, a push for one, fails the parse,
+// and so does a group that queues runs instead of cancelling the older one.
 const Workflow = z.object({
   name: z.string(),
   on: z.strictObject({ pull_request: z.strictObject({ types: z.array(z.string()) }) }),
-  concurrency: z.object({ group: z.string() }).optional(),
+  concurrency: z
+    .strictObject({ group: z.string(), "cancel-in-progress": z.literal(true) })
+    .optional(),
   jobs: z.record(z.string(), Job),
 });
 type Workflow = z.infer<typeof Workflow>;
@@ -211,13 +220,14 @@ export type PullRequestEvent = {
   attempt?: number;
 };
 /**
- * `stage` is when GitHub creates the check: 0 as the run begins, and a job
- * that needs others only once they have finished, one stage after the last.
+ * `stage` is when GitHub creates the check, in job lengths from the run's
+ * start: 0 as the run begins, and a job that needs others once the last of
+ * them finishes. A job that runs takes one length; a skipped one, none.
  */
 export type Check = {
   job: string;
   name: string;
-  result: "success" | "failure" | "skipped";
+  result: "success" | "failure" | "skipped" | "cancelled";
   stage: number;
 };
 export type Run = { workflow: string; concurrency: string | null; checks: Check[] };
@@ -254,9 +264,9 @@ function stepOutputs(job: Job, event: PullRequestEvent): Context {
   return { steps };
 }
 
-function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly string[]): Run {
+function githubContext(event: PullRequestEvent): Value {
   const { draft, base, labels } = event.pullRequest;
-  const github: Value = {
+  return {
     event_name: "pull_request",
     ref: "refs/pull/1/merge",
     run_attempt: String(event.attempt ?? 1),
@@ -269,9 +279,28 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
       pull_request: { draft, base: { ref: base }, labels: labels.map((name) => ({ name })) },
     },
   };
-  // What the needs context holds of a finished job, and apart, the stage of its check.
+}
+
+const groupOf = (workflow: Workflow, event: PullRequestEvent): string | null =>
+  workflow.concurrency === undefined
+    ? null
+    : interpolate(workflow.concurrency.group, { github: githubContext(event) });
+
+/**
+ * One run of a workflow. `cancelledAt`, in job lengths from its start, is when
+ * a later run in its concurrency group begins: a job still running then is
+ * cancelled, and one that needs it is skipped.
+ */
+function simulate(
+  workflow: Workflow,
+  event: PullRequestEvent,
+  failing: readonly string[],
+  cancelledAt = Infinity,
+): Run {
+  const github = githubContext(event);
+  // What the needs context holds of a finished job, and apart, when it finished.
   const done = new Map<string, { result: Check["result"]; outputs: Record<string, string> }>();
-  const stages = new Map<string, number>();
+  const finished = new Map<string, number>();
   const checks: Check[] = [];
   const pending = Object.entries(workflow.jobs);
   while (pending.length > 0) {
@@ -287,8 +316,16 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
     const runs =
       needsOf(job).every((need) => done.get(need)?.result === "success") &&
       (job.if === undefined || condition(job.if, context));
-    const result = !runs ? "skipped" : failing.includes(id) ? "failure" : "success";
-    // A failed job's outputs are what its steps set before the failure: all of them, at worst.
+    const stage = Math.max(0, ...needsOf(job).map((need) => finished.get(need) ?? 0));
+    const cut = runs && stage + 1 > cancelledAt;
+    const result = !runs
+      ? "skipped"
+      : cut
+        ? "cancelled"
+        : failing.includes(id)
+          ? "failure"
+          : "success";
+    // A failed or cancelled job's outputs are what its steps set before it stopped: all, at worst.
     const outputs: Record<string, string> = {};
     if (runs) {
       const steps = stepOutputs(job, event);
@@ -296,19 +333,11 @@ function simulate(workflow: Workflow, event: PullRequestEvent, failing: readonly
         outputs[key] = interpolate(text, { ...steps, github });
       }
     }
-    const stage = Math.max(-1, ...needsOf(job).map((need) => stages.get(need) ?? 0)) + 1;
     done.set(id, { result, outputs });
-    stages.set(id, stage);
+    finished.set(id, !runs ? stage : cut ? cancelledAt : stage + 1);
     checks.push({ job: id, name: interpolate(job.name, context), result, stage });
   }
-  return {
-    workflow: workflow.name,
-    concurrency:
-      workflow.concurrency === undefined
-        ? null
-        : interpolate(workflow.concurrency.group, { github }),
-    checks,
-  };
+  return { workflow: workflow.name, concurrency: groupOf(workflow, event), checks };
 }
 
 const needsOf = (job: Job): string[] =>
@@ -319,7 +348,35 @@ const needsOf = (job: Job): string[] =>
  * fail when they run; every other job that runs succeeds.
  */
 export function runsFor(event: PullRequestEvent, failing: readonly string[] = []): Run[] {
-  return workflows()
-    .filter((workflow) => workflow.on.pull_request.types.includes(event.action))
-    .map((workflow) => simulate(workflow, event, failing));
+  return startedBy(event).map((workflow) => simulate(workflow, event, failing));
+}
+
+const startedBy = (event: PullRequestEvent): Workflow[] =>
+  workflows().filter((workflow) => workflow.on.pull_request.types.includes(event.action));
+
+export type Moment = { at: number; event: PullRequestEvent; failing?: readonly string[] };
+export type Played = Check & { workflow: string; at: number };
+
+/**
+ * Every check the runs of events on one head commit create, each at its
+ * event's moment plus its stage. A run is cut short when the next run in its
+ * concurrency group begins, as `cancel-in-progress` does.
+ */
+export function play(...moments: readonly Moment[]): Played[] {
+  const runs = moments
+    .flatMap(({ at, event, failing = [] }) =>
+      startedBy(event).map((workflow) => ({
+        at,
+        event,
+        failing,
+        workflow,
+        group: groupOf(workflow, event),
+      })),
+    )
+    .toSorted((a, b) => a.at - b.at);
+  return runs.flatMap(({ at, event, failing, workflow, group }, index) => {
+    const next = runs.slice(index + 1).find((later) => group !== null && later.group === group);
+    const run = simulate(workflow, event, failing, next === undefined ? Infinity : next.at - at);
+    return run.checks.map((check) => ({ ...check, workflow: run.workflow, at: at + check.stage }));
+  });
 }

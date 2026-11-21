@@ -24,13 +24,18 @@ env:
 
 jobs:
   # Every other job that can run needs this one, so a lint failure stops the run
-  # in about two minutes, and a draft, which skips it, runs nothing. Its skipped
-  # checks pass, but a draft cannot be merged, and marking it ready runs
-  # everything. A re-run replays the event, so a draft's run re-run after the
-  # pull request was marked ready would skip all four required checks over the
-  # ready run's: a re-run runs everything.
+  # in about two minutes, and a draft, which skips it, runs nothing. A skipped
+  # job passes a required check, so in a draft's run this one must not carry
+  # the required name, or the run's four skips would pass for a run: from
+  # marking it ready until the ready run's checks appear, and after a draft's
+  # run that began later cancels the ready one. GitHub shows a skipped job's
+  # name expression as written, which is never the required name either. The
+  # other jobs keep fixed names: a docs-only run skips them under those. A
+  # re-run replays the event, so re-running a draft's run after the pull
+  # request was marked ready would skip again over the ready run's checks: a
+  # re-run runs this job.
   static:
-    name: Lint, types and format
+    name: ${{ github.event.pull_request.draft && github.run_attempt == '1' && 'Lint, types and format (draft, not run)' || 'Lint, types and format' }}
     if: ${{ !github.event.pull_request.draft || github.run_attempt != '1' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
