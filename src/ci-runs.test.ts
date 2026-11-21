@@ -34,6 +34,12 @@ const LINT = "Lint, types and format";
 const E2E = "End-to-end smoke";
 const REQUIRED = [LINT, "Tests and coverage", E2E, "Production build"];
 const WARM = "Warm caches";
+/*
+ * A pull request's caches are its own; one can also restore its base's and
+ * main's (R-241). So dev's serve pull requests into dev, and main's, which
+ * moves only on a promotion, serve those into stage, main and feature branches.
+ */
+const WARMED = ["dev", "main"];
 
 const CODE = ["src/app/page.tsx", "docs/tasks/248-ci-runs.md"];
 const DOCS = ["docs/tasks/248-ci-runs.md", "CLAUDE.md", ".claude/agents/builder.md"];
@@ -320,24 +326,27 @@ describe("a pull request's runs", () => {
     }
   });
 
-  it("start no CI when one merges, and a merge into dev only warms the caches", () => {
+  it("start no CI when one merges, and a merge into dev or main only warms the caches", () => {
     expect(runsFor(on("closed", pr()))).toEqual([]);
-    for (const branch of ["main", "stage", "chore/244-stage-stack"]) {
+    for (const branch of ["stage", "chore/244-stage-stack"]) {
       expect(runsFor({ push: branch }), branch).toEqual([]);
     }
-    expect(runsFor({ push: "dev" }).map((run) => run.workflow)).toEqual([WARM]);
+    for (const branch of WARMED) {
+      const workflows = runsFor({ push: branch }).map((run) => run.workflow);
+      expect(workflows, branch).toEqual([WARM]);
+    }
   });
 });
 
-describe("a merge into dev", () => {
-  // A pull request's caches are its own; one into dev can also restore dev's (R-241).
-  const merged: PushEvent = { push: "dev" };
-
+describe("a merge into dev or main", () => {
   it("warms the caches, and reports no check a ruleset requires", () => {
-    const checks = runsFor(merged).flatMap((run) => run.checks);
+    for (const branch of WARMED) {
+      const checks = runsFor({ push: branch }).flatMap((run) => run.checks);
+      const results = checks.map((check) => check.result);
 
-    expect(checks.map((check) => check.result)).toEqual(["success"]);
-    for (const check of checks) expect(REQUIRED).not.toContain(check.name);
+      expect(results, branch).toEqual(["success"]);
+      for (const check of checks) expect(REQUIRED, branch).not.toContain(check.name);
+    }
   });
 
   it("never warms them for a pull request, a draft's included", () => {
@@ -346,11 +355,13 @@ describe("a merge into dev", () => {
     }
   });
 
-  it("cancels no pull request's run, and only a later merge's warm-up cancels it", () => {
+  it("cancels no pull request's run, and only a later merge into the same branch cancels it", () => {
+    const merged = (branch: string): PushEvent => ({ push: branch });
     const played = play(
       { at: 0, event: on("synchronize", pr({ base: "stage" })) },
-      { at: 0.5, event: merged },
-      { at: 0.7, event: merged },
+      { at: 0.5, event: merged("dev") },
+      { at: 0.6, event: merged("main") },
+      { at: 0.7, event: merged("dev") },
     );
 
     expect(
@@ -360,6 +371,7 @@ describe("a merge into dev", () => {
       played.filter((check) => check.workflow === WARM).map(({ at, result }) => [at, result]),
     ).toEqual([
       [0.5, "cancelled"],
+      [0.6, "success"],
       [0.7, "success"],
     ]);
   });

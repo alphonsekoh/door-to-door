@@ -620,8 +620,8 @@ push untested on Linux until then.
 ## CI
 
 CI runs on pull requests, never on a merge: the promotion's pull request already tested
-what reaches `main`, and Vercel deploys it. A merge into `dev` only warms the caches
-([below](#caches)). A ready pull request runs four jobs
+what reaches `main`, and Vercel deploys it. A merge into `dev` or `main` only warms the
+caches ([below](#caches)). A ready pull request runs four jobs
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), whose names the `dev`, `stage`
 and `main` rulesets require:
 
@@ -705,14 +705,15 @@ workflows and `.github/dependabot.yml` to these rules.
 CI's jobs restore npm's cache and the build's `.next/cache`, and the E2E job restores
 Playwright's browsers, keyed by the OS release, the architecture and the Playwright
 version. A cache that a pull request's run saves is that pull request's alone, but a run
-can also restore its base branch's and `main`'s. So each merge into `dev` runs
-[`warm-caches.yml`](.github/workflows/warm-caches.yml), which saves the same keys in
-`dev`'s scope: npm's after `npm ci`, the browsers when their key is new, and
+can also restore its base branch's and `main`'s. So each merge into `dev` or `main` runs
+[`warm-caches.yml`](.github/workflows/warm-caches.yml), which saves the same keys in that
+branch's scope: npm's after `npm ci`, the browsers when their key is new, and
 `.next/cache` from a build when `src/` or the lockfile changed. A pull request into `dev`
-then starts warm. One into `stage`, `main` or a feature branch starts cold, since nothing
-runs on a push to any of those. The warm-up runs on no pull request or draft, reports
-no check a ruleset requires, has no secret and can only read. A later merge cancels one
-still running. `src/ci-runs.test.ts` holds its keys to CI's.
+restores `dev`'s. One into `stage`, `main` or a feature branch restores `main`'s, which
+move only on a promotion, so a key that has changed on `dev` since (a new lockfile or
+Playwright) misses until the next one. The warm-up runs on no pull request or draft,
+reports no check a ruleset requires, has no secret and can only read. A later merge into
+the same branch cancels one still running. `src/ci-runs.test.ts` holds its keys to CI's.
 
 ## Deployment
 

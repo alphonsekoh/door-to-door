@@ -2,15 +2,16 @@ name: Warm caches
 
 # A pull request run's caches are scoped to its merge ref, so no other pull
 # request can restore them, and CI runs on nothing else (#248). A pull request
-# run can also restore its base branch's caches, so after each merge into dev
-# this saves the ones CI's jobs restore, under the same keys, in dev's scope.
-# A pull request stacked on a feature branch does not see them. It runs no
-# check and reports none a ruleset requires.
+# run can also restore its base branch's caches and main's, so after each merge
+# into dev or main this saves the ones CI's jobs restore, under the same keys,
+# in that branch's scope. main's serve the promotions into stage and main, and
+# pull requests stacked on a feature branch. It runs no check and reports none
+# a ruleset requires.
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
 
-# Only the newest dev is worth warming.
+# Only a branch's newest commit is worth warming.
 concurrency:
   group: warm-caches-${{ github.ref }}
   cancel-in-progress: true
