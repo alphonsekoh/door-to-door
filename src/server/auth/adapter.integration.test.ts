@@ -51,17 +51,41 @@ describe("Drizzle adapter wiring", () => {
     expect(await adapter.getUserByEmail?.("nobody@test.local")).toBeNull();
   });
 
-  it("never creates a user: only an admin adds anyone (#14)", async () => {
-    await expect(
-      adapter.createUser?.({
-        id: crypto.randomUUID(),
-        email: "new@test.local",
-        emailVerified: null,
-      }),
-    ).rejects.toMatchObject({ type: "AccessDenied" });
+  it("creates a user only as a request waiting for approval, with an id of ours (#249)", async () => {
+    const googleId = crypto.randomUUID();
+    const created = await adapter.createUser?.({
+      id: googleId,
+      email: "New@Test.local",
+      emailVerified: new Date(),
+      name: "Pat",
+      image: "https://example.com/picture.png",
+    });
 
+    expect(created?.id).not.toBe(googleId);
+    const { rows } = await pool.query(
+      `SELECT id, email, name, image, password_hash, role, approval, deactivated_at FROM users`,
+    );
+    expect(rows).toEqual([
+      {
+        id: created?.id,
+        email: "new@test.local",
+        name: "Pat",
+        image: null,
+        password_hash: null,
+        role: "member",
+        approval: "pending",
+        deactivated_at: null,
+      },
+    ]);
+  });
+
+  it("refuses, as AccessDenied, a request at an address taken meanwhile", async () => {
+    await seedUser("taken@test.local");
+    await expect(
+      adapter.createUser?.({ id: "x", email: "taken@test.local", emailVerified: null }),
+    ).rejects.toMatchObject({ type: "AccessDenied" });
     const { rows } = await pool.query(`SELECT 1 FROM users`);
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
   });
 
   it("never reads the user of a cookie already on the phone, so no Google account is linked to them (#14)", async () => {

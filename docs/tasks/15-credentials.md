@@ -14,7 +14,10 @@ Email and password sign-in with argon2, and the sign-in form.
   deactivated, SSO-only. _Why:_ otherwise the form lists who has an account. _Scope
   stated by D-151-3 (owner, 2026-11-13):_ it covers refusals about accounts, a spent
   budget included. A refusal by Auth.js's CSRF check, made before the credentials are
-  read, is resent once and then says the page expired (D-151-1, D-151-2).
+  read, is resent once and then says the page expired (D-151-1, D-151-2). _Superseded
+  for Google sign-in by D-249-17 (owner, 2026-11-21):_ Google shows the holder of an
+  address whether it has an account, waits, or was turned down. The email form keeps
+  this rule for every refusal.
 - **D-15-2 · Unknown emails verify against a decoy hash.** _Why:_ response time was an
   enumeration oracle. _Research:_ R-10.
 - **D-15-3 · Per-email, fixed-window, in-memory rate limit.** Single-instance only;

@@ -28,7 +28,7 @@ import { AccountDeactivatedError, UnauthenticatedError } from "@/server/http/err
  * Returning a SessionLike keeps requireUser/requireRole/requireAdmin pure.
  */
 
-type ResolvedUser = Required<Pick<SessionUser, "id" | "email" | "name" | "role">>;
+type ResolvedUser = Required<Pick<SessionUser, "id" | "email" | "name" | "role" | "approval">>;
 
 /* A deactivated account carries no sign-in: it may not use one. */
 export type ResolvedSession =
@@ -49,11 +49,14 @@ export async function resolveSession(
   if (checked.status === "no-user" || checked.status === "ended") {
     return null;
   }
-  const { email, name, role } = checked.account;
+  const { email, name, role, approval } = checked.account;
   if (checked.status === "deactivated") {
-    return { user: { id, email, name, role, deactivated: true } };
+    return { user: { id, email, name, role, approval, deactivated: true } };
   }
-  return { user: { id, email, name, role, deactivated: false }, signInId: checked.signInId };
+  return {
+    user: { id, email, name, role, approval, deactivated: false },
+    signInId: checked.signInId,
+  };
 }
 
 /* A lookup failure propagates: it must surface as a 500, never as "allowed". */

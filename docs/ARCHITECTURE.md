@@ -105,6 +105,10 @@ users ─< sign_ins (one per device signed in; cascade on delete)
 - **Sign-in** (`sign_ins`): one row per device or browser signed in, named by the session
   token's `signInId` claim. Deleting it ends that sign-in (D-125-2). At most 50 per
   account, and expired after 30 days plus 15 minutes unused (D-125-7, D-125-8).
+- **Approval** (`users.approval`, #249): `approved`, which everyone an admin adds is, or
+  `pending` (a first Google sign-in) or `blocked` (rejected, until unblocked). A check
+  keeps an unapproved account a member and never deactivated (D-249-1). Only approved
+  people are on the team, its pickers and its counts (D-249-7, D-249-8).
 - **Teams** (#74) are per session. A visit is stamped once with its author's team and a
   `visit_teammates` snapshot (author excluded); names resolve at read time. Access is
   always CURRENT membership of `visits.team_id` (`src/server/teams/access.ts`,
@@ -145,7 +149,8 @@ authoritative, and a change to any of them needs the owner.
 - **Consequences.** A token's claims are frozen at sign-in, so role and deactivation are
   read from the database on every API request and admin page; the token's claims are UI
   hints only (D-83-1, D-83-3). Deactivation is a `403 account_deactivated` on any
-  operation (D-10-4, D-83-4). A JWT cannot be taken back on its own, so each one names a
+  operation (D-10-4, D-83-4), and an unapproved account `403 account_pending` or
+  `account_blocked` (D-249-4). A JWT cannot be taken back on its own, so each one names a
   `sign_ins` row that the same lookup checks: deleting the row ends that sign-in before
   its token expires (D-125-2, D-125-3).
 
@@ -223,8 +228,10 @@ authoritative, and a change to any of them needs the owner.
    which reads the user's role and deactivation, and the token's sign-in, from the
    database on every request (one query, no cache), then calls the pure `requireUser` /
    `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
-   `403 account_deactivated`, whatever its sign-in. "Last used" is written at most every
-   15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
+   `403 account_deactivated`, whatever its sign-in. One not approved is
+   `403 account_pending` or `403 account_blocked`, failing closed; only `GET` and
+   `PATCH /users/me` take it, through `requireOwnAccount` (D-249-4, D-249-5). "Last
+   used" is written at most every 15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
    budget, 30 a minute, and are `429 rate_limited` once it is spent
    (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
 4. The service does the work. Text that must say something (a unit number, note, block
@@ -247,7 +254,7 @@ authoritative, and a change to any of them needs the owner.
    the placed users' rows `FOR SHARE` in id order (ids lower-cased and de-duplicated),
    then the session row `FOR KEY SHARE` (an add with its team's row, then a member
    caller's membership), and judge the session, the team and the people on those rows:
-   a missing person is `404`, a deactivated one `409 conflict`. Teams and joins are
+   a missing or unapproved person is `404`, a deactivated one `409 conflict`. Teams and joins are
    checked in the same transaction, and members inserted in id order (D-158-2, D-158-3,
    D-180-1 to D-180-4). `PATCH /users/{id}` locks the target and every
    active admin `FOR NO KEY UPDATE` in id order, and refuses a change that would leave
@@ -329,20 +336,27 @@ and debug output is dropped. Lines are throttled for 60 s, and the throttles sit
 `Symbol.for` global that both module graphs share. A failed sign-in is left to
 `sign-in-log.ts`, which also logs a credentials check that throws (D-128-1 to D-128-7).
 The first admin of a fresh database comes from `npm run create-admin`, which refuses once
-any admin exists (D-105-3); after that the app never leaves the team without an active
-admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only, at an
+any admin exists (D-105-3), and at an address that already has an account, a Google
+request waiting for approval included (D-105-4, D-249-37); after that the app never
+leaves the team without an active admin (D-31-5, D-132-1). With Google set up, the first admin may be Google-only, at an
 address in its domains (D-14-13, D-14-23).
 
 Google sign-in (`src/auth/google.ts`, #14) is the main way in when `config.yaml` sets
-`auth.google`; email and password stay as the fallback (D-14-1, D-14-2). Only an address
-an admin added, verified by Google, on an active account, can sign in (D-14-3), and only
-where Google vouches for it: a domain in `auth.google.domains`, and, anywhere but
-`gmail.com`, an ID token whose `hd` is a listed domain (D-14-19, D-14-20). Signing in
-creates nobody, links by email and never to a cookie already on the phone, and keeps no
-Google token (D-14-3 to D-14-7). An account added with no password is Google-only, and
+`auth.google`; email and password stay as the fallback (D-14-1, D-14-2). It signs in
+only an address Google has verified and vouches for: a domain in `auth.google.domains`,
+and, anywhere but `gmail.com`, an ID token whose `hd` is a listed domain (D-14-19,
+D-14-20). An account at that address signs in as itself unless deactivated. With none,
+the first sign-in asks to join: the adapter's `createUser` makes a pending member, named
+by Google if the name passes D-74-4, and Auth.js sends it to `/waiting`
+(`pages.newUser`), where it waits for an admin (D-249-2, D-249-10, D-249-18). Linking is
+by email, never to a cookie already on the phone, and no Google token or picture is
+kept (D-14-4, D-14-7). An account added with no password is Google-only, and
 is refused outside the domains (D-14-12, D-14-22). `googleDomains()` reads the list per
 request, and the pages pass it to the forms (D-14-21). Every Google refusal reads the
-same (D-14-5).
+same (D-14-5, D-249-19). Only admins approve, reject or unblock
+(`POST /users/{id}/approve`, `/reject`, `/unblock`, D-249-6); approval is read with the
+sign-in on every request, so a change reaches the person's next one (D-249-5). The proxy
+does not gate approval (D-249-12).
 
 Each sign-in is a `sign_ins` row named by the token's `signInId` claim (`sign-ins.ts`).
 `resolveSession` checks it on every request, and Auth.js's own routes check it in the
@@ -384,7 +398,16 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
-  per document load.
+  per document load. A `403 account_pending` or `account_blocked`, or that read naming
+  either, shows no message: once that answer is in, the gate draws nothing and replaces
+  the page with `/waiting`, and does nothing there (D-249-11, D-249-21, D-249-22,
+  D-249-36).
+- `/waiting` is drawn on the server from the session's row (`requireWaitingPage`), with
+  no nav and no install banner: the name to correct, Check again and Sign out, or only
+  Sign out once rejected (D-249-10, D-249-23).
+- Admin → Team hosts `ApprovalRequests`: Waiting for approval above the team, Not
+  approved below. The Admin tab's badge and the landing page's card read
+  `src/lib/session/approval-count.ts`, once per document load (D-249-14, D-249-15).
 - Overlay layers: sync status bar `z-20` (sticky while something is unsent), banners
   `z-30`, bottom nav `z-40`, sheets `z-50`, confirm and Not saved dialogs `z-60`, account
   screen `z-70`.
@@ -497,7 +520,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/teams/team-view.ts`); the team view reads `/history/mine?includeTeam=true`.
 - The admin session detail has a team panel (`admin-teams.tsx`, `admin-team-sheet.tsx`),
   online-only and re-read on the detail screen's 30s poll.
-- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`).
+- User pickers load every page of `GET /users` through `loadAllUsers()` (`src/lib/session/users.ts`):
+  approved people only, the API's default (D-249-7).
 - Whole follow-up lists (the removal notice, the household picker, Add households, On the
   list) load every page through `loadAllFollowUps()` (`src/lib/follow-ups/pages.ts`),
   keeping each note once by id (D-117-52).

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { Role, SessionStatus } from "@/db/schema";
+import type { Approval, Role, SessionStatus } from "@/db/schema";
 import {
   outingSessions,
   sessionParticipants,
@@ -260,13 +260,13 @@ export async function createTeam(
   }
 }
 
-type Person = { id: string; deactivatedAt: Date | null };
+type Person = { id: string; approval: Approval; deactivatedAt: Date | null };
 
 /* A placement's first lock; see createTeam. `ids` are distinctUuidsInOrder's. */
 function lockPeople(tx: Database, ids: string[]): Promise<Person[]> {
   return selectInChunks(ids, (chunk) =>
     tx
-      .select({ id: users.id, deactivatedAt: users.deactivatedAt })
+      .select({ id: users.id, approval: users.approval, deactivatedAt: users.deactivatedAt })
       .from(users)
       .where(inArray(users.id, chunk))
       .orderBy(asc(users.id))
@@ -287,7 +287,9 @@ async function assertPlaceable(
   userIds: string[],
   people: Person[],
 ): Promise<void> {
-  if (people.length !== userIds.length) {
+  /* Someone waiting for approval, or rejected, is not on the team (#249). */
+  const approved = people.filter((user) => user.approval === "approved");
+  if (approved.length !== userIds.length) {
     throw new NotFoundError("One or more of those people do not exist.");
   }
   if (people.some((user) => user.deactivatedAt !== null)) {

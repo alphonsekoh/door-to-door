@@ -34,23 +34,45 @@ export const sessionKindEnum = pgEnum("session_kind", ["regular", "follow_up"]);
 
 export const followUpStatusEnum = pgEnum("follow_up_status", ["suggested", "listed"]);
 
+export const approvalEnum = pgEnum("approval", ["pending", "approved", "blocked"]);
+
 /* ------------------------------------------------------------------ users */
 
-export const users = pgTable("users", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  name: text("name"),
-  email: text("email").notNull().unique(),
-  emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
-  image: text("image"),
-  // Null for Google-only accounts; only credentials users carry a hash.
-  passwordHash: text("password_hash"),
-  role: roleEnum("role").notNull().default("member"),
-  // Deactivated users cannot sign in, but their records stay attributed to
-  // them - history must survive someone leaving the team.
-  deactivatedAt: timestamp("deactivated_at", { withTimezone: true, mode: "date" }),
-  createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-});
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    name: text("name"),
+    email: text("email").notNull().unique(),
+    emailVerified: timestamp("email_verified", { withTimezone: true, mode: "date" }),
+    image: text("image"),
+    // Null for Google-only accounts; only credentials users carry a hash.
+    passwordHash: text("password_hash"),
+    role: roleEnum("role").notNull().default("member"),
+    /*
+     * Only a first Google sign-in makes a pending account (#249). The default
+     * is approved, so every account an admin or create-admin adds, and every
+     * one made before approval existed, is approved with no backfill.
+     */
+    approval: approvalEnum("approval").notNull().default("approved"),
+    // Deactivated users cannot sign in, but their records stay attributed to
+    // them - history must survive someone leaving the team.
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true, mode: "date" }),
+    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    /*
+     * An account nobody has approved is a member, never an admin, and is
+     * never deactivated: deactivation is for people who were on the team,
+     * and a deactivated account is never put back in the queue.
+     */
+    check(
+      "users_unapproved_check",
+      sql`${table.approval} = 'approved' OR (${table.role} = 'member' AND ${table.deactivatedAt} IS NULL)`,
+    ),
+  ],
+);
 
 /* ------------------------------------------------- Auth.js adapter tables */
 
@@ -454,3 +476,4 @@ export type InterestLevel = (typeof interestLevelEnum.enumValues)[number];
 export type SessionStatus = (typeof sessionStatusEnum.enumValues)[number];
 export type SessionKind = (typeof sessionKindEnum.enumValues)[number];
 export type FollowUpStatus = (typeof followUpStatusEnum.enumValues)[number];
+export type Approval = (typeof approvalEnum.enumValues)[number];

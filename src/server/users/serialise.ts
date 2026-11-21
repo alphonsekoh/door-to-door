@@ -8,6 +8,7 @@ export function toUser(row: UserRow): User {
     name: row.name,
     image: row.image,
     role: row.role,
+    approval: row.approval,
     deactivatedAt: row.deactivatedAt?.toISOString() ?? null,
     lastRecordedAt: row.lastRecordedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),

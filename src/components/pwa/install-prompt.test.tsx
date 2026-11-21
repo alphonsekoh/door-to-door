@@ -193,6 +193,10 @@ describe("InstallPrompt on Chromium", () => {
   it.each([
     ["signed out", () => (role.signedIn = false)],
     ["a public route", () => (pathname.current = "/sign-in")],
+    [
+      "the waiting page, which has no nav to float on (#249)",
+      () => (pathname.current = "/waiting"),
+    ],
     ["the recording screen", () => (pathname.current = "/blocks/abc")],
   ])("is hidden on %s", async (_name, arrange) => {
     arrange();

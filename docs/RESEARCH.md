@@ -1767,7 +1767,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   The provider's `account()` decides which token fields are stored on the link.
 
 - **Source:** `node_modules/@auth/core/lib/actions/callback/handle-login.js`
-- **Used by:** D-14-3, D-14-4, D-14-7
+- **Used by:** D-14-3, D-14-4, D-14-7, D-249-2
 
 ### R-157 · Auth.js's OAuth requests take a custom `fetch` and allow `http`
 
@@ -3025,6 +3025,30 @@ false`) on that date.
   `node_modules/pg/lib/query.js` (`name`) and `node_modules/pg-pool/index.js` (the
   constructor's defaults).
 - **Used by:** D-250-5, D-250-6
+
+### R-244 · On a first OAuth sign-in Auth.js calls `jwt` with `signUp` and goes to `pages.newUser`
+
+- **Finding:** in `@auth/core` 0.41.3's OAuth callback, the `signIn` callback is called
+  before any account is made, with `user` the account already linked to this provider id
+  or, failing that, the provider's own `profile()` result. It may return `false` (refused
+  as `AccessDenied`), `true`, or a URL to redirect to. When `handleLoginOrRegister` then
+  calls `createUser` (R-156), it passes that profile, the provider's id included, and
+  reports `isNewUser`. With JWT sessions the `jwt` callback gets `trigger: "signUp"`
+  instead of `"signIn"`, and with `pages.newUser` set the answer redirects there with the
+  `callbackUrl`, not to it.
+- **Source:** `node_modules/@auth/core/lib/actions/callback/index.js` (`handleAuthorized`,
+  the OAuth branch), `node_modules/@auth/core/lib/actions/callback/handle-login.js`
+- **Used by:** D-249-2, D-249-10, and #249's open question on a deactivated account
+
+### R-245 · Chromium reads hidden text inside a link laid out as blocks with a break (measured)
+
+- **Finding:** with the count as visually hidden text inside the Admin tab's link,
+  Chromium read the link's name as "Admin , 1 …". The builder's reading: the link lays
+  its children out as blocks, so a break is read between them. An `aria-label` on the
+  link reads "Admin, 1 waiting for approval".
+- **Source:** measured (#249 builder, Chromium); not re-measured, nor tried in WebKit,
+  by the docs step.
+- **Used by:** D-249-24
 
 ### R-238 · A job skipped by `if:` passes a required check; a skipped workflow leaves it pending (read)
 

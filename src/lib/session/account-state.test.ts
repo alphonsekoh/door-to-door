@@ -12,6 +12,11 @@ describe("classifyAuthFailure", () => {
     expect(classifyAuthFailure(403, "account_deactivated")).toBe("deactivated");
   });
 
+  it("treats a 403 for an account nobody has approved as unapproved, whichever state (#249)", () => {
+    expect(classifyAuthFailure(403, "account_pending")).toBe("unapproved");
+    expect(classifyAuthFailure(403, "account_blocked")).toBe("unapproved");
+  });
+
   it("leaves a plain 403 to the screen that asked", () => {
     // A refused team change or a demoted admin's route is not an account problem.
     expect(classifyAuthFailure(403, "forbidden")).toBeNull();
@@ -20,6 +25,7 @@ describe("classifyAuthFailure", () => {
   it("ignores every other status", () => {
     expect(classifyAuthFailure(404, "not_found")).toBeNull();
     expect(classifyAuthFailure(500, "account_deactivated")).toBeNull();
+    expect(classifyAuthFailure(409, "account_pending")).toBeNull();
   });
 });
 

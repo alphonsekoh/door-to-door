@@ -35,6 +35,8 @@ authorization code changed.
   credentials, and the refusal is the same `200` whoever the email belongs to, so
   "expired" says nothing about accounts. Auth.js passes only client-safe types to the
   page. Any other error reads `Configuration`, which stays generic. _Research:_ R-176.
+  _Stands after #249:_ D-15-1 is superseded for Google sign-in only (D-249-17); this,
+  the email form's scope, is unchanged.
 - **D-151-4 · A CSRF refusal charges no sign-in budget and writes no sign-in log line.
   A tap still charges at most one attempt.** Auth.js refuses before `authorize`, so
   `authorizeFromRawCredentials`, the only place `consume`, `refund` and `reset` run, is

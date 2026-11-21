@@ -59,8 +59,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Installable on a phone. Visits are saved on the phone first and sent when there is
   signal; a cold start with no signal opens an offline recording screen.
 
-**Signing in** is with Google, for the addresses an admin has added, with email and
-password as the fallback. Signing out ends that device's sign-in only.
+**Signing in** is with Google, where a newcomer waits for an admin's approval, with
+email and password as the fallback. Signing out ends that device's sign-in only.
 
 ## Known limits
 
@@ -220,8 +220,8 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
   by the database. A session is door-to-door or follow-up, fixed when it is created. A
   follow-up session goes back to households an admin picked from the follow-up list,
   and its blocks follow them; members record only at households on its list.
-- **Auth** is Auth.js v5: Google for the addresses an admin added, and email and password
-  (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
+- **Auth** is Auth.js v5: Google, where a newcomer waits for an admin's approval, and
+  email and password (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
   every request checks, so a sign-out, an admin or a deactivation ends it. Every handler
   re-reads the user's role and deactivation from the database; the token's role is a UI
   hint only.
@@ -342,10 +342,13 @@ URI (for local development, `http://localhost:3000/api/auth/callback/google`). P
 client ID in `auth.google.clientId` and export the client secret as
 `AUTH_GOOGLE_SECRET`. In the Docker image, also set `AUTH_URL` to the public origin
 (`https://<your domain>`): without it Google is sent back to the server's own
-`0.0.0.0:3000` and refuses the sign-in (D-14-27). Only an address an admin has added (on **Admin → Team**, or with
-`create-admin`) can sign in, once Google has verified it. Anyone else, and a deactivated
-account, gets the same refusal, and signing in never creates an account. Without
-`auth.google`, sign-in is email and password only, and every account needs a password.
+`0.0.0.0:3000` and refuses the sign-in (D-14-27). Someone an admin has added (on
+**Admin → Team**, or with `create-admin`) signs in as themselves, once Google has
+verified the address. Anyone else Google vouches for asks to join with their first
+sign-in: they wait on a page of their own until an admin approves them under **Waiting
+for approval** on **Admin → Team**, and can use nothing else (#249). A deactivated
+account is refused. Without `auth.google`, sign-in is email and password only, and every
+account needs a password.
 No real credentials are needed for the tests: E2E runs a stand-in provider (D-14-14).
 
 List in `auth.google.domains` only `gmail.com` and domains on Google Workspace, lower
@@ -356,7 +359,9 @@ elsewhere sign in with email and password, so add them with one.
 - Google vouches for an address only at `gmail.com`, or for a Workspace account. On any
   other listed domain a member must use their Workspace account; a personal Google
   account made on that address is refused, since that mailbox could have changed hands.
-- Add a Gmail address exactly as Google has it, dots included.
+- Add a Gmail address exactly as Google has it, dots included. Spelled otherwise, the
+  member's Google sign-in asks to join as a second account: reject that request and
+  correct the address.
 - If a listed domain is a Workspace **alias** of another (as `tjc.org` may be of
   `tjc.sg`), rather than a secondary domain, Google reports the member's address at the
   primary domain. Add those members at the primary domain.
@@ -869,9 +874,10 @@ docker run -p 3000:3000 \
      `CONFIG_YAML` set to the same text and the same credentials exported: it reaches the
      direct host and prints `migrations applied`. Keep migrating that way from now on.
 
-- **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
-  database has no admin, so after migrating, create the first one from the same place you
-  ran `db:migrate`, with the same `config.yaml` and credentials:
+- **Accounts:** admins add members on **Admin → Team**, and approve there anyone who
+  asks to join with Google. A fresh database has no admin to do either, so after
+  migrating, create the first one from the same place you ran `db:migrate`, with the same
+  `config.yaml` and credentials:
 
   ```bash
   npm run create-admin -- --email lead@example.org --name "Lead Organiser"
@@ -890,7 +896,12 @@ docker run -p 3000:3000 \
   **Admin → Team** (a valid address, and a password of 8 to 200 characters when there is
   one). A Google-only admin needs a terminal.
   The script refuses, changing nothing, if any admin already exists, deactivated ones
-  included: later admins are added in the app.
+  included: later admins are added in the app. It also refuses an address that already
+  belongs to an account, since it only ever creates one. That includes an address that
+  asked to join with Google before there was an admin to approve it (#249): the refusal
+  gives the `DELETE` that removes that request, with its Google link and sign-in, so the
+  script can then be run again; or make the first admin at another address and approve
+  the request on **Admin → Team**.
 
 ## Stage environment
 

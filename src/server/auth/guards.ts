@@ -1,7 +1,9 @@
-import type { Role } from "@/db/schema";
+import type { Approval, Role } from "@/db/schema";
 import { sameUuid } from "@/lib/uuid";
 import {
+  AccountBlockedError,
   AccountDeactivatedError,
+  AccountPendingError,
   ForbiddenError,
   UnauthenticatedError,
 } from "@/server/http/errors";
@@ -20,34 +22,67 @@ export type SessionUser = {
   email?: string | null;
   name?: string | null;
   role: Role;
+  /* From the database row, like deactivated; the token never carries it. */
+  approval?: Approval;
   deactivated?: boolean;
 };
 
 /* signInId is the token's claim until resolveSession has checked it (#125). */
 export type SessionLike = { user?: Partial<SessionUser> | null; signInId?: unknown } | null;
 
-export function requireUser(session: SessionLike): SessionUser {
+/*
+ * Signed in, and not deactivated. Pure: it believes the session it is given.
+ * A JWT issued before an account was deactivated stays cryptographically
+ * valid, so callers must pass a session built from the database
+ * (currentSession), never the raw token.
+ */
+function requireAccount(session: SessionLike): Omit<SessionUser, "approval"> & {
+  approval: Approval | undefined;
+} {
   const user = session?.user;
   if (!user || typeof user.id !== "string" || user.id === "" || user.role === undefined) {
     throw new UnauthenticatedError();
   }
-
-  /*
-   * Pure: it believes the session it is given. A JWT issued before an account
-   * was deactivated stays cryptographically valid, so callers must pass a
-   * session built from the database (currentSession), never the raw token.
-   */
   if (user.deactivated === true) {
     throw new AccountDeactivatedError();
   }
-
   return {
     id: user.id,
     email: user.email ?? null,
     name: user.name ?? null,
     role: user.role,
+    approval: user.approval,
     deactivated: false,
   };
+}
+
+/*
+ * The gate every handler passes through (#249): only an approved account
+ * gets past it. Anything else is refused, a session with no approval at all
+ * included, so a session not read from the database fails closed.
+ */
+export function requireUser(session: SessionLike): SessionUser {
+  const user = requireAccount(session);
+  if (user.approval === "blocked") {
+    throw new AccountBlockedError();
+  }
+  if (user.approval !== "approved") {
+    throw new AccountPendingError();
+  }
+  return { ...user, approval: "approved" };
+}
+
+/*
+ * The caller's own account whatever its approval, for GET and PATCH
+ * /users/me only: someone waiting for approval reads their state there and
+ * corrects their name. auth-imports.test.ts holds every other file to
+ * requireUser.
+ */
+export function requireOwnAccount(
+  session: SessionLike,
+): Omit<SessionUser, "approval"> & { approval: Approval } {
+  const user = requireAccount(session);
+  return { ...user, approval: user.approval ?? "pending" };
 }
 
 export function requireRole(session: SessionLike, role: Role): SessionUser {
@@ -68,6 +103,7 @@ export function isAdmin(session: SessionLike): boolean {
     typeof user?.id === "string" &&
     user.id !== "" &&
     user.role === "admin" &&
+    user.approval === "approved" &&
     user.deactivated !== true
   );
 }

@@ -43,7 +43,8 @@ server restarted.
 
 ## Relies on
 
-D-15-1, D-15-2, D-15-3 (narrowed), D-15-4, D-75-9, D-75-15.
+D-15-1 (the email form's part, kept by D-249-17), D-15-2, D-15-3 (narrowed), D-15-4,
+D-75-9, D-75-15.
 
 ## Open questions
 

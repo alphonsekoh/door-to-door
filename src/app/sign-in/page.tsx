@@ -16,7 +16,15 @@ export default async function SignInPage() {
   const domains = googleDomains();
   return (
     <>
-      <PageHeader title="Sign in" subtitle="Use the account your admin set up for you." />
+      <PageHeader
+        title="Sign in"
+        subtitle={
+          domains === null
+            ? "Use the account your admin set up for you."
+            : /* Anyone Google vouches for may ask to join (#249). */
+              "New here? Sign in with Google, then an admin approves you."
+        }
+      />
       {/* useSearchParams needs a boundary. */}
       <Suspense fallback={null}>
         <SignInForm googleDomains={domains} />
