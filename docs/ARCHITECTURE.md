@@ -544,11 +544,15 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   `/offline`, which is not `no-store`, `RestoreGuard` (in `AppShell`, outside
   `AccountGate`, so on every document) hides and reloads it (`reloadWhenRestored` in
   `src/lib/session/navigate.ts`, D-129-1).
-- The admin history and records screens keep their filters in the URL, except the search
-  term, which the screen holds in state and never writes to the URL (D-29-4, D-129-7).
+- The admin history, records and Needs a return visit screens keep their filters in the
+  URL, except the search term, which the screen holds in state and never writes to the
+  URL (D-29-4, D-129-7, D-246-3). It runs over the rows loaded, through one matcher,
+  `matchesHouseholdSearch` (`src/lib/households/search.ts`, D-246-1, D-246-2).
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
-  trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
+  trip or reload (D-163-5, D-163-6). Needs a return visit moves its block and toggle the
+  same way, so a filter change reads only the list, with no page round trip (D-246-10);
+  the other two use `router.replace`. The sign-in redirect drops `q` from `callbackUrl`
   (D-163-8).
 
 ## PWA and service worker

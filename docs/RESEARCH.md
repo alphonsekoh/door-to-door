@@ -1563,7 +1563,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   WebKit. An aborted or `500` RSC fetch gave a second document load, search empty; with
   no signal, the Offline page. Next 16.4.3, production build, both phone projects.
 - **Source:** #163 verifier, round 0 (Playwright network logs)
-- **Used by:** D-163-6
+- **Used by:** D-163-6, D-246-10
 
 ### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
 
@@ -1577,7 +1577,7 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
 - **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3);
   `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
   "Native History API"
-- **Used by:** D-163-6
+- **Used by:** D-163-6, D-246-10
 
 ### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
 
@@ -2837,3 +2837,36 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-226 · A filter change through `router.replace` waits on an RSC fetch and falls back to a page load; through `history.replaceState(null, …)` it makes none (measured)
+
+- **Finding:** on `/admin/attention`, whose page reads no `searchParams`,
+  `router.replace` for a block or the toggle fetched the page's RSC payload, and
+  `useSearchParams` moved only when it committed: with the fetch held 1 s, the select
+  read the block just left and the toggle stayed unpressed for the whole second.
+  Offline, Next logged "Failed to fetch RSC payload … Falling back to browser
+  navigation", and the worker answered that navigation with the Offline page. With
+  `window.history.replaceState(null, "", href)`, Next's patch (R-141) restored the
+  router to the new URL in a transition: no RSC fetch, no document load and no new
+  history entry; the select showed the new block by the second frame and the toggle by
+  the first; offline the screen stayed; Back after a client navigation away restored
+  both from the entry. Handed `history.state` (Next's `__NA`) instead of `null`, the
+  call went straight through, `useSearchParams` never moved, and the next filter
+  written dropped the first.
+- **Source:** next 16.4.5, `dist/client/components/router-reducer/fetch-server-response.js`
+  (the fallback) and `dist/client/components/app-router.js` (the patch); measured (#246
+  verifier r0 at 1c1f036 and r1 at 4490b2c, production build, Pixel 5 on Chromium,
+  iPhone 13 and iPhone 15 Pro Max on WebKit, whose offline mode bypasses the worker,
+  D-32-18). Extends R-140 from the `?q=` strip to filter changes.
+- **Used by:** D-246-10, D-246-17
+
+### R-227 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
+
+- **Finding:** `z.uuid()` with no version wants a version digit 1 to 8 and a variant
+  digit 8, 9, a or b (either case), or the nil or max UUID. `asUuid`
+  (`src/lib/history/record-filters.ts`) tests only the 8-4-4-4-12 hex shape, which is
+  Zod's looser `guid`. So `12345678-1234-1234-1234-123456789012` passes the client's
+  check, and the API, whose `blockId` and `teamId` are `z.uuid()`, refuses it with 400.
+- **Source:** zod 4.6.7, `node_modules/zod/v4/core/regexes.js` (`uuid`, `guid`);
+  `src/generated/zod.gen.ts`. Read (#246 reviewer, docs step).
+- **Used by:** D-246-3
