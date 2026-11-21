@@ -426,13 +426,16 @@ export function ConsolidatedHistory() {
 
           {/* Spans the row: nested in a grid cell each date input lost half
               its width and rendered as a clipped "dd/mm/". */}
+          {/* The visible label is short to fit a half-width cell; aria-label
+              keeps the full name a screen reader announced before. */}
           <div className="col-span-2 grid grid-cols-2 gap-2">
             <div>
-              <label htmlFor="history-from" className="sr-only">
-                Recorded from
+              <label htmlFor="history-from" className="mb-1 block text-body font-medium">
+                From
               </label>
               <input
                 id="history-from"
+                aria-label="Recorded from"
                 type="date"
                 value={filters.from}
                 onChange={(event) => {
@@ -442,11 +445,12 @@ export function ConsolidatedHistory() {
               />
             </div>
             <div>
-              <label htmlFor="history-to" className="sr-only">
-                Recorded to
+              <label htmlFor="history-to" className="mb-1 block text-body font-medium">
+                To
               </label>
               <input
                 id="history-to"
+                aria-label="Recorded to"
                 type="date"
                 value={filters.to}
                 onChange={(event) => {

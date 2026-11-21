@@ -307,6 +307,24 @@ describe("ConsolidatedHistory", () => {
     );
   });
 
+  it("shows From and To as visible labels tied to their date fields, still announced in full", async () => {
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+
+    for (const [visible, full, id] of [
+      ["From", "Recorded from", "history-from"],
+      ["To", "Recorded to", "history-to"],
+    ] as const) {
+      const field = screen.getByLabelText(full);
+      expect(field).toHaveAttribute("id", id);
+      const label = document.querySelector(`label[for="${id}"]`);
+      expect(label).toHaveTextContent(visible);
+      expect(label).toBeVisible();
+      expect(label).not.toHaveClass("sr-only");
+    }
+  });
+
   /* router.replace waited on a server round trip: until it answered the field
      read its old value, and a second pick, built on stale filters, dropped
      the first (#245). */

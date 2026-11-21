@@ -566,7 +566,18 @@ test.describe("phone layout", () => {
     for (const label of ["Recorded from", "Recorded to"]) {
       const date = adminPage.getByLabel(label);
       await expect(date, label).toHaveCSS("appearance", "none");
-      expect((await date.boundingBox())?.height ?? 0, label).toBeGreaterThanOrEqual(44);
+      const id = label === "Recorded from" ? "history-from" : "history-to";
+      const caption = adminPage.locator(`label[for="${id}"]`);
+      await expect(caption, label).toBeVisible();
+      /* An sr-only label is a 1x1 box, which toBeVisible accepts. */
+      const captionBox = await caption.boundingBox();
+      const dateBox = await date.boundingBox();
+      expect(captionBox?.height ?? 0, label).toBeGreaterThanOrEqual(16);
+      expect(captionBox?.width ?? 0, label).toBeGreaterThan(8);
+      expect((captionBox?.y ?? 0) + (captionBox?.height ?? 0), label).toBeLessThanOrEqual(
+        dateBox?.y ?? 0,
+      );
+      expect(dateBox?.height ?? 0, label).toBeGreaterThanOrEqual(44);
     }
     await endActiveSession(adminApi);
   });

@@ -131,8 +131,9 @@ schema or server change.
   on Needs a return visit; no spec picks on All records.
 - Every pick reloads the three picker lists along with the records, as before (#252).
 - At 32px on iOS, a filled date wraps to two lines inside its cell.
-- An empty date field on iOS is a blank box, because iOS shows no placeholder and the
-  labels are screen-reader only. This was true before (see Open questions).
+- ~~An empty date field on iOS is a blank box, because iOS shows no placeholder and the
+  labels are screen-reader only. This was true before (see Open questions).~~ Fixed by
+  D-258-1 (#258): From and To are visible.
 - Chromium's calendar icon is near-black in dark mode, as before.
 - The iOS evidence comes from a simulator, not a real device. The simulator could not
   tap, so the picker opening is unchecked.
@@ -149,8 +150,8 @@ D-163-5, D-163-6, D-163-7.
 
 ## Open questions
 
-- **Visible labels for the date filters.** "Recorded from" and "Recorded to" are
+- ~~**Visible labels for the date filters.** "Recorded from" and "Recorded to" are
   `sr-only`. When both are empty, iOS shows two identical blank boxes. This was true
-  before #245.
+  before #245.~~ Answered by D-258-1 and D-258-2 (#258).
 - **This PR is wider than the date pickers.** Every filter on All records changes how it
   writes the URL (D-245-5, D-245-6), so the PR body should say so.
