@@ -85,8 +85,10 @@ export function FollowUpsScreen() {
 
   const load = useCallback(
     async (offset: number) => {
-      if (query === null) return;
+      /* Before the wait for the viewer, or the view left behind answers into
+         Mine while Mine's own request is still out. */
       const mine = ++generation.current;
+      if (query === null) return;
       const params = new URLSearchParams(query);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
@@ -137,6 +139,9 @@ export function FollowUpsScreen() {
               aria-pressed={on}
               onClick={() => {
                 if (on) return;
+                /* The address changes after the tap; an answer landing
+                   between them is for the view being left. */
+                generation.current += 1;
                 setState({ status: "loading" });
                 router.replace(
                   option.value === "list" ? "/follow-ups" : `/follow-ups?view=${option.value}`,
