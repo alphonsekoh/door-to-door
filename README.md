@@ -619,8 +619,8 @@ push untested on Linux until then.
 
 CI runs on pull requests, never on a merge: the promotion's pull request already tested
 what reaches `main`, and Vercel deploys it. A ready pull request runs four jobs
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), whose names the `dev` and
-`stage` rulesets require:
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), whose names the `dev`, `stage`
+and `main` rulesets require:
 
 | Job                        | Checks                                                                                                    | Runs                                            |
 | -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
@@ -670,8 +670,9 @@ what reaches `main`, and Vercel deploys it. A ready pull request runs four jobs
   no other pull request reads them, so a pull request's first run usually starts without.
 
 The jobs' token can only read the repository and its pull requests, and checkout leaves
-it nowhere on disk. Only the lint job's first step is given it, to read the pull
-request's labels and base, before any of the pull request's code or `npm ci` runs.
+it nowhere on disk. Apart from checkout, only the lint job's first step is given it, to
+read the pull request's labels and base, before any of the pull request's code or
+`npm ci` runs.
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
@@ -945,7 +946,7 @@ e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
                 check-standalone (postbuild), record-migration-checksums, e2e-linux,
-                ci-changes, stage-seed, stage-perf
+                ci-changes, ci-e2e, stage-seed, stage-perf
 docker/stage/   the stage stack's edge (Caddyfile) and toxiproxy settings
 docs/           architecture, research and per-issue decisions
 ```
