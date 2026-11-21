@@ -154,7 +154,10 @@ export function FollowUpsScreen() {
 
       {userId === undefined ? null : <DeclinedNotice userId={userId} />}
 
-      {state.status === "loading" ? (
+      {/* Each note's controls and bylines are the viewer's, so an answer that
+          lands before the session names them waits: drawn as a member's, an
+          admin's buttons would appear under a thumb a moment later. */}
+      {state.status === "loading" || userId === undefined ? (
         <p className="text-body text-foreground-muted">Loading…</p>
       ) : state.status === "error" ? (
         <div role="alert" className="rounded-xl border border-border bg-surface-muted p-4">

@@ -195,23 +195,41 @@ describe("FollowUpsScreen", () => {
     expect(screen.getByText("Loading…")).toBeInTheDocument();
   });
 
-  /* The list names nobody, so it need not wait for the session (#252). */
+  /* The list names nobody, so it need not wait for the session to ask (#252);
+     its notes carry the viewer's controls, so they wait to be drawn. */
   it.each([
-    ["the list", "", LIST],
-    ["review", "view=review", "/follow-ups?status=suggested&limit=20&offset=0"],
-  ])("asks for %s before the session names the viewer, and once", async (_, view, path) => {
-    search.value = view;
-    useRole.mockReturnValue({ userId: undefined, isAdmin: false });
-    apiFetch.mockResolvedValue(page([note("1")]));
-    const { rerender } = render(<FollowUpsScreen />);
-    expect(await screen.findByText("Note 1")).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path);
+    ["the list", "", "listed", LIST, "Remove from list"],
+    [
+      "review",
+      "view=review",
+      "suggested",
+      "/follow-ups?status=suggested&limit=20&offset=0",
+      "Add to list",
+    ],
+  ] as const)(
+    "asks for %s before the session names the viewer, once, and draws it only for a viewer",
+    async (_, view, status, path, adminAction) => {
+      search.value = view;
+      useRole.mockReturnValue({ userId: undefined, isAdmin: false });
+      apiFetch.mockResolvedValue(page([note("1", { status })]));
+      const { rerender } = render(<FollowUpsScreen />);
+      await waitFor(() => {
+        expect(apiFetch).toHaveBeenCalledExactlyOnceWith(path);
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(screen.getByText("Loading…")).toBeInTheDocument();
+      expect(screen.queryByText("Note 1")).toBeNull();
+      expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
 
-    useRole.mockReturnValue({ userId: "u1", isAdmin: false });
-    rerender(<FollowUpsScreen />);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(apiFetch).toHaveBeenCalledOnce();
-  });
+      useRole.mockReturnValue({ userId: "u1", isAdmin: true });
+      rerender(<FollowUpsScreen />);
+      expect(await screen.findByRole("button", { name: adminAction })).toBeInTheDocument();
+      expect(screen.getByText("Note 1")).toBeInTheDocument();
+      expect(screen.queryByText("Loading…")).toBeNull();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(apiFetch).toHaveBeenCalledOnce();
+    },
+  );
 
   it("says so when nothing is on the list, and who adds to it", async () => {
     apiFetch.mockResolvedValue(page([]));
