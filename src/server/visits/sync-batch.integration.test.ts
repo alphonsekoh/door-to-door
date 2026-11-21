@@ -52,6 +52,7 @@ const ALICE = "5b5b5b5b-0000-4000-8000-000000000002";
 const BEN = "5b5b5b5b-0000-4000-8000-000000000003";
 const BLOCK = "5b5b5b5b-0000-4000-8001-000000000001";
 const LOOSE_BLOCK = "5b5b5b5b-0000-4000-8001-000000000002";
+const OTHER_BLOCK = "5b5b5b5b-0000-4000-8001-000000000003";
 const NO_BLOCK = "5b5b5b5b-0000-4000-8001-0000000000ff";
 const SESSION = "5b5b5b5b-0000-4000-8002-000000000001";
 const TEAM = "5b5b5b5b-0000-4000-8004-000000000001";
@@ -99,9 +100,9 @@ const householdAt = async (unitNumber: string) =>
 
 /*
  * Turns the session into a follow-up session with a listed, owed note at
- * each of `units`, all picked for it.
+ * each of `units` in `block`, all picked for it.
  */
-async function followUpSession(units: string[]): Promise<void> {
+async function followUpSession(units: string[], block = BLOCK): Promise<void> {
   await controller.query(`UPDATE outing_sessions SET kind = 'follow_up' WHERE id = $1`, [SESSION]);
   await controller.query(
     `WITH placed AS (
@@ -112,8 +113,19 @@ async function followUpSession(units: string[]): Promise<void> {
        SELECT id, $3, 'Come back', 'listed', now(), $3 FROM placed
      )
      INSERT INTO session_households (session_id, household_id) SELECT $4, id FROM placed`,
-    [BLOCK, units, ADMIN, SESSION],
+    [block, units, ADMIN, SESSION],
   );
+}
+
+/* A second block, attached to the session. */
+async function attachOtherBlock(): Promise<void> {
+  await controller.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'456','Far Ave')`, [
+    OTHER_BLOCK,
+  ]);
+  await controller.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+    SESSION,
+    OTHER_BLOCK,
+  ]);
 }
 
 const units = (from: number, count: number) =>
@@ -273,6 +285,37 @@ describe("a batch mixing every outcome", () => {
   });
 });
 
+describe("the households of a batch's records", () => {
+  it("puts each record at the household of its own block and unit", async () => {
+    await attachOtherBlock();
+    // Neither sorted nor grouped: the household upsert answers in its own order.
+    const batch = [
+      item(1, { blockId: OTHER_BLOCK, unitNumber: "#09-09" }),
+      item(2, { blockId: BLOCK.toUpperCase(), unitNumber: "#02-02" }),
+      item(3, { unitNumber: "#09-09" }),
+      item(4, { blockId: OTHER_BLOCK, unitNumber: "#01-01" }),
+      item(5, { unitNumber: "#02-02" }),
+      item(6, { unitNumber: "#01-01" }),
+    ];
+
+    const results = await flush(batch);
+    expect(results.every((result) => result.status === "applied")).toBe(true);
+    // Written as one run, not saved by going again one record at a time.
+    expect(teamIdFor).toHaveBeenCalledTimes(1);
+    const at = new Map(
+      (
+        await rows<{ id: string; block_id: string; unit_number: string }>(
+          `SELECT id, block_id, unit_number FROM households`,
+        )
+      ).map((place) => [`${place.block_id} ${place.unit_number}`, place.id]),
+    );
+    expect(at.size).toBe(5);
+    expect(results.map((result) => result.visit?.householdId)).toEqual(
+      batch.map((sent) => at.get(`${sent.blockId.toLowerCase()} ${sent.unitNumber}`)),
+    );
+  });
+});
+
 describe("a household two records of a batch share", () => {
   it("is one household, with what each record learnt in request order", async () => {
     const results = await flush([
@@ -393,6 +436,26 @@ describe("a batch in a follow-up session", () => {
     expect(await notesAt("#01-01")).toEqual(before);
   });
 
+  it("refuses a member a unit listed only in another of its blocks", async () => {
+    await attachOtherBlock();
+    await followUpSession(["#07-07"], OTHER_BLOCK);
+
+    const results = await flush([
+      item(1, { unitNumber: "#01-01" }),
+      item(2, { blockId: OTHER_BLOCK, unitNumber: "#01-01" }),
+    ]);
+
+    expect(results.map((result) => [result.status, result.error?.code])).toEqual([
+      ["applied", undefined],
+      ["rejected", "not_on_follow_up_list"],
+    ]);
+    expect(
+      await rows(`SELECT 1 FROM households WHERE block_id = $1 AND unit_number = '#01-01'`, [
+        OTHER_BLOCK,
+      ]),
+    ).toEqual([]);
+  });
+
   it("lets an admin record off the list, credits them, and never joins them", async () => {
     const results = await flush(
       [item(1, { unitNumber: "#09-09" }), item(2, { unitNumber: "#02-02" })],
@@ -400,7 +463,9 @@ describe("a batch in a follow-up session", () => {
     );
 
     expect(results.map((result) => result.status)).toEqual(["applied", "applied"]);
-    expect((await notesAt("#02-02")).map((note) => note.done_by)).toEqual([ADMIN]);
+    expect((await notesAt("#02-02")).map((note) => [note.done_by, note.done_visit_id])).toEqual([
+      [ADMIN, idOf(2)],
+    ]);
     expect(await rows(`SELECT 1 FROM session_participants`)).toEqual([]);
   });
 });
