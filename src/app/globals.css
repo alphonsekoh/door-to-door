@@ -560,6 +560,14 @@
   &[aria-invalid="true"] {
     border-color: var(--app-danger);
   }
+  /* iOS draws a native date control content-box with a 30px min-height,
+     whatever the page sets: All records' From and To ran 27px out of their
+     cells, To past the screen's edge, and stood 32px tall beside 51px
+     selects. Without its appearance it takes the field's box (measured in
+     Safari on iOS 26.5, #245). */
+  &[type="date"] {
+    appearance: none;
+  }
 }
 
 @utility field-error {
