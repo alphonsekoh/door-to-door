@@ -49,6 +49,9 @@ yarn-error.log*
 next-env.d.ts
 
 # test artifacts
+# The stage stack's root certificate and check results (README, Stage environment).
+/stage-root.crt
+/stage-results*.json
 /coverage
 /test-results
 /playwright-report

@@ -45,7 +45,8 @@ agents, and a check that an applied migration's SQL is never edited.
 - **D-131-6 · A test holds CI's postgres service image to `docker-compose.yml`'s.**
   _Why:_ no Dependabot updater reads a workflow's service images, so Compose is the copy
   it updates and CI follows by hand. _Trade-off:_ a docker-compose PR starts red until
-  its digest is copied into `ci.yml`. _Research:_ R-148.
+  its digest is copied into `ci.yml`. _Research:_ R-148. _Extended by D-244-13:_ the
+  stage stack's images are pinned too, and its postgres is held to Compose's.
 - **D-131-7 · `next-auth` is exactly `5.0.0-beta.32`,** the version already locked. In
   `package-lock.json` only the root entry changed, and `npm ci` installs the same tree. A
   test refuses any ranged prerelease in `package.json`. _Why:_ `^5.0.0-beta.32` admits
