@@ -560,7 +560,9 @@ own `door_to_door_e2e` database, so it never disturbs the integration suite. The
 `e2e/` cover signing in and the role split, Google sign-in against a local stand-in
 (never the real Google), an admin ending a member's sign-ins, recording a visit (with and
 without signal), a session's lifecycle, a follow-up session, teams, the account screen
-and sign-out, and the PWA (the worker, offline fallback, caching and phone layout).
+and sign-out, the PWA (the worker, offline fallback, caching and phone layout), every
+screen at the largest text, and the admin lists' address: an old `?q=` link, and Needs
+a return visit's filters moving it with no page round trip, online and offline.
 Four tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit fails a
 request before the service worker can answer it, offline or routed (D-32-18, D-166-5),
 and two in `sign-ins.spec` because it cannot hold or stop the worker's requests (R-138).

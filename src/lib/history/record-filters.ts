@@ -1,4 +1,5 @@
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
+import { matchesHouseholdSearch } from "@/lib/households/search";
 
 /*
  * Filters for the admin record list, held in the URL so a view can be sent to
@@ -78,14 +79,7 @@ export function toHistoryQuery(filters: RecordFilters, sessionId: string, limit:
 }
 
 export function matchesSearch(entry: HistoryEntry, q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  if (needle === "") {
-    return true;
-  }
-  const { unitNumber, name, contact } = entry.household;
-  return [unitNumber, unitNumber.replace(/[#-]/g, ""), name ?? "", contact ?? ""].some((value) =>
-    value.toLowerCase().includes(needle),
-  );
+  return matchesHouseholdSearch(entry.household, q);
 }
 
 /* Filters the server applies: with any of these set, an empty page says

@@ -25,6 +25,7 @@ never revisited.
   gets its own `'`; a `,` gets none; no `sep=` line.
 - **D-30-5 · `to` dates extend to end of day.**
 - **D-30-6 · Search stays client-side** (D-29-5); export applies the same search.
+  _Extended by D-246-1_ to the attention list, with one matcher (D-246-2).
 
 ## Device-pass decisions (same PR)
 
