@@ -304,7 +304,9 @@ per 5 s burst. The sync catch uses the same helpers.
   `src/server/config.ts`.
 - Secrets never go in the file: database user/password, `AUTH_SECRET`,
   `AUTH_GOOGLE_SECRET` are env vars with optional `_FILE` variants. `database.url` with
-  credentials is refused.
+  credentials is refused, and so is `database.migrationUrl`. That optional key names the
+  direct host behind a pooler, and only `db:migrate` and drizzle-kit use it; the app's
+  config never holds it (D-250-1 to D-250-3).
 - Loading is lazy (config, rate limiter, proxy, db client), so `next build` needs neither
   file nor database. `src/instrumentation.ts` validates at start and exits 1 on bad config,
   which includes a placeholder `AUTH_SECRET` and, outside `next dev`, one marked
@@ -746,7 +748,13 @@ CSP violation (D-122-8).
   pool (app, scripts, test helper, E2E setup) gets `attachPoolErrorHandler`
   (`src/db/pool-errors.ts`). A dropped connection is logged once per burst and replaced
   on the next query. The query in flight rejects, so the request is a `500` and never
-  crashes the process.
+  crashes the process. The app's pool holds at most 10 connections, each closed after
+  5 s idle, and goes to `@vercel/functions`' `attachDatabasePool`. On Vercel that keeps
+  an instance awake until its idle connections have closed. Anywhere else it does
+  nothing (D-250-6, D-250-7).
+- **Production database:** the app runs on Vercel (sin1) and connects through Neon's
+  pooled host (PgBouncer, transaction mode), so nothing may keep session state on a
+  connection (D-250-5). Migrations go to the direct host, `database.migrationUrl`.
 - **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
   tests with coverage against Postgres, production build, E2E. The token can only read,
   and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by

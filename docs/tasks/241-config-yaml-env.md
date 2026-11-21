@@ -28,6 +28,8 @@ one environment variable rather than relax that rule.
 - **D-241-3 · Every reader of the config follows.** The server, `db:migrate`,
   `db:seed` and `create-admin` all reach it through `loadAppConfig`, so none needs a
   file. _Why:_ a deployment migrates and creates its first admin from outside the host.
+  _Refined by D-250-3:_ `loadMigrationDatabaseUrl`, which `db:migrate` and drizzle-kit
+  use, reads them through `loadAppConfig` too.
 - **D-241-4 · The build is unchanged.** `next build` still reads no settings and
   `postbuild` still fails on a `config.*.yaml` in the output. _Why:_ the variable is read
   at runtime only, so D-75-19 holds as written. A change to it needs a new deployment on
