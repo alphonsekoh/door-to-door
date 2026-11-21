@@ -29,7 +29,8 @@ note (D-38-21).
   fixed by hand.
 - **D-105-4 · An email that already belongs to an account is refused, not promoted.**
   _Why:_ the script only ever creates, never alters, an account. Owner decision:
-  confirmed.
+  confirmed. _Kept by D-249-37 (#249):_ a Google request waiting for approval is refused
+  too, and the refusal gives the `DELETE` that clears it.
 - **D-105-5 · Check and insert run in one transaction under `pg_advisory_xact_lock`.**
   _Why:_ no constraint can say "no second admin until the first exists", since further
   admins are allowed; a partial unique index would forbid them. Hashing happens before the

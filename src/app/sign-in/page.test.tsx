@@ -29,9 +29,17 @@ describe("sign-in page", () => {
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
   });
 
-  it("says where an account comes from, since there is no self-registration", async () => {
+  it("says where an account comes from: an admin, with no Google sign-in", async () => {
     render(await SignInPage());
-    expect(screen.getByText(/admin set up for you/i)).toBeInTheDocument();
+    expect(screen.getByText("Use the account your admin set up for you.")).toBeInTheDocument();
+  });
+
+  it("says a newcomer signs in with Google and waits for an admin, once Google is set up (#249)", async () => {
+    googleDomains.mockReturnValue(["gmail.com"]);
+    render(await SignInPage());
+    expect(
+      screen.getByText("New here? Sign in with Google, then an admin approves you."),
+    ).toBeInTheDocument();
   });
 
   it("is rendered per request, and offers Google only once config.yaml sets it up (#14)", async () => {
@@ -49,7 +57,7 @@ describe("sign-in page", () => {
     error.value = "AccessDenied";
     render(await SignInPage());
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Google sign-in is for gmail.com or tjc.sg addresses your admin added;",
+      "Google sign-in is for gmail.com or tjc.sg accounts;",
     );
   });
 });

@@ -72,6 +72,22 @@ export class AccountDeactivatedError extends ApiError {
   }
 }
 
+/* Signed in with Google but not yet let in by an admin (#249). */
+export class AccountPendingError extends ApiError {
+  constructor(message = "This account is waiting for an admin's approval.") {
+    super(403, "account_pending", message);
+    this.name = "AccountPendingError";
+  }
+}
+
+/* An admin turned the request down; only an admin can unblock it (#249). */
+export class AccountBlockedError extends ApiError {
+  constructor(message = "This account's request wasn't approved.") {
+    super(403, "account_blocked", message);
+    this.name = "AccountBlockedError";
+  }
+}
+
 export class NotFoundError extends ApiError {
   constructor(message = "Not found.") {
     super(404, "not_found", message);

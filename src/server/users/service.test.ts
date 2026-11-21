@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { untouchableDatabase } from "@/db/testing";
 import type { Database } from "@/db/client";
 import { GOOGLE_NOT_SET_UP_MESSAGE } from "@/lib/session/google-domains";
-import { createUser } from "@/server/users/service";
+import { createAccessRequest, createUser } from "@/server/users/service";
 
 const DOMAINS = ["gmail.com", "tjc.sg", "tjc.org"];
 
@@ -54,4 +54,19 @@ describe("createUser error handling", () => {
       });
     },
   );
+});
+
+describe("createAccessRequest error handling (#249)", () => {
+  it("rethrows an unrelated database failure rather than refusing the sign-in as a race", () => {
+    /* A taken address refuses the sign-in quietly; an outage must not read as one. */
+    const stub = {
+      insert: () => ({
+        values: () => ({ returning: () => Promise.reject(new Error("connection reset")) }),
+      }),
+    } as unknown as Database;
+
+    return expect(
+      createAccessRequest(stub, { email: "pat@gmail.com", name: null }),
+    ).rejects.toThrow("connection reset");
+  });
 });

@@ -8,10 +8,11 @@ import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
 import { MAX_PASSWORD_LENGTH, assertPasswordAcceptable, hashPassword } from "@/server/password";
 
 /*
- * Bootstraps the first admin of a fresh database (#105). There is no sign-up,
- * so without this somebody has to write an argon2 hash into the users table by
- * hand. It only ever creates the first one: once any admin exists, further
- * admins are added in the app, where the change is made by a signed-in admin.
+ * Bootstraps the first admin of a fresh database (#105). Only an admin lets
+ * anyone in - a Google sign-in only asks to join (#249) - so without this
+ * somebody has to write the first admin into the users table by hand. It
+ * only ever creates the first one: once any admin exists, further admins are
+ * added in the app, where the change is made by a signed-in admin.
  */
 
 export class CreateAdminError extends Error {
@@ -121,8 +122,34 @@ export async function createFirstAdmin(
     });
   } catch (error) {
     if (isConstraintViolation(error, "users_email_unique")) {
-      throw new CreateAdminError(`${email} already belongs to an account, so nothing was changed.`);
+      throw new CreateAdminError(await addressTakenMessage(db, email));
     }
     throw error;
   }
+}
+
+/*
+ * Even a request to join with Google is never promoted (D-105-4), though on
+ * a fresh database no admin exists to approve it (#249). So the refusal
+ * names it and says how to clear it. The address may hold a quote.
+ */
+export function pendingRequestMessage(email: string): string {
+  const quoted = email.replaceAll("'", "''");
+  return (
+    `${email} has asked to join with Google and is waiting for approval, so nothing was ` +
+    "changed: this script only creates accounts. Delete the request and run this again " +
+    `(DELETE FROM users WHERE email = '${quoted}' AND approval = 'pending';), or make the ` +
+    "first admin at another address and approve the request on Admin > Team."
+  );
+}
+
+async function addressTakenMessage(db: Pick<Database, "select">, email: string): Promise<string> {
+  const rows = await db
+    .select({ approval: users.approval })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  return rows[0]?.approval === "pending"
+    ? pendingRequestMessage(email)
+    : `${email} already belongs to an account, so nothing was changed.`;
 }

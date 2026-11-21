@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  AccountBlockedError,
   AccountDeactivatedError,
+  AccountPendingError,
   ApiError,
   ConflictError,
   ForbiddenError,
@@ -20,6 +22,8 @@ describe("status and code mapping", () => {
     [new UnauthenticatedError(), 401, "unauthenticated"],
     [new ForbiddenError(), 403, "forbidden"],
     [new AccountDeactivatedError(), 403, "account_deactivated"],
+    [new AccountPendingError(), 403, "account_pending"],
+    [new AccountBlockedError(), 403, "account_blocked"],
     [new NotFoundError(), 404, "not_found"],
     [new ConflictError(), 409, "conflict"],
     [new UnsupportedMediaTypeError(), 415, "unsupported_media_type"],
@@ -36,6 +40,8 @@ describe("status and code mapping", () => {
   it("keeps a distinct name per error, so logs identify the cause", () => {
     expect(new NotFoundError().name).toBe("NotFoundError");
     expect(new AccountDeactivatedError().name).toBe("AccountDeactivatedError");
+    expect(new AccountPendingError().name).toBe("AccountPendingError");
+    expect(new AccountBlockedError().name).toBe("AccountBlockedError");
     expect(new UnsupportedMediaTypeError().name).toBe("UnsupportedMediaTypeError");
     expect(new ContentTooLargeError().name).toBe("ContentTooLargeError");
   });
@@ -47,6 +53,8 @@ describe("default messages", () => {
     [new UnauthenticatedError(), /sign in/i],
     [new ForbiddenError(), /do not have access/i],
     [new AccountDeactivatedError(), /deactivated/i],
+    [new AccountPendingError(), /waiting for an admin's approval/],
+    [new AccountBlockedError(), /wasn't approved/],
     [new NotFoundError(), /not found/i],
     [new ConflictError(), /conflicts/i],
     [new UnsupportedMediaTypeError(), /JSON/],

@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   isAdmin,
   requireAdmin,
+  requireOwnAccount,
   requireRole,
   requireUser,
   resolveMemberScope,
   type SessionLike,
 } from "@/server/auth/guards";
 import {
+  AccountBlockedError,
   AccountDeactivatedError,
+  AccountPendingError,
   ForbiddenError,
   UnauthenticatedError,
 } from "@/server/http/errors";
@@ -16,8 +19,10 @@ import {
 const session = (user: Record<string, unknown> | null): SessionLike =>
   user === null ? null : { user };
 
-const admin = session({ id: "a1", role: "admin", deactivated: false });
-const member = session({ id: "m1", role: "member", deactivated: false });
+const admin = session({ id: "a1", role: "admin", approval: "approved", deactivated: false });
+const member = session({ id: "m1", role: "member", approval: "approved", deactivated: false });
+const pending = session({ id: "p1", role: "member", approval: "pending", deactivated: false });
+const blocked = session({ id: "b1", role: "member", approval: "blocked", deactivated: false });
 
 describe("requireUser", () => {
   it("returns the signed-in user", () => {
@@ -57,10 +62,73 @@ describe("requireUser", () => {
   });
 
   it("normalises absent email and name to null", () => {
-    expect(requireUser(session({ id: "m1", role: "member" }))).toMatchObject({
+    expect(requireUser(session({ id: "m1", role: "member", approval: "approved" }))).toMatchObject({
       email: null,
       name: null,
     });
+  });
+});
+
+/* #249: the one gate every handler passes through. */
+describe("requireUser, for an account nobody has approved", () => {
+  it.each<[string, SessionLike, unknown, string]>([
+    ["waiting for approval", pending, AccountPendingError, "account_pending"],
+    ["rejected", blocked, AccountBlockedError, "account_blocked"],
+  ])("refuses an account %s, with its own code", (_case, refused, type, code) => {
+    expect(() => requireUser(refused)).toThrow(type);
+    try {
+      requireUser(refused);
+    } catch (error) {
+      expect((error as AccountPendingError).status).toBe(403);
+      expect((error as AccountPendingError).code).toBe(code);
+    }
+  });
+
+  it("fails closed for a session that says nothing about approval", () => {
+    /* Only a session read from the database carries approval; anything else
+       is refused rather than let through. */
+    expect(() => requireUser(session({ id: "m1", role: "member" }))).toThrow(AccountPendingError);
+    expect(() =>
+      requireUser(session({ id: "m1", role: "member", approval: "approved-ish" })),
+    ).toThrow(AccountPendingError);
+  });
+
+  it("refuses an unapproved caller before any role check", () => {
+    expect(() => requireAdmin(pending)).toThrow(AccountPendingError);
+    expect(() => requireRole(blocked, "member")).toThrow(AccountBlockedError);
+    expect(() => resolveMemberScope(pending)).toThrow(AccountPendingError);
+  });
+
+  it("still tells a deactivated account it is deactivated first", () => {
+    expect(() =>
+      requireUser(session({ id: "m1", role: "member", approval: "pending", deactivated: true })),
+    ).toThrow(AccountDeactivatedError);
+  });
+});
+
+describe("requireOwnAccount (#249)", () => {
+  it.each([
+    ["approved", member],
+    ["pending", pending],
+    ["blocked", blocked],
+  ])("lets an account through whatever its approval: %s", (approval, own) => {
+    expect(requireOwnAccount(own)).toMatchObject({ approval, deactivated: false });
+  });
+
+  it("reads a session that says nothing about approval as waiting", () => {
+    expect(requireOwnAccount(session({ id: "m1", role: "member" })).approval).toBe("pending");
+  });
+
+  it("still refuses the signed out and the deactivated", () => {
+    expect(() => requireOwnAccount(null)).toThrow(UnauthenticatedError);
+    expect(() => requireOwnAccount(session({ id: "", role: "member" }))).toThrow(
+      UnauthenticatedError,
+    );
+    expect(() =>
+      requireOwnAccount(
+        session({ id: "m1", role: "member", approval: "approved", deactivated: true }),
+      ),
+    ).toThrow(AccountDeactivatedError);
   });
 });
 
@@ -120,8 +188,17 @@ describe("isAdmin", () => {
   );
 
   it("is false for a deactivated admin", () => {
-    expect(isAdmin(session({ id: "a1", role: "admin", deactivated: true }))).toBe(false);
+    expect(
+      isAdmin(session({ id: "a1", role: "admin", approval: "approved", deactivated: true })),
+    ).toBe(false);
   });
+
+  it.each(["pending", "blocked", undefined])(
+    "is false for an admin claim whose approval is %s (#249)",
+    (approval) => {
+      expect(isAdmin(session({ id: "a1", role: "admin", approval }))).toBe(false);
+    },
+  );
 });
 
 describe("resolveMemberScope", () => {

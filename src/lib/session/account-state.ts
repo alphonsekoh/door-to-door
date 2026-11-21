@@ -7,7 +7,12 @@ import type { Role } from "@/db/schema";
  * only fail again.
  */
 
-export type AuthFailure = "deactivated" | "signed-out";
+/* What the account message covers the app with. */
+export type AccountFailure = "deactivated" | "signed-out";
+
+/* "unapproved" is never a message: the shell takes the account to the
+   waiting page instead (#249). */
+export type AuthFailure = AccountFailure | "unapproved";
 
 export type ServerUser = { id: string; role: Role };
 
@@ -28,7 +33,9 @@ export type AccountStore = {
    demotion) and the screen that asked already explains it. */
 export function classifyAuthFailure(status: number, code: string | undefined): AuthFailure | null {
   if (status === 401) return "signed-out";
-  if (status === 403 && code === "account_deactivated") return "deactivated";
+  if (status !== 403) return null;
+  if (code === "account_deactivated") return "deactivated";
+  if (code === "account_pending" || code === "account_blocked") return "unapproved";
   return null;
 }
 

@@ -126,16 +126,17 @@ export const visitColumns = {
  */
 async function lockActiveAuthor(tx: Database, memberId: string): Promise<void> {
   const found = await tx
-    .select({ deactivatedAt: users.deactivatedAt })
+    .select({ approval: users.approval, deactivatedAt: users.deactivatedAt })
     .from(users)
     .where(eq(users.id, memberId))
     .for("share");
 
   const author = found[0];
-  if (!author) {
-    /* Only reachable when an admin names someone: a caller's own id comes
-       from a verified session. A bare insert would fail on the foreign key
-       with a constraint name instead of a usable message. */
+  /* Only reachable when an admin names someone: a caller's own id comes from
+     a verified, approved session. A bare insert would fail on the foreign key
+     with a constraint name instead of a usable message. Someone waiting for
+     approval, or rejected, is not on the team (#249). */
+  if (author?.approval !== "approved") {
     throw new NotFoundError("No such member.");
   }
   if (author.deactivatedAt !== null) {
