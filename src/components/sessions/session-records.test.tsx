@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type MockInstance, vi } from "vitest";
 import { SessionRecords } from "@/components/sessions/session-records";
 import type { HistoryEntry, InterestLevel } from "@/generated/types.gen";
 import type * as ApiClientModule from "@/lib/api-client";
@@ -11,12 +11,12 @@ vi.mock("@/lib/api-client", async () => {
   return { ...actual, apiFetch };
 });
 
-const { replace, searchParams } = vi.hoisted(() => ({
-  replace: vi.fn(),
+/* The router's copy of the address, which a test moves only as Back or
+   Forward would. No useRouter: a choice that went through it would throw. */
+const { searchParams } = vi.hoisted(() => ({
   searchParams: { value: new URLSearchParams() },
 }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace }),
   useSearchParams: () => searchParams.value,
 }));
 
@@ -98,10 +98,20 @@ const page = (rows: HistoryEntry[], total = rows.length) => ({
   pagination: { limit: 50, offset: 0, total, hasMore: rows.length < total },
 });
 
+let replaceState: MockInstance<History["replaceState"]>;
+
 beforeEach(() => {
   vi.clearAllMocks();
   searchParams.value = new URLSearchParams();
+  window.history.replaceState(null, "", "/history/s1");
+  replaceState = vi.spyOn(window.history, "replaceState");
 });
+
+afterEach(() => {
+  replaceState.mockRestore();
+});
+
+const address = () => `${window.location.pathname}${window.location.search}`;
 
 describe("SessionRecords", () => {
   it("lists the member's records for the outing", async () => {
@@ -302,25 +312,55 @@ describe("Me or My team", () => {
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("includeTeam"));
   });
 
-  it("writes the choice to the URL so it survives navigation", async () => {
+  /* Not router.replace: this page is dynamic, so that waited on the server,
+     and with no signal the screen became Offline. */
+  it("writes the choice to the URL at once, so it survives navigation", async () => {
     const user = userEvent.setup();
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("You recorded nothing in this session.");
 
-    await user.click(await screen.findByRole("button", { name: "My team" }));
-    expect(replace).toHaveBeenCalledWith("/history/s1?view=team");
-    await user.click(screen.getByRole("button", { name: "Me" }));
-    expect(replace).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "My team" }));
+    expect(screen.getByRole("button", { name: "My team" })).toHaveAttribute("aria-pressed", "true");
+    expect(replaceState).toHaveBeenCalledExactlyOnceWith(null, "", "/history/s1?view=team");
+    expect(address()).toBe("/history/s1?view=team");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history/mine?limit=50&offset=0&includeTeam=true&sessionId=s1",
+      );
+    });
+
+    // The view already shown writes nothing.
+    await user.click(screen.getByRole("button", { name: "My team" }));
+    expect(replaceState).toHaveBeenCalledOnce();
   });
 
   it("goes back to Me from the team view", async () => {
     const user = userEvent.setup();
+    window.history.replaceState(null, "", "/history/s1?view=team");
     searchParams.value = new URLSearchParams("view=team");
     apiFetch.mockResolvedValue(page([]));
     render(<SessionRecords sessionId="s1" />);
 
     await user.click(await screen.findByRole("button", { name: "Me" }));
-    expect(replace).toHaveBeenCalledWith("/history/s1");
+    expect(address()).toBe("/history/s1");
+    expect(screen.getByRole("button", { name: "Me" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("takes the view from an address that changes under it, as Back or Forward does", async () => {
+    apiFetch.mockResolvedValue(page([]));
+    const { rerender } = render(<SessionRecords sessionId="s1" />);
+    await screen.findByText("You recorded nothing in this session.");
+
+    searchParams.value = new URLSearchParams("view=team");
+    rerender(<SessionRecords sessionId="s1" />);
+
+    expect(screen.getByRole("button", { name: "My team" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/history/mine?limit=50&offset=0&includeTeam=true&sessionId=s1",
+      );
+    });
   });
 
   it("names the author and teammates on a teammate's row and lets it be amended", async () => {

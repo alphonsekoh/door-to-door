@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DeclinedNotice } from "@/components/follow-ups/declined-notice";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
@@ -9,6 +9,7 @@ import { HintCard } from "@/components/ui/hint-card";
 import type { FollowUp, FollowUpList } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
 import { useActiveSession } from "@/lib/hooks/use-active-session";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { useRole } from "@/lib/hooks/use-role";
 import { SheetPresence } from "@/components/ui/sheet";
 
@@ -20,6 +21,11 @@ export type FollowUpView = "list" | "review" | "mine";
 export function parseFollowUpView(params: URLSearchParams): FollowUpView {
   const view = params.get("view");
   return view === "review" || view === "mine" ? view : "list";
+}
+
+/* As the screen writes it to the address: the list, the default, writes nothing. */
+function viewSearch(view: FollowUpView): string {
+  return view === "list" ? "" : `view=${view}`;
 }
 
 const VIEWS: { value: FollowUpView; label: string }[] = [
@@ -69,8 +75,14 @@ type State =
  * review are a tap away, so every member sees what is already asked for.
  */
 export function FollowUpsScreen() {
-  const router = useRouter();
-  const view = parseFollowUpView(new URLSearchParams(useSearchParams().toString()));
+  const params = useSearchParams();
+  /* Not router.replace: once Next's copy of this route is five minutes old,
+     that asks the server again, and with no signal left for Offline. */
+  const [search, chooseView] = useAddressFilters(
+    "/follow-ups",
+    viewSearch(parseFollowUpView(new URLSearchParams(params.toString()))),
+  );
+  const view = parseFollowUpView(new URLSearchParams(search));
   const { userId } = useRole();
   /* A string, so the session answering does not ask again for a view that
      never needed it. */
@@ -143,9 +155,7 @@ export function FollowUpsScreen() {
                    between them is for the view being left. */
                 generation.current += 1;
                 setState({ status: "loading" });
-                router.replace(
-                  option.value === "list" ? "/follow-ups" : `/follow-ups?view=${option.value}`,
-                );
+                chooseView(viewSearch(option.value));
               }}
               className={`min-h-11 flex-[1_1_8ch] press rounded-lg border px-2 text-body font-medium ${
                 on ? "border-primary bg-primary text-primary-foreground" : "border-border-strong"

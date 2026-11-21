@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AmendVisitSheet } from "@/components/visits/amend-visit-sheet";
 import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
@@ -25,6 +25,7 @@ import {
   undoMarkedDone,
 } from "@/lib/follow-ups/marked-done";
 import { asHouseholdSummary } from "@/lib/history/history";
+import { useAddressFilters } from "@/lib/hooks/use-address-filters";
 import { useOnline } from "@/lib/hooks/use-online";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useSearchTerm } from "@/lib/hooks/use-search-term";
@@ -89,13 +90,14 @@ async function teamsOf(sessionId: string): Promise<Team[] | null> {
 }
 
 export function AdminRecords() {
-  const router = useRouter();
   const params = useSearchParams();
-  const inUrl = parseFilters(new URLSearchParams(params.toString()));
-  const search = toSearchParams(inUrl);
+  const [search, chooseFilters] = useAddressFilters(
+    "/admin/records",
+    toSearchParams(parseFilters(new URLSearchParams(params.toString()))),
+  );
   /* Held here, never in the URL (record-filters). */
   const [q, setQ] = useSearchTerm("/admin/records", search);
-  const filters: RecordFilters = { ...inUrl, q };
+  const filters: RecordFilters = { ...parseFilters(new URLSearchParams(search)), q };
 
   const [state, setState] = useState<State>({ status: "loading" });
   const [members, setMembers] = useState<User[]>([]);
@@ -110,6 +112,9 @@ export function AdminRecords() {
   const undoFocus = useRefusalFocus();
   const markedLine = useRef<HTMLDivElement>(null);
   const markedId = marked?.visitId ?? null;
+  /* Each pick loads at once, and the poll reads on its own, so on a slow line
+     an older answer can land last (D-28-7). */
+  const generation = useRef(0);
 
   /* At large text the line landed under the nav once the sheet had gone.
      Each record that marks something done brings it into view, clear of the
@@ -120,12 +125,14 @@ export function AdminRecords() {
   }, [markedId]);
 
   const load = useCallback(async (current: RecordFilters) => {
+    const mine = ++generation.current;
     try {
       const session = await apiFetch<ActiveSession>("/sessions/active");
       const [page, teams] = await Promise.all([
         apiFetch<HistoryList>(`/history?${toHistoryQuery(current, session.session.id, PAGE_SIZE)}`),
         teamsOf(session.session.id),
       ]);
+      if (mine !== generation.current) return;
       setState({
         status: "ready",
         session,
@@ -134,6 +141,7 @@ export function AdminRecords() {
         total: page.pagination.total,
       });
     } catch (error) {
+      if (mine !== generation.current) return;
       if (error instanceof ApiRequestError && error.status === 404) {
         // No session is running: an ordinary state, not a failure.
         setState({ status: "none" });
@@ -166,6 +174,9 @@ export function AdminRecords() {
     return () => {
       clearTimeout(initial);
       clearInterval(timer);
+      /* The next pick's load waits a tick; a read for the filters just left
+         that lands in it must not be drawn (D-246-13). */
+      generation.current += 1;
     };
   }, [load, loadMembers, search]);
 
@@ -182,19 +193,16 @@ export function AdminRecords() {
     !knownTeams.some((team) => team.id === filters.teamId);
   useEffect(() => {
     if (!unknownTeam) return;
-    const next = toSearchParams({ ...parseFilters(new URLSearchParams(search)), teamId: "" });
-    router.replace(next === "" ? "/admin/records" : `/admin/records?${next}`);
-  }, [unknownTeam, search, router]);
+    chooseFilters(toSearchParams({ ...parseFilters(new URLSearchParams(search)), teamId: "" }));
+  }, [unknownTeam, search, chooseFilters]);
 
-  /* Written to the URL rather than to state, so the view can be sent to
-     someone else and survives a reload. The search term is not: it names
-     people. */
+  /* Written to the URL too, so the view can be sent to someone else and
+     survives a reload. The search term is not: it names people. */
   function setFilter<K extends Exclude<keyof RecordFilters, "q">>(
     key: K,
     value: RecordFilters[K],
   ): void {
-    const next = toSearchParams({ ...filters, [key]: value });
-    router.replace(next === "" ? "/admin/records" : `/admin/records?${next}`);
+    chooseFilters(toSearchParams({ ...filters, [key]: value }));
   }
 
   if (state.status === "loading") {
@@ -407,7 +415,7 @@ export function AdminRecords() {
             type="button"
             onClick={() => {
               setQ("");
-              router.replace("/admin/records");
+              chooseFilters("");
             }}
             className="min-h-11 text-body font-medium btn-text"
           >

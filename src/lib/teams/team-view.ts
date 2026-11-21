@@ -14,8 +14,9 @@ export function parseScope(params: URLSearchParams): RecordScope {
   return params.get(PARAM) === "team" ? "team" : "me";
 }
 
-export function scopeHref(path: string, scope: RecordScope): string {
-  return scope === "team" ? `${path}?${PARAM}=team` : path;
+/* As the screen writes it to the address: Me, the default, writes nothing. */
+export function scopeSearch(scope: RecordScope): string {
+  return scope === "team" ? `${PARAM}=team` : "";
 }
 
 export type OwnRecordFilters = {
