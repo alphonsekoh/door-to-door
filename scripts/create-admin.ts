@@ -5,7 +5,7 @@ import { attachPoolErrorHandler } from "../src/db/pool-errors";
 import * as schema from "../src/db/schema";
 import { loadAppConfig, loadDatabaseUrl } from "../src/server/config";
 import { promptHidden } from "../src/server/prompt";
-import { describeCreated, runCreateAdmin } from "../src/server/users/create-admin-cli";
+import { runCreateAdmin } from "../src/server/users/create-admin-cli";
 
 /*
  * Creates the first admin of a fresh database (#105). The logic and its tests
@@ -25,7 +25,11 @@ async function main(): Promise<void> {
         : undefined,
       googleDomains: loadAppConfig().auth.google?.domains ?? null,
     });
-    console.log(describeCreated(admin));
+    console.log(
+      admin.googleOnly
+        ? `Created admin ${admin.email}. Sign in with Google as ${admin.email}.`
+        : `Created admin ${admin.email}. Sign in with that email and the password given.`,
+    );
   } finally {
     await pool.end();
   }

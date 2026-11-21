@@ -1627,6 +1627,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ActiveSession" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404":
           description: |
             No session is active. A normal state, not an error condition —
@@ -1758,6 +1759,7 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/SessionBlock" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
     post:
       tags: [Sessions]
@@ -2239,6 +2241,7 @@ paths:
               schema: { $ref: "#/components/schemas/BlockList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [Blocks]
       operationId: createBlock
@@ -2328,6 +2331,7 @@ paths:
               schema: { $ref: "#/components/schemas/HouseholdList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /households/attention:
@@ -2396,6 +2400,7 @@ paths:
               schema: { $ref: "#/components/schemas/HouseholdHistory" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ================================================================ Visits
@@ -2989,6 +2994,7 @@ paths:
               schema: { $ref: "#/components/schemas/HistoryList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   /history/mine/sessions:
     get:
@@ -3018,6 +3024,7 @@ paths:
               schema: { $ref: "#/components/schemas/SessionHistoryList" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
 
   # ================================================================= Users
   /users:

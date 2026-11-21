@@ -753,9 +753,11 @@ docker run -p 3000:3000 \
   one). A Google-only admin needs a terminal.
   The script refuses, changing nothing, if any admin already exists, deactivated ones
   included: later admins are added in the app. It also refuses an address that already
-  belongs to an account, with one exception: if the address asked to join with Google
-  before there was an admin to approve it, that request becomes the admin, keeping
-  Google's name unless `--name` gives another (#249).
+  belongs to an account, since it only ever creates one. That includes an address that
+  asked to join with Google before there was an admin to approve it (#249): the refusal
+  gives the `DELETE` that removes that request, with its Google link and sign-in, so the
+  script can then be run again; or make the first admin at another address and approve
+  the request on **Admin → Team**.
 
 ## Troubleshooting
 

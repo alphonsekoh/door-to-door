@@ -1275,6 +1275,17 @@ export type GetActiveSessionErrors = {
      */
     401: Error;
     /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
      * No session is active. A normal state, not an error condition —
      * clients render an empty state rather than a failure.
      *
@@ -1517,6 +1528,17 @@ export type ListSessionBlocksErrors = {
      *
      */
     401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
     /**
      * No such resource, or not visible to this user.
      */
@@ -2373,6 +2395,17 @@ export type ListBlocksErrors = {
      *
      */
     401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
 };
 
 export type ListBlocksError = ListBlocksErrors[keyof ListBlocksErrors];
@@ -2546,6 +2579,17 @@ export type ListHouseholdsErrors = {
      */
     401: Error;
     /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
      * No such resource, or not visible to this user.
      */
     404: Error;
@@ -2655,6 +2699,17 @@ export type GetHouseholdHistoryErrors = {
      *
      */
     401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
     /**
      * No such resource, or not visible to this user.
      */
@@ -3325,6 +3380,17 @@ export type ListOwnHistoryErrors = {
      *
      */
     401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
 };
 
 export type ListOwnHistoryError = ListOwnHistoryErrors[keyof ListOwnHistoryErrors];
@@ -3368,6 +3434,17 @@ export type ListOwnSessionHistoryErrors = {
      *
      */
     401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
 };
 
 export type ListOwnSessionHistoryError = ListOwnSessionHistoryErrors[keyof ListOwnSessionHistoryErrors];

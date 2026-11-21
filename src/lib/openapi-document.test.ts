@@ -86,6 +86,13 @@ describe("every operation", () => {
     }
   });
 
+  it("documents a 403, since every operation refuses a deactivated or unapproved account", () => {
+    for (const { path, method, operation } of operations) {
+      const responses = operation["responses"] as Record<string, unknown>;
+      expect(Object.keys(responses), `${method.toUpperCase()} ${path}`).toContain("403");
+    }
+  });
+
   it("documents at least one other error response", () => {
     for (const { path, method, operation } of operations) {
       const responses = operation["responses"] as Record<string, unknown>;

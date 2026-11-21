@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { users } from "@/db/schema";
 import { zCreateUserRequest } from "@/generated/zod.gen";
@@ -11,7 +11,7 @@ import { MAX_PASSWORD_LENGTH, assertPasswordAcceptable, hashPassword } from "@/s
  * Bootstraps the first admin of a fresh database (#105). Only an admin lets
  * anyone in - a Google sign-in only asks to join (#249) - so without this
  * somebody has to write the first admin into the users table by hand. It
- * only ever makes the first one: once any admin exists, further admins are
+ * only ever creates the first one: once any admin exists, further admins are
  * added in the app, where the change is made by a signed-in admin.
  */
 
@@ -88,8 +88,7 @@ export const CREATE_ADMIN_LOCK = "door-to-door:create-admin";
 
 /* A null password makes an admin who signs in with Google only (#14). */
 export type FirstAdminInput = { email: string; name: string | null; password: string | null };
-/* `fromRequest` when the admin was a request to join with Google (#249). */
-export type CreatedAdmin = { id: string; email: string; googleOnly: boolean; fromRequest: boolean };
+export type CreatedAdmin = { id: string; email: string; googleOnly: boolean };
 
 export async function createFirstAdmin(
   db: Database,
@@ -115,40 +114,42 @@ export async function createFirstAdmin(
       if (await adminExists(tx)) {
         throw new CreateAdminError(ADMIN_EXISTS_MESSAGE);
       }
-      const googleOnly = passwordHash === null;
-      /*
-       * A Google sign-in made before this ran asked to join at the address
-       * (#249), and with no admin nobody could ever approve it. Whoever
-       * holds the address could sign in with Google as an admin made here
-       * anyway, so the request becomes the admin, keeping its Google link.
-       * Only a request: any other account at the address is still refused
-       * below (D-105-4).
-       */
-      const promoted = await tx
-        .update(users)
-        .set({
-          approval: "approved",
-          role: "admin",
-          ...(name === null ? {} : { name }),
-          ...(passwordHash === null ? {} : { passwordHash }),
-          updatedAt: new Date(),
-        })
-        .where(and(eq(users.email, email), eq(users.approval, "pending")))
-        .returning({ id: users.id, email: users.email });
-      const request = promoted[0];
-      if (request !== undefined) {
-        return { ...request, googleOnly, fromRequest: true };
-      }
       const inserted = await tx
         .insert(users)
         .values({ email, name, passwordHash, role: "admin" })
         .returning({ id: users.id, email: users.email });
-      return { ...firstOrThrow(inserted, "the admin insert"), googleOnly, fromRequest: false };
+      return { ...firstOrThrow(inserted, "the admin insert"), googleOnly: passwordHash === null };
     });
   } catch (error) {
     if (isConstraintViolation(error, "users_email_unique")) {
-      throw new CreateAdminError(`${email} already belongs to an account, so nothing was changed.`);
+      throw new CreateAdminError(await addressTakenMessage(db, email));
     }
     throw error;
   }
+}
+
+/*
+ * Even a request to join with Google is never promoted (D-105-4), though on
+ * a fresh database no admin exists to approve it (#249). So the refusal
+ * names it and says how to clear it. The address may hold a quote.
+ */
+export function pendingRequestMessage(email: string): string {
+  const quoted = email.replaceAll("'", "''");
+  return (
+    `${email} has asked to join with Google and is waiting for approval, so nothing was ` +
+    "changed: this script only creates accounts. Delete the request and run this again " +
+    `(DELETE FROM users WHERE email = '${quoted}' AND approval = 'pending';), or make the ` +
+    "first admin at another address and approve the request on Admin > Team."
+  );
+}
+
+async function addressTakenMessage(db: Pick<Database, "select">, email: string): Promise<string> {
+  const rows = await db
+    .select({ approval: users.approval })
+    .from(users)
+    .where(eq(users.email, email))
+    .limit(1);
+  return rows[0]?.approval === "pending"
+    ? pendingRequestMessage(email)
+    : `${email} already belongs to an account, so nothing was changed.`;
 }

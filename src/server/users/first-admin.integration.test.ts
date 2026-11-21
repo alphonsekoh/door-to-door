@@ -14,6 +14,7 @@ import {
   CreateAdminError,
   adminExists,
   createFirstAdmin,
+  pendingRequestMessage,
 } from "@/server/users/first-admin";
 import { createAccessRequest } from "@/server/users/service";
 
@@ -82,14 +83,21 @@ describe("createFirstAdmin on an empty database", () => {
 
 /*
  * On a fresh database the would-be admin may try Google before running
- * create-admin, which asks to join (#249) with no admin to approve it.
+ * create-admin, which asks to join (#249) with no admin to approve it. The
+ * script still only ever creates (D-105-4), so it refuses and says the way out.
  */
 describe("createFirstAdmin at an address that asked to join with Google", () => {
   const GOOGLE_ADDRESS = "lead@gmail.com";
 
+  /* With its Google link and a sign-in on the phone it asked from. */
   async function askToJoin(email = GOOGLE_ADDRESS) {
     const request = await createAccessRequest(db, { email, name: "Name From Google" });
     if (request === null) throw new Error("the request was not made");
+    await pool.query(
+      "INSERT INTO accounts (user_id, type, provider, provider_account_id) VALUES ($1, 'oidc', 'google', $2)",
+      [request.id, `google-${email}`],
+    );
+    await pool.query("INSERT INTO sign_ins (user_id) VALUES ($1)", [request.id]);
     return request;
   }
 
@@ -103,54 +111,71 @@ describe("createFirstAdmin at an address that asked to join with Google", () => 
     return rows;
   }
 
-  it("makes the request the admin, the same account, with the name it has", async () => {
+  async function linksAndSignIns() {
+    const { rows } = await pool.query<{ accounts: number; sign_ins: number }>(
+      "SELECT (SELECT count(*) FROM accounts)::int AS accounts, (SELECT count(*) FROM sign_ins)::int AS sign_ins",
+    );
+    return rows;
+  }
+
+  async function refusalOf(run: Promise<unknown>): Promise<CreateAdminError> {
+    const error = await run.then(
+      () => undefined,
+      (refused: unknown) => refused,
+    );
+    if (!(error instanceof CreateAdminError)) throw new Error("it was not refused");
+    return error;
+  }
+
+  it("refuses, naming the request and the way out, and leaves it as it was", async () => {
     const request = await askToJoin();
 
-    const created = await createFirstAdmin(
-      db,
-      { email: "Lead@Gmail.com", name: null, password: null },
-      ["gmail.com"],
+    const refusal = await refusalOf(
+      createFirstAdmin(db, { email: "Lead@Gmail.com", name: "Lead", password: "correct-horse" }, [
+        "gmail.com",
+      ]),
     );
 
-    expect(created).toEqual({
-      id: request.id,
-      email: GOOGLE_ADDRESS,
-      googleOnly: true,
-      fromRequest: true,
-    });
+    expect(refusal.message).toBe(
+      "lead@gmail.com has asked to join with Google and is waiting for approval, so nothing " +
+        "was changed: this script only creates accounts. Delete the request and run this " +
+        "again (DELETE FROM users WHERE email = 'lead@gmail.com' AND approval = 'pending';), " +
+        "or make the first admin at another address and approve the request on Admin > Team.",
+    );
     expect(await account(request.id)).toEqual([
-      { role: "admin", approval: "approved", name: "Name From Google", password_hash: null },
+      { role: "member", approval: "pending", name: "Name From Google", password_hash: null },
     ]);
     expect(await snapshotUsers()).toHaveLength(1);
+    expect(await linksAndSignIns()).toEqual([{ accounts: 1, sign_ins: 1 }]);
   });
 
-  it("gives it the name and the password given, which then sign it in", async () => {
+  it("gives a statement that clears the request whole, after which the admin is made", async () => {
+    const email = "o'brien@gmail.com";
+    await askToJoin(email);
+    const google = { email, name: null, password: null };
+
+    const refusal = await refusalOf(createFirstAdmin(db, google, ["gmail.com"]));
+    expect(refusal.message).toBe(pendingRequestMessage(email));
+    const statement = /\((DELETE FROM users .*;)\)/.exec(refusal.message)?.[1];
+    if (statement === undefined) throw new Error("no statement in the refusal");
+    await pool.query(statement);
+
+    // Its Google link and its sign-in go with it, so that phone is signed out.
+    expect(await snapshotUsers()).toEqual([]);
+    expect(await linksAndSignIns()).toEqual([{ accounts: 0, sign_ins: 0 }]);
+    await expect(createFirstAdmin(db, google, ["gmail.com"])).resolves.toMatchObject({
+      email,
+      googleOnly: true,
+    });
+    expect(await snapshotUsers()).toEqual([{ email, role: "admin", password_hash: null }]);
+  });
+
+  it("makes the admin at another address, leaving the request for it to approve", async () => {
     const request = await askToJoin();
 
-    const created = await createFirstAdmin(
-      db,
-      { email: GOOGLE_ADDRESS, name: "Lead", password: "correct-horse" },
-      ["gmail.com"],
-    );
+    await createFirstAdmin(db, INPUT, null);
 
-    expect(created).toMatchObject({ id: request.id, googleOnly: false, fromRequest: true });
-    expect(await account(request.id)).toMatchObject([
-      { role: "admin", approval: "approved", name: "Lead" },
-    ]);
-    const signedIn = await authorizeCredentials(
-      { email: GOOGLE_ADDRESS, password: "correct-horse" },
-      { db, limiter: createRateLimiter({ limit: 5, windowMs: 60_000 }) },
-    );
-    expect(signedIn).toMatchObject({ id: request.id, role: "admin" });
-  });
-
-  it("takes over only that address's request, leaving anyone else waiting", async () => {
-    const other = await askToJoin("someone@gmail.com");
-
-    const created = await createFirstAdmin(db, INPUT, null);
-
-    expect(created.fromRequest).toBe(false);
-    expect(await account(other.id)).toMatchObject([{ role: "member", approval: "pending" }]);
+    expect(await account(request.id)).toMatchObject([{ role: "member", approval: "pending" }]);
   });
 
   it("never lets a request past the queue once an admin exists", async () => {
@@ -165,7 +190,7 @@ describe("createFirstAdmin at an address that asked to join with Google", () => 
     expect(await account(request.id)).toMatchObject([{ role: "member", approval: "pending" }]);
   });
 
-  it("refuses a rejected one, as any other account, and changes nothing", async () => {
+  it("refuses a rejected one as any other account, and changes nothing", async () => {
     const request = await askToJoin();
     await pool.query("UPDATE users SET approval = 'blocked' WHERE id = $1", [request.id]);
 
