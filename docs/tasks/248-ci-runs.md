@@ -225,17 +225,18 @@ D-248-26 landed in `7fad79e`, D-248-27 and D-248-28 in `64f707b`.
   After the reviewer passes, the owner or the main session marks it ready, once the run
   for the last pushed head exists (`gh run list --commit <sha> --workflow CI`).
   Supersedes D-248-22's "marks it ready once". _Why:_ a builder cannot know whether fix
-  rounds follow, and each push to a ready PR is a full run. _Trade-off:_ the docs agent
-  runs after the reviewer and commits to the branch. Marked ready before that commit is
-  pushed, the PR runs CI twice, since the docs filter reads the whole PR, not the new
-  commit (D-248-5). Nothing is masked (Open question 6).
+  rounds follow, and each push to a ready PR is a full run. _Refined (owner, 2026-11-21):_
+  the PR is marked ready only after the docs agent's commit is pushed too, since the docs
+  agent runs after the reviewer and a push to a ready PR runs CI again, because the docs
+  filter reads the whole PR, not the new commit (D-248-5). That closes Open question 6.
 - **D-248-28 · The reviewer asks for the `e2e` label where no hook ran (owner).**
   `reviewer.md` says the pre-push hook runs only where `core.hooksPath` is `.githooks`,
   `SKIP_E2E_LINUX=1` skips it, and a commit made on GitHub (a web edit, **Update
-  branch**) never passes it. A PR into `dev` or a feature branch whose head commit was
-  made on GitHub, committer `GitHub <noreply@github.com>`, must carry `e2e`, and the
-  reviewer checks it. Extends D-248-22. _Why:_ such a PR has had no E2E run anywhere
-  (D-248-6). The head commit is enough, as a later hooked push tests the whole tree. The
+  branch**) never passes it. A PR into `dev` or a feature branch with any commit made on
+  GitHub, committer `GitHub`, that carries code must carry `e2e`, and the reviewer checks
+  every commit's committer, not just the head's (owner, 2026-11-21: a later docs-only push
+  does not make the hook look back, and `git push --no-verify` skips it too). Extends D-248-22. _Why:_ such a PR has had no E2E run anywhere
+  (D-248-6). The
   ruling named `dev`; a feature branch has the same gap. _Trade-off:_ a push from an
   unhooked clone, or with `SKIP_E2E_LINUX=1`, leaves no trace, so only the GitHub-made
   case is checked. Dependabot's commits match too, and carry the label (D-248-15).

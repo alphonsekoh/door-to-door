@@ -32,7 +32,8 @@ quietly building something else.
    draft: `gh pr create --draft --base <parent branch>` (`dev` for the first branch of a
    stack) with `Closes #N` in the body. A draft runs no CI, so push every later commit,
    the verifier's and reviewer's fix rounds included, to the same draft. Never mark it
-   ready yourself: it stays a draft until the reviewer passes. Then the owner or the
+   ready yourself: it stays a draft until the reviewer passes and the docs agent's commit
+   is pushed, so the docs commit does not start a second full run. Then the owner or the
    main session marks it ready (`gh pr ready`), and only once the CI run for the last
    pushed head commit exists (`gh run list --commit <sha> --workflow CI`). A draft's run
    that starts after the ready one cancels it and can pass tests, the build and E2E with

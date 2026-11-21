@@ -10,9 +10,11 @@ CI already enforces lint, types, coverage thresholds and codegen drift. It runs 
 suite only on PRs into `stage` and `main`, or with the `e2e` label; elsewhere the
 pre-push hook (`.githooks/pre-push`) runs it locally before a push that changes code.
 The hook runs only in a clone where `core.hooksPath` is set to `.githooks`, and
-`SKIP_E2E_LINUX=1` skips it. A commit made on GitHub (a web edit, **Update branch**)
-never passes through it, so a PR into `dev` or a feature branch whose last commit came
-that way has had no E2E run anywhere, and needs the `e2e` label.
+`SKIP_E2E_LINUX=1` or `git push --no-verify` skips it. A commit made on GitHub (a web
+edit, **Update branch**) never passes through it, and a later docs-only push does not
+make the hook look back at it. So a PR into `dev` or a feature branch with any
+GitHub-made commit that carries code has had no E2E run anywhere, and needs the `e2e`
+label.
 Do not re-report anything CI would catch. Your value is everything it cannot.
 
 ## Read
@@ -57,10 +59,13 @@ changed file - not just the hunks.
 
 - They assert behaviour, not implementation. No hollow tests written only for coverage.
 - Refusal paths are tested. Async UI has no race the tests paper over.
-- A PR into `dev` or a feature branch whose head commit was made on GitHub carries the
-  `e2e` label (`gh pr view <N> --json headRefOid,labels`). Such a commit's committer is
-  `GitHub <noreply@github.com>`:
-  `gh api 'repos/{owner}/{repo}/commits/<sha>' --jq .commit.committer`.
+- A PR into `dev` or a feature branch with any GitHub-made commit that carries code has
+  the `e2e` label (`gh pr view <N> --json labels`). Check every commit's committer, not
+  just the head's. A GitHub-made commit's committer is `GitHub`:
+
+  ```sh
+  gh api 'repos/{owner}/{repo}/pulls/<N>/commits' --jq '.[] | [.sha, .commit.committer.name] | @tsv'
+  ```
 
 **Conventions**
 
