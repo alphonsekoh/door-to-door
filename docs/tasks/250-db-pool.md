@@ -1,6 +1,6 @@
 # #250 · Database connections on Vercel: Neon's pooler and a deliberate pool
 
-- **Status:** In progress (branch `chore/250-db-pool`, not yet a PR)
+- **Status:** In progress (PR #259, merged to `dev`)
 - **Phase:** none (no milestone)
 - **Depends on:** #87, #241, #247
 
@@ -64,7 +64,9 @@ purpose.
   (D-250-7), and a reconnect from sin1 costs about 10–20 ms, so it is short. Vercel
   suggests about 5 s. _Why:_ pg's defaults (10, 10 s) were never chosen.
   _Trade-off:_ wherever the app runs, a gap of over 5 s now pays a reconnect.
-  _Research:_ R-234, R-237.
+  _Research:_ R-234, R-237. _Reasoning restated by D-252-1 (#252):_ one request can now
+  hold up to five connections, so ten serve two or three such requests at once, and
+  later queries wait for a free one (R-258). The number is unchanged.
 - **D-250-7 · The app's pool goes to `attachDatabasePool`, after
   `attachPoolErrorHandler`.** On Vercel each release keeps the instance awake through
   `waitUntil` for the idle timeout plus 100 ms. So no connection survives a suspension for

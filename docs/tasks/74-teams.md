@@ -211,7 +211,8 @@ Numbering continues from D-74-12. The screens are PR 3 (D-74-36 on) and PR 4 (D-
   cannot be deleted anyway). _Why:_ the server is the only truth about who is joined.
   _Wording refined by D-111-7:_ "Join this session".
 - **D-74-37 · The card reads identity from `GET /users/me`, never the JWT.** Relies on
-  D-74-7 and D-83-3.
+  D-74-7 and D-83-3. _Extended by D-252-9 (#252):_ its first read on each mount is the
+  page's shared one, so a name or role can be up to one poll old.
 - **D-74-38 · Pair up needs a chosen partner** (the button reads "Choose a teammate"),
   although the API allows a solo team. _Why:_ the screen exists for pairs; a solo team
   is a mistake from a phone.

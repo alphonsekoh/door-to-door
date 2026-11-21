@@ -3128,3 +3128,85 @@ false`) on that date.
   "before", and every count matched. The sin1 and iad1 figures are from #247's report
   (2026-11-21, recommendation 3).
 - **Used by:** D-251-3, D-251-12
+
+### R-254 · React `cache()` lasts one server render, and a Route Handler or Server Action is not one (read and measured)
+
+- **Finding:** Next's guide says React's `cache` "deduplicates within a React render
+  pass. Server Actions and Route Handlers are not part of a render pass, so the wrapper
+  does nothing and every call runs the function." #252's reviewer found that Next's
+  app-route runtime has no React cache dispatcher. Outside a request, Flight's
+  `getCacheForType` returns a new `Map` each time. On the standalone build, with a pg
+  tracer, each admin page made 1 sign-in query (2 in #247), and every API request made
+  exactly 1, back-to-back repeats included.
+- **Source:** `node_modules/next/dist/docs/01-app/02-guides/authentication.md:1181`
+  (Next 16); #252 reviewer r1; #252 verifier r0 and r2.
+- **Used by:** D-252-4
+
+### R-255 · An empty `generateStaticParams` builds each path on its first request and keeps it (read and measured)
+
+- **Finding:** "To statically render all paths the first time they're visited, return
+  an empty array." With Cache Components on, an empty array is a build error. The app
+  does not use Cache Components. On the standalone build, `/households/[id]` is `●`
+  (`ƒ` before). Its first request is a MISS and the next a HIT, with 0 queries and the
+  proxy's `Cache-Control: no-store` kept. Any id is built and kept, invalid ones
+  included. After one device pass the server held 100 unit pages, most from Link
+  prefetches as rows scrolled into view. Not checked on Vercel.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/generate-static-params.md`
+  ("All paths at runtime", "With Cache Components"); #252 build output; #252 verifier r0
+  and r2.
+- **Used by:** D-252-12
+
+### R-256 · An index serves `ORDER BY … DESC` only in its own null order; Drizzle's `.desc()` is NULLS LAST; a plain `CREATE INDEX` blocks writes (read and measured)
+
+- **Finding:**
+  - In PostgreSQL a plain `DESC` sorts nulls first. A B-tree serves an `ORDER BY` only
+    when it is scanned forward or backward in that exact order, nulls included.
+  - drizzle-orm's `.desc()` on an index column sets nulls to `"last"`, so `.nullsFirst()`
+    is needed.
+  - On 2,109 visits, All records' first page with the NULLS FIRST index is an Index Scan
+    on `visits_created_id_idx`, 0.2 ms. With a NULLS LAST index in its place, it is a Seq
+    Scan and a top-N sort. #247 measured 15,390 visits: page one went from 18.1 to
+    0.45 ms, and offset 10,000 from 30 to 15.8 ms, with no sort spilling to disk.
+  - `CREATE INDEX` without `CONCURRENTLY` locks the table against writes, not reads, until
+    the build ends. `CONCURRENTLY` cannot run inside a transaction block, and drizzle-orm's
+    `migrate` applies every pending migration inside one transaction.
+- **Source:** PostgreSQL docs, "Indexes and ORDER BY" and `CREATE INDEX` ("Building
+  Indexes Concurrently"); `node_modules/drizzle-orm/pg-core/columns/common.js:76-97` and
+  `pg-core/dialect.js:60-71` (`migrate`); #252 verifier r0 and r1; #247's report,
+  recommendation 8.
+- **Used by:** D-252-8
+
+### R-257 · Vercel's 4.5 MB response limit against a 250-record `/history` page (measured; the limit as cited)
+
+- **Finding:**
+  - A Vercel Function's response body may be at most 4.5 MB.
+  - `GET /api/history?limit=250`, with every field at its maximum length in Chinese text
+    and no team, measured 4,009,326 bytes (3.82 MiB), about 11% under the limit. The
+    builder's 3.3 MB estimate was low.
+  - Teams are uncapped, and each teammate adds a name and an image URL to every record.
+  - The API accepts control characters. A description of 3,999 U+0001 is 26.8 KB as
+    JSON, so 250 such records would be about 6.7 MB. At 100 a page they were about
+    2.7 MB.
+- **Source:** Vercel docs, Functions limitations, as #252's reviewer and verifier cited
+  them. The docs step did not re-read them, nor check whether the limit applies before or
+  after compression. The sizes were measured by #252 verifier r1 on the local build.
+- **Used by:** D-252-6
+
+### R-258 · node-postgres: a pool lends a connection to each query in flight and queues the rest; a client runs its queries in turn (read and measured)
+
+- **Finding:**
+  - pg-pool 3.14.0 gives each query in flight a connection, an idle one first, and opens
+    new ones up to `max`. Past that it queues the query. With no
+    `connectionTimeoutMillis`, which the app does not set, a queued query waits rather
+    than fails.
+  - A `Client` runs one query at a time. pg 8.23.1 warns that calling `client.query()`
+    while one is executing "is deprecated and will be removed in pg@9.0". That is what
+    `Promise.all` on a transaction's client would do.
+  - Measured on the standalone build with a cold pool: `/api/sessions/active` took 4
+    round trips and opened 2 connections, and a unit's history took 3 with 1 new. Warm,
+    they took 3 and 2. Locally a new connection cost 20 to 40 ms. #247 puts one at about
+    12 ms from sin1, against about 2 ms a query.
+- **Source:** `node_modules/pg-pool/index.js:190-262` (`connect`);
+  `node_modules/pg/lib/client.js:34-36, 779-780`; #252 verifier r0 and r1; #247's
+  report.
+- **Used by:** D-252-1, D-250-6 (its reasoning)
