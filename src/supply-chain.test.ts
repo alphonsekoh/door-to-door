@@ -6,13 +6,20 @@ import { z } from "zod";
 
 /*
  * CI and the images run what a pin names by content, not a tag its owner can
- * move, and CI's token can read the repository and nothing more (#131).
- * Dependabot keeps the pins current; this keeps every new line pinned.
+ * move, and CI's token can only read: the repository (#131), and in ci.yml
+ * its pull requests (#248). Dependabot keeps the pins current; this keeps
+ * every new line pinned.
  */
 
 const read = (path: string): string => readFileSync(path, "utf8");
 
 const WORKFLOWS = readdirSync(".github/workflows").map((name) => join(".github/workflows", name));
+
+// Every grant is read-only. CI's lint job reads a pull request's labels and base
+// as they are now, which a re-run's replayed event would not show (#248).
+const GRANTS: Readonly<Record<string, Record<string, string>>> = {
+  ".github/workflows/ci.yml": { contents: "read", "pull-requests": "read" },
+};
 
 const Workflow = z.object({
   permissions: z.unknown(),
@@ -54,7 +61,7 @@ describe("GitHub Actions workflows", () => {
       .flatMap((job) => job.steps)
       .filter((step) => step.uses?.startsWith("actions/checkout@"));
 
-    expect(permissions).toEqual({ contents: "read" });
+    expect(permissions).toEqual(GRANTS[path] ?? { contents: "read" });
     // A job-level grant replaces the top-level one for that job.
     const ownGrants = Object.entries(jobs).filter(([, job]) => job.permissions !== undefined);
     expect(ownGrants.map(([name]) => name)).toEqual([]);

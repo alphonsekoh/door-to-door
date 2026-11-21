@@ -18,7 +18,8 @@ never revisited.
 - **D-30-2 · History groups by household, visits oldest first.** _Refined by
   D-251-15:_ visits in one millisecond keep the API's order, reversed.
 - **D-30-3 · CSV export walks every page of the filtered set, capped at 20 pages**, and
-  says so when capped.
+  says so when capped. _Refined by D-252-6 (#252):_ 8 pages of 250 (`HistoryLimit`,
+  D-252-5), still 2,000 records, each page's offset the records already received.
 - **D-30-4 · CSV cells starting `= + - @` or tab are prefixed with a quote.** _Why:_
   free text would run as a spreadsheet formula. _Refined by D-129-9:_ also CR, and
   `= + - @` behind leading whitespace, control or format characters. _Refined by

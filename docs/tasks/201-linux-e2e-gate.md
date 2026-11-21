@@ -69,8 +69,9 @@ also needs a Linux WebKit run that nothing local could give. The owner asked
   without rename detection, so code moved into `docs/` still counts. A worktree on a
   branch from before this change has no `.githooks/pre-push`, so its pushes are not
   gated. `SKIP_E2E_LINUX=1` skips
-  it for one push, and CI still runs the suite. _Why:_ a hook cannot be installed from
-  the repository. _Rejected:_ a `prepare` script to set `core.hooksPath`, because it
+  it for one push~~, and CI still runs the suite~~. _Superseded in part by D-248-6
+  (owner):_ CI runs it only into `stage` or `main`, or with the `e2e` label. _Why:_ a
+  hook cannot be installed from the repository. _Rejected:_ a `prepare` script to set `core.hooksPath`, because it
   would also run in `npm ci` in the image, which has no `.git`; and lint, types and unit
   tests in the gate, which run the same on macOS, and which CLAUDE.md already asks for
   before work is done.
@@ -89,9 +90,10 @@ WebKit draws in DejaVu Sans).
 
 ## Open questions
 
-- **Keep CI's E2E job?** With the gate on, CI's E2E job mostly repeats a pass already
+- ~~**Keep CI's E2E job?** With the gate on, CI's E2E job mostly repeats a pass already
   seen here, and it is about half of each run's billed minutes. CI is still the only
-  check that cannot be skipped.
+  check that cannot be skipped.~~ Answered by D-248-6 (owner): into `stage` or `main`,
+  or with the `e2e` label.
 - **Agents and the gate.** A gated push runs the suite for about 6 minutes with the
   image cached (8 when it rebuilds), which is longer than an agent's command may wait.
   The pipeline's publish step should run `npm run test:e2e:linux` first and push once it

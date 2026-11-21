@@ -1,0 +1,107 @@
+name: E2E catch-up
+
+# Runs CI's E2E job when a pull request becomes due one after CI's lint job
+# read its labels and base (#248): the e2e label is added, or it is retargeted
+# to stage or main. Labelling or editing a pull request does not start CI. It
+# is apart from ci.yml so that neither event touches the other checks: a run
+# there would cancel CI's run in progress, and skip jobs. A label added just
+# before lint reads it runs E2E here and in CI, on the same commit.
+#
+# A skipped job reports success to a ruleset, and the newest check of a name
+# is the one that counts. So this job takes the required name, End-to-end
+# smoke, only when it runs: then its result counts like CI's. Any other label
+# or edit, or a draft, gets a name no ruleset requires and replaces nothing.
+on:
+  pull_request:
+    types: [labeled, edited]
+
+# No concurrency group. A title edit must not cancel a retarget's E2E run, as
+# both are edited events and a cancelled check would block the merge; two E2E
+# runs at once are rare, and the newer one counts.
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  # Everything below `if:` is ci.yml's e2e job, and src/ci-runs.test.ts holds
+  # the two equal.
+  e2e:
+    name: ${{ !github.event.pull_request.draft && (github.event.action == 'labeled' && github.event.label.name == 'e2e' || github.event.action == 'edited' && github.event.changes.base && (github.base_ref == 'stage' || github.base_ref == 'main')) && 'End-to-end smoke' || 'No end-to-end run' }}
+    if: ${{ !github.event.pull_request.draft && (github.event.action == 'labeled' && github.event.label.name == 'e2e' || github.event.action == 'edited' && github.event.changes.base && (github.base_ref == 'stage' || github.base_ref == 'main')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:e5d2edd28b1f8d40a0a6c0c9cdc545b19b56a0d5d88f94bc11a97d970d4700d0
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # global-setup creates the database itself, so the server here only has
+      # to exist. The app is started by Playwright's webServer, which writes
+      # its own config file and passes the credentials as environment.
+      E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5433/door_to_door_e2e
+      AUTH_SECRET: e2e-secret-not-used-anywhere-else
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - run: npm ci
+
+      # Each Playwright release pins its browser builds, and those are built per
+      # OS release, so both name the cache.
+      - name: Name the browsers' cache
+        id: browsers-key
+        run: |
+          . /etc/os-release
+          echo "key=playwright-$ID-$VERSION_ID-$(uname -m)-$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers-key.outputs.key }}
+
+      # Only the engines the suite actually uses: Chromium for Android, WebKit
+      # for every browser on iOS. Firefox is not run.
+      - name: Install the browsers
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium webkit
+
+      # The cache holds the browsers, not the system packages they need.
+      - name: Install the browsers' system packages
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
+
+      - name: Flows that must never break
+        run: npm run test:e2e
+
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

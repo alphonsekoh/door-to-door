@@ -183,6 +183,15 @@ describe("filters", () => {
     expect(body.pagination).toMatchObject({ total: 3, hasMore: true });
   });
 
+  /* Larger than elsewhere, so the CSV export makes fewer requests (#252). */
+  it("gives up to 250 a page, and refuses more", async () => {
+    const body = (await (await all("?limit=250")).json()) as {
+      pagination: { limit: number; total: number };
+    };
+    expect(body.pagination).toMatchObject({ limit: 250, total: 3 });
+    expect((await all("?limit=251")).status).toBe(400);
+  });
+
   it("lists every record once, in id order, across a page edge inside a tie (#212)", async () => {
     const tied = (n: number) => `01960000-0000-7000-8000-00000000f00${String(n)}`;
     // Stored neither in id order nor its reverse, so only the id puts them
@@ -211,6 +220,12 @@ describe("filters", () => {
 });
 
 describe("filters on /history/mine", () => {
+  it("still gives at most 100 a page: only the export reads more", async () => {
+    asAlice();
+    expect((await mine("?limit=100")).status).toBe(200);
+    expect((await mine("?limit=101")).status).toBe(400);
+  });
+
   it("narrows within the caller's own records", async () => {
     asAlice();
     const data = await entries(await mine(`?sessionId=${MARCH}`));

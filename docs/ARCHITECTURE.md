@@ -226,16 +226,19 @@ authoritative, and a change to any of them needs the owner.
    uncapped (D-74-15, D-118-6); the 256 KiB cap bounds it at about 6,700 ids (D-126-7).
 3. The handler gets its session from `currentSession` (`src/server/auth/session.ts`),
    which reads the user's role and deactivation, and the token's sign-in, from the
-   database on every request (one query, no cache), then calls the pure `requireUser` /
-   `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
+   database on every request (one query, nothing kept across requests; an admin page's
+   layout and page share it through React `cache()`, D-252-4), then calls the pure
+   `requireUser` / `requireRole`. A missing user or an ended sign-in is `401`; a deactivated account is
    `403 account_deactivated`, whatever its sign-in. One not approved is
    `403 account_pending` or `403 account_blocked`, failing closed; only `GET` and
    `PATCH /users/me` take it, through `requireOwnAccount` (D-249-4, D-249-5). "Last
    used" is written at most every 15 minutes (D-125-3, D-125-6). A lookup failure is a `500`, never allowed. Sync and `POST /visits` then each charge the caller's own
    budget, 30 a minute, and are `429 rate_limited` once it is spent
    (`src/server/visits/rate-limits.ts`, D-21-6, D-126-8).
-4. The service does the work. Text that must say something (a unit number, note, block
-   name or street) is refused blank before anything is read (D-119-3). Sync and
+4. The service does the work. Reads that need nothing from one another go out together,
+   never on a transaction's client (D-252-1). Text that must say something (a unit
+   number, note, block name or street) is refused blank before anything is read
+   (D-119-3). Sync and
    `POST /visits` also run the clock rules
    (`src/server/visits/clock-rules.ts`) before any write. Inside the write's
    transaction `POST /visits` first locks its author's user row (`FOR SHARE`) and
@@ -400,7 +403,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - `apiFetch` reports any `401` or `403 account_deactivated` to `src/lib/session/account-state.ts`
   and still throws. `AccountGate` (in `AppShell`) then shows `AuthFailureScreen`, a
   blocking `useModal` (`onClose: null`) that makes the app `inert`; its only action signs out. The gate also reads `/users/me` once
-  per document load. A `403 account_pending` or `account_blocked`, or that read naming
+  per document load, and Home's team card takes the same read (`sharedCurrentUser`,
+  D-252-9). A `403 account_pending` or `account_blocked`, or that read naming
   either, shows no message: once that answer is in, the gate draws nothing and replaces
   the page with `/waiting`, and does nothing there (D-249-11, D-249-21, D-249-22,
   D-249-36).
@@ -492,7 +496,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
 - Active-session screen: "Join this session" (shown until the caller is in the server's
   participants list) and a "Your team" card (`outing-team.tsx`, `team-sheet.tsx`, texts in
   `src/lib/teams/team-ui.ts`). Online-only: controls disable offline and nothing is queued or
-  stored. The card refreshes with the screen's 30s poll and Refresh.
+  stored. The card refreshes with the screen's 30s poll and Refresh. The poll asks
+  nothing while the tab is hidden, and reads once when it is seen again (D-252-11).
 - Records show who made them through `VisitByline` (`src/lib/teams/team-label.ts`): the author
   then the snapshot teammates with current names, plus a "Team:" chip (not on unit rows).
   Display-only; Amend affordance uses team ids the server vouched for
@@ -539,7 +544,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   under the unit field says its key facts and leads down to it
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
-  (`showHistoryLine`, D-196-36 to D-196-38).
+  (`showHistoryLine`, D-196-36 to D-196-38). `/households/[id]` is a static shell that
+  reads its id on the client: each unit's page is built on its first request and kept
+  until the next deploy, still behind the proxy (D-252-12). `/blocks/[id]` still renders
+  per request, for `?unit=` (D-252-13).
 - Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select. A date
   input needs no height: `field` drops its native appearance, which iOS draws
   content-box past its cell (D-245-1, D-245-3).
@@ -768,8 +776,8 @@ CSP violation (D-122-8).
   arrive at runtime. The image optimizer is off, so `/_next/image` is a `404` (D-118-4).
 - **Branches:** features land on `dev` (squash or rebase), `dev` is promoted to `stage`
   and `stage` to `main`, each by a merge commit, and nothing flows back (D-244-1). The
-  rulesets require the four checks on `dev` and `stage`; `main` only needs a PR
-  (D-244-2).
+  rulesets require a PR and the four checks on `dev`, `stage` and `main`; `stage` and
+  `main` take merge commits only (D-244-2, D-244-30).
 - **Stage:** `docker-compose.stage.yml` (project `door-to-door-stage`) runs `edge`
   (Caddy, HTTPS, compressing) → `app` (the `runner` stage, `CONFIG_YAML`, 1 CPU, 2 GB)
   → `toxiproxy` → `db` (the dev stack's postgres), after one-shot `secret` and
@@ -788,13 +796,25 @@ CSP violation (D-122-8).
 - **Production database:** the app runs on Vercel (sin1) and connects through Neon's
   pooled host (PgBouncer, transaction mode), so nothing may keep session state on a
   connection (D-250-5). Migrations go to the direct host, `database.migrationUrl`.
-- **CI:** static checks (lint, types, format, spec lint, codegen and migration drift),
-  tests with coverage against Postgres, production build, E2E. The token can only read,
-  and checkout leaves it nowhere on disk (D-131-1, D-131-2). Actions are pinned by
-  commit and images by digest, and `src/supply-chain.test.ts` refuses a new line that
-  is not (D-131-3, D-131-4). Dependabot (`.github/dependabot.yml`) opens grouped npm,
-  Actions, Docker and Compose updates weekly (D-118-7, D-131-5), against `dev` once that
-  setting reaches `main` (D-244-3); CI's postgres image follows Compose's by hand
-  (D-131-6), and the stage stack's is held to it by a test (D-244-13). A test refuses
-  an edited, deleted or unrecorded migration against `drizzle/checksums.sha256`
-  (D-131-9).
+- **CI:** runs on ready pull requests only, never a draft or a merge (D-248-1, D-248-2).
+  A merge into `dev` or `main` runs only `.github/workflows/warm-caches.yml`, whose one
+  job fills the npm, `.next` and browser caches in that branch's scope and reports no
+  required check. Pull requests into `dev` restore `dev`'s, and the rest `main`'s
+  (D-248-21, D-248-24 to D-248-26). Static checks (lint, types, format, spec lint,
+  codegen and migration drift) run first, and the other jobs need them (D-248-3). Tests
+  with coverage against Postgres and the production build skip a docs-only PR
+  (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E runs into `stage` or `main`, or with
+  the `e2e` label (`scripts/ci-e2e.sh`, D-248-6). `.github/workflows/e2e-catch-up.yml`
+  runs it when that label or base arrives later (D-248-8). A skipped job passes a
+  required check, so only a job that runs reports "End-to-end smoke" after a run begins
+  (D-248-9), a draft's lint job is named "Lint, types and format (draft, not run)"
+  (D-248-18), and a required check is skipped only under a fixed name (D-248-19). The
+  token can only read the repository and, in `ci.yml`, its pull requests, and checkout
+  leaves it nowhere on disk (D-131-1, D-131-2, D-248-10). Actions are pinned by commit and images by digest, and
+  `src/supply-chain.test.ts` refuses a new line that is not (D-131-3, D-131-4).
+  Dependabot (`.github/dependabot.yml`) opens grouped npm, Actions, Docker and Compose
+  updates monthly, labelled `e2e` and never rebased unasked (D-118-7, D-131-5, D-248-14,
+  D-248-15), against `dev` once that setting reaches `main` (D-244-3); CI's postgres
+  image follows Compose's by hand (D-131-6), and the stage stack's is held to it by a
+  test (D-244-13). A test refuses an edited, deleted or unrecorded migration against
+  `drizzle/checksums.sha256` (D-131-9).

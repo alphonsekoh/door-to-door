@@ -210,6 +210,62 @@ describe("refreshing", () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
+
+  describe("in a tab nobody can see (#252)", () => {
+    const tab = (state: "hidden" | "visible") => {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue(state);
+      document.dispatchEvent(new Event("visibilitychange"));
+    };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("asks nothing while hidden, and reads at once when seen again", async () => {
+      vi.useFakeTimers();
+      apiFetch.mockResolvedValue(session([block("123")]));
+      render(<ActiveSessionScreen />);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+
+      tab("hidden");
+      await vi.advanceTimersByTimeAsync(90_000);
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+
+      tab("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(apiFetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(apiFetch).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not read again on being seen when no poll fell while hidden", async () => {
+      vi.useFakeTimers();
+      apiFetch.mockResolvedValue(session([block("123")]));
+      render(<ActiveSessionScreen />);
+      await vi.advanceTimersByTimeAsync(0);
+
+      tab("hidden");
+      await vi.advanceTimersByTimeAsync(10_000);
+      tab("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("stops listening once the screen is gone", async () => {
+      vi.useFakeTimers();
+      apiFetch.mockResolvedValue(session([block("123")]));
+      const { unmount } = render(<ActiveSessionScreen />);
+      await vi.advanceTimersByTimeAsync(0);
+      tab("hidden");
+      await vi.advanceTimersByTimeAsync(30_000);
+      unmount();
+
+      tab("visible");
+      await vi.advanceTimersByTimeAsync(0);
+      expect(apiFetch).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 describe("when loading fails", () => {

@@ -3129,6 +3129,130 @@ false`) on that date.
   (2026-11-21, recommendation 3).
 - **Used by:** D-251-3, D-251-12
 
+### R-238 · A job skipped by `if:` passes a required check; a skipped workflow leaves it pending (read)
+
+- **Finding:** a job skipped by a conditional reports "Success" and does not block a
+  merge, even when its check is required. Successful conclusions are `success`,
+  `skipped` and `neutral`. A workflow skipped by path or branch filtering, or a commit
+  message, leaves its checks "Pending", which blocks the merge. A job whose `needs`
+  failed is skipped and "may not block merging". Required checks must pass on the
+  latest commit. The Checks API's `filter=latest`, its default, "returns the most recent
+  check runs". No page read says outright that a ruleset reads only the newest check run
+  of a name; the builder's model (`src/ci-runs.test.ts`) assumes it, and the main session
+  checks it on GitHub after the push.
+- **Source:** github/docs `troubleshooting-required-status-checks.md` (commit 60f9f34),
+  "Handling skipped but required checks"; `control-jobs-with-conditions.md` (93069a0);
+  github/rest-api-description, the `filter` parameter of the check-run list endpoints
+  (bbd57e6). All read through `gh api` on 2026-11-21.
+- **Used by:** D-248-4, D-248-8, D-248-9
+
+### R-239 · A re-run keeps its run's commit and ref, and a partial re-run keeps the other jobs' outputs (read)
+
+- **Finding:** a re-run uses the same `GITHUB_SHA` and `GITHUB_REF` as the event that
+  started the run, with the privileges of the actor who started it. `github.run_attempt`
+  is a string, `1` on the first attempt, and increments with each re-run. Re-running
+  failed jobs or one job also re-runs the jobs that need them, and jobs left out keep
+  their outputs from the previous attempt. That the event payload (`draft`, labels, base)
+  is replayed too is not stated on the page; review r1 of #248 found it, and the lint
+  job's API read (D-248-10) no longer depends on it.
+- **Source:** github/docs `re-run-workflows-and-jobs.md` (commit 6abed3d);
+  `contexts.md` (`github.run_attempt`). Read through `gh api` on 2026-11-21.
+- **Used by:** D-248-10, D-248-11
+
+### R-240 · `pull_request` events, their payloads and a job's default timeout (read)
+
+- **Finding:** a `pull_request` workflow runs only on `opened`, `synchronize` and
+  `reopened` unless `types` names others, such as `ready_for_review`, `labeled` and
+  `edited`. Its `GITHUB_SHA` is the test merge commit on `refs/pull/<n>/merge`. An
+  `edited` payload carries `changes.base.ref.from` when the base changed. No
+  `pull_request` workflow runs while the pull request has a merge conflict. Expressions
+  compare strings ignoring case. A job's `timeout-minutes` defaults to 360.
+- **Source:** github/docs `events-that-trigger-workflows.md` (commit 3d26e90),
+  `expressions.md`, `workflow-syntax.md` (28d2706); github/rest-api-description,
+  `webhook-pull-request-edited` (bbd57e6). Read through `gh api` on 2026-11-21. That the
+  merge commit's first parent is the base is GitHub's merge-ref layout, which
+  `scripts/ci-changes.sh` relies on; no page read states it.
+- **Used by:** D-248-1, D-248-5, D-248-6, D-248-8, D-248-12
+
+### R-241 · A pull request run's caches are its own (read)
+
+- **Finding:** a cache made by a `pull_request` run is scoped to `refs/pull/<n>/merge`
+  and only re-runs of that pull request can restore it, not its base or another pull
+  request. A pull request run can restore caches from its own ref, its base branch and
+  the default branch, here `main`. Only a run on a branch, such as a push, fills that
+  branch's scope; `warm-caches.yml` fills `dev`'s and `main`'s (D-248-21, D-248-26), and
+  `stage`'s stays empty.
+- **Source:** github/docs `dependency-caching.md` (commit 6d84733), "Restrictions for
+  accessing a cache". Read through `gh api` on 2026-11-21.
+- **Used by:** D-248-13, D-248-21, D-248-26
+
+### R-242 · Dependabot's `rebase-strategy`, monthly schedule and labels (read)
+
+- **Finding:** by default Dependabot rebases an open pull request when its schedule
+  runs, when it is reopened, when `target-branch` changes, and when a push to the target
+  branch puts it in conflict. `rebase-strategy: disabled` stops that, but pull requests
+  opened before keep being rebased until 30 days after they were opened. `monthly` runs on
+  the first day of the month. A label named in `labels` that the repository does not
+  define is ignored; `e2e` was defined on 2026-11-21. With `target-branch` set, none of
+  these options reach security updates (R-228).
+- **Source:** github/docs `dependabot-options-reference.md` (commit 92ac1df), sections
+  `rebase-strategy`, `schedule` and `labels`; `gh label list`. Read on 2026-11-21.
+- **Used by:** D-248-14, D-248-15
+
+### R-243 · Playwright advises against caching its browsers (read)
+
+- **Finding:** "Caching browser binaries is not recommended", because restoring the
+  cache takes about as long as downloading them, and on Linux the system packages must
+  be installed anyway and cannot be cached. If cached, key the cache on the Playwright
+  version.
+- **Source:** microsoft/playwright `docs/src/ci.md` (commit 1c9b809), "Caching browsers"
+  ([Playwright, CI](https://playwright.dev/docs/ci#caching-browsers)). Read through
+  `gh api` on 2026-11-21.
+- **Used by:** D-248-13
+
+### R-250 · A skipped job's name expression shows as written (measured)
+
+- **Finding:** when a job whose `name:` is an expression is skipped, its check run is
+  named by the expression's text, the inside of `${{ }}`, not its value. A fixed name
+  shows as is. So a skipped job with an expression name never reports, or passes, a
+  required check. The same runs show CI's placeholder skip at the run's start and its
+  E2E job's skip after lint, about two minutes later. No docs page read states the
+  naming either way, and an expression name on a job that runs was not seen here.
+- **Source:** #260's runs on `24406e6`: CI 44908665916 (its `e2e` job) and E2E catch-up
+  44908763351 (its one job, on the retarget to `dev`), through `gh run view --json jobs`
+  and `gh api …/commits/<sha>/check-runs` on 2026-11-21.
+- **Used by:** D-248-9, D-248-18, D-248-19, D-248-20
+
+### R-251 · A cache is found only under its key and path, and saved only by a job that succeeds with a new key (read)
+
+- **Finding:** a cache's version hashes its `path` and the compression tool, and a
+  restore matches key and version, so the same key under another path is a miss. A miss
+  on `key` tries prefix and `restore-keys` matches, newest first; `cache-hit` is `true`
+  only for an exact `key`. The post step saves the cache only when the job succeeds
+  (`post-if: success()`) and the key was not already there; `lookup-only` skips the
+  download and leaves saving as it is. `setup-node`'s npm key is
+  `node-cache-<OS>-<arch>-npm-<lockfile hash>`, also saved on success when the key is
+  new.
+- **Source:** actions/cache `README.md` and `action.yml` at 55cc834 (v6.1.0), "Inputs",
+  "Outputs", "Example cache workflow" and "Cache Version"; actions/setup-node
+  `src/cache-restore.ts`, `src/cache-save.ts` and `action.yml` at 949feb2 (v7.1.0);
+  github/docs `dependency-caching.md` (commit 6d84733), "Cache key matching". Read
+  through `gh api` on 2026-11-21 (#248 docs step).
+- **Used by:** D-248-24, D-248-25
+
+### R-252 · A commit GitHub makes names `GitHub <noreply@github.com>` as its committer (measured)
+
+- **Finding:** on this repository, the commits GitHub made have committer
+  `GitHub <noreply@github.com>`: squash merges, merge commits from the merge button and
+  Dependabot's, 122 in all. The author stays the person or bot, and the four checked
+  (`e49313a`, `3e92d4c`, `7f5ac21`, `0a562a0`) carry a valid signature. GitHub's docs say
+  commits made in the web interface are signed with the web-flow key, but name no
+  committer. A web edit and **Update branch** were not seen here.
+- **Source:** `gh api repos/{owner}/{repo}/commits/<sha> --jq .commit.committer` and
+  `git log --all --committer=noreply@github.com`, on 2026-11-22; github/docs
+  `about-commit-signature-verification.md` (commit 3c5bf3c). #248 docs step.
+- **Used by:** D-248-28
+
 ### R-253 · `router.replace` on a static route stays on the device for 5 minutes; after that, or on a dynamic route, it asks the server, and offline leaves the screen (measured)
 
 - **Finding:** Next keeps its client copy of a static route, which the bottom nav
@@ -3148,3 +3272,85 @@ false`) on that date.
   verifier r1 and r2 using Playwright's clock (4 and 6 minutes after load). Production
   build, Pixel 5 on Chromium, iPhone 13 and iPhone 15 Pro Max on WebKit.
 - **Used by:** D-257-2
+
+### R-254 · React `cache()` lasts one server render, and a Route Handler or Server Action is not one (read and measured)
+
+- **Finding:** Next's guide says React's `cache` "deduplicates within a React render
+  pass. Server Actions and Route Handlers are not part of a render pass, so the wrapper
+  does nothing and every call runs the function." #252's reviewer found that Next's
+  app-route runtime has no React cache dispatcher. Outside a request, Flight's
+  `getCacheForType` returns a new `Map` each time. On the standalone build, with a pg
+  tracer, each admin page made 1 sign-in query (2 in #247), and every API request made
+  exactly 1, back-to-back repeats included.
+- **Source:** `node_modules/next/dist/docs/01-app/02-guides/authentication.md:1181`
+  (Next 16); #252 reviewer r1; #252 verifier r0 and r2.
+- **Used by:** D-252-4
+
+### R-255 · An empty `generateStaticParams` builds each path on its first request and keeps it (read and measured)
+
+- **Finding:** "To statically render all paths the first time they're visited, return
+  an empty array." With Cache Components on, an empty array is a build error. The app
+  does not use Cache Components. On the standalone build, `/households/[id]` is `●`
+  (`ƒ` before). Its first request is a MISS and the next a HIT, with 0 queries and the
+  proxy's `Cache-Control: no-store` kept. Any id is built and kept, invalid ones
+  included. After one device pass the server held 100 unit pages, most from Link
+  prefetches as rows scrolled into view. Not checked on Vercel.
+- **Source:** `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/generate-static-params.md`
+  ("All paths at runtime", "With Cache Components"); #252 build output; #252 verifier r0
+  and r2.
+- **Used by:** D-252-12
+
+### R-256 · An index serves `ORDER BY … DESC` only in its own null order; Drizzle's `.desc()` is NULLS LAST; a plain `CREATE INDEX` blocks writes (read and measured)
+
+- **Finding:**
+  - In PostgreSQL a plain `DESC` sorts nulls first. A B-tree serves an `ORDER BY` only
+    when it is scanned forward or backward in that exact order, nulls included.
+  - drizzle-orm's `.desc()` on an index column sets nulls to `"last"`, so `.nullsFirst()`
+    is needed.
+  - On 2,109 visits, All records' first page with the NULLS FIRST index is an Index Scan
+    on `visits_created_id_idx`, 0.2 ms. With a NULLS LAST index in its place, it is a Seq
+    Scan and a top-N sort. #247 measured 15,390 visits: page one went from 18.1 to
+    0.45 ms, and offset 10,000 from 30 to 15.8 ms, with no sort spilling to disk.
+  - `CREATE INDEX` without `CONCURRENTLY` locks the table against writes, not reads, until
+    the build ends. `CONCURRENTLY` cannot run inside a transaction block, and drizzle-orm's
+    `migrate` applies every pending migration inside one transaction.
+- **Source:** PostgreSQL docs, "Indexes and ORDER BY" and `CREATE INDEX` ("Building
+  Indexes Concurrently"); `node_modules/drizzle-orm/pg-core/columns/common.js:76-97` and
+  `pg-core/dialect.js:60-71` (`migrate`); #252 verifier r0 and r1; #247's report,
+  recommendation 8.
+- **Used by:** D-252-8
+
+### R-257 · Vercel's 4.5 MB response limit against a 250-record `/history` page (measured; the limit as cited)
+
+- **Finding:**
+  - A Vercel Function's response body may be at most 4.5 MB.
+  - `GET /api/history?limit=250`, with every field at its maximum length in Chinese text
+    and no team, measured 4,009,326 bytes (3.82 MiB), about 11% under the limit. The
+    builder's 3.3 MB estimate was low.
+  - Teams are uncapped, and each teammate adds a name and an image URL to every record.
+  - The API accepts control characters. A description of 3,999 U+0001 is 26.8 KB as
+    JSON, so 250 such records would be about 6.7 MB. At 100 a page they were about
+    2.7 MB.
+- **Source:** Vercel docs, Functions limitations, as #252's reviewer and verifier cited
+  them. The docs step did not re-read them, nor check whether the limit applies before or
+  after compression. The sizes were measured by #252 verifier r1 on the local build.
+- **Used by:** D-252-6
+
+### R-258 · node-postgres: a pool lends a connection to each query in flight and queues the rest; a client runs its queries in turn (read and measured)
+
+- **Finding:**
+  - pg-pool 3.14.0 gives each query in flight a connection, an idle one first, and opens
+    new ones up to `max`. Past that it queues the query. With no
+    `connectionTimeoutMillis`, which the app does not set, a queued query waits rather
+    than fails.
+  - A `Client` runs one query at a time. pg 8.23.1 warns that calling `client.query()`
+    while one is executing "is deprecated and will be removed in pg@9.0". That is what
+    `Promise.all` on a transaction's client would do.
+  - Measured on the standalone build with a cold pool: `/api/sessions/active` took 4
+    round trips and opened 2 connections, and a unit's history took 3 with 1 new. Warm,
+    they took 3 and 2. Locally a new connection cost 20 to 40 ms. #247 puts one at about
+    12 ms from sin1, against about 2 ms a query.
+- **Source:** `node_modules/pg-pool/index.js:190-262` (`connect`);
+  `node_modules/pg/lib/client.js:34-36, 779-780`; #252 verifier r0 and r1; #247's
+  report.
+- **Used by:** D-252-1, D-250-6 (its reasoning)

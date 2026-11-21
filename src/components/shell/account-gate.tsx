@@ -5,7 +5,7 @@ import { AuthFailureScreen } from "@/components/shell/auth-failure-screen";
 import { accountStore } from "@/lib/session/account-state";
 import { useRole } from "@/lib/hooks/use-role";
 import { replaceWith } from "@/lib/session/navigate";
-import { loadCurrentUser } from "@/lib/session/users";
+import { sharedCurrentUser } from "@/lib/session/users";
 import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
 import { WAITING_PATH, isPublicPath, isWaitingPath } from "@/server/auth/routes";
 
@@ -34,13 +34,14 @@ export function AccountGate({ children }: { children: ReactNode }) {
      call of their own, and this read is also what brings a changed role into
      the nav, and what finds an account still waiting for approval on a
      screen that makes no request it would be refused. The shell is not
-     remounted by client navigation. */
+     remounted by client navigation. Home's team card wants the same record
+     as the page loads, so whichever asks first, they share one read (#252). */
   const shouldCheck = isSignedIn && !isPublicPath(pathname);
   useEffect(() => {
     if (!shouldCheck || checked.current) return;
     checked.current = true;
     /* Offline or refused: apiFetch has already reported anything that matters. */
-    loadCurrentUser().then(
+    sharedCurrentUser().then(
       (user) => {
         if (user.approval === "pending" || user.approval === "blocked") setUnapproved(true);
       },

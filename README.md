@@ -300,7 +300,7 @@ To add or change an endpoint:
    operation with no route file fails `src/server/http/route-registry.test.ts`; a
    response that drifts from the spec throws in tests and is a logged `500` in production.
 
-CI regenerates on every push and fails if `src/generated/` differs, so a spec change
+CI regenerates on every run and fails if `src/generated/` differs, so a spec change
 without regenerating and a hand edit are both caught. A test also asserts that the spec's
 enums match the database `pgEnum` values.
 
@@ -604,7 +604,7 @@ It runs a commit, never uncommitted changes: `git archive` feeds the container, 
 pass covers exactly what a push sends. The image is the `Dockerfile`'s `e2e` stage
 (Ubuntu 26.04, Node 24, and Playwright's browsers installed as CI installs them), built
 once and then cached until `package.json`, `package-lock.json` or the stage changes
-(Dependabot's weekly digest bumps included). Each rebuild leaves the last image, about
+(Dependabot's monthly digest bumps included). Each rebuild leaves the last image, about
 3 GB, untagged; `docker image prune` reclaims it. The database is CI's postgres image in a
 throwaway container on a private network, so the run needs neither the host's Postgres
 nor any free port. One run goes at a time per clone, and a second one waits. The run
@@ -625,27 +625,107 @@ pushes go through ungated.
 It skips branch deletions, pushes that change only docs (`docs/`, a top-level `*.md` or
 `.claude/`), and any tree that has passed a whole-suite run or differs from one only in
 docs, so running `npm run test:e2e:linux` before a push makes the push itself immediate.
-`SKIP_E2E_LINUX=1 git push` skips the gate once, and CI still runs the suite.
+`SKIP_E2E_LINUX=1 git push` skips the gate once. CI runs the suite only into `stage` or
+`main`, or with the `e2e` label (see [CI](#ci)), so a skipped gate elsewhere leaves the
+push untested on Linux until then.
 
 ## CI
 
-Every push to `main` and every pull request runs four jobs
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)):
+CI runs on pull requests, never on a merge: the promotion's pull request already tested
+what reaches `main`, and Vercel deploys it. A merge into `dev` or `main` only warms the
+caches ([below](#caches)). A ready pull request runs four jobs
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)), whose names the `dev`, `stage`
+and `main` rulesets require:
 
-| Job        | Checks                                                                                                    |
-| ---------- | --------------------------------------------------------------------------------------------------------- |
-| **Static** | lint · typecheck · format · spec lint · generated API code matches the spec · migrations match the schema |
-| **Tests**  | unit, component and integration tests against PostgreSQL 17, then the coverage gate                       |
-| **E2E**    | the Playwright suite on Chromium and WebKit                                                               |
-| **Build**  | production `next build`, with no config file and no database                                              |
+| Job                        | Checks                                                                                                    | Runs                                            |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| **Lint, types and format** | lint · typecheck · format · spec lint · generated API code matches the spec · migrations match the schema | Always, and first: the others wait for it       |
+| **Tests and coverage**     | unit, component and integration tests against PostgreSQL 17, then the coverage gate                       | Unless only docs changed                        |
+| **End-to-end smoke**       | the Playwright suite on Chromium and WebKit                                                               | Into `stage` or `main`, or with the `e2e` label |
+| **Production build**       | production `next build`, with no config file and no database                                              | Unless only docs changed                        |
 
-The jobs' token can only read the repository, and checkout leaves it nowhere on disk.
+- **A draft runs nothing.** Open a pull request as a draft, push review fixes to it, and
+  mark it ready once: that runs CI, and each later push runs it again. A draft's run
+  skips every job, and its lint job reports under a name no ruleset requires, so the merge
+  waits for a ready run's **Lint, types and format**. Its other three skips carry their
+  required names, though, and pass them. So mark a draft ready only once the run for its
+  last push has appeared (`gh run list --commit <sha> --workflow CI` lists it). GitHub
+  can start the push's run after the ready one, and it then cancels the ready run. If the
+  ready run's lint job is still running, that check is left cancelled until you re-run
+  either run (**Re-run all jobs**). If it has finished, the draft's skips pass tests, the
+  build and E2E over the ready run's results, and the pull request can merge untested.
+  Reopening a pull request while it is a draft does the same over its last ready run's
+  checks, so once you mark it ready again, wait for the new run before merging.
+- **A lint failure stops the run** in about two minutes, before the other jobs start.
+- **Docs only:** a pull request that changes nothing but `docs/`, `.claude/` and
+  top-level Markdown skips the tests and the build
+  ([`scripts/ci-changes.sh`](scripts/ci-changes.sh) decides). `README.md` counts as code,
+  because tests read it.
+- **E2E** runs on every pull request into `stage` or `main`, the last check before users
+  see a change. Into `dev` or a feature branch it runs only with the `e2e` label. A push
+  from a clone has already passed it in the [pre-push gate](#on-linux-as-ci-runs-it), but
+  a commit made on GitHub (a web edit, **Update branch**) has not, so label that pull
+  request. Dependabot labels its version updates itself; a security update comes with no
+  labels, so label it when you retarget it to `dev`. The lint job reads the labels and
+  base as they are when it starts ([`scripts/ci-e2e.sh`](scripts/ci-e2e.sh) decides), so
+  a label added while the pull request is a draft takes effect in the ready run. Added
+  later, it runs E2E at once ([`e2e-catch-up.yml`](.github/workflows/e2e-catch-up.yml)),
+  and later pushes run it too. A label added in the seconds before lint reads it runs E2E
+  in both workflows, on the same commit; Dependabot's and `gh pr create --label`'s
+  usually do.
+- **Retargeting** a ready pull request to `stage` or `main` runs E2E at once, in the same
+  workflow. Any other edit runs nothing, and the other jobs are not re-run against the new
+  base: close and reopen the pull request for that.
+- **A skipped job passes a required check,** and the newest check of each name is the one
+  that counts. So no label or edit reports a required check skipped, and CI reports
+  **End-to-end smoke** skipped only as its run begins: its E2E job waits for lint, so a
+  placeholder job that never runs reports that skip, and the E2E job takes the name only
+  when it runs. Only a draft's run reports skips over a ready run's checks (see drafts
+  above). `e2e-catch-up.yml`'s job is likewise named **End-to-end smoke** only
+  when it runs the suite: every other label, and every title or body edit, starts a
+  catch-up run whose one job is skipped under another name. GitHub shows a skipped job's
+  name expression as written, so a required check is skipped only under a fixed name.
+- **Re-running** all of a CI run's jobs (**Re-run all jobs**, or `gh run rerun <id>`)
+  always runs the lint job, even in a draft's run, and it reads the labels and base
+  afresh: tests and the build still skip when only docs changed, and E2E runs if the pull
+  request is labelled or into `stage` or `main` now. A re-run otherwise replays the event
+  that started the run: a draft's run would skip again over the ready run's checks, and a
+  run from before a label or a retarget would skip E2E. **Re-run failed jobs** keeps the
+  lint job's decision unless lint is among them.
+- Every job has a timeout. CI's newer run for a pull request cancels its older one;
+  `e2e-catch-up.yml` has no concurrency group and cancels nothing.
+
+The jobs' token can only read the repository and, in `ci.yml`, its pull requests.
+`actions/checkout` and `actions/setup-node` receive it as their default `token` input and
+keep it in their own process, and checkout leaves it nowhere on disk. Of the other steps,
+only the lint job's first is given it, to read the pull request's labels and base, before
+any of the pull request's code or `npm ci` runs.
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
-copy the digest into `ci.yml` (the test fails until you do). Its `docker-compose` entry
-reads the [stage stack](#stage-environment)'s file too, and `src/stage-stack.test.ts`
-fails if the stage postgres differs from the dev stack's.
+copy the digest into `ci.yml` and `e2e-catch-up.yml` (the test fails until you do). Its
+`docker-compose` entry reads the [stage stack](#stage-environment)'s file too, and
+`src/stage-stack.test.ts` fails if the stage postgres differs from the dev stack's.
+
+Dependabot proposes version updates monthly and never rebases them on its own: each
+rebase is a CI run, and it would rebase every open one whenever `dev` moves. Comment
+`@dependabot rebase` on one to bring it up to date. `src/ci-runs.test.ts` holds the
+workflows and `.github/dependabot.yml` to these rules.
+
+### Caches
+
+CI's jobs restore npm's cache and the build's `.next/cache`, and the E2E job restores
+Playwright's browsers, keyed by the OS release, the architecture and the Playwright
+version. A cache that a pull request's run saves is that pull request's alone, but a run
+can also restore its base branch's and `main`'s. So each merge into `dev` or `main` runs
+[`warm-caches.yml`](.github/workflows/warm-caches.yml), which saves the same keys in that
+branch's scope: npm's after `npm ci`, the browsers when their key is new, and
+`.next/cache` from a build when `src/` or the lockfile changed. A pull request into `dev`
+restores `dev`'s. One into `stage`, `main` or a feature branch restores `main`'s, which
+move only on a promotion, so a key that has changed on `dev` since (a new lockfile or
+Playwright) misses until the next one. The warm-up runs on no pull request or draft,
+reports no check a ruleset requires, has no secret and can only read. A later merge into
+the same branch cancels one still running. `src/ci-runs.test.ts` holds its keys to CI's.
 
 ## Deployment
 
@@ -958,7 +1038,7 @@ e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
                 check-standalone (postbuild), record-migration-checksums, e2e-linux,
-                stage-seed, stage-perf
+                ci-changes, ci-e2e, stage-seed, stage-perf
 docker/stage/   the stage stack's edge (Caddyfile) and toxiproxy settings
 docs/           architecture, research and per-issue decisions
 ```

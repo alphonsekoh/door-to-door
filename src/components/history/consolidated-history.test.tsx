@@ -764,8 +764,10 @@ describe("ConsolidatedHistory", () => {
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
 
     expect(await screen.findByText("Exported 101 records.")).toBeInTheDocument();
-    // Every request carried the filter, and the second one carried the offset.
+    // Every request carried the filter and asked for the largest page (#252),
+    // and the second one went on from the records the first brought.
     expect(requested.every((path) => path.includes("religion=buddhist"))).toBe(true);
+    expect(requested.every((path) => path.includes("limit=250"))).toBe(true);
     expect(requested.some((path) => path.includes("offset=100"))).toBe(true);
     expect(csv).toContain("#09-99");
   });
@@ -786,10 +788,12 @@ describe("ConsolidatedHistory", () => {
 
   it("says so rather than quietly truncating a very large export", async () => {
     const user = userEvent.setup();
+    let pages = 0;
     apiFetch.mockImplementation((path: string) => {
       if (path.startsWith("/blocks")) return Promise.resolve(pickers.blocks);
       if (path.startsWith("/sessions")) return Promise.resolve(pickers.sessions);
       if (path.startsWith("/users")) return Promise.resolve(pickers.users);
+      pages += 1;
       return Promise.resolve({
         data: [entry("h1")],
         pagination: { limit: 100, offset: 0, total: 100000, hasMore: true },
@@ -798,8 +802,11 @@ describe("ConsolidatedHistory", () => {
     render(<ConsolidatedHistory />);
     await screen.findByText(door("Blk 123, #05-123"));
 
+    pages = 0;
     await user.click(screen.getByRole("button", { name: "Export CSV" }));
     expect(await screen.findByText(/Narrow the filters to get the rest/)).toBeInTheDocument();
+    // Eight pages of 250: the 2,000 records twenty of 100 held (#252).
+    expect(pages).toBe(8);
   });
 
   it("reports an export that failed instead of writing an empty file", async () => {
@@ -872,6 +879,45 @@ describe("ConsolidatedHistory", () => {
     const row = await card("Blk 123, #05-123");
     await user.click(within(row).getByRole("button"));
     expect(screen.getByRole("dialog", { name: "Amend #05-123" })).toBeInTheDocument();
+  });
+
+  /* The pickers do not change with the filters (#252). */
+  it("reads the pickers once, however often the filters change", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1")]);
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    await user.selectOptions(screen.getByLabelText("Filter by religion"), "buddhist");
+    await user.selectOptions(screen.getByLabelText("Filter by interest level"), "high");
+    await waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(expect.stringContaining("interestLevel=high"));
+    });
+
+    const asked = (prefix: string) =>
+      apiFetch.mock.calls.filter(([path]) => String(path).startsWith(prefix)).length;
+    expect(asked("/blocks")).toBe(1);
+    expect(asked("/sessions?")).toBe(1);
+    expect(asked("/users")).toBe(1);
+    expect(screen.getByRole("option", { name: "Blk 123" })).toBeInTheDocument();
+  });
+
+  it("asks for the pickers again with the next filter after one could not be read", async () => {
+    const user = userEvent.setup();
+    serve([entry("h1")]);
+    const answer = apiFetch.getMockImplementation();
+    let blocksDown = true;
+    apiFetch.mockImplementation((path: string) =>
+      blocksDown && path.startsWith("/blocks")
+        ? Promise.reject(new TypeError("Failed to fetch"))
+        : (answer?.(path) as unknown),
+    );
+    render(<ConsolidatedHistory />);
+    await screen.findByText(door("Blk 123, #05-123"));
+    expect(screen.queryByRole("option", { name: "Blk 123" })).not.toBeInTheDocument();
+
+    blocksDown = false;
+    await user.selectOptions(screen.getByLabelText("Filter by religion"), "buddhist");
+    expect(await screen.findByRole("option", { name: "Blk 123" })).toBeInTheDocument();
   });
 
   it("still lists records when a picker cannot be loaded", async () => {

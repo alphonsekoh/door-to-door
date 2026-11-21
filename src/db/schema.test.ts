@@ -226,6 +226,21 @@ describe("visits", () => {
     expect(indexNames(visits)).toContain("visits_household_created_idx");
   });
 
+  /* As All records orders them (#252). A plain DESC puts nulls first; an
+     index that puts them last cannot be read in that order, and the planner
+     goes back to sorting every visit. */
+  it("indexes All records' order, newest first with the id settling a tie", () => {
+    const index = config(visits).indexes.find((i) => i.config.name === "visits_created_id_idx");
+    expect(
+      index?.config.columns.map((c) =>
+        "indexConfig" in c ? { name: c.name, ...c.indexConfig } : undefined,
+      ),
+    ).toEqual([
+      expect.objectContaining({ name: "created_at", order: "desc", nulls: "first" }),
+      expect.objectContaining({ name: "id", order: "desc", nulls: "first" }),
+    ]);
+  });
+
   it("protects the session and member, and follows the household", () => {
     // Deleting a session or member must never silently erase field records.
     expect(deleteActions(visits)).toEqual({

@@ -14,7 +14,9 @@ The first screen a member uses: the running outing and its blocks.
   shared. _Refined by D-117-24:_ in a follow-up session members see the households to
   revisit, grouped by block, instead of block cards.
 - **D-24-2 · 30s poll plus a Refresh button; polling stops on unmount.** _Why:_ blocks
-  attached mid-outing (D-18-1) must appear without a restart.
+  attached mid-outing (D-18-1) must appear without a restart. _Extended by D-252-11
+  (#252):_ the poll asks nothing while the tab is hidden, and reads once when it is seen
+  again if it missed a tick.
 - **D-24-3 · "No outing is running" is a statement, not an alert.** Relies on D-10-7.
   _Wording refined by D-111-7:_ "No session is running."
 - **D-24-4 · Visit count shown only when it exceeds the unit count.**

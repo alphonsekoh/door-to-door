@@ -1,9 +1,12 @@
 name: CI
 
+# Pull requests only (#248). A merge runs none of this: the promotion's pull
+# request tested what reaches main, and Vercel deploys it. A merge into dev or
+# main only warms the caches (warm-caches.yml). Labelling or retargeting a pull
+# request starts nothing here either; e2e-catch-up.yml answers those.
 on:
-  push:
-    branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -11,21 +14,61 @@ concurrency:
 
 # Nothing here writes to the repository. With checkout's
 # persist-credentials: false the token also stays out of .git/config, where
-# npm ci's install scripts could read it.
+# npm ci's install scripts could read it. The lint job reads the pull request's
+# labels and base.
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   NODE_VERSION: "24"
 
 jobs:
+  # The other jobs need this one, so a lint failure stops the run in about two
+  # minutes, and a draft, which skips it, runs nothing. A skip passes a required
+  # check, so a draft's first attempt names this job for no ruleset (GitHub
+  # shows a skipped job's name expression as written, not the required name
+  # either), and the merge waits for a ready run's. The other jobs keep fixed
+  # names for docs-only runs, so a draft's run that begins after the ready
+  # run's lint job has finished passes their checks over it: mark a draft
+  # ready only once its push's run appears (README). A re-run replays its
+  # event, so it runs this job even in a draft's run.
   static:
-    name: Lint, types and format
+    name: ${{ github.event.pull_request.draft && github.run_attempt == '1' && 'Lint, types and format (draft, not run)' || 'Lint, types and format' }}
+    if: ${{ !github.event.pull_request.draft || github.run_attempt != '1' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      code: ${{ steps.changes.outputs.code }}
+      e2e: ${{ steps.e2e.outputs.e2e }}
     steps:
+      # The base and labels as they are now, not as the event recorded them: a
+      # re-run replays its event, so it would miss a label or a retarget since.
+      # The token is in this step's environment alone, before npm ci.
+      - name: Read the pull request as it is now
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq '.base.ref, .labels[].name' > "$RUNNER_TEMP/pull-request"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The test merge commit and its first parent, the base it merges into.
+          fetch-depth: 2
+
+      # Docs only: tests and the build are skipped, and report it. A skipped job
+      # satisfies a ruleset's required check where paths-ignore would leave it
+      # pending. The shell is named for pipefail: a failed diff fails the job.
+      - name: Find what this pull request changes
+        id: changes
+        shell: bash
+        run: git diff --no-renames --name-only HEAD^1 HEAD | scripts/ci-changes.sh >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether E2E runs
+        id: e2e
+        shell: bash
+        run: scripts/ci-e2e.sh < "$RUNNER_TEMP/pull-request" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -80,7 +123,10 @@ jobs:
 
   test:
     name: Tests and coverage
+    needs: static
+    if: needs.static.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     # Dependabot updates docker-compose.yml's postgres but never a workflow's
     # service images, so src/supply-chain.test.ts holds these two to it.
@@ -128,9 +174,30 @@ jobs:
           path: coverage/
           retention-days: 7
 
-  e2e:
+  # Reports End-to-end smoke, skipped, the moment the run begins, and never
+  # runs. The e2e job waits for lint, so its check comes about two minutes
+  # later and takes this name only when it runs: a late skip under it would be
+  # the newest, and outrank an E2E run that a label or a retarget started
+  # meanwhile (e2e-catch-up.yml). This name is fixed, so the required check
+  # never rests on how GitHub names a skipped job.
+  e2e-placeholder:
     name: End-to-end smoke
+    if: ${{ false }}
     runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - run: exit 0
+
+  # Into stage or main always: a promotion is the last check before users see
+  # a change. Elsewhere only with the e2e label. The lint job reads both as
+  # they are when it starts (scripts/ci-e2e.sh); a label or a retarget after
+  # that runs e2e-catch-up.yml. It takes the required name only when it runs.
+  e2e:
+    name: ${{ needs.static.result == 'success' && needs.static.outputs.e2e == 'true' && 'End-to-end smoke' || 'No end-to-end run' }}
+    needs: static
+    if: needs.static.outputs.e2e == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     services:
       postgres:
@@ -166,10 +233,30 @@ jobs:
 
       - run: npm ci
 
+      # Each Playwright release pins its browser builds, and those are built per
+      # OS release, so both name the cache.
+      - name: Name the browsers' cache
+        id: browsers-key
+        run: |
+          . /etc/os-release
+          echo "key=playwright-$ID-$VERSION_ID-$(uname -m)-$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: browsers
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.browsers-key.outputs.key }}
+
       # Only the engines the suite actually uses: Chromium for Android, WebKit
       # for every browser on iOS. Firefox is not run.
       - name: Install the browsers
+        if: steps.browsers.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium webkit
+
+      # The cache holds the browsers, not the system packages they need.
+      - name: Install the browsers' system packages
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium webkit
 
       - name: Flows that must never break
         run: npm run test:e2e
@@ -186,7 +273,10 @@ jobs:
 
   build:
     name: Production build
+    needs: static
+    if: needs.static.outputs.code == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
