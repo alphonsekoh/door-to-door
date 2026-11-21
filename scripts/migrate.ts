@@ -2,15 +2,16 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
 import { attachPoolErrorHandler } from "../src/db/pool-errors";
-import { loadDatabaseUrl } from "../src/server/config";
+import { loadMigrationDatabaseUrl } from "../src/server/config";
 
 /*
  * Applies pending migrations, then exits. Used directly and by the Docker
  * `migrate` service (#5). Drizzle records what it has applied, so re-running
- * is a no-op.
+ * is a no-op. It connects to database.migrationUrl when set: past a pooler,
+ * straight to the database (#250).
  */
 async function main(): Promise<void> {
-  const pool = new Pool({ connectionString: loadDatabaseUrl(), max: 1 });
+  const pool = new Pool({ connectionString: loadMigrationDatabaseUrl(), max: 1 });
   attachPoolErrorHandler(pool);
 
   try {

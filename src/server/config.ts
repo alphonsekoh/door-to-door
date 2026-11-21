@@ -77,11 +77,20 @@ export function loadAppConfig({
   return parseConfig(text, path);
 }
 
-/* What migrate, seed and drizzle-kit need: no auth secret required. */
-export function loadDatabaseUrl(options: LoadOptions = {}): string {
+function loadUrl(options: LoadOptions, pick: (database: AppConfig["database"]) => string): string {
   const { env = process.env, readFile = readUtf8 } = options;
-  const config = loadAppConfig(options);
-  return composeDatabaseUrl(config.database.url, resolveDatabaseCredentials(env, readFile));
+  const { database } = loadAppConfig(options);
+  return composeDatabaseUrl(pick(database), resolveDatabaseCredentials(env, readFile));
+}
+
+/* The app's URL for seed, create-admin and db:check-blank: no auth secret required. */
+export function loadDatabaseUrl(options: LoadOptions = {}): string {
+  return loadUrl(options, (database) => database.url);
+}
+
+/* What db:migrate and drizzle-kit connect to: past the app's pooler, if there is one (#250). */
+export function loadMigrationDatabaseUrl(options: LoadOptions = {}): string {
+  return loadUrl(options, (database) => database.migrationUrl ?? database.url);
 }
 
 export function loadConfig(options: LoadOptions = {}): RuntimeConfig {
@@ -89,6 +98,8 @@ export function loadConfig(options: LoadOptions = {}): RuntimeConfig {
   const config = loadAppConfig(options);
   return {
     ...config,
+    // Without migrationUrl, so nothing in the app can connect past the pooler (#250).
+    database: { url: config.database.url },
     ...resolveAuthSecrets(config, env, readFile),
     databaseUrl: composeDatabaseUrl(config.database.url, resolveDatabaseCredentials(env, readFile)),
   };

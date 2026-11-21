@@ -33,6 +33,8 @@ can be changed on a deployment with a restart and no rebuild. Secrets stay out o
   `PORT`, `HOSTNAME`, `NODE_ENV` and `NEXT_*`; `CONFIG_FILE` selects the file for Compose.
   _Scope stated by D-244-26:_ it covers what the app and its scripts read as settings;
   Compose and tooling variables the app never reads (`STAGE_*`, `E2E_PORT`) are outside it.
+  _Refined by D-250-10:_ `VERCEL_URL` and `VERCEL_REGION`, which Vercel sets and
+  `@vercel/functions` reads, are listed too. The app reads neither.
 - **D-75-8 · `TEST_DATABASE_URL` is the only place a full URL is allowed, and never falls
   back to `DATABASE_URL`.** _Why:_ tests truncate tables; a stray production URL must not
   be reachable.

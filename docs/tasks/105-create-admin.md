@@ -16,7 +16,9 @@ note (D-38-21).
   over `src/server/users/first-admin.ts`, `create-admin-cli.ts` and `src/server/prompt.ts`.
   It reads the database like `db:migrate` (`config.yaml` plus exported credentials, no
   `.env`). _Why:_ runs where migrations run (D-38-12); the logic keeps 100% coverage
-  (D-08-2, D-09-4 pattern).
+  (D-08-2, D-09-4 pattern). _Refined by D-250-3:_ it connects to `database.url`, while
+  `db:migrate` uses `database.migrationUrl` when one is set. Both use the same settings
+  and credentials.
 - **D-105-2 · Hashed with the app's own `hashPassword`.** The integration test signs in
   through `authorizeCredentials`. _Why:_ the acceptance criterion is "can sign in", not
   "row has a hash". _Refined by D-14-13 (owner, 2026-11-05):_ a Google-only admin has no

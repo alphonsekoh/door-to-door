@@ -316,6 +316,7 @@ default (D-75-4).
 | Key                                 | Default | Meaning                                                                               |
 | ----------------------------------- | ------- | ------------------------------------------------------------------------------------- |
 | `database.url`                      | -       | **Required.** Connection URL **without** username or password                         |
+| `database.migrationUrl`             | `url`   | Where `db:migrate` and drizzle-kit connect instead: the direct host behind a pooler   |
 | `auth.trustHost`                    | `true`  | Trust the `Host` header from a reverse proxy                                          |
 | `auth.secureCookies`                | `true`  | Cookies `Secure` whatever the scheme; `false` for plain http                          |
 | `auth.google.clientId`              | unset   | Google OAuth client ID; set it to offer Google sign-in (see below)                    |
@@ -329,8 +330,11 @@ default (D-75-4).
 | `sync.clockSkewToleranceSeconds`    | `300`   | Tolerated difference between a phone's clock and the server's                         |
 
 Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
-`database.url` may carry only the `sslmode` and `application_name` query parameters;
-credentials in it are refused (D-75-3).
+`database.url` and `database.migrationUrl` may carry only the `sslmode` and
+`application_name` query parameters; credentials in either are refused (D-75-3), and both
+get the same `DATABASE_USER` and `DATABASE_PASSWORD`. The app connects only to
+`database.url`; only `db:migrate` and drizzle-kit (`db:push`, `db:studio`) connect to
+`database.migrationUrl`.
 
 **Google sign-in** needs an OAuth client of type "Web application" in the Google Cloud
 console. Register `<public origin>/api/auth/callback/google` as its authorised redirect
@@ -406,6 +410,7 @@ both is a startup error (D-75-2).
 | `PORT`, `HOSTNAME`                         | `3000`; `0.0.0.0` in the image                                   | Where the standalone server listens                                                                                                                                              |
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
 | `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
+| `VERCEL_URL`, `VERCEL_REGION`              | set by Vercel on its functions                                   | Read by `@vercel/functions`: with both set, the database pool keeps its instance awake until idle connections close. Never set them anywhere else                                |
 | `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                                       |
 | `STAGE_PORT`, `STAGE_TOXIPROXY_PORT`       | `3400`, `3401`                                                   | Stage stack only: where its edge and toxiproxy's API are published, for Compose and `stage:perf`                                                                                 |
 | `STAGE_AUTH_SECRET`                        | made once per stack                                              | Stage stack only: its app's `AUTH_SECRET`, in place of the one it makes                                                                                                          |
@@ -481,7 +486,7 @@ to `medium` between March and June.
 | `npm run test:e2e:ui`      | The same in Playwright's UI mode                                                              |
 | `npm run test:e2e:linux`   | The same suite in a Linux container, as CI runs it (needs Docker)                             |
 | `npm run db:generate`      | Generate a migration and record its checksum (no running database needed)                     |
-| `npm run db:migrate`       | Apply pending migrations                                                                      |
+| `npm run db:migrate`       | Apply pending migrations, at `database.migrationUrl` when it is set                           |
 | `npm run db:seed`          | Seed demo data: `npm run db:seed -- --demo`; refused if there are real users                  |
 | `npm run db:reset`         | Migrate, then seed: `npm run db:reset -- --demo`. Deletes nothing                             |
 | `npm run create-admin`     | Create the first admin of an empty database (see [Deployment](#deployment))                   |
@@ -667,7 +672,8 @@ docker run -p 3000:3000 \
 - **Migrations** must be applied before a new version starts. The runner image holds the
   `drizzle/` folder but not the migration runner, so run `npm run db:migrate` from a
   checkout, or the Compose `migrate` service on its own, with the production
-  `config.yaml` and credentials:
+  `config.yaml` and credentials. It connects to `database.migrationUrl` when that is set,
+  and to `database.url` otherwise:
 
   ```bash
   CONFIG_FILE=./config.yaml DATABASE_USER=... DATABASE_PASSWORD=... \
@@ -675,7 +681,7 @@ docker run -p 3000:3000 \
   ```
 
   `migrate` only migrates, and `--no-deps` keeps Compose from starting its own `db`. It
-  runs in a container, so the file's `database.url` must name a host the container can
+  runs in a container, so the URL it connects to must name a host the container can
   reach, not `localhost`. Never `docker compose up` against production: that also starts the dev server and the
   demo seed, which refuses a database with users but not a new, empty one. Never run
   `db:seed` in production: it creates the demo logins.
@@ -738,8 +744,51 @@ docker run -p 3000:3000 \
   (`experimental.proxyClientMaxBodySize`, set from `src/server/http/body-limit.ts`)
   rather than refusing it, and logs a warning naming the route. On the API a cut body is
   still refused `413`; on Auth.js's sign-in routes the cut is the only bound.
-- **Database connections:** one `pg` pool per process; changing `database.url` needs a
-  restart. A dropped connection fails that request with a `500` and is replaced.
+- **Database connections:** one `pg` pool per process, which on Vercel means one per
+  function instance: at most 10 connections, each closed after 5 s idle
+  (`src/db/client.ts` says why). The pool is handed to `attachDatabasePool` from
+  `@vercel/functions`, which keeps an instance awake until its idle connections have
+  closed, so Vercel never suspends one holding a connection the database may drop in the
+  meantime. It acts only where `VERCEL_URL` and `VERCEL_REGION` are set, as Vercel sets
+  them on its functions; in the image, Compose, the stage stack and the tests it does
+  nothing. Changing `database.url` needs a restart, or on Vercel a new deployment. A
+  dropped connection fails that request with a `500` and is replaced.
+- **Neon** (production): the app connects through Neon's pooled host, which runs
+  PgBouncer in transaction mode, and migrations through the database's direct host, as
+  Neon advises. The two hosts differ only by `-pooler` after the endpoint's name; Neon's
+  Connect dialog shows the pooled one with "Connection pooling" on. Transaction mode
+  gives each transaction whichever server connection is free, so the app keeps nothing
+  on a connection past one: no session `SET`, `LISTEN` or `NOTIFY`, session-level
+  advisory locks, temporary tables or named prepared statements (Drizzle's are unnamed).
+  Keep it that way. `create-admin`, whose lock is released with its transaction,
+  `db:check-blank` and `db:seed` use `database.url` like the app.
+
+  **One-time change on Vercel**, to move production onto the pooler (#250):
+  1. Wait until production runs a build that includes #250. A build without it refuses
+     `database.migrationUrl` as an unknown key and does not start. If Preview has a
+     `CONFIG_YAML` of its own, change it only once every branch it deploys includes #250
+     too.
+  2. In the project's **Settings → Environment Variables**, edit `CONFIG_YAML` for
+     Production. Under `database`, add `migrationUrl` with the direct host, the one
+     without `-pooler` that `url` names today, then add `-pooler` to `url`'s host. Keep
+     the same database and query string in both, with no username or password in
+     either. Only `sslmode` and `application_name` are allowed, so leave out the
+     `channel_binding` that Neon's own connection strings add. Change nothing else:
+
+     ```yaml
+     database:
+       url: postgresql://<endpoint>-pooler.<region>.aws.neon.tech/<database>?sslmode=require
+       migrationUrl: postgresql://<endpoint>.<region>.aws.neon.tech/<database>?sslmode=require
+     ```
+
+  3. Leave `DATABASE_USER` and `DATABASE_PASSWORD` as they are: the same Neon role signs
+     in on both hosts.
+  4. Redeploy production (**Deployments**, the current production deployment,
+     **Redeploy**): a change to `CONFIG_YAML` reaches only a new deployment.
+  5. Sign in and open a block. Then run `npm run db:migrate` from a checkout, with
+     `CONFIG_YAML` set to the same text and the same credentials exported: it reaches the
+     direct host and prints `migrations applied`. Keep migrating that way from now on.
+
 - **Accounts:** there is no sign-up. Admins add members on **Admin → Team**. A fresh
   database has no admin, so after migrating, create the first one from the same place you
   ran `db:migrate`, with the same `config.yaml` and credentials:

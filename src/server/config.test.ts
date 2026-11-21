@@ -13,6 +13,7 @@ import {
   loadAppConfig,
   loadConfig,
   loadDatabaseUrl,
+  loadMigrationDatabaseUrl,
   resetConfig,
   resolveConfigPath,
   verifyConfigOrExit,
@@ -21,6 +22,10 @@ import {
 
 const FILE =
   "database:\n  url: postgresql://db:5432/door_to_door\nrateLimit:\n  signInAttempts: 4\n";
+/* Neon's two hosts for one database: the app's pooler, and the direct one for migrations. */
+const POOLED =
+  "database:\n  url: postgresql://ep-x-pooler.example.net/app?sslmode=require\n" +
+  "  migrationUrl: postgresql://ep-x.example.net/app?sslmode=require\n";
 const SECRET = "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A";
 const env = {
   DATABASE_USER: "app",
@@ -191,6 +196,51 @@ describe("loadDatabaseUrl", () => {
     const path = write("database:\n  url: postgresql://u:p@db/x\n");
     expect(() => loadDatabaseUrl({ env: { ...env, CONFIG_PATH: path } })).toThrow(/database\.url/);
   });
+
+  it("stays on the app's url when a migration URL is set, for seed, create-admin and check-blank", () => {
+    expect(loadDatabaseUrl({ env: { ...env, CONFIG_YAML: POOLED } })).toBe(
+      "postgresql://app:pw@ep-x-pooler.example.net/app?sslmode=require",
+    );
+  });
+});
+
+describe("loadMigrationDatabaseUrl (#250)", () => {
+  it("connects past the pooler to the direct host, with the same credentials", () => {
+    expect(loadMigrationDatabaseUrl({ env: { ...env, CONFIG_YAML: POOLED } })).toBe(
+      "postgresql://app:pw@ep-x.example.net/app?sslmode=require",
+    );
+  });
+
+  it("uses the app's url when there is no migration URL, as a single database has", () => {
+    expect(loadMigrationDatabaseUrl({ env: { ...env, CONFIG_PATH: write(FILE) } })).toBe(
+      "postgresql://app:pw@db:5432/door_to_door",
+    );
+  });
+
+  it("needs no auth secret, and reads credentials from files", () => {
+    const readFile = (path: string) => (path === "/run/u" ? "fileuser\n" : "filepw\n");
+    const url = loadMigrationDatabaseUrl({
+      env: { DATABASE_USER_FILE: "/run/u", DATABASE_PASSWORD_FILE: "/run/p", CONFIG_YAML: POOLED },
+      readFile,
+    });
+    expect(url).toBe("postgresql://fileuser:filepw@ep-x.example.net/app?sslmode=require");
+  });
+
+  it("falls back to process.env and the real filesystem", () => {
+    vi.stubEnv("CONFIG_PATH", write(POOLED));
+    vi.stubEnv("DATABASE_USER", "envuser");
+    vi.stubEnv("DATABASE_PASSWORD", "envpw");
+    expect(loadMigrationDatabaseUrl()).toBe(
+      "postgresql://envuser:envpw@ep-x.example.net/app?sslmode=require",
+    );
+  });
+
+  it("refuses a migration URL that carries credentials, naming its key", () => {
+    const text = "database:\n  url: postgresql://db/x\n  migrationUrl: postgresql://u:p@db/x\n";
+    expect(() => loadMigrationDatabaseUrl({ env: { ...env, CONFIG_YAML: text } })).toThrow(
+      /database\.migrationUrl: must not contain a username or password/,
+    );
+  });
 });
 
 describe("loadConfig", () => {
@@ -201,6 +251,16 @@ describe("loadConfig", () => {
       authSecret: SECRET,
       rateLimit: { signInAttempts: 4, signInWindowSeconds: 300 },
       auth: { trustHost: true, secureCookies: true },
+    });
+  });
+
+  it("connects the app through the pooler and leaves the migration URL out of its reach", () => {
+    const config = loadConfig({ env: { ...env, CONFIG_YAML: POOLED } });
+    expect(config.databaseUrl).toBe(
+      "postgresql://app:pw@ep-x-pooler.example.net/app?sslmode=require",
+    );
+    expect(config.database).toEqual({
+      url: "postgresql://ep-x-pooler.example.net/app?sslmode=require",
     });
   });
 
