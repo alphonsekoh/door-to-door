@@ -78,7 +78,7 @@ describe("flushOnce", () => {
     expect(d.send.mock.calls[0]?.[0].map((item) => item.id)).toEqual([earlier.id, later.id]);
   });
 
-  it("splits more than a hundred records into batches", async () => {
+  it("splits more records than one batch holds into batches", async () => {
     const queue = createMemoryQueue();
     await queue.putMany(
       Array.from({ length: BATCH_SIZE + 5 }, (_, i) => saved("ann", NOW - 500 + i)),

@@ -1,19 +1,35 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Role } from "@/db/schema";
+import type { InterestLevel, Role, SessionKind, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
-import { sameUuid } from "@/lib/uuid";
+import { distinctUuidsInOrder, sameUuid } from "@/lib/uuid";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
-import { firstOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
-import { assertMayRecordHere, type RevisitSession } from "@/server/follow-ups/list-rule";
-import { markDoneByVisit, notesMarkedDoneBy } from "@/server/follow-ups/marked-by-visit";
-import { autoJoin, canAmend, stampVisit, teamIdFor, VISIT_TEAM_FK } from "@/server/teams/access";
+import { firstOrThrow, getOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
+import {
+  offRevisitList,
+  placeKey,
+  unitsOffRevisitList,
+  type RevisitSession,
+} from "@/server/follow-ups/list-rule";
+import {
+  markDoneByVisit,
+  markDoneByVisits,
+  notesMarkedDoneByVisits,
+} from "@/server/follow-ups/marked-by-visit";
+import {
+  autoJoin,
+  canAmend,
+  stampVisit,
+  stampVisits,
+  teamIdFor,
+  VISIT_TEAM_FK,
+} from "@/server/teams/access";
 import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/http/errors";
 import { requireText } from "@/server/http/text";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
-import { getVisit, upsertHousehold } from "@/server/visits/service";
+import { getVisits, upsertHousehold, upsertHouseholds } from "@/server/visits/service";
 
 /*
  * Flushing the offline queue.
@@ -23,6 +39,10 @@ import { getVisit, upsertHousehold } from "@/server/visits/service";
  * again - and the second send must not create a second row. That is why the
  * visit id comes from the client and why every outcome is reported per item
  * rather than as one status for the batch.
+ *
+ * A batch costs a fixed number of round trips however long it is (#251): what
+ * judging needs is read once, each item is judged in request order, new
+ * records are written together, and the answers are read once.
  */
 
 export type SyncItem = {
@@ -51,92 +71,73 @@ type ResolvedSession = RevisitSession & { startedAt: Date };
 /* Whoever's queue is flushing; the cookie decides it, never the request. */
 export type SyncCaller = { id: string; role: Role };
 
-async function resolveSession(
-  db: Database,
-  sessionId: string | undefined,
-): Promise<ResolvedSession> {
-  if (sessionId !== undefined) {
-    const found = await db
-      .select({
-        id: outingSessions.id,
-        kind: outingSessions.kind,
-        status: outingSessions.status,
-        startedAt: outingSessions.startedAt,
-      })
-      .from(outingSessions)
-      .where(eq(outingSessions.id, sessionId))
-      .limit(1);
+type WriteStatus = "applied" | "unchanged" | "stale";
 
-    const session = found[0];
-    if (!session) {
-      throw new NotFoundError("No such session.");
-    }
-    if (session.status !== "active") {
-      /*
-       * The queue outlived the outing. An admin can reopen the session to let
-       * it through, so this is a conflict the client can explain rather than a
-       * silent discard of work already done at a door.
-       */
-      throw new ConflictError(
-        "session_not_active",
-        "That session has ended. Ask an admin to reopen it.",
-      );
-    }
-    return {
-      id: session.id,
-      kind: session.kind,
-      startedAt: presentOrThrow(session.startedAt, "an active session start"),
-    };
-  }
+/* What became of an item before its answer is read. */
+type Result = { status: WriteStatus } | { failure: unknown };
 
-  const active = await db
-    .select({
-      id: outingSessions.id,
-      kind: outingSessions.kind,
-      startedAt: outingSessions.startedAt,
-    })
-    .from(outingSessions)
-    .where(eq(outingSessions.status, "active"))
-    .limit(1);
+type Write = {
+  item: SyncItem;
+  memberId: string;
+  caller: SyncCaller;
+  session: ResolvedSession;
+  judgeList: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
-  const session = active[0];
-  if (!session) {
-    throw new ConflictError("session_not_active", "No session is active.");
-  }
-  return {
-    id: session.id,
-    kind: session.kind,
-    startedAt: presentOrThrow(session.startedAt, "an active session start"),
-  };
-}
+/* A request's id may be in either letter case; every id read back is lower (D-193). */
+const keyOf = (id: string) => id.toLowerCase();
 
-async function applyItem(
-  db: Database,
-  sent: SyncItem,
-  caller: SyncCaller,
-  clock: Clock,
-): Promise<SyncOutcome> {
-  /*
-   * First, so a blank unit is this item's refusal alone and nothing is read
-   * for it. The contract refuses the whole batch before this; the guard is
-   * for a caller that skips the contract. From here on the unit is as stored.
-   */
-  const item = { ...sent, unitNumber: requireText(sent.unitNumber, "/unitNumber") };
-  const memberId = caller.id;
-  const incomingUpdatedAt = new Date(item.updatedAt);
-  const incomingCreatedAt = new Date(item.clientCreatedAt);
-  const blockExists = await db
+/*
+ * The queue outlived the outing. An admin can reopen the session to let it
+ * through, so this is a conflict the client can explain rather than a silent
+ * discard of work already done at a door.
+ */
+const sessionEnded = () =>
+  new ConflictError("session_not_active", "That session has ended. Ask an admin to reopen it.");
+
+const notInSession = () => new ConflictError("conflict", "That block is not part of the session.");
+
+type StoredVisit = {
+  updatedAt: Date;
+  memberId: string;
+  teamId: string | null;
+  sessionId: string;
+  blockId: string;
+  unitNumber: string;
+};
+
+type SessionRow = {
+  id: string;
+  kind: SessionKind;
+  status: SessionStatus;
+  startedAt: Date | null;
+};
+
+type BatchReads = {
+  blocks: Set<string>;
+  stored: Map<string, StoredVisit>;
+  sessions: SessionRow[];
+};
+
+/*
+ * What judging needs, read once for the whole batch (D-251-2). Its ids are
+ * distinct, so no item's write changes what another is judged on. Blocks
+ * first, then the stored visits, whose sessions the last read takes along
+ * with the ones named and the active one.
+ */
+async function readBatch(db: Database, items: readonly SyncItem[]): Promise<BatchReads> {
+  const blockIds = distinctUuidsInOrder(items.map((item) => item.blockId));
+  const foundBlocks = await db
     .select({ id: blocks.id })
     .from(blocks)
-    .where(eq(blocks.id, item.blockId))
-    .limit(1);
+    .where(inArray(blocks.id, blockIds))
+    .limit(blockIds.length);
 
-  if (blockExists.length === 0) {
-    throw new NotFoundError("No such block.");
-  }
-
-  const existing = await db
+  const stored = await db
     .select({
+      id: visits.id,
       updatedAt: visits.updatedAt,
       memberId: visits.memberId,
       teamId: visits.teamId,
@@ -146,10 +147,77 @@ async function applyItem(
     })
     .from(visits)
     .innerJoin(households, eq(households.id, visits.householdId))
-    .where(eq(visits.id, item.id))
-    .limit(1);
+    .where(
+      inArray(
+        visits.id,
+        items.map((item) => item.id),
+      ),
+    );
 
-  const stored = existing[0];
+  const sessionIds = distinctUuidsInOrder([
+    ...items.flatMap((item) => (item.sessionId === undefined ? [] : [item.sessionId])),
+    ...stored.map((visit) => visit.sessionId),
+  ]);
+  const sessions = await db
+    .select({
+      id: outingSessions.id,
+      kind: outingSessions.kind,
+      status: outingSessions.status,
+      startedAt: outingSessions.startedAt,
+    })
+    .from(outingSessions)
+    .where(or(inArray(outingSessions.id, sessionIds), eq(outingSessions.status, "active")));
+
+  return {
+    blocks: new Set(foundBlocks.map((block) => block.id)),
+    stored: new Map(stored.map((visit) => [visit.id, visit])),
+    sessions,
+  };
+}
+
+function resolveSession(reads: BatchReads, sessionId: string | undefined): ResolvedSession {
+  const session =
+    sessionId === undefined
+      ? reads.sessions.find((row) => row.status === "active")
+      : reads.sessions.find((row) => sameUuid(row.id, sessionId));
+  if (!session) {
+    throw sessionId === undefined
+      ? new ConflictError("session_not_active", "No session is active.")
+      : new NotFoundError("No such session.");
+  }
+  if (session.status !== "active") {
+    throw sessionEnded();
+  }
+  return {
+    id: session.id,
+    kind: session.kind,
+    startedAt: presentOrThrow(session.startedAt, "an active session start"),
+  };
+}
+
+type Verdict =
+  { kind: "answered"; status: "unchanged" | "stale" } | { kind: "amend" | "new"; write: Write };
+
+/*
+ * Every check that needs no lock, in the order they have always run: a refusal
+ * throws. What is left is a replay to answer, or a record to write.
+ */
+async function judgeItem(
+  db: Database,
+  item: SyncItem,
+  reads: BatchReads,
+  caller: SyncCaller,
+  clock: Clock,
+): Promise<Verdict> {
+  const memberId = caller.id;
+  const incomingUpdatedAt = new Date(item.updatedAt);
+  const incomingCreatedAt = new Date(item.clientCreatedAt);
+
+  if (!reads.blocks.has(keyOf(item.blockId))) {
+    throw new NotFoundError("No such block.");
+  }
+
+  const stored = reads.stored.get(keyOf(item.id));
 
   if (stored) {
     /*
@@ -178,11 +246,11 @@ async function applyItem(
        * An older edit arriving after a newer one. Acknowledged so the client
        * clears it from the queue, but not applied - last write wins.
        */
-      return answer(db, item.id, "stale");
+      return { kind: "answered", status: "stale" };
     }
     if (incomingUpdatedAt.getTime() === stored.updatedAt.getTime()) {
       // A replay of something already stored: the normal retry outcome.
-      return answer(db, item.id, "unchanged");
+      return { kind: "answered", status: "unchanged" };
     }
   }
 
@@ -195,7 +263,7 @@ async function applyItem(
   assertNotInFuture(incomingCreatedAt, clock);
 
   // A stored visit keeps its own outing even when the item names none.
-  const session = await resolveSession(db, stored?.sessionId ?? item.sessionId);
+  const session = resolveSession(reads, stored?.sessionId ?? item.sessionId);
 
   /*
    * After the session check, so an ended session still reports itself first.
@@ -204,24 +272,65 @@ async function applyItem(
   assertNotBeforeOuting(incomingUpdatedAt, session.startedAt, clock);
   assertNotBeforeOuting(incomingCreatedAt, session.startedAt, clock);
 
-  const write = {
+  const write: Write = {
     item,
     memberId,
     caller,
     session,
     /*
-     * Only a new record is judged against the follow-up list: an amend
-     * corrects a visit already stored, wherever it was allowed at the time.
-     * The caller's role decides there, though canAmend above still asks the
-     * member question.
+     * The caller's role decides the list (refuseUnderLock), though canAmend
+     * above still asks the member question.
      */
     judgeList: !stored,
     createdAt: incomingCreatedAt,
     updatedAt: incomingUpdatedAt,
   };
-  let status: "applied" | "unchanged" | "stale";
+  return { kind: stored ? "amend" : "new", write };
+}
+
+type Judged = { key: string; verdict: Verdict };
+
+type RunEntry = { key: string; write: Write };
+
+type Step =
+  | { kind: "run"; session: ResolvedSession; entries: RunEntry[] }
+  | { kind: "amend"; key: string; write: Write };
+
+/*
+ * The writes, in request order. Consecutive new records in one session are
+ * one run, written together; an amend is written alone, in its place. An
+ * item with nothing to write breaks no run (D-251-3, D-251-5).
+ */
+export function splitWrites(judged: readonly Judged[]): Step[] {
+  const steps: Step[] = [];
+  let run: Extract<Step, { kind: "run" }> | undefined;
+  for (const { key, verdict } of judged) {
+    if (verdict.kind === "answered") continue;
+    const { write } = verdict;
+    if (verdict.kind === "amend") {
+      steps.push({ kind: "amend", key, write });
+      run = undefined;
+    } else if (run?.session.id === write.session.id) {
+      run.entries.push({ key, write });
+    } else {
+      run = { kind: "run", session: write.session, entries: [{ key, write }] };
+      steps.push(run);
+    }
+  }
+  return steps;
+}
+
+async function settle(work: () => Promise<WriteStatus>): Promise<Result> {
   try {
-    status = await persist(db, write);
+    return { status: await work() };
+  } catch (failure) {
+    return { failure };
+  }
+}
+
+async function persistOne(db: Database, write: Write): Promise<WriteStatus> {
+  try {
+    return await persist(db, write);
   } catch (error) {
     if (!isConstraintViolation(error, VISIT_TEAM_FK)) throw error;
     /*
@@ -229,71 +338,166 @@ async function applyItem(
      * reading it and inserting. A second attempt re-reads the author's team,
      * which is now none or another one, instead of holding a good record.
      */
-    status = await persist(db, write);
+    return persist(db, write);
   }
-
-  return answer(db, item.id, status);
 }
-
-async function answer(
-  db: Database,
-  id: string,
-  status: "applied" | "unchanged" | "stale",
-): Promise<SyncOutcome> {
-  return {
-    id,
-    status,
-    visit: await getVisit(db, id),
-    markedDone: await notesMarkedDoneBy(db, id),
-    error: null,
-  };
-}
-
-type Write = {
-  item: SyncItem;
-  memberId: string;
-  caller: SyncCaller;
-  session: ResolvedSession;
-  judgeList: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-};
 
 /*
  * The first thing a write does: lock its session's row (FOR KEY SHARE), as
  * changing a follow-up session's households does (FOR UPDATE), then judge
- * where the item may land. So a record and a household change always wait
- * for each other in one order, and whichever goes second sees what the
- * other committed: a remove sees this visit, or this sees the remove.
+ * where each record may land, before any is written: the refusals, by
+ * record. So a record and a household change always wait for each other in
+ * one order, and whichever goes second sees what the other committed: a
+ * remove sees this visit, or this sees the remove.
  */
-async function assertMayLand(
+async function refuseUnderLock(
   tx: Database,
-  { item, caller, session, judgeList }: Write,
-): Promise<void> {
+  session: ResolvedSession,
+  writes: readonly Write[],
+  caller: SyncCaller,
+): Promise<Map<Write, ApiError>> {
   const locked = await tx
     .select({ status: outingSessions.status })
     .from(outingSessions)
     .where(eq(outingSessions.id, session.id))
     .for("key share");
   if (firstOrThrow(locked, "the session lock").status !== "active") {
-    throw new ConflictError(
-      "session_not_active",
-      "That session has ended. Ask an admin to reopen it.",
-    );
+    return new Map(writes.map((write) => [write, sessionEnded()]));
   }
 
   const attached = await tx
     .select({ blockId: sessionBlocks.blockId })
     .from(sessionBlocks)
-    .where(and(eq(sessionBlocks.sessionId, session.id), eq(sessionBlocks.blockId, item.blockId)))
-    .limit(1);
-  if (attached.length === 0) {
-    throw new ConflictError("conflict", "That block is not part of the session.");
+    .where(
+      and(
+        eq(sessionBlocks.sessionId, session.id),
+        inArray(
+          sessionBlocks.blockId,
+          distinctUuidsInOrder(writes.map((write) => write.item.blockId)),
+        ),
+      ),
+    );
+  const attachedIds = new Set(attached.map((row) => row.blockId));
+  const refused = new Map<Write, ApiError>();
+  for (const write of writes) {
+    if (!attachedIds.has(keyOf(write.item.blockId))) refused.set(write, notInSession());
   }
 
-  if (judgeList) {
-    await assertMayRecordHere(tx, caller, session, item.blockId, item.unitNumber);
+  /*
+   * Only a new record is judged against the follow-up list: an amend
+   * corrects a visit already stored, wherever it was allowed at the time.
+   */
+  const listed = writes.filter((write) => write.judgeList && !refused.has(write));
+  const off = await unitsOffRevisitList(
+    tx,
+    caller,
+    session,
+    listed.map((write) => write.item),
+  );
+  for (const write of listed) {
+    if (off.has(write.item)) refused.set(write, offRevisitList());
   }
+  return refused;
+}
+
+/*
+ * persist's insert for a run of new records, a statement each for the
+ * households, the team, the visits, the stamp, the join and the marking,
+ * however many records there are. Locks are taken as one record takes them:
+ * the session (already held), households in one order, visits, then notes.
+ */
+async function insertRun(
+  tx: Database,
+  session: ResolvedSession,
+  writes: readonly Write[],
+  caller: SyncCaller,
+): Promise<void> {
+  const householdIds = await upsertHouseholds(
+    tx,
+    writes.map((write) => write.item),
+  );
+  const teamId = await teamIdFor(tx, caller.id, session.id);
+
+  const rows = writes.map(({ item, createdAt, updatedAt }, order) => ({
+    id: item.id,
+    householdId: getOrThrow(
+      householdIds,
+      placeKey(item.blockId, item.unitNumber),
+      "the record's household",
+    ),
+    sessionId: session.id,
+    memberId: caller.id,
+    teamId,
+    interestLevel: item.interestLevel,
+    description: item.description ?? "",
+    clientCreatedAt: createdAt,
+    updatedAt,
+    /*
+     * now() is the transaction's start, the same for every row; a
+     * microsecond apart keeps them in request order wherever visits are
+     * ordered by when they were stored (D-251-7).
+     */
+    createdAt: sql`now() + ${order}::integer * interval '1 microsecond'`,
+  }));
+
+  const inserted = await tx
+    .insert(visits)
+    .values(rows)
+    .onConflictDoNothing()
+    .returning({ id: visits.id });
+  if (inserted.length < rows.length) {
+    // Stored by another request since the batch read: persistRun sends the run again one by one.
+    throw new Error("A record of the run was stored meanwhile.");
+  }
+
+  await stampVisits(
+    tx,
+    rows.map((row) => row.id),
+    teamId,
+    caller.id,
+  );
+  await autoJoin(tx, session.id, caller.id);
+  await markDoneByVisits(
+    tx,
+    session,
+    rows.map((row) => ({ householdId: row.householdId, visitId: row.id })),
+    caller.id,
+  );
+}
+
+/*
+ * Writes a run of new records in one transaction (D-251-3). If it fails for
+ * any reason - one of its records stored meanwhile, a team disbanded, a
+ * deadlock - it rolls back and each record goes again through persist, on
+ * its own, which settles each as recording it alone always has (D-251-4).
+ * A race is not an error, so the run's failure is not logged (D-251-11).
+ */
+async function persistRun(
+  db: Database,
+  session: ResolvedSession,
+  entries: readonly RunEntry[],
+  caller: SyncCaller,
+): Promise<[string, Result][]> {
+  let refused: Map<Write, ApiError>;
+  try {
+    refused = await db.transaction(async (tx) => {
+      const writes = entries.map((entry) => entry.write);
+      const refusals = await refuseUnderLock(tx, session, writes, caller);
+      const landing = writes.filter((write) => !refusals.has(write));
+      if (landing.length > 0) await insertRun(tx, session, landing, caller);
+      return refusals;
+    });
+  } catch {
+    const results: [string, Result][] = [];
+    for (const { key, write } of entries) {
+      results.push([key, await settle(() => persistOne(db, write))]);
+    }
+    return results;
+  }
+  return entries.map(({ key, write }) => {
+    const refusal = refused.get(write);
+    return [key, refusal === undefined ? { status: "applied" } : { failure: refusal }];
+  });
 }
 
 /* Thrown inside the transaction to roll its writes back without failing the item. */
@@ -304,10 +508,10 @@ class NotApplied extends Error {
 }
 
 /*
- * Writes one item atomically. The checks in applyItem ran on a read that other
+ * Writes one item atomically. The checks in judgeItem ran on a read that other
  * requests may have outdated, so the decisive ones are made or repeated here:
  *
- * - Where it may land (assertMayLand) is judged first, under the session lock.
+ * - Where it may land (refuseUnderLock) is judged first, under the session lock.
  * - INSERT ... ON CONFLICT DO NOTHING says whether this call created the row,
  *   which is what decides who writes the teammate snapshot when two flushes
  *   race. Only one inserts.
@@ -320,12 +524,13 @@ class NotApplied extends Error {
  * Author, session, team, household and clientCreatedAt are set at insert and
  * never in the UPDATE (D-29-2, D-74-16).
  */
-async function persist(db: Database, write: Write): Promise<"applied" | "unchanged" | "stale"> {
+async function persist(db: Database, write: Write): Promise<WriteStatus> {
   const { item, memberId, session, createdAt, updatedAt } = write;
   const sessionId = session.id;
   try {
     await db.transaction(async (tx) => {
-      await assertMayLand(tx, write);
+      const refusal = (await refuseUnderLock(tx, session, [write], write.caller)).get(write);
+      if (refusal !== undefined) throw refusal;
       const household = await upsertHousehold(tx, {
         blockId: item.blockId,
         unitNumber: item.unitNumber,
@@ -412,6 +617,161 @@ async function persist(db: Database, write: Write): Promise<"applied" | "unchang
 
 const logSyncFailure = createThrottledLog();
 
+function rejected(item: SyncItem, failure: unknown): SyncOutcome {
+  // The client gets only the generic message; the cause stays in the logs.
+  if (!(failure instanceof ApiError)) {
+    logSyncFailure("sync", `sync: could not save visit ${item.id}: ${summarizeError(failure)}`);
+  }
+  return {
+    id: item.id,
+    status: "rejected",
+    visit: null,
+    markedDone: [],
+    /*
+     * Anything that is not a deliberate refusal - a dropped connection, a
+     * deadlock - is the server's failure, not the record's. It is reported
+     * as internal_error so the queue retries it, where `conflict` would
+     * hold a good record for review forever (D-74-23).
+     */
+    error:
+      failure instanceof ApiError
+        ? failure
+        : new InternalError("Could not save this record right now. Try again."),
+  };
+}
+
+type Answers = { visits: Map<string, VisitRow>; marked: Map<string, string[]> };
+
+/*
+ * The stored rows every answer reports, read once after every write
+ * (D-251-9). Should the read fail, what was written stays written, and a
+ * resend answers it unchanged.
+ */
+async function readAnswers(
+  db: Database,
+  keys: readonly string[],
+): Promise<Answers | { failure: unknown }> {
+  if (keys.length === 0) {
+    return { visits: new Map(), marked: new Map() };
+  }
+  try {
+    return { visits: await getVisits(db, keys), marked: await notesMarkedDoneByVisits(db, keys) };
+  } catch (failure) {
+    return { failure };
+  }
+}
+
+function outcome(
+  item: SyncItem,
+  result: Result,
+  answers: Answers | { failure: unknown },
+): SyncOutcome {
+  if ("failure" in result) return rejected(item, result.failure);
+  if ("failure" in answers) return rejected(item, answers.failure);
+  const key = keyOf(item.id);
+  try {
+    return {
+      id: item.id,
+      status: result.status,
+      visit: getOrThrow(answers.visits, key, "the visit just written"),
+      markedDone: answers.marked.get(key) ?? [],
+      error: null,
+    };
+  } catch (failure) {
+    return rejected(item, failure);
+  }
+}
+
+async function judgeAndWrite(
+  db: Database,
+  items: readonly SyncItem[],
+  caller: SyncCaller,
+  clock: Clock,
+  results: Map<string, Result>,
+): Promise<void> {
+  let reads: BatchReads;
+  try {
+    reads = await readBatch(db, items);
+  } catch (failure) {
+    for (const item of items) results.set(keyOf(item.id), { failure });
+    return;
+  }
+
+  const judged: Judged[] = [];
+  for (const item of items) {
+    const key = keyOf(item.id);
+    try {
+      const verdict = await judgeItem(db, item, reads, caller, clock);
+      if (verdict.kind === "answered") results.set(key, { status: verdict.status });
+      judged.push({ key, verdict });
+    } catch (failure) {
+      results.set(key, { failure });
+    }
+  }
+
+  for (const step of splitWrites(judged)) {
+    if (step.kind === "amend") {
+      results.set(step.key, await settle(() => persistOne(db, step.write)));
+    } else {
+      for (const [key, result] of await persistRun(db, step.session, step.entries, caller)) {
+        results.set(key, result);
+      }
+    }
+  }
+}
+
+/* Ids are distinct in the batch: a repeat goes to syncOneByOne. */
+async function syncBatch(
+  db: Database,
+  sent: readonly SyncItem[],
+  caller: SyncCaller,
+  clock: Clock,
+): Promise<SyncOutcome[]> {
+  const results = new Map<string, Result>();
+  const items: SyncItem[] = [];
+  for (const item of sent) {
+    /*
+     * First, so a blank unit is this item's refusal alone and nothing is read
+     * for it. The contract refuses the whole batch before this; the guard is
+     * for a caller that skips the contract. From here on the unit is as stored.
+     */
+    try {
+      items.push({ ...item, unitNumber: requireText(item.unitNumber, "/unitNumber") });
+    } catch (failure) {
+      results.set(keyOf(item.id), { failure });
+    }
+  }
+  if (items.length > 0) {
+    await judgeAndWrite(db, items, caller, clock, results);
+  }
+
+  const answers = await readAnswers(
+    db,
+    [...results].flatMap(([key, result]) => ("status" in result ? [key] : [])),
+  );
+  return sent.map((item) =>
+    outcome(item, getOrThrow(results, keyOf(item.id), "the item's result"), answers),
+  );
+}
+
+/*
+ * A batch naming one visit twice, in any letter case, goes one item at a
+ * time, so the second copy is judged on what the first stored (D-251-10).
+ * The queue is keyed by id, so this is rare.
+ */
+async function syncOneByOne(
+  db: Database,
+  items: readonly SyncItem[],
+  caller: SyncCaller,
+  clock: Clock,
+): Promise<SyncOutcome[]> {
+  const outcomes: SyncOutcome[] = [];
+  for (const item of items) {
+    outcomes.push(...(await syncBatch(db, [item], caller, clock)));
+  }
+  return outcomes;
+}
+
 /*
  * One bad item must not reject its valid siblings: a member whose queue holds
  * one malformed record should still get the rest of their afternoon saved.
@@ -422,32 +782,8 @@ export async function syncVisits(
   caller: SyncCaller,
   clock: Clock,
 ): Promise<SyncOutcome[]> {
-  const outcomes: SyncOutcome[] = [];
-  for (const item of items) {
-    try {
-      outcomes.push(await applyItem(db, item, caller, clock));
-    } catch (error) {
-      // The client gets only the generic message; the cause stays in the logs.
-      if (!(error instanceof ApiError)) {
-        logSyncFailure("sync", `sync: could not save visit ${item.id}: ${summarizeError(error)}`);
-      }
-      outcomes.push({
-        id: item.id,
-        status: "rejected",
-        visit: null,
-        markedDone: [],
-        /*
-         * Anything that is not a deliberate refusal - a dropped connection, a
-         * deadlock - is the server's failure, not the record's. It is reported
-         * as internal_error so the queue retries it, where `conflict` would
-         * hold a good record for review forever (D-74-23).
-         */
-        error:
-          error instanceof ApiError
-            ? error
-            : new InternalError("Could not save this record right now. Try again."),
-      });
-    }
-  }
-  return outcomes;
+  const ids = new Set(items.map((item) => keyOf(item.id)));
+  return ids.size < items.length
+    ? syncOneByOne(db, items, caller, clock)
+    : syncBatch(db, items, caller, clock);
 }

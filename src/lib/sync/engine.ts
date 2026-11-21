@@ -8,8 +8,13 @@ import {
 } from "@/lib/sync/classify";
 import type { QueuedVisit, Send, SendOutcome, SyncQueue } from "@/lib/sync/types";
 
-/* The contract's ceiling for one request. */
-export const BATCH_SIZE = 100;
+/*
+ * A quarter of the contract's ceiling (100), so a batch stays far inside the
+ * send timeout (SEND_TIMEOUT_MS, 20 s) even when the server writes every
+ * record one at a time, as it does an amend: about 3 s for 25 in the
+ * nearest region (D-251-12). A long backlog is still only a few sends.
+ */
+export const BATCH_SIZE = 25;
 
 /* What an all-`internal_error` answer is treated as (see failedTogether). */
 const SERVER_FAILED: Extract<SendOutcome, { kind: "http" }> = {

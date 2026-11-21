@@ -6,6 +6,7 @@ import * as schema from "@/db/schema";
 import { createTestPool, signedInAs, truncateAll } from "@/db/testing";
 import { PROBE_MS } from "@/lib/sync/backoff";
 import { type SyncController, createSyncController } from "@/lib/sync/controller";
+import { BATCH_SIZE } from "@/lib/sync/engine";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import { recordReason } from "@/lib/sync/sync-ui";
@@ -165,7 +166,7 @@ describe("the queue against the real server", () => {
     const h = harness(owner, records);
 
     await h.controller.start();
-    expect(await visitCount()).toBe(100);
+    expect(await visitCount()).toBe(BATCH_SIZE);
     expect(new Set(await h.states())).toEqual(new Set(["queued"]));
 
     await h.controller.wake();
@@ -248,9 +249,9 @@ describe("the queue against the real server", () => {
     await h.controller.start();
     const after = await h.queue.listAll();
     expect(after).toHaveLength(150);
-    expect(after.filter((r) => r.state === "synced")).toHaveLength(100);
+    expect(after.filter((r) => r.state === "synced")).toHaveLength(BATCH_SIZE);
     const held = after.filter((r) => r.state === "held");
-    expect(held).toHaveLength(50);
+    expect(held).toHaveLength(150 - BATCH_SIZE);
     for (const record of held) {
       expect(record.lastError?.code).toBe("session_not_active");
       expect(recordReason(record)).toBe("The session has ended. Sends if an admin reopens it.");
