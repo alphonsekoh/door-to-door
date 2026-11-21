@@ -37,10 +37,19 @@ load into it, and a check that measures it, with or without a far database.
   open against `main`, and none of the entry's options apply to them (Open questions).
   _Research:_ R-228.
 - **D-244-4 · Scope cut: CLAUDE.md and `.claude/agents/builder.md` are not changed.**
+  _Superseded by D-244-28._
   README gains Branches and its Contributing paragraph follows D-244-1. CLAUDE.md's
   Commits rule and the builder's branch and PR steps still describe the old flow. _Why:_
   the builder and reviewer held that changing either needs the owner's say-so, not an
   agent's (Open questions).
+- **D-244-28 · CLAUDE.md and `.claude/agents/builder.md` follow D-244-1 (owner, 2026-11-21).**
+  CLAUDE.md's Commits rule: the first branch of a stack bases off and targets `dev`, later
+  ones target the branch before them, never `stage` or `main`; squash or rebase into `dev`,
+  where the phantom-conflict warning now applies; only promotions are merge commits, and
+  nothing flows back. `builder.md` steps 1 and 8 base a lone branch on `dev` and open its
+  PR there. _Why:_ the owner chose this flow with the note that CLAUDE.md and the
+  pipelines switch their base to `dev`; the text is the builder's proposal, unchanged.
+  Supersedes D-244-4 and resolves Open question 2.
 
 ### The stack
 
@@ -190,7 +199,7 @@ load into it, and a check that measures it, with or without a far database.
 | D-122-5           | Kept: production sends HSTS; the stage edge drops it                                            | D-244-8      |
 | D-131-4, D-131-6  | Extended to the stage file's images and its postgres                                            | D-244-13     |
 | D-118-7, D-166-11 | **Conflict, open:** with `target-branch` set, security updates take none of the entry's options | D-244-3      |
-| CLAUDE.md Commits | Stale for D-244-1; change awaits the owner                                                      | D-244-4      |
+| CLAUDE.md Commits | Rewritten for D-244-1 (owner)                                                                   | D-244-28     |
 
 ## Known limits
 
@@ -234,15 +243,13 @@ D-241-1, D-241-2.
      Branch Rule".
    - (c) Keep security updates off.
 
-2. **CLAUDE.md and `.claude/agents/builder.md` (D-244-4).** The builder proposed new text:
+2. **Resolved (owner, 2026-11-21): applied as D-244-28.** CLAUDE.md and `.claude/agents/builder.md` (D-244-4). The builder proposed new text:
    - **CLAUDE.md Commits.** The first branch of a stack bases off and targets `dev`, and
      each later branch targets the one before it, never `stage` or `main`. Merge top-down,
      squashing or rebasing into `dev`. The phantom-conflict warning moves from `main` to
      `dev`. Only promotions are merge commits, and nothing flows back.
    - **`builder.md`.** Step 1 bases off `dev` when no branch is open. Step 8 uses
      `--base <parent branch>`, which is `dev` for the first branch.
-
-   Until it lands, the PR should say `Refs #244`, not `Closes #244`.
 
 3. **`main`'s protection (D-244-2).** "D2D Branch Rule" requires a PR on `main` but none
    of the four checks, and allows squash and rebase. So a PR opened against `main` by
