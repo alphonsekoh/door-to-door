@@ -334,8 +334,8 @@ Each entry: **question**, **finding**, **source**, **used by** (task decision ID
 - **Finding:** A `<select>` styled `min-h-12` rendered 26px tall in Playwright's WebKit at a
   phone viewport; adding `height` (`h-12`) rendered it 48px. Chromium honoured
   `min-height`. Observed in Playwright WebKit only; unverified on a real iPhone.
-- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filter selects are at
-  least 44px tall")
+- **Source:** observed during #74 PR 4 (`e2e/pwa.spec.ts`, "admin filters are at least
+  44px tall", named "admin filter selects are at least 44px tall" until #245)
 - **Used by:** D-74-62
 
 ### R-40 · Linux WebKit's worker update check is cookieless, but it stores cookies set on the reply
@@ -1562,8 +1562,10 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   the first load carried the old URL in `Referer` (`same-origin`): 23 on Chromium, 13 on
   WebKit. An aborted or `500` RSC fetch gave a second document load, search empty; with
   no signal, the Offline page. Next 16.4.3, production build, both phone projects.
-- **Source:** #163 verifier, round 0 (Playwright network logs)
-- **Used by:** D-163-6
+- **Source:** #163 verifier, round 0 (Playwright network logs). #245's verifier r0 saw
+  the same wait on All records' filters: a picked date read blank until the server
+  answered.
+- **Used by:** D-163-6, D-245-5, D-246-10
 
 ### R-141 · Next syncs `useSearchParams` with `history.replaceState` through a patch its router installs in an effect
 
@@ -1574,10 +1576,11 @@ constraint "<name>" of relation "<table>" is violated by some row`. drizzle-orm
   which is what moves `useSearchParams`. On `popstate`, an entry with no state is ignored
   and one without `__NA` reloads the page. So a call before the patch must carry
   `history.state` itself. The docs promise the sync, not when the patch is in place.
-- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3);
+- **Source:** `node_modules/next/dist/client/components/app-router.js` (16.4.3; the
+  patch re-read unchanged in 16.4.5, lines 274-324, by #245's docs step);
   `node_modules/next/dist/docs/01-app/01-getting-started/04-linking-and-navigating.md`,
   "Native History API"
-- **Used by:** D-163-6
+- **Used by:** D-163-6, D-245-5, D-246-10
 
 ### R-142 · On first load the shell's requests leave before a screen inside `<Suspense>` hydrates (measured)
 
@@ -2837,6 +2840,131 @@ config`, parse only; #124 docs step, confirming the planner's check)
   [CSSOM View, `scrollIntoView()`](https://drafts.csswg.org/cssom-view/#dom-element-scrollintoview),
   [CSS Scroll Snap 1, `scroll-margin`](https://drafts.csswg.org/css-scroll-snap-1/#scroll-margin)
 - **Used by:** D-238-1, D-238-3, D-238-7, D-238-8
+
+### R-226 · Caddy's `reverse_proxy` writes `X-Forwarded-For`, `-Proto` and `-Host` itself, ignoring a client's values (read)
+
+- **Finding:** by default `reverse_proxy` passes headers through, except that it sets or
+  augments `X-Forwarded-For` and sets `X-Forwarded-Proto` and `X-Forwarded-Host`. It
+  ignores incoming values for all three unless the sender is in `trusted_proxies`. So
+  behind one Caddy with no trusted proxies, the client's address is the last
+  `X-Forwarded-For` entry the app sees, and a client cannot choose it.
+- **Source:** [Caddy, `reverse_proxy` › Headers](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy#headers)
+  (caddyserver/website `reverse_proxy.md`, read through `gh api` on 2026-11-21). Not
+  measured by the docs step; the #244 builder's sign-ins through the edge worked.
+- **Used by:** D-244-7
+
+### R-227 · A toxiproxy latency toxic delays one direction only (read)
+
+- **Finding:** a `latency` toxic adds `latency` ± `jitter` to the data on one stream:
+  `downstream` (server to client) by default, or `upstream`. For a round-trip delay, put
+  one on each stream. Toxics are added and removed through the HTTP API at runtime, with
+  no restart of the proxy or its clients.
+- **Source:** [Shopify/toxiproxy README, Toxics › latency](https://github.com/Shopify/toxiproxy#latency)
+  (read through `gh api` on 2026-11-21).
+- **Used by:** D-244-10
+
+### R-228 · With `target-branch`, Dependabot's security updates take none of the entry's options, and the config is read from the default branch (read)
+
+- **Finding:** when an entry sets `target-branch`, its version updates check and target
+  that branch. Its options then no longer apply to security updates, "because security
+  updates always use the default branch". That covers groups (`applies-to:
+security-updates` included), ignores, labels, assignees and the commit-message prefix.
+  `dependabot.yml` must sit on the default branch. Its `docker-compose` updater picks
+  files by `/(docker-)?compose(-[\w]+)?(?>\.[\w-]+)?\.ya?ml/i`, which matches
+  `docker-compose.stage.yml`.
+- **Source:** github/docs `dependabot-options-reference.md` (commit 92ac1df), sections
+  `target-branch` and the shield-marked options;
+  `about-the-dependabot-yml-file.md` ("in the default branch");
+  dependabot-core `docker/lib/dependabot/docker_compose/file_fetcher.rb`
+  (`FILENAME_REGEX`, commit 2e6fcea). All read through `gh api` on 2026-11-21.
+  Security updates were off on the repository (`automated-security-fixes`: `enabled:
+false`) on that date.
+- **Used by:** D-244-3, D-244-13; the conflict with D-118-7 and D-166-11 in #244's open
+  questions
+
+### R-229 · A Vercel function's default size is 1 vCPU and 2 GB
+
+- **Finding:** Vercel's Standard function size, the default, is 1 vCPU and 2 GB of memory.
+  New projects run their functions in `iad1` (Washington, D.C.) unless a region is chosen.
+- **Source:** [Vercel, configuring memory and CPU](https://vercel.com/docs/functions/configuring-functions/memory)
+  and [Vercel, configuring regions](https://vercel.com/docs/functions/configuring-functions/region),
+  as the #244 builder and #247 read them. The docs step could not reach vercel.com, so
+  neither was re-read.
+- **Used by:** D-244-14
+
+### R-230 · The stage stack with a year of records: what the check measured (measured)
+
+- **Finding:** in one phone's requests, the latency comes from database round trips, not
+  rows.
+  - **No added delay:** API reads took 16 to 48 ms at p50, and pages 9 to 21 ms.
+  - **2 ms round trip:** API reads took 24 to 74 ms.
+  - **220 ms round trip:** every API read took at least about 700 ms. A block's units took
+    2.1 s, a unit's history 1.6 s, a save 3.0 s and a sign-in 1.7 s. Member pages that
+    read nothing stayed at 8 to 19 ms. Admin pages took 250 to 960 ms, as they read the
+    database.
+
+  The app sends API JSON uncompressed: before the edge had `encode`, every API route's
+  size as sent equalled its decoded size, and `/api/history` was 126.6 KB a page. With
+  `encode zstd gzip` it went out at 11.0 KB. One member making every round's save had 14
+  of 20 refused by the 30-a-minute limit. `/api/auth/csrf` behind the edge set a second
+  `__Host-authjs.csrf-token` cookie with a `callback-url` of `https://0.0.0.0:3000`.
+
+- **Source:** measured by the #244 builder on 2026-11-21 with `npm run stage:perf`, using
+  20 rounds (8 at 220 ms) on a freshly seeded stack. Other builds shared the machine, so
+  single milliseconds are noise. Not re-measured by the docs step.
+- **Used by:** D-244-9, D-244-23
+
+### R-231 · iOS Safari draws a native date input content-box with a 30px min-height, whatever the page sets (measured on a simulator)
+
+- **Finding:** in Safari on iOS, an `<input type="date">` with its native appearance keeps
+  a content-box size and a 30px min-height, ignoring the page's `box-sizing`, `width`
+  and `min-height`. On All records at 430px, From and To were 221 × 32 in 194px cells
+  beside 194 × 51 selects, so To ran from x 219 to 441. The follow-up sheet's input was
+  28px wider than its column. With `appearance: none` each takes the field's box: 194 ×
+  51, and 96px tall at 32px text, where a filled date wraps to two lines. Playwright's
+  WebKit and Chromium do not draw iOS's control and never showed the overflow. With and
+  without the rule both gave the same 179 × 48 box, 12px padding, 1px border and 8px
+  radius, and Chromium kept its calendar icon. Tailwind 4.3.5's preflight already sets
+  `::-webkit-date-and-time-value { min-height: 1lh; text-align: inherit }`. That keeps an
+  empty date's height on iOS and lets its value start-align.
+- **Source:** measured in Safari on an iOS 26.5 simulator, iPhone 15 Pro Max, 430px (#245
+  builder; before and after at 16 and 32px by the verifier r0), not on a real device.
+  Chromium and desktop WebKit compared with and without the rule by the #245 reviewer.
+  `node_modules/tailwindcss/preflight.css` lines 319-327 (4.3.5).
+- **Used by:** D-245-1, D-245-2, D-245-4
+
+### R-232 · A filter change through `router.replace` waits on an RSC fetch and falls back to a page load; through `history.replaceState(null, …)` it makes none (measured)
+
+- **Finding:** on `/admin/attention`, whose page reads no `searchParams`,
+  `router.replace` for a block or the toggle fetched the page's RSC payload, and
+  `useSearchParams` moved only when it committed: with the fetch held 1 s, the select
+  read the block just left and the toggle stayed unpressed for the whole second.
+  Offline, Next logged "Failed to fetch RSC payload … Falling back to browser
+  navigation", and the worker answered that navigation with the Offline page. With
+  `window.history.replaceState(null, "", href)`, Next's patch (R-141) restored the
+  router to the new URL in a transition: no RSC fetch, no document load and no new
+  history entry; the select showed the new block by the second frame and the toggle by
+  the first; offline the screen stayed; Back after a client navigation away restored
+  both from the entry. Handed `history.state` (Next's `__NA`) instead of `null`, the
+  call went straight through, `useSearchParams` never moved, and the next filter
+  written dropped the first.
+- **Source:** next 16.4.5, `dist/client/components/router-reducer/fetch-server-response.js`
+  (the fallback) and `dist/client/components/app-router.js` (the patch); measured (#246
+  verifier r0 at 1c1f036 and r1 at 4490b2c, production build, Pixel 5 on Chromium,
+  iPhone 13 and iPhone 15 Pro Max on WebKit, whose offline mode bypasses the worker,
+  D-32-18). Extends R-140 from the `?q=` strip to filter changes.
+- **Used by:** D-246-10, D-246-17
+
+### R-233 · Zod 4's `z.uuid()` takes only RFC 9562 layouts; the client's `asUuid` takes any 8-4-4-4-12 hex
+
+- **Finding:** `z.uuid()` with no version wants a version digit 1 to 8 and a variant
+  digit 8, 9, a or b (either case), or the nil or max UUID. `asUuid`
+  (`src/lib/history/record-filters.ts`) tests only the 8-4-4-4-12 hex shape, which is
+  Zod's looser `guid`. So `12345678-1234-1234-1234-123456789012` passes the client's
+  check, and the API, whose `blockId` and `teamId` are `z.uuid()`, refuses it with 400.
+- **Source:** zod 4.6.7, `node_modules/zod/v4/core/regexes.js` (`uuid`, `guid`);
+  `src/generated/zod.gen.ts`. Read (#246 reviewer, docs step).
+- **Used by:** D-246-3
 
 ### R-244 · On a first OAuth sign-in Auth.js calls `jwt` with `signUp` and goes to `pages.newUser`
 

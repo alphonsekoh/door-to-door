@@ -23,8 +23,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - [How the API is built](#how-the-api-is-built-openapi-first)
 - [Configuration](#configuration) · [Environment variables](#environment-variables)
 - [Database](#database) · [Scripts](#scripts) · [Testing](#testing) · [CI](#ci)
-- [Deployment](#deployment) · [Troubleshooting](#troubleshooting) ·
-  [Contributing](#contributing)
+- [Deployment](#deployment) · [Stage environment](#stage-environment) ·
+  [Troubleshooting](#troubleshooting) · [Branches](#branches) · [Contributing](#contributing)
 
 ## Features
 
@@ -412,6 +412,8 @@ both is a startup error (D-75-2).
 | `NODE_ENV`                                 | set by Next; `production` in the image                           | Production enables the service worker and turns contract drift into a logged `500` instead of a throw. Only `development` accepts a `not-for-production` `AUTH_SECRET` (D-124-7) |
 | `NEXT_TELEMETRY_DISABLED`                  | `1` in the image                                                 | Opts out of Next.js telemetry                                                                                                                                                    |
 | `CONFIG_FILE`                              | `./config.docker.yaml`                                           | Compose only: which settings file to mount                                                                                                                                       |
+| `STAGE_PORT`, `STAGE_TOXIPROXY_PORT`       | `3400`, `3401`                                                   | Stage stack only: where its edge and toxiproxy's API are published, for Compose and `stage:perf`                                                                                 |
+| `STAGE_AUTH_SECRET`                        | made once per stack                                              | Stage stack only: its app's `AUTH_SECRET`, in place of the one it makes                                                                                                          |
 | `WATCHPACK_POLLING`, `CHOKIDAR_USEPOLLING` | `true` in Compose                                                | Compose only: watch files by polling, for bind mounts on macOS and Windows                                                                                                       |
 | `TEST_DATABASE_URL`                        | -                                                                | Tests only, and required by `test:integration`, `test:all`, `test:coverage`. A full URL with credentials; tables are truncated, so never real data (D-75-8)                      |
 | `E2E_DATABASE_URL`                         | `postgresql://postgres:postgres@localhost:5433/door_to_door_e2e` | E2E only: created and reseeded on every run                                                                                                                                      |
@@ -495,6 +497,12 @@ to `medium` between March and June.
 | `npm run spec:preview`     | Render the API docs to `.next/api-docs.html`                                                  |
 | `npm run generate:api`     | Regenerate types and Zod schemas from `openapi.yaml`                                          |
 | `npm run icons`            | Regenerate the PWA icons from `public/icon.svg`                                               |
+| `npm run stage:up`         | Build and start the [stage stack](#stage-environment) at https://localhost:3400               |
+| `npm run stage:seed`       | Load a year of records into the stage stack's empty database; refused anywhere else           |
+| `npm run stage:perf`       | Measure the stage stack; `-- --db-latency 220` adds a database round trip                     |
+| `npm run stage:logs`       | The stage stack's logs (`-- app` for one service)                                             |
+| `npm run stage:psql`       | `psql` in the stage stack's database, to `EXPLAIN` a slow query                               |
+| `npm run stage:down`       | Stop the stage stack and delete its data                                                      |
 
 The `npm run build` check of the standalone output runs as an npm `postbuild` hook, so
 running `next build` directly skips it: always build with `npm run build`.
@@ -557,7 +565,9 @@ own `door_to_door_e2e` database, so it never disturbs the integration suite. The
 `e2e/` cover signing in and the role split, Google sign-in against a local stand-in
 (never the real Google), an admin ending a member's sign-ins, recording a visit (with and
 without signal), a session's lifecycle, a follow-up session, teams, the account screen
-and sign-out, and the PWA (the worker, offline fallback, caching and phone layout).
+and sign-out, the PWA (the worker, offline fallback, caching and phone layout), every
+screen at the largest text, and the admin lists' address: an old `?q=` link, and Needs
+a return visit's filters moving it with no page round trip, online and offline.
 Four tests in `pwa.spec` are skipped on WebKit because Playwright's WebKit fails a
 request before the service worker can answer it, offline or routed (D-32-18, D-166-5),
 and two in `sign-ins.spec` because it cannot hold or stop the worker's requests (R-138).
@@ -626,14 +636,17 @@ The jobs' token can only read the repository, and checkout leaves it nowhere on 
 Every action is pinned by commit and every image by digest, and Dependabot keeps them
 current; `src/supply-chain.test.ts` fails on a new line that is not pinned. Dependabot
 cannot see CI's postgres service image, so when it bumps the one in `docker-compose.yml`,
-copy the digest into `ci.yml` (the test fails until you do).
+copy the digest into `ci.yml` (the test fails until you do). Its `docker-compose` entry
+reads the [stage stack](#stage-environment)'s file too, and `src/stage-stack.test.ts`
+fails if the stage postgres differs from the dev stack's.
 
 ## Deployment
 
 The app ships as a Docker image: the `runner` stage of the [`Dockerfile`](Dockerfile),
 Next.js standalone output on `node:24-alpine` (pinned by digest), running as uid 1001 on
-port 3000. No hosting target has been chosen; anything that runs a container next to
-PostgreSQL will do.
+port 3000. Production does not use it: it is the same app on Vercel, with settings from
+`CONFIG_YAML`, and PostgreSQL 17 on Neon. The image runs anywhere that runs a container
+next to PostgreSQL.
 
 ```bash
 docker build -t door-to-door .
@@ -761,6 +774,86 @@ docker run -p 3000:3000 \
   script can then be run again; or make the first admin at another address and approve
   the request on **Admin → Team**.
 
+## Stage environment
+
+`stage` is the release candidate (see [Branches](#branches)). Before it is merged to
+`main`, run it in a stack shaped like production, with a year of records in it, and
+measure it. The stack is [`docker-compose.stage.yml`](docker-compose.stage.yml), its own
+Compose project (`door-to-door-stage`) with its own volumes and network, so it never
+touches the dev stack, the test databases or their ports.
+
+```bash
+git switch stage       # or whichever branch you want to measure
+npm run stage:up       # build and start it, waiting until it is healthy
+npm run stage:seed     # load a year of records into its empty database
+npm run stage:perf     # measure it; add -- --db-latency 220 for a far database
+npm run stage:down     # stop it and delete its data
+```
+
+| Service     | Stands in for                  | What it is                                                                                                                                                       |
+| ----------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edge`      | Vercel's edge                  | Caddy: HTTPS on `127.0.0.1:3400` from its own certificate authority, zstd and gzip, and `X-Forwarded-For`, `-Proto` and `-Host` to the app                       |
+| `app`       | The Vercel function            | The Dockerfile's `runner` stage, the production build on Node 24, with one CPU and 2 GB. Settings from `CONFIG_YAML`: secure cookies, `trustHost`, one proxy hop |
+| `toxiproxy` | The network between them       | Relays every query the app makes; its API on `127.0.0.1:3401` adds a delay for `--db-latency`                                                                    |
+| `db`        | Neon                           | PostgreSQL 17, the dev stack's image, published nowhere                                                                                                          |
+| `migrate`   | Migrating before a deploy      | The real migration runner (`npm run db:migrate`); `app` starts only once it succeeds                                                                             |
+| `secret`    | The deployment's `AUTH_SECRET` | Made once per stack and kept in its volume, or `STAGE_AUTH_SECRET` from your shell; never in the repository                                                      |
+| `seed`      | -                              | Runs only for `npm run stage:seed`                                                                                                                               |
+
+**The seed** loads 30 blocks, about 3,000 households and about 14,500 visits over the past
+year: 48 weekly sessions, 4 follow-up sessions, one session active today and one waiting
+to start, about 1,250 follow-ups (suggested, listed, done and removed), and 3 admins and
+40 members, 2 of whom have left. Every run makes the same counts, ending at the moment it
+runs, and the same moment gives the same records. It first prints
+`Stage seed target: host:port/database`, then refuses, writing nothing, any database not
+named `door_to_door_stage`, and any that holds a user, block, session, household, visit or
+follow-up. It is not the demo seed and never runs against production. Its logins share
+one published password, `stage-password`: `admin@stage.example.com` (admin) and
+`member01@stage.example.com` to `member38@stage.example.com` (`member39` and `member40`
+have left); the stack is on this machine's loopback only.
+
+**The check** signs in as that admin and a member, then makes the requests each
+screen makes, a page and then its API reads, in a phone's order: sign-in, home and the
+active session, a block's units, a household's history, recording a visit, follow-ups,
+Admin Sessions with its notices, All records (`/admin/history`) and Needs a return visit
+(`/admin/attention`). It prints p50, p95 and maximum latency per route and the median
+response size, decoded and as sent, as a Markdown table. It runs 20 rounds after 2
+warm-up rounds, one phone at a time: it measures latency, not load. Each round records
+a visit, so the stack's data grows a little with every run.
+
+```bash
+npm run stage:perf -- --iterations 10 --warmup 1 --db-latency 220 --json stage-results.json
+```
+
+Each round signs in as the next member, since one member may save only 30 visits a
+minute, and a refusal shows in the `failed` column with its status. `STAGE_PORT` and
+`STAGE_TOXIPROXY_PORT` move the published ports, for both Compose and the check.
+
+`--db-latency <ms>` adds that round trip to every query the app makes, half each way,
+and takes it off when the check ends. With none, the database is on the same Docker
+network, as a function in Neon's region (`sin1` beside `ap-southeast-1`) nearly is. A
+function in Vercel's default region for new projects, Washington, D.C. (`iad1`), is
+about 220 ms from Singapore, and a request that makes several queries pays it each time.
+
+**In a browser**, open https://localhost:3400. The certificate is the stack's own, so the
+browser warns once; Chrome then refuses the service worker unless you trust the stack's
+root certificate, which `stage:down` deletes with the stack:
+
+```bash
+docker compose -p door-to-door-stage -f docker-compose.stage.yml exec -T edge \
+  cat /data/caddy/pki/authorities/local/root.crt > stage-root.crt
+```
+
+The edge drops the app's HSTS header, which would otherwise pin every port of `localhost`
+to HTTPS, the dev server's included.
+
+**What it does not model:** Vercel's cold starts, when a new function instance boots and
+opens its database connections on its first request; Vercel's edge network and the
+distance from a phone in Singapore to it (the check runs on this machine); Neon waking
+from scale-to-zero, its TLS connections and its connection pooler; Google sign-in, which
+needs a real OAuth client; many phones at once; mobile networks; and the browser's own
+work, since the check fetches pages and API responses but runs no JavaScript.
+
 ## Troubleshooting
 
 | Symptom                                                         | Cause and fix                                                                                                                                                                                        |
@@ -802,8 +895,10 @@ src/
                 history, follow-ups, hooks, session, sync (offline queue), offline
                 (local copy)
   auth/         the Auth.js entrypoint, imported as @/auth, and Google sign-in
-  server/       server-only services, auth (sign-ins, sign-out, guards), withContract
-  db/           Drizzle schema, client, seed data and the seed's guard
+  server/       server-only services, auth (sign-ins, sign-out, guards), withContract,
+                and the stage check (stage/)
+  db/           Drizzle schema, client, seed data and the seed's guard, and the stage
+                seed
   generated/    generated from openapi.yaml - never edit by hand
   proxy.ts      optimistic sign-in redirect (Next 16's name for middleware); under
                 next dev, also refuses a Host that is not localhost
@@ -811,9 +906,38 @@ drizzle/        generated migrations - never edit by hand
 e2e/            Playwright specs
 test/           Vitest setup files and shared test helpers
 scripts/        migrate, seed, create-admin, check-blank-text, generate-icons,
-                check-standalone (postbuild)
+                check-standalone (postbuild), record-migration-checksums, e2e-linux,
+                stage-seed, stage-perf
+docker/stage/   the stage stack's edge (Caddyfile) and toxiproxy settings
 docs/           architecture, research and per-issue decisions
 ```
+
+## Branches
+
+| Branch      | Holds                                       | Changes arrive by                                                    |
+| ----------- | ------------------------------------------- | -------------------------------------------------------------------- |
+| a feature's | One issue                                   | Commits                                                              |
+| `dev`       | New features                                | A pull request per feature, squash or rebase merged                  |
+| `stage`     | The release candidate                       | A pull request from `dev`, merged with a merge commit                |
+| `main`      | Production: Vercel deploys it to d2dsrg.com | A pull request from `stage`, once tested, merged with a merge commit |
+
+`dev`, `stage` and `main` are protected: a change needs a pull request and the four
+[CI](#ci) checks, and none of them can be force-pushed or deleted. `dev` takes squash or
+rebase merges; `stage` and `main` take merge commits only. Feature pull
+requests target `dev`, never `stage` or `main`. Promote `dev` to `stage`, test it in the
+[stage environment](#stage-environment), then merge `stage` to `main`.
+
+Dependabot's version updates target `dev` too (`target-branch` in
+[`.github/dependabot.yml`](.github/dependabot.yml)). Its security updates ignore that
+setting and open against `main`, the default branch: retarget each to `dev` before
+merging it (`gh pr edit <number> --base dev`). None of the entry's other settings apply
+to them either: they come without its groups, labels or commit prefix, and past its
+`ignore` rules.
+
+Promotions are the only merge commits. Squashed or rebased, a promotion would give `dev`
+and `stage` the same changes under different commits, and every later promotion would
+conflict over them. Work never flows back: a fix goes to `dev` and is promoted like
+anything else.
 
 ## Contributing
 
@@ -821,6 +945,7 @@ Read [CLAUDE.md](CLAUDE.md): it holds the domain model and the working rules, ea
 as CI-enforced or convention. Check [`docs/tasks/`](docs/tasks/README.md) for prior
 decisions before making one.
 
-Branches are stacked: a feature branch bases off the previous one and its PR targets that
-branch rather than `main`. Merge top-down, and squash or rebase rather than creating a
-merge commit.
+Branches are stacked: the first branch of a stack bases off `dev` and its PR targets
+`dev`; each later one bases off the branch before it and targets that. Merge top-down,
+and squash or rebase into `dev`: a merge commit there gives every branch above it phantom
+conflicts. Only promotions are merge commits (see [Branches](#branches)).
