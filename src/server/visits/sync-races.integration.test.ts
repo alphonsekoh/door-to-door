@@ -330,6 +330,23 @@ describe("an amend that raced a concurrent write", () => {
     expect(await row()).toMatchObject({ interest_level: "low", description: "", member_id: ALICE });
   });
 
+  it("is refused when its session ended while it waited, changing nothing", async () => {
+    // Held as ending the session holds it.
+    const [result] = (await parkedFlush({
+      setup: (q) => q(`SELECT 1 FROM outing_sessions WHERE id=$1 FOR UPDATE`, [SESSION]),
+      waitingOn: '%from "outing_sessions"%for key share%',
+      start: () => flush([item({ interestLevel: "high", name: "Mr Late", updatedAt: T2 })], BEN),
+      whileHeld: async (q) => {
+        await q(`UPDATE outing_sessions SET status='ended', ended_at=now() WHERE id=$1`, [SESSION]);
+      },
+    })) as Awaited<ReturnType<typeof flush>>;
+
+    expect(result).toMatchObject({ status: "rejected", error: { code: "session_not_active" } });
+    expect(await row()).toMatchObject({ interest_level: "low", description: "", member_id: ALICE });
+    const { rows } = await pool.query(`SELECT name FROM households`);
+    expect(rows).toEqual([{ name: null }]);
+  });
+
   it("leaves household identity alone when it loses", async () => {
     await lockedFlush(
       () => flush([item({ name: "Mr Late", updatedAt: T2 })], BEN),

@@ -248,6 +248,27 @@ describe("groupByHousehold", () => {
     ]);
   });
 
+  it("keeps the API's order, turned round, for visits in one millisecond", () => {
+    // Knocks at one door sent in one batch, stored a microsecond apart; the
+    // ids, made at the door, follow neither that order nor its reverse.
+    const knock = (id: string) => {
+      const row = entry("h1", "2026-03-01T10:00:00.131Z");
+      return { ...row, visit: { ...row.visit, id } };
+    };
+    const groups = groupByHousehold([
+      entry("h1", "2026-03-01T11:00:00.000Z"),
+      knock("v-b"),
+      knock("v-c"),
+      knock("v-a"),
+    ]);
+    expect(groups[0]?.entries.map((e) => e.visit.id)).toEqual([
+      "v-a",
+      "v-c",
+      "v-b",
+      "v-2026-03-01T11:00:00.000Z",
+    ]);
+  });
+
   it("keeps the order the API returned the doors in", () => {
     const groups = groupByHousehold([
       entry("h2", "2026-03-01T11:00:00.000Z"),
