@@ -81,7 +81,9 @@ and a pop-up that tells a member or admin why a Save was refused.
 - **D-119-12 · The logic lives in `src/server/integrity/blank-text.ts` (100% gate).**
   `scripts/check-blank-text.ts` only connects, the same way `scripts/migrate.ts` does,
   and sets the exit code. Follows D-08-2. _Why:_ the script stays outside coverage,
-  while what it decides is tested.
+  while what it decides is tested. _Refined by D-250-3:_ it connects to `database.url`,
+  and `migrate` to `database.migrationUrl` when one is set. It still uses the same
+  settings and credentials.
 - **D-119-20 · Fix round: repair a blank household by renumbering it, not by deleting
   it.** When the report lists a household it adds this caution, and the README says the
   same. Deleting a household also deletes its visits and notes, so give it its real unit
