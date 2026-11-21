@@ -1127,6 +1127,14 @@ export type HouseholdAttentionList = {
 export type Limit = number;
 
 /**
+ * Rows per page. Up to 250 here, so the CSV export reads a large filtered
+ * set in few requests. Even with every description at its longest, 250
+ * records stay within a few megabytes.
+ *
+ */
+export type HistoryLimit = number;
+
+/**
  * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
  */
 export type Offset = number;
@@ -3295,7 +3303,10 @@ export type ListHistoryData = {
         from?: string;
         to?: string;
         /**
-         * Rows per page.
+         * Rows per page. Up to 250 here, so the CSV export reads a large filtered
+         * set in few requests. Even with every description at its longest, 250
+         * records stay within a few megabytes.
+         *
          */
         limit?: number;
         /**

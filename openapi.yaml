@@ -1481,6 +1481,14 @@ components:
       in: query
       description: Rows per page.
       schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    HistoryLimit:
+      name: limit
+      in: query
+      description: |
+        Rows per page. Up to 250 here, so the CSV export reads a large filtered
+        set in few requests. Even with every description at its longest, 250
+        records stay within a few megabytes.
+      schema: { type: integer, minimum: 1, maximum: 250, default: 50 }
     Offset:
       name: offset
       in: query
@@ -2942,7 +2950,7 @@ paths:
         - name: to
           in: query
           schema: { type: string, format: date-time }
-        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/HistoryLimit"
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
