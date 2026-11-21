@@ -508,7 +508,9 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
   (`showHistoryLine`, D-196-36 to D-196-38).
-- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select.
+- Native selects carry `h-12`: iOS WebKit ignores `min-height` on a select. A date
+  input needs no height: `field` drops its native appearance, which iOS draws
+  content-box past its cell (D-245-1, D-245-3).
 - Account screen (`/account`): reads the name from `GET /users/me`, renames through
   `PATCH /users/me`, then calls the JWT `update` trigger, which accepts only a valid
   display name. The token name is display-only; handlers read the database.
@@ -549,7 +551,10 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   An old link's `?q=` fills the search, and `useSearchTerm` takes it out of the address
   through the History API, keeping only the recognised filters, with no router round
   trip or reload (D-163-5, D-163-6). The sign-in redirect drops `q` from `callbackUrl`
-  (D-163-8).
+  (D-163-8). All records also writes its filters that way: `useAddressFilters` holds a
+  pick on screen and moves the address through Next's patched `replaceState`, and only
+  the newest first page is drawn (D-245-5, D-245-6). The records screen still writes
+  them with `router.replace`, which waits for the server (D-245-7).
 
 ## PWA and service worker
 
