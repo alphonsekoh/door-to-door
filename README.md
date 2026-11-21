@@ -709,8 +709,8 @@ can also restore its base branch's and `main`'s. So each merge into `dev` runs
 [`warm-caches.yml`](.github/workflows/warm-caches.yml), which saves the same keys in
 `dev`'s scope: npm's after `npm ci`, the browsers when their key is new, and
 `.next/cache` from a build when `src/` or the lockfile changed. A pull request into `dev`
-then starts warm. One stacked on a feature branch starts cold, since nothing runs on a
-push to that branch or to `main`. The warm-up runs on no pull request or draft, reports
+then starts warm. One into `stage`, `main` or a feature branch starts cold, since nothing
+runs on a push to any of those. The warm-up runs on no pull request or draft, reports
 no check a ruleset requires, has no secret and can only read. A later merge cancels one
 still running. `src/ci-runs.test.ts` holds its keys to CI's.
 

@@ -3016,8 +3016,9 @@ false`) on that date.
 - **Finding:** a cache made by a `pull_request` run is scoped to `refs/pull/<n>/merge`
   and only re-runs of that pull request can restore it, not its base or another pull
   request. A pull request run can restore caches from its own ref, its base branch and
-  the default branch. With no push runs, `dev`, `stage` and `main` make no caches, so
-  each pull request's first run finds none.
+  the default branch, here `main`. Only a run on a branch, such as a push, fills that
+  branch's scope; `warm-caches.yml` now fills `dev`'s (D-248-21), and `stage`'s and
+  `main`'s stay empty.
 - **Source:** github/docs `dependency-caching.md` (commit 6d84733), "Restrictions for
   accessing a cache". Read through `gh api` on 2026-11-21.
 - **Used by:** D-248-13, D-248-21
@@ -3058,3 +3059,20 @@ false`) on that date.
   44908763351 (its one job, on the retarget to `dev`), through `gh run view --json jobs`
   and `gh api …/commits/<sha>/check-runs` on 2026-11-21.
 - **Used by:** D-248-9, D-248-18, D-248-19, D-248-20
+
+### R-251 · A cache is found only under its key and path, and saved only by a job that succeeds with a new key (read)
+
+- **Finding:** a cache's version hashes its `path` and the compression tool, and a
+  restore matches key and version, so the same key under another path is a miss. A miss
+  on `key` tries prefix and `restore-keys` matches, newest first; `cache-hit` is `true`
+  only for an exact `key`. The post step saves the cache only when the job succeeds
+  (`post-if: success()`) and the key was not already there; `lookup-only` skips the
+  download and leaves saving as it is. `setup-node`'s npm key is
+  `node-cache-<OS>-<arch>-npm-<lockfile hash>`, also saved on success when the key is
+  new.
+- **Source:** actions/cache `README.md` and `action.yml` at 55cc834 (v6.1.0), "Inputs",
+  "Outputs", "Example cache workflow" and "Cache Version"; actions/setup-node
+  `src/cache-restore.ts`, `src/cache-save.ts` and `action.yml` at 949feb2 (v7.1.0);
+  github/docs `dependency-caching.md` (commit 6d84733), "Cache key matching". Read
+  through `gh api` on 2026-11-21 (#248 docs step).
+- **Used by:** D-248-24, D-248-25

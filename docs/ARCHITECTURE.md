@@ -724,7 +724,9 @@ CSP violation (D-122-8).
   on the next query. The query in flight rejects, so the request is a `500` and never
   crashes the process.
 - **CI:** runs on ready pull requests only, never a draft or a merge (D-248-1, D-248-2).
-  Static checks (lint, types, format, spec lint, codegen and migration drift) run first,
+  A merge into `dev` runs only `.github/workflows/warm-caches.yml`, whose one job fills
+  the npm, `.next` and browser caches that pull requests into `dev` restore, and reports
+  no required check (D-248-21, D-248-24, D-248-25). Static checks (lint, types, format, spec lint, codegen and migration drift) run first,
   and the other jobs need them (D-248-3). Tests with coverage against Postgres and the
   production build skip a docs-only PR (`scripts/ci-changes.sh`, D-248-4, D-248-5). E2E
   runs into `stage` or `main`, or with the `e2e` label (`scripts/ci-e2e.sh`, D-248-6).
