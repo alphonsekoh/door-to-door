@@ -3049,3 +3049,82 @@ false`) on that date.
 - **Source:** measured (#249 builder, Chromium); not re-measured, nor tried in WebKit,
   by the docs step.
 - **Used by:** D-249-24
+
+### R-246 · An upsert locks every conflicting row in one mode, chosen by the columns its SET names, and cannot touch a row twice (read and measured)
+
+- **Finding:** `INSERT ... ON CONFLICT DO UPDATE` locks each conflicting row before it
+  updates it. The mode is the one an UPDATE of the SET's columns would take, chosen once
+  for the statement. Naming a column of a unique index a foreign key can use, such as
+  `unit_number` in `households_block_unit_unique`, gives `FOR UPDATE` even when the value
+  does not change. Otherwise the mode is `FOR NO KEY UPDATE` (R-124). If a statement's
+  rows name one conflict target twice, the statement fails ("ON CONFLICT DO UPDATE
+  command cannot affect row a second time"), so a batch upsert needs one row per unit.
+  The executor takes VALUES rows in order, so sorted rows are locked in sorted order;
+  this is not documented. Measured: with `unit_number` dropped from the SET, the
+  parked-lock test that holds a household no longer waits. Three concurrent resends of
+  25 records, beside an admin's 25 at the same units in reverse order, did not deadlock.
+- **Source:** [PostgreSQL, INSERT, ON CONFLICT clause](https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT);
+  PostgreSQL `src/backend/executor/nodeModifyTable.c`, where `ExecOnConflictUpdate` locks
+  with `ExecUpdateLockMode`, which returns `LockTupleExclusive` when the updated columns
+  overlap the key columns. The docs step did not re-read that against a checkout. Also
+  measured (#251 builder, verifier r0 and r1).
+- **Used by:** D-251-6
+
+### R-247 · `now()` is the transaction's start, PostgreSQL keeps microseconds, and the API's times keep milliseconds
+
+- **Finding:** `now()` (`transaction_timestamp()`) is the time the current transaction
+  started. It does not change within the transaction, so every row a statement writes
+  with it gets the same time. `timestamp with time zone` keeps microseconds.
+  node-postgres reads a `timestamptz` into a JavaScript `Date`, whose time value is whole
+  milliseconds, and the API writes it with `toISOString()`. So rows stored a microsecond
+  apart reach the phone with the same time. Measured: the 21 visits of one batch were
+  stored within a single millisecond in the E2E database.
+- **Source:** [PostgreSQL, current date/time](https://www.postgresql.org/docs/current/functions-datetime.html#FUNCTIONS-DATETIME-CURRENT);
+  [PostgreSQL, date/time types](https://www.postgresql.org/docs/current/datatype-datetime.html);
+  [ECMAScript, time values](https://tc39.es/ecma262/#sec-time-values-and-time-range);
+  measured (#251 verifier r0).
+- **Used by:** D-251-7, D-251-15
+
+### R-248 · `Array.prototype.sort` is stable
+
+- **Finding:** since ES2019, `Array.prototype.sort` must be stable: elements that
+  compare equal keep their order. So if a list is reversed and then sorted oldest first,
+  tied elements end up in the reverse of the order they arrived in.
+- **Source:** [ECMAScript 2019, Array.prototype.sort](https://262.ecma-international.org/10.0/#sec-array.prototype.sort);
+  [MDN, sort stability](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/sort#sort_stability)
+- **Used by:** D-251-15
+
+### R-249 · What a sync batch costs, before and after #251 (measured)
+
+- **Finding:** round trips per `POST /visits/sync` batch, counting every statement the
+  app's connections sent, BEGIN and COMMIT included. Measured for a member on a team at
+  distinct units, median of 5 runs. "Projected" is local time plus 2 ms per round trip
+  (sin1 to Neon, #247).
+
+  | Kind   | n   | Before | After | After, local ms | After, projected ms |
+  | ------ | --- | ------ | ----- | --------------- | ------------------- |
+  | new    | 1   | 17     | 17    | 6.6             | 41                  |
+  | new    | 25  | 425    | 17    | 7.9             | 42                  |
+  | new    | 50  | 850    | 17    | 9.9             | 44                  |
+  | new    | 100 | 1700   | 17    | 16.1            | 50                  |
+  | replay | 1   | 6      | 7     | 2.6             | 17                  |
+  | replay | 25  | 150    | 7     | 2.7             | 17                  |
+  | replay | 50  | 300    | 7     | 2.9             | 17                  |
+  | replay | 100 | 600    | 7     | 4.1             | 18                  |
+  | amend  | 1   | 16     | 16    | 4.8             | 37                  |
+  | amend  | 25  | 400    | 232   | 43.1            | 507                 |
+  | amend  | 50  | 800    | 457   | 76.6            | 991                 |
+  | amend  | 100 | 1600   | 907   | 156.7           | 1971                |
+
+  A follow-up session costs 19 for 1, 25 or 100 new records; before, it was 19, 475 and
+  1,900. Amends cost 3 + 9n + 4. A run of 25 that falls back costs about 267 round trips.
+  Locally, 25 new records took about 70 to 79 ms before and 8 to 10 ms after.
+  #247 measured about 0.13 s for a 13-statement record in sin1, roughly 10 ms a
+  statement. At that rate 25 amends take about 2.4 s and a fallback about 2.7 s. At
+  iad1's 220 ms, a 17-statement run alone is about 4 s.
+
+- **Source:** measured with a counting pool on `door_to_door_test_51` (#251 builder).
+  #251 verifier r1 re-ran the count with `origin/dev`'s `sync.ts` swapped in for
+  "before", and every count matched. The sin1 and iad1 figures are from #247's report
+  (2026-11-21, recommendation 3).
+- **Used by:** D-251-3, D-251-12

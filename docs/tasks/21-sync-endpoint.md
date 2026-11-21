@@ -15,12 +15,14 @@
 - **D-21-2 · Last-write-wins on `updatedAt`; an older edit is acknowledged `stale`, not
   rejected.** _Why:_ rejected means retry, and the client would loop forever.
 - **D-21-3 · Partial success: per-item results in request order.** Unexpected failures
-  reject only that item, with a generic message.
+  reject only that item, with a generic message. _Refined by D-251-9:_ a failed
+  read shared by the batch rejects every item it serves `internal_error`.
 - **D-21-4 · A queue for an ended session is rejected `session_not_active`, never
   discarded.** Reopening lets the same queue through.
 - **D-21-5 · Refuses to overwrite another member's visit.**
-- **D-21-6 · Rate limited to 30 flushes/minute per member.**
-- **D-21-7 · Batches are 1–100 items.**
+- **D-21-6 · Rate limited to 30 flushes/minute per member.** _Noted by D-251-12:_ at
+  25 records a send, that is 750 records a minute; it was 3,000.
+- **D-21-7 · Batches are 1–100 items.** The client sends 25 (D-251-12).
 
 ## Later changes
 
@@ -36,6 +38,10 @@
 - #126 moved D-21-6's limiter, unchanged, to `src/server/visits/rate-limits.ts`, beside
   `POST /visits`' own (D-126-8). A sync body may be at most 1.5 MiB, `413` above that
   (D-126-4). See [126-household-paging.md](126-household-paging.md).
+
+- #251 made a batch's cost fixed. Reads are shared, consecutive new records are written
+  in one transaction, and answers are read once; the client sends 25 a batch. See
+  [251-sync-batching.md](251-sync-batching.md).
 
 ## Relies on
 

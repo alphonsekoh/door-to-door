@@ -243,9 +243,11 @@ The least obvious part of the system. In short (details in
    visit gets a **client-generated UUIDv7** id, and the database has no default for it
    (D-07-3).
 2. **Send in batches.** A controller sends the signed-in member's queued visits to
-   `POST /visits/sync`, up to 100 per request, on app start, each save, regaining signal,
-   focus and Retry. It first checks that the member who saved them is still the one
-   signed in; another member's records stay on the phone untouched (D-33-1).
+   `POST /visits/sync`, up to 25 per request (the contract accepts 100, D-251-12), on
+   app start, each save, regaining signal, focus and Retry. It first checks that the
+   member who saved them is still the one signed in; another member's records stay on
+   the phone untouched (D-33-1). The server writes a batch's new records together, so a
+   batch costs the same few database round trips however long it is (D-251-3).
 3. **The server answers per item**, in request order (D-21-3):
 
    Each item's `status` is `applied`, `unchanged`, `stale` or `rejected`; a rejected item

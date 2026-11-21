@@ -33,6 +33,19 @@ const run = (from: number, to: number) => {
   return visits;
 };
 
+/*
+ * run's visits as one batch stores them: a microsecond apart, so in one
+ * millisecond on the wire (D-251-7), with ids that rise as they get older.
+ * Only the order the server sent them in tells them apart.
+ */
+const batched = (from: number, to: number) => {
+  const visits: Visit[] = [];
+  for (let n = from; n >= to; n -= 1) {
+    visits.push(visit(n, { id: `b${String(100 - n)}`, createdAt: day(9) }));
+  }
+  return visits;
+};
+
 const page = (
   visits: Visit[],
   offset: number,
@@ -159,6 +172,16 @@ describe("keepFirstPage", () => {
     expect(held).toMatchObject({ next: 30, total: 31, more: true });
   });
 
+  it("holds a first page read again above the older pages, which it is newer than", () => {
+    // The older page lands first; then v31 is stored and the first page read again.
+    const landed = addEarlier(null, page(batched(10, 1), 20, 30));
+    const kept = keepFirstPage(landed, page(batched(30, 11), 0, 30));
+    expect(ids(kept.visits)).toEqual(ids(batched(30, 1)));
+
+    const held = holdVisits(page(batched(31, 12), 0, 31), kept);
+    expect(ids(held.visits)).toEqual(ids(batched(31, 1)));
+  });
+
   it("leaves whether older pages ended as it was, whatever the first page held", () => {
     // A visit stored between the page and its count: none read, one counted.
     expect(keepFirstPage(null, page([], 0, 1)).ended).toBe(false);
@@ -199,9 +222,10 @@ describe("holdVisits", () => {
     expect(held).toMatchObject({ next: 10, total: 10, more: false });
   });
 
-  it("orders visits stored at one instant by id, newest id first", () => {
-    const tied = ["vb", "va", "vc"].map((id) => visit(9, { id }));
-    expect(ids(holdVisits(page(tied, 0, 3), null).visits)).toEqual(["vc", "vb", "va"]);
+  it("keeps the server's order for visits in one millisecond, across pages", () => {
+    const earlier = addEarlier(null, page(batched(5, 1), 5, 10));
+    const held = holdVisits(page(batched(10, 6), 0, 10), earlier);
+    expect(ids(held.visits)).toEqual(ids(batched(10, 1)));
   });
 
   it("repeats rather than skips a visit stored between two reads, and keeps it once", () => {

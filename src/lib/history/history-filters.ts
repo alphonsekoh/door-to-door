@@ -137,6 +137,11 @@ export type HouseholdGroup = {
  * This is the household-centric view: a unit knocked on in March and again in
  * August is one line with two visits, not two unrelated rows. The trajectory
  * reads oldest first, which is the direction interest moves in.
+ *
+ * A door's visits arrive newest first and are turned round before a stable
+ * sort, so visits in one millisecond keep the server's order: it orders by
+ * the microseconds the API's times drop, and a batch's records are stored a
+ * microsecond apart (D-251-7).
  */
 export function groupByHousehold(entries: HistoryEntry[]): HouseholdGroup[] {
   const groups = new Map<string, HouseholdGroup>();
@@ -155,8 +160,10 @@ export function groupByHousehold(entries: HistoryEntry[]): HouseholdGroup[] {
   }
   return [...groups.values()].map((group) => ({
     ...group,
-    entries: [...group.entries].sort(
-      (a, b) => new Date(a.visit.createdAt).getTime() - new Date(b.visit.createdAt).getTime(),
-    ),
+    entries: [...group.entries]
+      .reverse()
+      .sort(
+        (a, b) => new Date(a.visit.createdAt).getTime() - new Date(b.visit.createdAt).getTime(),
+      ),
   }));
 }
