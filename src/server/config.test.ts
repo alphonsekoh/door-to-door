@@ -20,12 +20,15 @@ import {
   warnIfDotEnv,
 } from "@/server/config";
 
+const PRIVACY = "privacy:\n  organisation: Example Operator\n  dpoEmail: dpo@example.com\n";
 const FILE =
-  "database:\n  url: postgresql://db:5432/door_to_door\nrateLimit:\n  signInAttempts: 4\n";
+  "database:\n  url: postgresql://db:5432/door_to_door\nrateLimit:\n  signInAttempts: 4\n" +
+  PRIVACY;
 /* Neon's two hosts for one database: the app's pooler, and the direct one for migrations. */
 const POOLED =
   "database:\n  url: postgresql://ep-x-pooler.example.net/app?sslmode=require\n" +
-  "  migrationUrl: postgresql://ep-x.example.net/app?sslmode=require\n";
+  "  migrationUrl: postgresql://ep-x.example.net/app?sslmode=require\n" +
+  PRIVACY;
 const SECRET = "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A";
 const env = {
   DATABASE_USER: "app",

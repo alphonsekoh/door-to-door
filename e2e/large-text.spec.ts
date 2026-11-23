@@ -2,10 +2,12 @@ import type { Locator, Page } from "@playwright/test";
 import type { VisitSyncRequest, VisitSyncResponse } from "../src/generated/types.gen";
 import { uuidv7 } from "../src/lib/uuid";
 import { SEED_BLOCK, SEED_MEMBER_ID, SEED_PASSWORD } from "./accounts";
+import { E2E_OPERATOR } from "./operator";
 import {
   endActiveSession,
   ensureActiveSession,
   expect,
+  footTop,
   listSeededHousehold,
   signInThroughForm,
   startFollowUpSession,
@@ -478,6 +480,35 @@ test("a member's screens fit at the largest text", async ({ memberPage: page, ad
   await expectFits(page, "Account", page.getByRole("heading", { level: 1 }));
   // Its Save is docked, so no banner may float over it.
   await expectTappable(page.getByRole("button", { name: "Save name" }), "Save name");
+
+  // The policy link ends the page, and is never under the nav (#273).
+  const policy = page.getByRole("link", { name: "Privacy policy" });
+  await policy.scrollIntoViewIfNeeded();
+  const top = (await policy.boundingBox())?.y ?? Infinity;
+  expect(top, "the link's top is above the nav's").toBeLessThan(await footTop(page));
+  await expectTappable(policy, "Privacy policy");
+
+  await page.goto("/privacy");
+  await atCap(page);
+  await expectFits(page, "the privacy policy", page.getByRole("heading", { level: 1 }));
+});
+
+test("the privacy policy opens from sign-in, fits at the largest text, and goes back (#273)", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
+  await atCap(page);
+  const link = page.getByRole("link", { name: "Privacy policy" });
+  await expectFits(page, "Sign in", link);
+
+  await link.click();
+  await page.waitForURL("**/privacy");
+  await atCap(page);
+  await expectFits(page, "the privacy policy", page.getByRole("heading", { level: 1 }));
+  await expect(page.getByText(E2E_OPERATOR).first()).toBeVisible();
+
+  await page.getByRole("link", { name: "Back" }).click();
+  await page.waitForURL("**/sign-in");
 });
 
 test("an admin's screens fit at the largest text", async ({ adminPage: page, adminApi }) => {

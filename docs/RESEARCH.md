@@ -3354,3 +3354,23 @@ false`) on that date.
   `node_modules/pg/lib/client.js:34-36, 779-780`; #252 verifier r0 and r1; #247's
   report.
 - **Used by:** D-252-1, D-250-6 (its reasoning)
+
+### R-259 · PDPA duties the policy quotes: Do Not Call, breach notification, response times (as cited in #273; not independently re-verified)
+
+- **Finding:** Singapore's PDPA 2012 has a Do Not Call part (marketing messages to a
+  Singapore number need consent that can be evidenced, or a registry check); a notifiable
+  breach is assessed within 30 days and reported to the PDPC within 3 calendar days of
+  deciding it is notifiable. The policy's response times (30 days access and erasure, 10
+  business days to act on a withdrawal) are the owner's, not a statutory figure.
+- **Source:** issue #273's obligations list; the owner (2026-11-23). Not legal advice; the
+  owner is the compliance reviewer.
+- **Used by:** D-273-2, D-273-14
+
+### R-260 · Where the data is processed, and Neon's restore window (UNVERIFIED)
+
+- **Finding:** Neon is in ap-southeast-1 (Singapore) and the functions run in `sin1`
+  (ARCHITECTURE, Production database). Vercel is a US company whose network and logs may
+  process requests elsewhere. Neon's restore history window is not verified: 1 day is a
+  placeholder the owner is confirming in the Neon console.
+- **Source:** owner ruling 2026-11-23; Neon console (pending).
+- **Used by:** D-273-5, D-273-6

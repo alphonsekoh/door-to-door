@@ -12,7 +12,12 @@
  */
 export const PWA_PATHS = ["/offline", "/manifest.webmanifest", "/serwist"] as const;
 
-export const PUBLIC_PATHS = ["/sign-in", ...PWA_PATHS] as const;
+/*
+ * /privacy: the policy is owed to anyone before they sign in, and it says
+ * nothing about any one person (#273).
+ */
+export const PRIVACY_PATH = "/privacy";
+export const PUBLIC_PATHS = ["/sign-in", PRIVACY_PATH, ...PWA_PATHS] as const;
 
 /*
  * Where an account waiting for an admin's approval, or rejected, is kept
@@ -32,6 +37,12 @@ const under = (pathname: string, path: string) =>
 
 export function isPublicPath(pathname: string): boolean {
   return under(pathname, AUTH_PREFIX) || PUBLIC_PATHS.some((path) => under(pathname, path));
+}
+
+/* A signed-in member may open the policy from anywhere, so it says nothing of
+   whether they are signed in. */
+export function isPrivacyPath(pathname: string): boolean {
+  return pathname === PRIVACY_PATH;
 }
 
 export function isPwaPath(pathname: string): boolean {

@@ -204,7 +204,9 @@ authoritative, and a change to any of them needs the owner.
    `callbackUrl` less any `q` (D-163-8), and returns `401` for API requests. Node runtime (Next 16), so it can read the config file; it uses `buildBaseAuthConfig` (`src/server/auth/base-config.ts`, no adapter).
    It is an affordance, not a guard. Under `next dev` only, it first answers `403` to a
    `Host` that is not `localhost`, `127.0.0.1` or `[::1]`, a network guard against DNS
-   rebinding that a production build drops (D-124-8). The PWA files (`/serwist/*`,
+   rebinding that a production build drops (D-124-8). `/privacy` is public but not a PWA
+   path: `auth()` still runs and the answer is `no-store`; the page renders per request
+   because the operator comes from `privacy` in the config (D-273-9). The PWA files (`/serwist/*`,
    manifest, `/offline`) return before `auth()` runs (D-32-19). On every path it matches
    (all but static files), Next buffers at most 2 MiB of the body and hands the handler
    that much: a longer body is cut short, not refused

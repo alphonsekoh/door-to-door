@@ -329,7 +329,16 @@ default (D-75-4).
 | `rateLimit.signInAttemptsGlobal`    | unset   | Failed sign-in attempts app-wide: an incident switch, see below                       |
 | `rateLimit.signInWindowSeconds`     | `300`   | Length of that window                                                                 |
 | `rateLimit.trustedProxyHops`        | `0`     | Reverse proxies that append to `X-Forwarded-For`; `0` turns the per-client budget off |
+| `privacy.organisation`              | -       | **Required.** The operator's name (a person or a body) the privacy policy names       |
+| `privacy.dpoEmail`                  | -       | **Required.** The Data Protection Officer's email the privacy policy links            |
 | `sync.clockSkewToleranceSeconds`    | `300`   | Tolerated difference between a phone's clock and the server's                         |
+
+`privacy` has no default: a server without it refuses to start, so the policy at `/privacy`
+can never name nobody. A build without #273 refuses `privacy` as an unknown key, so the
+block must reach Production's `CONFIG_YAML` in the same sitting as the promotion that first
+brings #273 to `main`: not earlier, and with no other deployment of `main` in between. A
+local `config.yaml`, and any `db:migrate` or `create-admin` run from a checkout that has
+#273, need the block too.
 
 Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
 `database.url` and `database.migrationUrl` may carry only the `sslmode` and

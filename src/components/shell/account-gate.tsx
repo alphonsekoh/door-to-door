@@ -49,7 +49,8 @@ export function AccountGate({ children }: { children: ReactNode }) {
     );
   }, [shouldCheck]);
 
-  const toWaiting = (unapproved || failure === "unapproved") && !isWaitingPath(pathname);
+  const toWaiting =
+    (unapproved || failure === "unapproved") && !isWaitingPath(pathname) && !isPublicPath(pathname);
   useEffect(() => {
     /* Replaced, so Back does not return to a screen that sends them on again. */
     if (toWaiting) replaceWith(WAITING_PATH);

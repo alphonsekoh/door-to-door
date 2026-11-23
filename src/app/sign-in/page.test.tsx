@@ -29,6 +29,14 @@ describe("sign-in page", () => {
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
   });
 
+  it("ends with a link to the privacy policy (#273)", async () => {
+    render(await SignInPage());
+    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
+      "href",
+      "/privacy",
+    );
+  });
+
   it("says where an account comes from: an admin, with no Google sign-in", async () => {
     render(await SignInPage());
     expect(screen.getByText("Use the account your admin set up for you.")).toBeInTheDocument();

@@ -15,7 +15,9 @@ import { buildBaseAuthConfig } from "@/server/auth/base-config";
 
 const SECRET = "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A";
 const ORIGIN = "http://127.0.0.1:3210";
-const MINIMAL = "database:\n  url: postgresql://localhost:5432/door_to_door\n";
+const MINIMAL =
+  "database:\n  url: postgresql://localhost:5432/door_to_door\n" +
+  "privacy:\n  organisation: Example Operator\n  dpoEmail: dpo@example.com\n";
 
 const settingsFrom = (yaml: string) => ({
   ...parseConfig(yaml, "config.yaml"),

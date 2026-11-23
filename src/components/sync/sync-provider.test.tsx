@@ -331,6 +331,27 @@ describe("SyncProvider", () => {
     expect(text("owner")).toBe("none");
   });
 
+  it("keeps the member through a visit to the privacy policy", async () => {
+    const { view, open, send } = mount();
+    await waitFor(() => {
+      expect(text("active")).toBe("on");
+    });
+    as(undefined);
+    usePathname.mockReturnValue("/privacy");
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    usePathname.mockReturnValue("/account");
+    view.rerender(
+      <SyncProvider openQueue={open} send={send}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(text("active")).toBe("on");
+  });
+
   it("switches to the new member's records when someone else signs in", async () => {
     const queue = createMemoryQueue([
       stored("ann", "#05-01", { state: "held", nextAttemptAt: null }),

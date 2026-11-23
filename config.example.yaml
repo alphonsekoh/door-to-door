@@ -99,6 +99,15 @@ rateLimit:
   # X-Forwarded-For as the app receives it.
   trustedProxyHops: 0
 
+# Who the privacy policy (/privacy) says we are, and where requests to see,
+# correct or erase data go. Required: the server will not start without them,
+# so the policy can never name nobody. The operator may be a person or a body.
+privacy:
+  # The operator's name, 1 to 200 characters. Replace this placeholder.
+  organisation: Your Name Or Organisation
+  # The Data Protection Officer's email, shown as a link on the policy.
+  dpoEmail: dpo@example.com
+
 sync:
   # How far a phone's clock may differ from the server's, in seconds, before
   # an offline visit's timestamp is not trusted. Whole number, at least 1.

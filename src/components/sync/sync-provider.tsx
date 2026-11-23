@@ -23,7 +23,7 @@ import { sendBatch } from "@/lib/sync/transport";
 import type { QueuedVisit, Send, SyncQueue } from "@/lib/sync/types";
 import { useRole } from "@/lib/hooks/use-role";
 import { useRoutePathname } from "@/lib/hooks/use-route-pathname";
-import { isPublicPath } from "@/server/auth/routes";
+import { isPrivacyPath, isPublicPath } from "@/server/auth/routes";
 
 /*
  * The offline queue for the signed-in member (#33). One controller per
@@ -95,7 +95,8 @@ export function SyncProvider({
   /* The last member confirmed signed in on this page. Auth.js refetches the
      session when the app comes back into view, and a refetch that fails for
      want of signal reads as signed out until the next page load; the queue
-     must not switch off in a stairwell for that. A real sign-out navigates
+     must not switch off in a stairwell for that. The privacy policy is public yet not a sign-out: a member reads it
+     mid-session, so it pauses nothing and forgets no one. A real sign-out navigates
      to a public page, or to a fresh page load; someone else signing in
      brings their own id, which replaces this one (D-33-1). A sign-out in
      another tab does neither, so every send first asks the server who is
@@ -107,7 +108,7 @@ export function SyncProvider({
   const shell = useShellState();
   const ownerId = shell.active
     ? (shell.ownerId ?? undefined)
-    : isPublicPath(pathname)
+    : isPublicPath(pathname) && !isPrivacyPath(pathname)
       ? undefined
       : (userId ?? confirmed);
   if (ownerId !== confirmed) setConfirmed(ownerId);

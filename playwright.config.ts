@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { stringify } from "yaml";
+import { E2E_OPERATOR } from "./e2e/operator";
 import { FAKE_GOOGLE_CLIENT_ID, FAKE_GOOGLE_CLIENT_SECRET } from "./e2e/fake-google";
 
 /*
@@ -49,6 +50,7 @@ writeFileSync(
   CONFIG_PATH,
   stringify({
     database: { url: target.toString() },
+    privacy: { organisation: E2E_OPERATOR, dpoEmail: "firstname.lastname@example.com" },
     auth: {
       secureCookies: false,
       google: {

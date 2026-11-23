@@ -13,7 +13,9 @@ import {
 } from "@/lib/config";
 
 const SOURCE = "/srv/app/config.yaml";
-const MINIMAL = "database:\n  url: postgresql://localhost:5432/door_to_door\n";
+const PRIVACY = "privacy:\n  organisation: Example Operator\n  dpoEmail: dpo@example.com\n";
+/* privacy first, so a test can append keys to database: without leaving it. */
+const MINIMAL = PRIVACY + "database:\n  url: postgresql://localhost:5432/door_to_door\n";
 
 const problemsOf = (text: string): string[] => {
   try {
@@ -28,10 +30,11 @@ const problemsOf = (text: string): string[] => {
 };
 
 describe("parseConfig defaults", () => {
-  it("accepts a file with only the database and fills in the rest", () => {
+  it("accepts a file with only the database and privacy and fills in the rest", () => {
     expect(parseConfig(MINIMAL, SOURCE)).toEqual({
       database: { url: "postgresql://localhost:5432/door_to_door" },
       auth: { trustHost: true, secureCookies: true },
+      privacy: { organisation: "Example Operator", dpoEmail: "dpo@example.com" },
       rateLimit: {
         signInAttempts: 10,
         signInAttemptsPerClient: 30,
@@ -87,7 +90,7 @@ sync:
   });
 
   it("accepts the postgres:// scheme as well", () => {
-    expect(parseConfig("database:\n  url: postgres://db/x\n", SOURCE).database.url).toBe(
+    expect(parseConfig(PRIVACY + "database:\n  url: postgres://db/x\n", SOURCE).database.url).toBe(
       "postgres://db/x",
     );
   });
@@ -171,13 +174,13 @@ describe("strictness", () => {
   });
 
   it("rejects a password key under database, naming the key not the value", () => {
-    expect(problemsOf("database:\n  url: postgresql://db/x\n  password: hunter2\n")).toEqual([
-      "database.password: unknown key",
-    ]);
+    expect(
+      problemsOf(PRIVACY + "database:\n  url: postgresql://db/x\n  password: hunter2\n"),
+    ).toEqual(["database.password: unknown key"]);
   });
 
   it("rejects a missing database section", () => {
-    expect(problemsOf("auth:\n  trustHost: true\n")).toEqual([
+    expect(problemsOf(PRIVACY + "auth:\n  trustHost: true\n")).toEqual([
       expect.stringMatching(/^database: /),
     ]);
   });
@@ -187,7 +190,7 @@ describe("strictness", () => {
   });
 
   it("reports every problem at once", () => {
-    expect(problemsOf("rateLimit:\n  signInAttempts: 0\nbogus: 1\n")).toHaveLength(3);
+    expect(problemsOf(PRIVACY + "rateLimit:\n  signInAttempts: 0\nbogus: 1\n")).toHaveLength(3);
   });
 });
 
@@ -241,19 +244,21 @@ describe("auth.secureCookies", () => {
 
 describe("database.url", () => {
   it("refuses credentials in the file and names the key, not the value", () => {
-    const problems = problemsOf("database:\n  url: postgresql://admin:hunter2@db:5432/x\n");
+    const problems = problemsOf(
+      PRIVACY + "database:\n  url: postgresql://admin:hunter2@db:5432/x\n",
+    );
     expect(problems).toEqual([expect.stringMatching(/^database\.url: .*DATABASE_USER/)]);
     expect(problems.join()).not.toMatch(/hunter2|admin/);
   });
 
   it("refuses a username on its own", () => {
-    expect(problemsOf("database:\n  url: postgresql://admin@db/x\n")).toEqual([
+    expect(problemsOf(PRIVACY + "database:\n  url: postgresql://admin@db/x\n")).toEqual([
       expect.stringMatching(/^database\.url: must not contain a username or password/),
     ]);
   });
 
   it("refuses a password on its own", () => {
-    expect(problemsOf("database:\n  url: postgresql://:hunter2@db/x\n")).toEqual([
+    expect(problemsOf(PRIVACY + "database:\n  url: postgresql://:hunter2@db/x\n")).toEqual([
       expect.stringMatching(/^database\.url: must not contain/),
     ]);
   });
@@ -262,7 +267,9 @@ describe("database.url", () => {
     "refuses the query parameter %s without echoing its value",
     (key) => {
       const sentinel = "SENTINEL-query-value";
-      const problems = problemsOf(`database:\n  url: "postgresql://db/x?${key}=${sentinel}"\n`);
+      const problems = problemsOf(
+        `${PRIVACY}database:\n  url: "postgresql://db/x?${key}=${sentinel}"\n`,
+      );
       expect(problems).toEqual([
         expect.stringContaining(`query parameter "${key}" is not allowed`),
       ]);
@@ -271,28 +278,28 @@ describe("database.url", () => {
   );
 
   it("names each offending parameter once, even when repeated", () => {
-    expect(problemsOf("database:\n  url: postgresql://db/x?password=a&password=b\n")).toHaveLength(
-      1,
-    );
+    expect(
+      problemsOf(PRIVACY + "database:\n  url: postgresql://db/x?password=a&password=b\n"),
+    ).toHaveLength(1);
   });
 
   it("still allows sslmode and application_name", () => {
     expect(
       parseConfig(
-        "database:\n  url: postgresql://db/x?sslmode=require&application_name=d2d\n",
+        PRIVACY + "database:\n  url: postgresql://db/x?sslmode=require&application_name=d2d\n",
         SOURCE,
       ).database.url,
     ).toContain("sslmode=require");
   });
 
   it("refuses something that is not a URL", () => {
-    expect(problemsOf("database:\n  url: not a url\n")).toEqual([
+    expect(problemsOf(PRIVACY + "database:\n  url: not a url\n")).toEqual([
       "database.url: must be a valid URL",
     ]);
   });
 
   it("refuses another database scheme", () => {
-    expect(problemsOf("database:\n  url: mysql://db/x\n")).toEqual([
+    expect(problemsOf(PRIVACY + "database:\n  url: mysql://db/x\n")).toEqual([
       "database.url: must start with postgresql://",
     ]);
   });
@@ -301,7 +308,7 @@ describe("database.url", () => {
 describe("database.migrationUrl (#250)", () => {
   it("takes the direct host beside a pooled url", () => {
     const config = parseConfig(
-      `database:
+      `${PRIVACY}database:
   url: postgresql://ep-x-pooler.example.net/app?sslmode=require
   migrationUrl: postgresql://ep-x.example.net/app?sslmode=require
 `,
@@ -616,5 +623,51 @@ describe("composeDatabaseUrl", () => {
     expect(decodeURIComponent(url.password)).toBe(password);
     expect(url.host).toBe("db");
     expect(url.pathname).toBe("/x");
+  });
+});
+
+describe("privacy (#273)", () => {
+  const DATABASE = "database:\n  url: postgresql://localhost:5432/door_to_door\n";
+  const withPrivacy = (body: string) => `${DATABASE}privacy:\n${body}`;
+
+  it("reads the operator and the contact, trimmed", () => {
+    const config = parseConfig(
+      withPrivacy('  organisation: "  Example Operator "\n  dpoEmail: dpo@example.com\n'),
+      SOURCE,
+    );
+    expect(config.privacy).toEqual({
+      organisation: "Example Operator",
+      dpoEmail: "dpo@example.com",
+    });
+  });
+
+  it("refuses a file with no privacy section, and says what it is for", () => {
+    expect(problemsOf(DATABASE)).toEqual([
+      "privacy: is required: the operator and the Data Protection Officer's email the privacy policy names",
+    ]);
+  });
+
+  it("refuses a privacy section that is not a mapping", () => {
+    expect(problemsOf(`${DATABASE}privacy: nobody\n`)).toEqual(["privacy: must be a mapping"]);
+  });
+
+  it.each([
+    ["missing", "  dpoEmail: dpo@example.com\n"],
+    ["blank", '  organisation: "   "\n  dpoEmail: dpo@example.com\n'],
+    ["overlong", `  organisation: ${"x".repeat(201)}\n  dpoEmail: dpo@example.com\n`],
+  ])("refuses an organisation that is %s, naming its key", (_name, body) => {
+    expect(problemsOf(withPrivacy(body)).join("\n")).toMatch(/privacy\.organisation/);
+  });
+
+  it("refuses a DPO email that is not an email, naming its key", () => {
+    const text = withPrivacy("  organisation: Example Operator\n  dpoEmail: not-an-email\n");
+    expect(problemsOf(text).join("\n")).toMatch(/privacy\.dpoEmail/);
+  });
+
+  it("refuses an unknown key under privacy", () => {
+    const text = withPrivacy(
+      "  organisation: Example Operator\n  dpoEmail: dpo@example.com\n  phone: x\n",
+    );
+    expect(problemsOf(text).join("\n")).toMatch(/privacy/);
   });
 });

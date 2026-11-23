@@ -101,7 +101,11 @@ export function applyTestConfig(env: Record<string, string | undefined> = proces
   url.username = "";
   url.password = "";
   const path = join(dir, "config.yaml");
-  writeFileSync(path, `database:\n  url: ${JSON.stringify(url.toString())}\n`);
+  writeFileSync(
+    path,
+    `database:\n  url: ${JSON.stringify(url.toString())}\n` +
+      "privacy:\n  organisation: Test Operator\n  dpoEmail: dpo@example.com\n",
+  );
   env["CONFIG_PATH"] = path;
 }
 

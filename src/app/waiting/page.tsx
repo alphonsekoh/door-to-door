@@ -1,4 +1,5 @@
 import { WaitingScreen } from "@/components/account/waiting-screen";
+import { PrivacyFooter } from "@/components/privacy/privacy-footer";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireWaitingPage } from "@/server/auth/pages";
 
@@ -19,6 +20,7 @@ export default async function WaitingPage() {
         }
       />
       <WaitingScreen account={account} />
+      <PrivacyFooter />
     </>
   );
 }

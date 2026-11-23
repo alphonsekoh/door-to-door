@@ -1,4 +1,5 @@
 import { AccountScreen } from "@/components/account/account-screen";
+import { PrivacyFooter } from "@/components/privacy/privacy-footer";
 import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "Account" };
@@ -8,6 +9,7 @@ export default function AccountPage() {
     <>
       <PageHeader title="Account" subtitle="Your name and sign-in details." />
       <AccountScreen />
+      <PrivacyFooter />
     </>
   );
 }

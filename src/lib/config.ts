@@ -81,6 +81,11 @@ const domainName = z.string().regex(DOMAIN_NAME, {
   message: "must be a lower-case domain name, such as gmail.com, with no @",
 });
 
+const PRIVACY_REQUIRED =
+  "is required: the operator and the Data Protection Officer's email the privacy policy names";
+
+const trimmedText = (max: number) => z.string().trim().min(1).max(max);
+
 /*
  * Strict throughout: a typo'd key silently falling back to its default is how
  * a rate limit ends up not being the one the operator thought they set.
@@ -139,6 +144,20 @@ export const appConfigSchema = z.strictObject({
       trustedProxyHops: z.number().int().nonnegative().default(0),
     })
     .prefault({}),
+  /*
+   * Who the privacy policy says we are and where a request goes (#273). No
+   * default: a blank would ship a policy that names nobody.
+   */
+  privacy: z.strictObject(
+    {
+      /* The operator's name: a person's or a body's. */
+      organisation: trimmedText(200),
+      dpoEmail: z.email(),
+    },
+    {
+      error: (issue) => (issue.input === undefined ? PRIVACY_REQUIRED : "must be a mapping"),
+    },
+  ),
   sync: z
     .strictObject({
       clockSkewToleranceSeconds: positiveInteger.default(DEFAULT_CLOCK_SKEW_SECONDS),

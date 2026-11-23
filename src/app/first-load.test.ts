@@ -57,10 +57,12 @@ describe("what the first load downloads", () => {
     expect(usesMotion(packagesLoadedBy("src/app/history/page.tsx"))).not.toEqual([]);
   });
 
-  it.each(["src/app/layout.tsx", "src/app/sign-in/page.tsx", "src/app/not-found.tsx"])(
-    "keeps Motion out of %s",
-    (entry) => {
-      expect(usesMotion(packagesLoadedBy(entry))).toEqual([]);
-    },
-  );
+  it.each([
+    "src/app/layout.tsx",
+    "src/app/sign-in/page.tsx",
+    "src/app/privacy/page.tsx",
+    "src/app/not-found.tsx",
+  ])("keeps Motion out of %s", (entry) => {
+    expect(usesMotion(packagesLoadedBy(entry))).toEqual([]);
+  });
 });

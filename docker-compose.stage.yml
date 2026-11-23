@@ -28,6 +28,9 @@ x-tools: &tools
     CONFIG_YAML: |
       database:
         url: postgresql://db:5432/door_to_door_stage
+      privacy:
+        organisation: Stage Operator
+        dpoEmail: dpo@example.com
   depends_on:
     db:
       condition: service_healthy
@@ -113,6 +116,9 @@ services:
           secureCookies: true
         rateLimit:
           trustedProxyHops: 1
+        privacy:
+          organisation: Stage Operator
+          dpoEmail: dpo@example.com
     volumes:
       - secret:/run/stage:ro
     # A Vercel function's default size.

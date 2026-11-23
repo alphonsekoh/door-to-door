@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { PageHeader } from "@/components/ui/page-header";
+import { PrivacyFooter } from "@/components/privacy/privacy-footer";
 import { SignInForm } from "@/components/account/sign-in-form";
 import { googleDomains } from "@/auth/google";
 
@@ -29,6 +30,7 @@ export default async function SignInPage() {
       <Suspense fallback={null}>
         <SignInForm googleDomains={domains} />
       </Suspense>
+      <PrivacyFooter />
     </>
   );
 }

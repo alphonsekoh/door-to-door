@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   WAITING_PATH,
   isApiPath,
+  isPrivacyPath,
   isPublicPath,
   isPwaPath,
   isWaitingPath,
@@ -14,6 +15,7 @@ describe("isPublicPath", () => {
     "/api/auth",
     "/api/auth/session",
     "/api/auth/callback/credentials",
+    "/privacy",
     "/offline",
     "/manifest.webmanifest",
     "/serwist/sw.js",
@@ -35,6 +37,7 @@ describe("isPublicPath", () => {
     expect(isPublicPath("/sign-in-secretly")).toBe(false);
     expect(isPublicPath("/api/authorise")).toBe(false);
     expect(isPublicPath("/offline-secrets")).toBe(false);
+    expect(isPublicPath("/privacy-x")).toBe(false);
     expect(isPublicPath("/serwistx")).toBe(false);
   });
 });
@@ -53,6 +56,14 @@ describe("the waiting page", () => {
   });
 });
 
+describe("isPrivacyPath", () => {
+  it("matches only the policy", () => {
+    expect(isPrivacyPath("/privacy")).toBe(true);
+    expect(isPrivacyPath("/sign-in")).toBe(false);
+    expect(isPrivacyPath("/privacy/x")).toBe(false);
+  });
+});
+
 describe("isPwaPath", () => {
   it.each(["/offline", "/manifest.webmanifest", "/serwist/sw.js", "/serwist/sw.js.map"])(
     "recognises %s, which the browser may fetch without cookies",
@@ -61,7 +72,7 @@ describe("isPwaPath", () => {
     },
   );
 
-  it.each(["/sign-in", "/api/auth/csrf", "/history", "/serwistx", "/offline-secrets"])(
+  it.each(["/sign-in", "/privacy", "/api/auth/csrf", "/history", "/serwistx", "/offline-secrets"])(
     "does not match %s",
     (path) => {
       expect(isPwaPath(path)).toBe(false);
