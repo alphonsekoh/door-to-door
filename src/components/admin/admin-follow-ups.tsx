@@ -294,8 +294,8 @@ export function AdminFollowUps() {
           first visit. */}
       <HintCard id="admin-follow-ups" title="How the follow-up list works">
         Members suggest households worth a return visit. You add the good ones to this list. Then
-        create a Follow-up session and pick which of them to visit; members can record visits only
-        at the households you pick.
+        create a Follow-up session and pick which of them to visit; members can record any unit in
+        its blocks, and a visit at a household you pick marks its follow-up done.
       </HintCard>
 
       <SheetPresence>

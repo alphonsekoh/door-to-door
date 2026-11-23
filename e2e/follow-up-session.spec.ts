@@ -153,11 +153,11 @@ test("a member records a unit off the list, and a listed one marks its follow-up
   await memberPage.getByRole("radio", { name: "High" }).click();
   const save = memberPage.getByRole("button", { name: "Save", exact: true });
   await expectTappable(save);
-  /* The send held, so the line is measured while it reads "Sending" and again
-     once Suggest arrives: neither it nor the unit field may move. */
+  /* The queue posts /api/visits/sync. Held, so the line is measured while it
+     reads "Sending" and again once Suggest arrives: neither it nor the unit
+     field may move. */
   const { promise: gate, resolve: release } = Promise.withResolvers<undefined>();
-  await memberPage.route("**/api/visits", async (route) => {
-    if (route.request().method() !== "POST") return route.fallback();
+  await memberPage.route("**/api/visits/sync", async (route) => {
     await gate;
     return route.fallback();
   });
