@@ -103,5 +103,5 @@ D-249-10, D-249-11, D-249-22, D-249-36.
     carve-out stated in D-273-11. They are not struck yet.
 - The builder's list of decisions 1 to 9 was not supplied to this step; D-273-8 to D-273-15
   are taken from the three commits. The builder should check them.
-- Neon's restore window (D-273-6) and the DNC evidence question (D-273-2).
+- The DNC evidence question (D-273-2).
 - Where the real operator name and DPO email go: the owner's production `CONFIG_YAML`.
