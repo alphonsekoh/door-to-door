@@ -97,7 +97,8 @@ users ─< sign_ins (one per device signed in; cascade on delete)
   D-117-38). Its list is computed, never stored: picks with a listed, live note
   outstanding, or resolved since both it started and the household was picked
   (`onRevisitList`, `src/server/follow-ups/list-rule.ts`, D-117-55). In it a member
-  records only at households on the list; admins are exempt (D-117-40, D-117-15). A new
+  anyone records at any unit in its blocks (D-272-2); the list (D-117-40) decides only
+  the marking and a member's note changes. A new
   visit at a household on the list marks its owed listed notes done in the same
   transaction, and `done_visit_id` keeps which visit did (D-117-65, D-117-67). Removing a
   note never changes picks (D-117-41).
@@ -173,14 +174,14 @@ authoritative, and a change to any of them needs the owner.
 - **Decision (owner).** Only an admin puts a household on the list; a member's note is a
   suggestion an admin adds or dismisses. A follow-up session goes back to households an
   admin picks from that list, at least one, and its blocks follow them. Members change
-  listed notes only during a follow-up session that picked them, and record only at its
-  picks. Every removal is soft and needs a reason (D-117-3, D-117-4, D-117-12, D-117-15,
-  D-117-33, D-117-36 to D-117-38).
+  listed notes only during a follow-up session that picked them; anyone records at any
+  unit in its blocks, and only a visit on the list marks notes (D-272-2). Every removal is soft and needs a reason (D-117-3, D-117-4, D-117-12, D-117-33, D-117-36 to D-117-38).
 - **Why.** A follow-up session needs a list someone chose, a member must never open an
   empty block, and a removal must be explainable to the note's author.
-- **Consequences.** One rule decides the list, the recording refusal and a member's
-  right to change a note, so they cannot disagree (D-117-40). An offline record for a
-  unit off the list is held until an admin lists and picks it (D-117-16). Picks and
+- **Consequences.** One rule decides the list, the marking and a member's
+  right to change a note, so they cannot disagree (D-117-40, D-272-4). An off-list visit
+  is a one-off that marks nothing (D-272-3); a record held before #272 lands on its next
+  probe (D-272-6). Picks and
   visit writes meet on the session row in one lock order (D-117-45). A visit at a door on
   the list closes its notes on the server, so a queued one does too when it lands
   (D-117-73). Removed notes stay in the database for good.
@@ -244,9 +245,7 @@ authoritative, and a change to any of them needs the owner.
    transaction `POST /visits` first locks its author's user row (`FOR SHARE`) and
    refuses a deactivated author (`409 conflict`, D-132-4, D-132-5); sync's author is
    the caller, checked in step 3. Then both lock the session row (`FOR KEY SHARE`) and
-   judge the session, the block and, in a follow-up session, the list rule for a
-   member's new visit
-   (`assertMayRecordHere`, refused `409 not_on_follow_up_list`). Sync does this once per
+   judge the session and the block (D-272-5). Sync does this once per
    run of new records and judges every record of the run before writing any
    (`refuseUnderLock`, D-251-3; see Offline). A new visit on the list then marks the
    household's owed notes done, last (`markDoneByVisit`, D-117-69), and the answer is a
@@ -715,8 +714,8 @@ round trips: 17 for any number of new records by a member on a team, and 7 for r
 3. **Write runs.** Consecutive new records form a run, written in one transaction
    (D-251-3):
    - It locks the session row `FOR KEY SHARE`. Under that lock it judges, for every
-     record, that the session is still active, the block is in it and, for a member in
-     a follow-up session, the unit is on its list (`refuseUnderLock`, D-117-45). A
+     record, that the session is still active and the block is in it (`refuseUnderLock`,
+     D-117-45, D-272-5). A
      refused record is refused alone.
    - Then a fixed set of statements writes the households, the team, the visits, the
      teammate snapshot, the auto-join and the marking. Households are upserted with

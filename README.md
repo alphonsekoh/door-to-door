@@ -40,7 +40,8 @@ _Screenshots are of the seeded demo data at phone width (393 px); none of it is 
 - Suggest a household for a return visit; an admin adds it to the follow-up list or
   declines it, and the member is told which, and why.
 - In a follow-up session, work through the households on its list and mark each
-  follow-up done. Members record only at those households in such a session.
+  follow-up done. Any unit in the session's blocks can be recorded; one off the list is
+  a one-off visit that marks nothing.
 
 **Admins**
 
@@ -219,7 +220,8 @@ IndexedDB queue ── POST /visits/sync ─► src/db             Drizzle schem
   `draft → active → ended` and can be reopened. At most one is active app-wide, enforced
   by the database. A session is door-to-door or follow-up, fixed when it is created. A
   follow-up session goes back to households an admin picked from the follow-up list,
-  and its blocks follow them; members record only at households on its list.
+  and its blocks follow them; anyone records at any unit in those blocks, and only a
+  visit at a household on its list marks that household's follow-ups done.
 - **Auth** is Auth.js v5: Google, where a newcomer waits for an admin's approval, and
   email and password (argon2id) as the fallback, on JWT sessions. Each sign-in is a `sign_ins` row that
   every request checks, so a sign-out, an admin or a deactivation ends it. Every handler
@@ -253,16 +255,16 @@ The least obvious part of the system. In short (details in
    Each item's `status` is `applied`, `unchanged`, `stale` or `rejected`; a rejected item
    also carries an `error` whose `code` says why.
 
-   | Status, or code when `rejected`     | Meaning                                               | The phone                             |
-   | ----------------------------------- | ----------------------------------------------------- | ------------------------------------- |
-   | `applied`                           | Created, or a newer edit was written                  | Marks it sent                         |
-   | `unchanged`                         | Already stored: a replay of the same id (D-21-1)      | Marks it sent                         |
-   | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)    | Marks it sent; the server's wins      |
-   | `rejected`: `session_not_active`    | Its session has ended (D-21-4)                        | Holds it; a reopen lets it in         |
-   | `rejected`: `not_on_follow_up_list` | A new visit off a follow-up session's list (D-117-15) | Holds it; picking the unit lets it in |
-   | `rejected`: `clock_skew`            | Stamped in the future or before its session (D-76-4)  | Restamps and resends (D-33-3)         |
-   | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit    | Holds it for a tap (D-33-16)          |
-   | `rejected`: `internal_error`        | Something failed on the server                        | Retries with backoff (D-33-4)         |
+   | Status, or code when `rejected`     | Meaning                                                 | The phone                                                           |
+   | ----------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+   | `applied`                           | Created, or a newer edit was written                    | Marks it sent                                                       |
+   | `unchanged`                         | Already stored: a replay of the same id (D-21-1)        | Marks it sent                                                       |
+   | `stale`                             | The server's copy has a newer `updatedAt` (D-21-2)      | Marks it sent; the server's wins                                    |
+   | `rejected`: `session_not_active`    | Its session has ended (D-21-4)                          | Holds it; a reopen lets it in                                       |
+   | `rejected`: `not_on_follow_up_list` | Before #272, a new visit off a follow-up session's list | Held on phones before the deploy; lands on its next probe (D-272-2) |
+   | `rejected`: `clock_skew`            | Stamped in the future or before its session (D-76-4)    | Restamps and resends (D-33-3)                                       |
+   | `rejected`: `conflict`, `not_found` | Not this member's to change, or would move a visit      | Holds it for a tap (D-33-16)                                        |
+   | `rejected`: `internal_error`        | Something failed on the server                          | Retries with backoff (D-33-4)                                       |
 
 4. **Conflicts resolve last-write-wins on `updatedAt`**, within what a sync may change.
    Replaying is harmless because the id is the idempotency key. An update can change only
@@ -1003,7 +1005,6 @@ work, since the check fetches pages and API responses but runs no JavaScript.
 | The E2E suite cannot reach its database                         | It needs PostgreSQL on `localhost:5433` (`docker compose up -d db-test`), or set `E2E_DATABASE_URL`.                                                                                                 |
 | `check constraint "..._not_blank" ... is violated by some row`  | `db:migrate` met a blank unit, note, block name or street stored before #119. Run `npm run db:check-blank` to list them.                                                                             |
 | Members see "No session is running"                             | An admin starts one: **Admin**, open the session, **Start session**. Only one runs at a time.                                                                                                        |
-| "This unit is not on this session's list"                       | Members record only the session's picks. An admin lists it, then **Add households** on the session's page, or records it.                                                                            |
 | "This page expired." every time, over http                      | Safari on `localhost` or a LAN phone dropped the `Secure` CSRF cookie (`MissingCSRF` logged), so reloading does not help. Set `auth.secureCookies: false`.                                           |
 | "That Google account can't sign in here."                       | Not on **Admin → Team**, outside `auth.google.domains` or spelled unlike Google's; unverified; a personal Google account on a Workspace domain; or deactivated. Add, fix or restore it.              |
 | "Could not sign out."                                           | No signal, or the server could not end the sign-in (`EventError` logged). The phone is still signed in; try again.                                                                                   |
