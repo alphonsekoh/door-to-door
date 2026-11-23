@@ -153,11 +153,24 @@ test("a member records a unit off the list, and a listed one marks its follow-up
   await memberPage.getByRole("radio", { name: "High" }).click();
   const save = memberPage.getByRole("button", { name: "Save", exact: true });
   await expectTappable(save);
+  /* The send held, so the line is measured while it reads "Sending" and again
+     once Suggest arrives: neither it nor the unit field may move. */
+  const { promise: gate, resolve: release } = Promise.withResolvers<undefined>();
+  await memberPage.route("**/api/visits", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await gate;
+    return route.fallback();
+  });
   await save.click();
-  const oneOff = memberPage.getByRole("status").filter({ hasText: `Saved ${OFF_LIST}` });
-  await expect(oneOff).toBeVisible();
+  const oneOff = memberPage.getByRole("status").filter({ hasText: OFF_LIST });
+  await expect(oneOff).toContainText(`Sending ${OFF_LIST}`);
+  const before = { line: await oneOff.boundingBox(), field: await unit.boundingBox() };
+  release(undefined);
   await expect(oneOff).not.toContainText("Follow-up marked done");
   await expect(oneOff.getByRole("button", { name: "Suggest a return visit" })).toBeVisible();
+  const after = { line: await oneOff.boundingBox(), field: await unit.boundingBox() };
+  expect(after.line?.height, "the Saved line keeps its height").toBe(before.line?.height);
+  expect(after.field?.y, "the unit field stays put").toBe(before.field?.y);
   await expect(memberPage.getByRole("alert").filter({ hasText: "Not saved" })).toHaveCount(0);
 
   /* A listed unit, picked from the chips, saves; the form then points back

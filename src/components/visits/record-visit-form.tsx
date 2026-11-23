@@ -672,7 +672,7 @@ export function RecordVisitForm({
         <div
           ref={savedLine}
           role="status"
-          className="flex min-h-14 scroll-clear-chrome flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-surface-muted px-2 py-1 text-body saved-line"
+          className={`flex min-h-14 ${offer !== null && followUp !== null ? "min-h-offer-back" : ""} scroll-clear-chrome flex-wrap items-center justify-between gap-x-2 rounded-lg border border-border bg-surface-muted px-2 py-1 text-body saved-line`}
         >
           {/* Held from the save on, so the line never grows as the words
               change. With an offer coming, only where it has a row of its
