@@ -154,21 +154,19 @@ describe("BlockScreen", () => {
   });
 
   it.each([
-    ["door-to-door", "regular", "Visits can be recorded only in the session's blocks."],
-    [
-      "follow-up",
-      "follow_up",
-      "Visits can be recorded only at the households on the session's list.",
-    ],
+    ["door-to-door", "regular"],
+    ["follow-up", "follow_up"],
   ])(
     "says a block its %s session does not cover is not in it, and offers no form",
-    async (_, kind, rule) => {
+    async (_, kind) => {
       // Opened from a bookmark or a stale tab.
       serve(list(["#05-123"]), { ...active, session: { ...active.session, kind }, blocks: [] });
       render(<BlockScreen blockId="b1" />);
       const notice = await screen.findByRole("status");
       expect(notice).toHaveTextContent("This block is not in the running session.");
-      expect(notice).toHaveTextContent(`${rule} Pick one on the Session screen.`);
+      expect(notice).toHaveTextContent(
+        "Visits can be recorded only in the session's blocks. Pick one on the Session screen.",
+      );
       expect(within(notice).getByRole("link", { name: "Go to Session" })).toHaveAttribute(
         "href",
         "/",
@@ -1221,12 +1219,10 @@ describe("in a follow-up session", () => {
     });
   }
 
-  it("says only listed units can be recorded, and offers them", async () => {
+  it("says any unit can be recorded, and offers the listed ones", async () => {
     serveFollowUp();
     render(<BlockScreen blockId="b1" />);
-    expect(
-      await screen.findByText(/Only units on the list can be recorded\.$/),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/You can record any unit in this block/)).toBeInTheDocument();
     const chips = within(await screen.findByRole("list", { name: "On the list in this block" }));
     expect(chips.getByRole("button", { name: "#05-123" })).toBeInTheDocument();
   });
@@ -1237,14 +1233,14 @@ describe("in a follow-up session", () => {
     serveFollowUp();
     const user = userEvent.setup();
     render(<BlockScreen blockId="b1" />);
-    const notice = await screen.findByText(/Only units on the list can be recorded\.$/);
+    const notice = await screen.findByText(/You can record any unit in this block/);
     expect(screen.getByRole("tabpanel", { name: "Record" })).toContainElement(notice);
     expect(notice.compareDocumentPosition(screen.getByRole("tablist"))).toBe(
       Node.DOCUMENT_POSITION_PRECEDING,
     );
 
     await user.click(await screen.findByRole("tab", { name: /^All units/ }));
-    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+    expect(screen.queryByText(/You can record any unit in this block/)).toBeNull();
   });
 
   it("keeps the list on the phone for the offline shell", async () => {
@@ -1255,22 +1251,13 @@ describe("in a follow-up session", () => {
     });
   });
 
-  it("tells an admin they can record any unit", async () => {
-    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
-    serveFollowUp();
-    render(<BlockScreen blockId="b1" />);
-    expect(await screen.findByText(/As an admin you can record any unit\./)).toBeInTheDocument();
-  });
-
-  it("says it could not check the list when it cannot be read", async () => {
+  it("says nothing of the list when it cannot be read, and records the unit all the same", async () => {
     serveFollowUp(() => Promise.reject(new TypeError("offline")));
     const user = userEvent.setup();
     render(<BlockScreen blockId="b1" />);
-    await screen.findByText(/Only units on the list can be recorded/);
+    await screen.findByText(/You can record any unit in this block/);
     await user.type(screen.getByLabelText("Unit number"), "#05-124");
-    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^Could not check this session's list\./,
-    );
+    expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
     expect(noteRevisits).not.toHaveBeenCalled();
   });
 
@@ -1318,7 +1305,7 @@ describe("in a follow-up session", () => {
     render(<BlockScreen blockId="b1" />);
     await screen.findByRole("heading", { level: 1, name: "Blk 123" });
     expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/revisits");
-    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+    expect(screen.queryByText(/You can record any unit in this block/)).toBeNull();
   });
 
   it("lets only the newest list land when the session answers twice", async () => {
@@ -1425,7 +1412,9 @@ describe("in a follow-up session", () => {
         expect(chipNames()).toEqual(["#05-123"]);
       });
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
+      expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+        "Not on this session's list. You can still record it.",
+      );
     });
 
     it("reads the list again when the member comes back to the app", async () => {
@@ -1473,8 +1462,9 @@ describe("in a follow-up session", () => {
         expect(reads()).toHaveLength(2);
       });
       await user.type(screen.getByLabelText("Unit number"), "#05-124");
-      expect(screen.getByText(/is not on this session's list/)).toBeVisible();
-      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
+      expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
+        "Not on this session's list. You can still record it.",
+      );
       expect(chipNames()).toEqual(["#05-123"]);
     });
 
@@ -1482,20 +1472,16 @@ describe("in a follow-up session", () => {
       // The usual way in: a household tapped on the list, on weak signal.
       serveLists(() => new Promise(() => undefined));
       render(<BlockScreen blockId="b1" initialUnit="#05-124" />);
-      await screen.findByText(/Only units on the list can be recorded/);
+      await screen.findByText(/You can record any unit in this block/);
       await waitFor(() => {
         expect(reads()).toHaveLength(1);
       });
       expect(screen.getByLabelText("Unit number")).toHaveValue("#05-124");
-      expect(screen.queryByText(/Could not check this session's list/)).toBeNull();
-      expect(screen.queryByText(/is not on this session's list/)).toBeNull();
+      expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
     });
 
-    it("saves a unit an admin added since the list was read, and shows it on the list", async () => {
-      serveLists(
-        () => Promise.resolve(listOf("#05-123")),
-        () => Promise.resolve(listOf("#05-123", "#05-124")),
-      );
+    it("saves a unit that is not on the list, and leaves the list as it was", async () => {
+      serveLists(() => Promise.resolve(listOf("#05-123")));
       const user = userEvent.setup();
       render(<BlockScreen blockId="b1" />);
       await waitFor(() => {
@@ -1511,11 +1497,7 @@ describe("in a follow-up session", () => {
           expect.objectContaining({ method: "POST" }),
         );
       });
-      // The save sends as soon as it has read the list again, which is drawn
-      // later, as a transition (#192).
-      await waitFor(() => {
-        expect(chipNames()).toEqual(["#05-123", "#05-124"]);
-      });
+      expect(chipNames()).toEqual(["#05-123"]);
       expect(screen.queryByText(/Not saved/)).toBeNull();
     });
   });

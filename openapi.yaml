@@ -37,9 +37,10 @@ info:
     `follow_up` session goes back to households an admin **picks** from the
     follow-up list, at least one, always. Its blocks are the blocks of those
     households, kept in step by the server; an admin never attaches or
-    detaches them by hand. A member may record a visit only at a household on
-    that session's list (its *revisits*: picked, and still on the follow-up
-    list), while an admin may record anywhere in its blocks.
+    detaches them by hand. Anyone may record a visit at any unit in its
+    blocks, as in a `regular` session. A visit at a household on that
+    session's list (its *revisits*: picked, and still on the follow-up list)
+    also marks that household's owed follow-ups done.
 
     ## Offline
 
@@ -526,7 +527,7 @@ components:
                 note there is marked done in the same transaction, with
                 `doneBy` the visit's author. An amend never marks anything,
                 and neither does a visit in a `regular` session or at a
-                household not on the list (where only an admin may record).
+                household not on the list.
 
                 Read from what is stored, so a replay of the same visit id
                 reports the same notes and never marks them again or changes
@@ -1849,10 +1850,11 @@ paths:
         have a `listed`, not removed note that is outstanding or was resolved
         after both the session started and the household was picked, so a
         household added to a running session does not bring along a note
-        resolved before it was added. This is the same rule that decides where a
-        member may record a visit in the session (`409 not_on_follow_up_list`)
-        and whether a member may change a listed note, so the list and its
-        refusals cannot disagree.
+        resolved before it was added. This is the same rule that decides which
+        households' notes a new visit in the session marks done, and whether a
+        member may change a listed note (`409 not_on_follow_up_list`), so the
+        list, the marking and that refusal cannot disagree. It never decides
+        where a visit may be recorded: any unit in the session's blocks may be.
 
         Members may read the active session's list; a draft or ended session is
         admin-only (`403` for a member), so an admin can check a draft's list
@@ -2461,18 +2463,16 @@ paths:
         (an admin recording on someone's behalf stamps that member's team), and
         the author joins the outing.
 
-        In a `follow_up` session a member may record only at a household on the
-        session's list (see `GET /sessions/{id}/revisits`); any other unit is
-        `409 not_on_follow_up_list`. The caller's role decides, not the
-        author's: an admin may record anywhere in the session's blocks,
-        including on a member's behalf.
+        In a `follow_up` session, as in a `regular` one, anyone may record at
+        any unit in the session's blocks; the session's list (see
+        `GET /sessions/{id}/revisits`) never refuses a visit.
 
         Recording a visit at a household on a running `follow_up` session's
         list also marks every outstanding listed note there done, in the same
         transaction, credited to the visit's author; `followUpsMarkedDone`
         names them, so a client can offer to undo it. This holds for members
-        and admins alike; an admin recording at a household not on the list
-        marks nothing.
+        and admins alike; a visit at a household not on the list marks
+        nothing.
 
         Rate limited per caller, apart from `POST /visits/sync`'s budget: an
         admin recording on a member's behalf spends the admin's.
@@ -2508,8 +2508,7 @@ paths:
             A visit with this id already exists, or the named `memberId` is
             deactivated (`conflict`), or no session is active
             (`session_not_active`), or the block is not attached to the active
-            session, or a member is recording an unlisted unit in a follow-up
-            session (`not_on_follow_up_list`).
+            session (`conflict`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2601,13 +2600,11 @@ paths:
         what has already synced can be amended. New records are stamped with the
         author's team when first stored.
 
-        A new record in a `follow_up` session from a member, at a household not
-        on that session's list, is `rejected` with error code
-        `not_on_follow_up_list`, the same rule as `POST /visits`; admins are
-        exempt. It is not retryable as it stands, but an admin adding the
-        household to the list lets the same item through, so a queue should
-        hold it and try again now and then rather than discard it. Amending a
-        record already stored is never refused for this reason.
+        A new record in a `follow_up` session is judged as `POST /visits`
+        judges it: any unit in the session's blocks, whatever the session's
+        list. No item is `rejected` with `not_on_follow_up_list`; a queue
+        still holding one an earlier server refused that way sends it again
+        as it stands, and it is stored.
 
         A new record stored in a running `follow_up` session at a household on
         its list marks that household's outstanding listed notes done, exactly

@@ -256,7 +256,7 @@ export function BlockScreen({
   const here = active?.blocks.find((entry) => entry.block.id === blockId)?.block;
   /* Opened from a bookmark or a stale tab, a block the running session does
      not cover: nothing could be saved here, so no form is offered. */
-  const outside = active !== null && here === undefined ? active.session.kind : null;
+  const outside = active !== null && here === undefined;
 
   /*
    * Save promises a next unit only once the session is known to be
@@ -275,9 +275,7 @@ export function BlockScreen({
     <DockHost className="space-y-5" standIn={<SaveNotReady />}>
       <PageHeader
         title={here === undefined ? "Record a visit" : `Blk ${here.name}`}
-        subtitle={
-          here !== undefined ? here.street : outside === null ? "One unit at a time." : undefined
-        }
+        subtitle={here !== undefined ? here.street : !outside ? "One unit at a time." : undefined}
         back={{ href: "/", label: "Session" }}
         inline
         standIn={active === null}
@@ -292,7 +290,7 @@ export function BlockScreen({
         </p>
       )}
 
-      {outside === null ? (
+      {!outside ? (
         <BlockViews
           blockId={blockId}
           known={units}
@@ -315,9 +313,8 @@ export function BlockScreen({
         <div role="status" className="rounded-xl border border-border bg-surface-muted p-4">
           <p className="text-body font-medium">This block is not in the running session.</p>
           <p className="mt-1 text-body text-foreground-muted">
-            {outside === "follow_up"
-              ? "Visits can be recorded only at the households on the session's list. Pick one on the Session screen."
-              : "Visits can be recorded only in the session's blocks. Pick one on the Session screen."}
+            Visits can be recorded only in the session&apos;s blocks. Pick one on the Session
+            screen.
           </p>
           <Link
             href="/"

@@ -188,20 +188,20 @@ function SessionBody({
             <span className="font-semibold">
               <WholeWords text="Follow-up session." />
             </span>{" "}
-            Visits can be recorded only at the households below.
-            {isAdmin ? " As an admin you can record any unit in this session's blocks." : ""}
+            Visit the households below; other units in their blocks can be recorded too.
           </p>
           {/* The list stands in for the block cards: each group opens its block. */}
           <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
           <HintCard id="follow-up-session" title="How a follow-up session works">
             Tap a household to record your visit. Saving your visit marks the household&apos;s
             follow-up done. If it still needs another visit, tap Undo, or Reopen on this list. Use
-            Mark done for one finished without a visit. A door that should be on the list? Type its
-            unit in the block and tap Suggest a return visit; an admin reviews it.
+            Mark done for one finished without a visit. Knocked on a door that isn&apos;t on the
+            list? Record it in its block as usual, then tap Suggest a return visit if it needs one;
+            an admin reviews it.
           </HintCard>
-          {/* The list shows only blocks with listed households, so an admin
-              recording elsewhere, as an admin may, starts from here. */}
-          {isAdmin && blocks.length > 0 ? (
+          {/* The list shows only blocks with listed households, so a unit
+              elsewhere in the session's blocks is recorded from here. */}
+          {blocks.length > 0 ? (
             <section aria-labelledby="session-blocks-heading" className="space-y-2">
               <h2 id="session-blocks-heading" className="text-title font-semibold">
                 Blocks in this session

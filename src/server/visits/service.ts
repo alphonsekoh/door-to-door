@@ -1,11 +1,11 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Religion, Role, SessionStatus } from "@/db/schema";
+import type { InterestLevel, Religion, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, users, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow } from "@/server/db-utils";
-import { assertMayRecordHere, placeKey, type RevisitSession } from "@/server/follow-ups/list-rule";
+import { placeKey, type RevisitSession } from "@/server/follow-ups/list-rule";
 import { markDoneByVisit } from "@/server/follow-ups/marked-by-visit";
 import {
   attachTeams,
@@ -292,8 +292,6 @@ export async function createVisit(
     memberId: string;
   } & HouseholdIdentity,
   clock: Clock,
-  // Who is recording, which is not the author when an admin records for someone.
-  actor: { role: Role },
 ): Promise<VisitRow> {
   // Before anything is read: a blank unit is refused for every caller alike.
   const unitNumber = requireText(input.unitNumber, "/unitNumber");
@@ -314,13 +312,12 @@ export async function createVisit(
   /*
    * One transaction, so a duplicate id rolls the household upsert back and a
    * visit never exists without the stamp and snapshot that describe it. Who
-   * may author it and where it may be recorded are judged inside it, under
-   * the author's lock and then the session's.
+   * may author it and that its block is in the session are judged inside it,
+   * under the author's lock and then the session's.
    */
   await db.transaction(async (tx) => {
     await lockActiveAuthor(tx, input.memberId);
     const session = await requireActiveSessionWithBlock(tx, input.blockId);
-    await assertMayRecordHere(tx, actor, session, input.blockId, unitNumber);
     const sessionId = session.id;
 
     const household = await upsertHousehold(tx, {

@@ -1075,7 +1075,7 @@ test.describe("as the session answers", () => {
       const opened = await unit.boundingBox();
       expect(opened, "the unit field as the screen opens").not.toBeNull();
       answer();
-      await expect(page.getByText(/Only units on the list can be recorded/)).toBeVisible();
+      await expect(page.getByText(/You can record any unit in this block/)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
       expect(await unit.boundingBox(), "the unit field as a follow-up session answers").toEqual(
         opened,

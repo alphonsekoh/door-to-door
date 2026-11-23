@@ -60,21 +60,6 @@ export function progress(
   return `${String(dealt)} of ${String(entries.length)} visited or done`;
 }
 
-/*
- * A member in a follow-up session's block holding nothing on its list, so
- * no unit here can be saved: a bookmark, or a block whose only pick left
- * the follow-up list. Not said while the list is unread or unreadable, nor
- * to an admin, who may record anywhere.
- */
-export function nothingListedHere(
-  revisits: readonly RevisitEntry[] | null | undefined,
-  blockId: string,
-  isAdmin: boolean,
-): boolean {
-  if (isAdmin || revisits == null) return false;
-  return !revisits.some((entry) => entry.block.id === blockId);
-}
-
 export type ListedUnit = { householdId: string; unitNumber: string; state: RevisitState };
 
 export function listedUnitsIn(entries: readonly RevisitEntry[], blockId: string): ListedUnit[] {
@@ -88,32 +73,24 @@ export function listedUnitsIn(entries: readonly RevisitEntry[], blockId: string)
 }
 
 /*
- * Whether the typed unit may be recorded in a follow-up session, against
- * the list as last read: `undefined` while it is first read, `null` when it
- * could not be. `checking` is that first read, which a save waits for.
- * `unknown` is no list at all (offline with no copy): the record is then
- * queued, and held by the server if the unit is not listed. An admin is
- * never refused, but is told the unit is off the list.
+ * Whether the typed unit is on a follow-up session's list as last read. Any
+ * unit in the session's blocks may be recorded, so `off_list` only says it
+ * will be a one-off visit that marks nothing. An unread or failed list says
+ * `ok`: there is nothing to warn about yet.
  */
-export type UnitGate = "ok" | "unlisted" | "admin_override" | "unknown" | "checking";
+export type UnitGate = "ok" | "off_list";
 
 export function unitGate(
   unit: string,
   blockId: string,
   revisits: readonly RevisitEntry[] | null | undefined,
-  isAdmin: boolean,
 ): UnitGate {
   const typed = normaliseUnitNumber(unit);
-  if (typed === "") return "ok";
-  if (revisits == null) {
-    if (isAdmin) return "ok";
-    return revisits === undefined ? "checking" : "unknown";
-  }
+  if (typed === "" || revisits == null) return "ok";
   const listed = revisits.some(
     (entry) => entry.block.id === blockId && entry.household.unitNumber === typed,
   );
-  if (listed) return "ok";
-  return isAdmin ? "admin_override" : "unlisted";
+  return listed ? "ok" : "off_list";
 }
 
 const OFF_LIST = "not_on_follow_up_list";

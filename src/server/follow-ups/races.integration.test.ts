@@ -383,7 +383,6 @@ describe("a visit recorded while an admin changes the session's households", () 
         memberId: ALICE,
       },
       clock,
-      alice,
     );
   const visitsAtQuiet = async () =>
     (await pool.query(`SELECT 1 FROM visits WHERE household_id = $1`, [QUIET])).rows.length;
@@ -415,11 +414,12 @@ describe("a visit recorded while an admin changes the session's households", () 
     );
   });
 
-  it("judges the record after a removal it waited for, and stores nothing", async () => {
+  it("stores a record that waited for a removal, and marks nothing", async () => {
     const outcome = await parked({ table: "outing_sessions", id: SESSION }, record, unpickQuiet);
 
-    expect(outcome).toMatchObject({ error: { code: "not_on_follow_up_list", status: 409 } });
-    expect(await visitsAtQuiet()).toBe(0);
+    expect(outcome).toMatchObject({ ok: { memberId: ALICE } });
+    expect(await visitsAtQuiet()).toBe(1);
+    expect(await doneAtQuiet()).toEqual([{ done_by: null, done_visit_id: null }]);
   });
 
   it("holds a removal until the record lands, which then keeps the household", async () => {
@@ -520,17 +520,16 @@ describe("a visit recorded while an admin changes the session's households", () 
     expect(await doneAtQuiet()).toEqual([{ done_by: ALICE, done_visit_id: visit }]);
   });
 
-  it("judges a synced record after a removal it waited for, and holds it", async () => {
+  it("applies a synced record that waited for a removal, and marks nothing", async () => {
     const outcome = await parked(
       { table: "outing_sessions", id: SESSION },
       () => syncVisits(db, [item()], alice, clock),
       unpickQuiet,
     );
 
-    expect(outcome).toMatchObject({
-      ok: [{ status: "rejected", error: { code: "not_on_follow_up_list" } }],
-    });
-    expect(await visitsAtQuiet()).toBe(0);
+    expect(outcome).toMatchObject({ ok: [{ status: "applied", markedDone: [] }] });
+    expect(await visitsAtQuiet()).toBe(1);
+    expect(await doneAtQuiet()).toEqual([{ done_by: null, done_visit_id: null }]);
   });
 
   it("refuses a synced record whose session ended while it waited", async () => {
@@ -558,7 +557,6 @@ describe("a visit recorded while an admin detaches its block", () => {
       db,
       { id: VISIT, blockId: BLOCK, unitNumber: "#05-123", interestLevel: "low", memberId: ALICE },
       clock,
-      alice,
     );
   const detach = () => detachBlock(db, SESSION, BLOCK);
   /* The detach parks on the attachment held here, after it took the session. */
@@ -649,7 +647,6 @@ describe("a visit recorded for a member while an admin deactivates them", () => 
       db,
       { id: VISIT, blockId: BLOCK, unitNumber: "#05-127", interestLevel: "low", memberId: ALICE },
       clock,
-      admin,
     );
   const deactivateAlice = () => updateUser(db, ALICE, { deactivated: true }, ADMIN);
   const written = async () => ({

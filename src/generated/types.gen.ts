@@ -364,7 +364,7 @@ export type RecordedVisit = VisitFields & {
      * note there is marked done in the same transaction, with
      * `doneBy` the visit's author. An amend never marks anything,
      * and neither does a visit in a `regular` session or at a
-     * household not on the list (where only an admin may record).
+     * household not on the list.
      *
      * Read from what is stored, so a replay of the same visit id
      * reports the same notes and never marks them again or changes
@@ -2833,8 +2833,7 @@ export type CreateVisitErrors = {
      * A visit with this id already exists, or the named `memberId` is
      * deactivated (`conflict`), or no session is active
      * (`session_not_active`), or the block is not attached to the active
-     * session, or a member is recording an unlisted unit in a follow-up
-     * session (`not_on_follow_up_list`).
+     * session (`conflict`).
      *
      */
     409: Error;

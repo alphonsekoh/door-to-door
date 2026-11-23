@@ -63,8 +63,8 @@ const T2 = "2026-03-14T11:00:00.000Z";
 const T3 = "2026-03-14T11:30:00.000Z";
 const clock: Clock = { now: new Date("2026-03-14T12:00:00.000Z"), toleranceMs: 300_000 };
 
-const alice: SyncCaller = { id: ALICE, role: "member" };
-const admin: SyncCaller = { id: ADMIN, role: "admin" };
+const alice: SyncCaller = { id: ALICE };
+const admin: SyncCaller = { id: ADMIN };
 
 /* Ids from one millisecond, so only what follows it orders them. */
 const idOf = (n: number) => `01960000-0000-7000-8000-${n.toString(16).padStart(12, "0")}`;
@@ -264,7 +264,7 @@ describe("a batch mixing every outcome", () => {
       [idOf(2), "rejected", "not_found"],
       [idOf(3), "rejected", "clock_skew"],
       [idOf(4), "rejected", "conflict"],
-      [idOf(5), "rejected", "not_on_follow_up_list"],
+      [idOf(5), "applied", undefined],
       [idOf(6), "applied", undefined],
       [idOf(93), "applied", undefined],
     ]);
@@ -274,14 +274,19 @@ describe("a batch mixing every outcome", () => {
     const places = await rows<{ unit_number: string }>(
       `SELECT unit_number FROM households ORDER BY unit_number`,
     );
-    expect(places.map((place) => place.unit_number)).toEqual(["#01-01", "#02-02", "#03-03"]);
-    // The refusals and replays between the two new records left them one run.
+    expect(places.map((place) => place.unit_number)).toEqual([
+      "#01-01",
+      "#02-02",
+      "#03-03",
+      "#09-09",
+    ]);
+    // The refusals and replays between the new records left them one run.
     const [gap] = await rows<{ gap: string }>(
       `SELECT (b.created_at - a.created_at)::text AS gap FROM visits a, visits b
        WHERE a.id = $1 AND b.id = $2`,
       [idOf(1), idOf(6)],
     );
-    expect(gap?.gap).toBe("00:00:00.000001");
+    expect(gap?.gap).toBe("00:00:00.000002");
   });
 });
 
@@ -436,7 +441,7 @@ describe("a batch in a follow-up session", () => {
     expect(await notesAt("#01-01")).toEqual(before);
   });
 
-  it("refuses a member a unit listed only in another of its blocks", async () => {
+  it("stores a member's record at a unit listed only in another of its blocks, marking nothing", async () => {
     await attachOtherBlock();
     await followUpSession(["#07-07"], OTHER_BLOCK);
 
@@ -447,13 +452,9 @@ describe("a batch in a follow-up session", () => {
 
     expect(results.map((result) => [result.status, result.error?.code])).toEqual([
       ["applied", undefined],
-      ["rejected", "not_on_follow_up_list"],
+      ["applied", undefined],
     ]);
-    expect(
-      await rows(`SELECT 1 FROM households WHERE block_id = $1 AND unit_number = '#01-01'`, [
-        OTHER_BLOCK,
-      ]),
-    ).toEqual([]);
+    expect(results[1]?.markedDone).toEqual([]);
   });
 
   it("lets an admin record off the list, credits them, and never joins them", async () => {

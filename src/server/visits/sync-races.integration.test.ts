@@ -69,7 +69,7 @@ const item = (overrides: Partial<SyncItem> = {}): SyncItem => ({
   ...overrides,
 });
 const flush = (items: SyncItem[], memberId: string) =>
-  syncVisits(db, items, { id: memberId, role: "member" }, clock);
+  syncVisits(db, items, { id: memberId }, clock);
 
 const row = async () =>
   (

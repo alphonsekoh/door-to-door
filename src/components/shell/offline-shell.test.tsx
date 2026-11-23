@@ -709,30 +709,33 @@ describe("OfflineShell, in a follow-up session", () => {
     return noteRevisits(one, ALICE, followUp, [onTheList()], NOW);
   };
 
-  it("offers the units on the list it saved, and refuses one that is not", async () => {
-    mount({ copy: followUpCopy(true) });
+  it("offers the units on the list it saved, and queues one that is not on it", async () => {
+    const { queue } = mount({ copy: followUpCopy(true) });
     await openBlock("123");
     const chips = within(screen.getByRole("list", { name: "On the list in this block" }));
     expect(chips.getByRole("button", { name: "#05-01" })).toBeInTheDocument();
-    await user().type(screen.getByLabelText("Unit number"), "#05-02");
+    const u = user();
+    await u.type(screen.getByLabelText("Unit number"), "#05-02");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^#05-02 is not on this session's list/,
+      "Not on this session's list. You can still record it.",
     );
+    await u.click(screen.getByRole("radio", { name: "High" }));
+    await u.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(pieced("Saved #05-02 on this phone."))).toBeInTheDocument();
+    expect((await queue.listAll()).map((record) => record.item.unitNumber)).toEqual(["#05-02"]);
   });
 
-  it("says it could not check when no list was saved", async () => {
+  it("says nothing of the list when none was saved", async () => {
     mount({ copy: followUpCopy(false) });
     await openBlock("123");
     await user().type(screen.getByLabelText("Unit number"), "#05-02");
-    expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^Could not check this session's list\./,
-    );
+    expect(screen.getByLabelText("Unit number")).not.toHaveAccessibleDescription();
   });
 
-  it("says why only some units can be recorded, before any is typed", async () => {
+  it("says that any unit can be recorded, before any is typed", async () => {
     mount({ copy: followUpCopy(true) });
     await openBlock("123");
-    expect(screen.getByText(/Only units on the list can be recorded\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/You can record any unit in this block/)).toBeInTheDocument();
   });
 
   const chips = () => screen.queryByRole("list", { name: "On the list in this block" });
@@ -763,7 +766,7 @@ describe("OfflineShell, in a follow-up session", () => {
     });
     await user().type(screen.getByLabelText("Unit number"), "#05-01");
     expect(screen.getByLabelText("Unit number")).toHaveAccessibleDescription(
-      /^#05-01 is not on this session's list/,
+      "Not on this session's list. You can still record it.",
     );
     // And the copy a later reload opens says so too.
     const change = updateLocalCopy.mock.calls[0]?.[0];
@@ -853,7 +856,7 @@ describe("OfflineShell, in a follow-up session", () => {
       window.dispatchEvent(new Event("focus"));
     });
     expect(readList).not.toHaveBeenCalled();
-    expect(screen.queryByText(/Only units on the list/)).toBeNull();
+    expect(screen.queryByText(/You can record any unit in this block/)).toBeNull();
   });
 });
 
@@ -955,7 +958,7 @@ describe("OfflineShell, from a follow-up session's list", () => {
     await continueAsAlice();
     expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
     expect(unit()).toHaveValue(BLK_456_UNIT);
-    expect(screen.getByText(/Only units on the list can be recorded\.$/)).toBeInTheDocument();
+    expect(screen.getByText(/You can record any unit in this block/)).toBeInTheDocument();
   });
 
   it("follows the list as read again: a household added shows, and none left says so", async () => {
@@ -988,7 +991,9 @@ describe("OfflineShell, from a follow-up session's list", () => {
       window.dispatchEvent(new Event("focus"));
     });
     await waitFor(() => {
-      expect(unit()).toHaveAccessibleDescription(/^#11-90 is not on this session's list/);
+      expect(unit()).toHaveAccessibleDescription(
+        "Not on this session's list. You can still record it.",
+      );
     });
     expect(screen.getByRole("heading", { level: 1, name: "Blk 456" })).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Low" })).toBeChecked();

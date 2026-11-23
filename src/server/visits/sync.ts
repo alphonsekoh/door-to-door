@@ -1,17 +1,12 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
-import type { InterestLevel, Role, SessionKind, SessionStatus } from "@/db/schema";
+import type { InterestLevel, SessionKind, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
 import type { Clock } from "@/lib/clock";
 import { distinctUuidsInOrder, sameUuid } from "@/lib/uuid";
 import { assertNotBeforeOuting, assertNotInFuture } from "@/server/visits/clock-rules";
 import { firstOrThrow, getOrThrow, isConstraintViolation, presentOrThrow } from "@/server/db-utils";
-import {
-  offRevisitList,
-  placeKey,
-  unitsOffRevisitList,
-  type RevisitSession,
-} from "@/server/follow-ups/list-rule";
+import { placeKey, type RevisitSession } from "@/server/follow-ups/list-rule";
 import {
   markDoneByVisit,
   markDoneByVisits,
@@ -69,7 +64,7 @@ export type SyncOutcome = {
 type ResolvedSession = RevisitSession & { startedAt: Date };
 
 /* Whoever's queue is flushing; the cookie decides it, never the request. */
-export type SyncCaller = { id: string; role: Role };
+export type SyncCaller = { id: string };
 
 type WriteStatus = "applied" | "unchanged" | "stale";
 
@@ -79,9 +74,7 @@ type Result = { status: WriteStatus } | { failure: unknown };
 type Write = {
   item: SyncItem;
   memberId: string;
-  caller: SyncCaller;
   session: ResolvedSession;
-  judgeList: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -275,13 +268,7 @@ async function judgeItem(
   const write: Write = {
     item,
     memberId,
-    caller,
     session,
-    /*
-     * The caller's role decides the list (refuseUnderLock), though canAmend
-     * above still asks the member question.
-     */
-    judgeList: !stored,
     createdAt: incomingCreatedAt,
     updatedAt: incomingUpdatedAt,
   };
@@ -345,7 +332,7 @@ async function persistOne(db: Database, write: Write): Promise<WriteStatus> {
 /*
  * The first thing a write does: lock its session's row (FOR KEY SHARE), as
  * changing a follow-up session's households does (FOR UPDATE), then judge
- * where each record may land, before any is written: the refusals, by
+ * whether each record may land, before any is written: the refusals, by
  * record. So a record and a household change always wait for each other in
  * one order, and whichever goes second sees what the other committed: a
  * remove sees this visit, or this sees the remove.
@@ -354,7 +341,6 @@ async function refuseUnderLock(
   tx: Database,
   session: ResolvedSession,
   writes: readonly Write[],
-  caller: SyncCaller,
 ): Promise<Map<Write, ApiError>> {
   const locked = await tx
     .select({ status: outingSessions.status })
@@ -383,20 +369,6 @@ async function refuseUnderLock(
     if (!attachedIds.has(keyOf(write.item.blockId))) refused.set(write, notInSession());
   }
 
-  /*
-   * Only a new record is judged against the follow-up list: an amend
-   * corrects a visit already stored, wherever it was allowed at the time.
-   */
-  const listed = writes.filter((write) => write.judgeList && !refused.has(write));
-  const off = await unitsOffRevisitList(
-    tx,
-    caller,
-    session,
-    listed.map((write) => write.item),
-  );
-  for (const write of listed) {
-    if (off.has(write.item)) refused.set(write, offRevisitList());
-  }
   return refused;
 }
 
@@ -482,7 +454,7 @@ async function persistRun(
   try {
     refused = await db.transaction(async (tx) => {
       const writes = entries.map((entry) => entry.write);
-      const refusals = await refuseUnderLock(tx, session, writes, caller);
+      const refusals = await refuseUnderLock(tx, session, writes);
       const landing = writes.filter((write) => !refusals.has(write));
       if (landing.length > 0) await insertRun(tx, session, landing, caller);
       return refusals;
@@ -529,7 +501,7 @@ async function persist(db: Database, write: Write): Promise<WriteStatus> {
   const sessionId = session.id;
   try {
     await db.transaction(async (tx) => {
-      const refusal = (await refuseUnderLock(tx, session, [write], write.caller)).get(write);
+      const refusal = (await refuseUnderLock(tx, session, [write])).get(write);
       if (refusal !== undefined) throw refusal;
       const household = await upsertHousehold(tx, {
         blockId: item.blockId,

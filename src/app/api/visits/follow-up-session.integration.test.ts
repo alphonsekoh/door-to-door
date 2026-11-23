@@ -11,14 +11,16 @@ const { POST: SYNC } = await import("./sync/route");
 const { PATCH: CHANGE_NOTE } = await import("../follow-ups/[id]/route");
 
 /*
- * Recording in a follow-up session: a member records only at households on
- * the session's list, through the form and through the offline queue alike.
+ * Recording in a follow-up session: anyone records at any unit in its blocks,
+ * through the form and through the offline queue alike; only a visit at a
+ * household on the session's list marks that household's notes done.
  */
 
 const pool = createTestPool();
 const ADMIN = "c7c7c7c7-0000-4000-8000-000000000001";
 const ALICE = "c7c7c7c7-0000-4000-8000-000000000002";
 const BLOCK = "c7c7c7c7-0000-4000-8001-000000000001";
+const OTHER_BLOCK = "c7c7c7c7-0000-4000-8001-000000000002";
 const SESSION = "c7c7c7c7-0000-4000-8002-000000000001";
 const LISTED = "c7c7c7c7-0000-4000-8003-000000000001";
 const SUGGESTED = "c7c7c7c7-0000-4000-8003-000000000002";
@@ -129,23 +131,49 @@ describe("POST /api/visits in a follow-up session", () => {
     expect((await post("#01-01")).status).toBe(201);
   });
 
-  it("refuses a member at a unit nobody has visited, and says what to do", async () => {
-    asAlice();
-    const response = await post("#09-09");
-    expect(response.status).toBe(409);
-    expect(await error(response)).toEqual({
-      code: "not_on_follow_up_list",
-      message: "This unit is not on this session's list. Ask an admin to add it.",
-    });
-  });
-
   it.each([
+    ["a unit nobody has visited", "#09-09"],
     ["only a suggestion", "#02-02"],
     ["a removed note", "#03-03"],
     ["a note resolved before the session started", "#04-04"],
-  ])("refuses a member at a household with %s", async (_case, unit) => {
+  ])("records a member's visit at %s, as a one-off that marks nothing", async (_case, unit) => {
     asAlice();
-    expect((await error(await post(unit))).code).toBe("not_on_follow_up_list");
+    const response = await post(unit);
+    expect(response.status).toBe(201);
+    expect(await marked(response)).toEqual([]);
+  });
+
+  it("leaves the session's picks as they were after an off-list visit", async () => {
+    asAlice();
+    await post("#09-09");
+    const { rows } = await pool.query<{ household_id: string }>(
+      `SELECT household_id FROM session_households WHERE session_id = $1 ORDER BY household_id`,
+      [SESSION],
+    );
+    expect(rows.map((row) => row.household_id).sort()).toEqual(
+      [LISTED, REMOVED, DONE_BEFORE].sort(),
+    );
+  });
+
+  it("records a member's visit at a household that is listed but not picked, and its note stays owed", async () => {
+    await pool.query(`UPDATE follow_ups SET status = 'listed' WHERE household_id = $1`, [
+      SUGGESTED,
+    ]);
+    asAlice();
+    const response = await post("#02-02");
+    expect(response.status).toBe(201);
+    expect(await marked(response)).toEqual([]);
+    expect((await notesAt(SUGGESTED))[0]?.done_at).toBeNull();
+  });
+
+  it("still refuses a block the session does not hold", async () => {
+    await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'999','Other Rd')`, [
+      OTHER_BLOCK,
+    ]);
+    asAlice();
+    const response = await post("#01-01", { blockId: OTHER_BLOCK });
+    expect(response.status).toBe(409);
+    expect((await error(response)).code).toBe("conflict");
   });
 
   it("lets an admin record anywhere in the session's blocks", async () => {
@@ -169,39 +197,30 @@ describe("POST /api/visits in a follow-up session", () => {
 });
 
 describe("POST /api/visits/sync in a follow-up session", () => {
-  it("rejects an unlisted record with the same code while its siblings apply", async () => {
+  it("applies an unlisted record beside its listed siblings, marking only the listed ones", async () => {
     asAlice();
     const results = await sync([item("#01-01"), item("#09-09"), item("#01-01")]);
-    expect(results.map((result) => result.status)).toEqual(["applied", "rejected", "applied"]);
-    expect(results[1]?.error?.error.code).toBe("not_on_follow_up_list");
+    expect(results.map((result) => result.status)).toEqual(["applied", "applied", "applied"]);
+    expect(results.map((result) => result.visit?.followUpsMarkedDone?.length ?? 0)).toEqual([
+      1, 0, 0,
+    ]);
   });
 
-  it("lets the same record through once an admin lists the unit and adds it", async () => {
-    const held = item("#02-02");
+  it("stores a record an earlier server refused, sent as it stands", async () => {
     asAlice();
-    expect((await sync([held]))[0]?.status).toBe("rejected");
-    await pool.query(`UPDATE follow_ups SET status = 'listed' WHERE household_id = $1`, [
-      SUGGESTED,
-    ]);
-    // Listed, but this session did not pick it: still held.
-    expect((await sync([held]))[0]?.status).toBe("rejected");
-    await pool.query(`INSERT INTO session_households (session_id, household_id) VALUES ($1,$2)`, [
-      SESSION,
-      SUGGESTED,
-    ]);
-    expect((await sync([held]))[0]?.status).toBe("applied");
+    for (const unit of ["#02-02", "#03-03"]) {
+      expect((await sync([item(unit)]))[0]?.status).toBe("applied");
+    }
   });
 
-  it("lets a removed note's record through once it is listed again", async () => {
-    // Its household stayed picked when the note was removed.
-    const held = item("#03-03");
+  it("still rejects a record for a block the session does not hold", async () => {
+    await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'999','Other Rd')`, [
+      OTHER_BLOCK,
+    ]);
     asAlice();
-    expect((await sync([held]))[0]?.status).toBe("rejected");
-    await pool.query(
-      `INSERT INTO follow_ups (household_id, author_id, note) VALUES ($1,$2,'Listed again')`,
-      [REMOVED, ADMIN],
-    );
-    expect((await sync([held]))[0]?.status).toBe("applied");
+    const [result] = await sync([{ ...item("#01-01"), blockId: OTHER_BLOCK }]);
+    expect(result?.status).toBe("rejected");
+    expect(result?.error?.error.code).toBe("conflict");
   });
 
   it("never judges an amend to a stored visit against the list", async () => {
@@ -392,10 +411,11 @@ describe("recording through the queue in a follow-up session", () => {
     expect((await notesAt(LISTED)).map((note) => note.done_at === null)).toEqual([false, true]);
   });
 
-  it("marks a held record's household once it is listed and picked, when it lands", async () => {
-    const held = item("#02-02");
+  it("leaves a one-off record alone when its household is listed and picked afterwards", async () => {
+    const stored = item("#02-02");
     asAlice();
-    expect((await sync([held]))[0]?.status).toBe("rejected");
+    const [first] = await sync([stored]);
+    expect(first?.visit?.followUpsMarkedDone).toEqual([]);
     await pool.query(`UPDATE follow_ups SET status = 'listed' WHERE household_id = $1`, [
       SUGGESTED,
     ]);
@@ -403,15 +423,18 @@ describe("recording through the queue in a follow-up session", () => {
       SESSION,
       SUGGESTED,
     ]);
-    const [landed] = await sync([held]);
-    const [note] = await notesAt(SUGGESTED);
-    expect(landed?.visit?.followUpsMarkedDone).toEqual([note?.id]);
-    expect(note?.done_by).toBe(ALICE);
+    const [replayed] = await sync([stored]);
+    expect(replayed?.status).toBe("unchanged");
+    expect((await notesAt(SUGGESTED))[0]?.done_at).toBeNull();
   });
 
   it("says nothing was marked for a rejected record", async () => {
     asAlice();
-    const [rejected] = await sync([item("#09-09")]);
+    await pool.query(`INSERT INTO blocks (id, name, street) VALUES ($1,'999','Other Rd')`, [
+      OTHER_BLOCK,
+    ]);
+    const [rejected] = await sync([{ ...item("#01-01"), blockId: OTHER_BLOCK }]);
+    expect(rejected?.status).toBe("rejected");
     expect(rejected?.visit).toBeNull();
   });
 });
