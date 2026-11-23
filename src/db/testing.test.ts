@@ -39,7 +39,8 @@ describe("integration test config", () => {
     expect(env["CONFIG_PATH"]).toBeDefined();
     expect(dirname(env["CONFIG_PATH"] ?? "")).toBe(dir);
     expect(readFileSync(env["CONFIG_PATH"] ?? "", "utf8")).toBe(
-      'database:\n  url: "postgresql://localhost:5433/door_to_door_test"\n',
+      'database:\n  url: "postgresql://localhost:5433/door_to_door_test"\n' +
+        "privacy:\n  organisation: Test Operator\n  dpoEmail: dpo@example.com\n",
     );
     expect(env["DATABASE_USER"]).toBe("tester");
     expect(env["DATABASE_PASSWORD"]).toBe("p@ss");

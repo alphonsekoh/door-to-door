@@ -12,7 +12,11 @@
  */
 export const PWA_PATHS = ["/offline", "/manifest.webmanifest", "/serwist"] as const;
 
-export const PUBLIC_PATHS = ["/sign-in", ...PWA_PATHS] as const;
+/*
+ * /privacy: the policy is owed to anyone before they sign in, and it says
+ * nothing about any one person (#273).
+ */
+export const PUBLIC_PATHS = ["/sign-in", "/privacy", ...PWA_PATHS] as const;
 
 /*
  * Where an account waiting for an admin's approval, or rejected, is kept

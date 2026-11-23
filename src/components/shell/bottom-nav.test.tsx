@@ -126,6 +126,12 @@ describe("BottomNav", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("does not render on the privacy policy (#273)", () => {
+    usePathname.mockReturnValue("/privacy");
+    const { container } = render(<BottomNav />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("does not render on the waiting page, which leads nowhere else (#249)", () => {
     usePathname.mockReturnValue("/waiting");
     const { container } = render(<BottomNav />);

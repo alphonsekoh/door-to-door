@@ -74,6 +74,14 @@ describe("account screen", () => {
     expect(screen.getByRole("heading", { level: 1, name: "Account" })).toBeInTheDocument();
     expect(await screen.findByLabelText("Your name")).toHaveValue("Alice");
   });
+
+  it("links the privacy policy from the page itself, so it shows before the account loads (#273)", () => {
+    render(<AccountPage />);
+    expect(screen.getByRole("link", { name: "Privacy policy" })).toHaveAttribute(
+      "href",
+      "/privacy",
+    );
+  });
 });
 
 describe("session screen", () => {
@@ -260,8 +268,10 @@ describe("waiting page", () => {
     ).toBeInTheDocument();
     expect(screen.getByLabelText("Your name")).toHaveValue("Pat");
     expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
-    // There is nowhere else to go.
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    // There is nowhere else to go but the policy (#273).
+    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+      "/privacy",
+    ]);
   });
 
   it("says a rejected account wasn't approved", async () => {

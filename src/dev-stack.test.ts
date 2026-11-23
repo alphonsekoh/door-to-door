@@ -154,3 +154,14 @@ describe("README.md", () => {
     }
   });
 });
+
+describe("config.example.yaml", () => {
+  it("parses as it is shipped, with a placeholder privacy contact (#273)", () => {
+    const config = parseConfig(read("config.example.yaml"), "config.example.yaml");
+
+    expect(config.privacy).toEqual({
+      organisation: "Your Name Or Organisation",
+      dpoEmail: "dpo@example.com",
+    });
+  });
+});

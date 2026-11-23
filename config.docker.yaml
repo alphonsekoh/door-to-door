@@ -20,5 +20,9 @@ rateLimit:
   # Compose publishes the port straight to the app, with no proxy writing X-Forwarded-For.
   trustedProxyHops: 0
 
+privacy:
+  organisation: Example Operator
+  dpoEmail: dpo@example.com
+
 sync:
   clockSkewToleranceSeconds: 300

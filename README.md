@@ -329,7 +329,12 @@ default (D-75-4).
 | `rateLimit.signInAttemptsGlobal`    | unset   | Failed sign-in attempts app-wide: an incident switch, see below                       |
 | `rateLimit.signInWindowSeconds`     | `300`   | Length of that window                                                                 |
 | `rateLimit.trustedProxyHops`        | `0`     | Reverse proxies that append to `X-Forwarded-For`; `0` turns the per-client budget off |
+| `privacy.organisation`              | -       | **Required.** The operator's name (a person or a body) the privacy policy names       |
+| `privacy.dpoEmail`                  | -       | **Required.** The Data Protection Officer's email the privacy policy links            |
 | `sync.clockSkewToleranceSeconds`    | `300`   | Tolerated difference between a phone's clock and the server's                         |
+
+`privacy` has no default: a server without it refuses to start, so the policy at `/privacy`
+can never name nobody. Production's `CONFIG_YAML` needs it before this reaches `main`.
 
 Numbers must be whole and at least 1, except `rateLimit.trustedProxyHops`, which may be 0.
 `database.url` and `database.migrationUrl` may carry only the `sslmode` and

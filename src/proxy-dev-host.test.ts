@@ -31,7 +31,11 @@ async function send(
 
 beforeEach(() => {
   getConfig.mockReturnValue({
-    ...parseConfig("database:\n  url: postgresql://localhost:5432/door_to_door\n", "config.yaml"),
+    ...parseConfig(
+      "database:\n  url: postgresql://localhost:5432/door_to_door\n" +
+        "privacy:\n  organisation: Example Operator\n  dpoEmail: dpo@example.com\n",
+      "config.yaml",
+    ),
     authSecret: "k3Jx9Qw2LmZp0Rt7Vb5Nc8Hd1Fg4Ys6A",
   });
   vi.stubEnv("NODE_ENV", "development");
