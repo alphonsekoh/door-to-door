@@ -10,7 +10,7 @@ import {
 } from "@/lib/privacy/policy";
 
 function P({ children }: { children: ReactNode }) {
-  return <p className="text-body">{children}</p>;
+  return <p className="text-body [overflow-wrap:anywhere]">{children}</p>;
 }
 
 function List({ children }: { children: ReactNode }) {
@@ -56,8 +56,8 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
             they record.
           </li>
           <li>
-            Sign-in records: a device label from the browser, when the sign-in started and when it
-            was last used.
+            Sign-in records: the browser&apos;s identifying string, shown as a device label, when
+            the sign-in started and when it was last used.
           </li>
         </List>
         <P>For security:</P>
@@ -80,8 +80,10 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           teams and accounts) and keep the app secure.
         </P>
         <P>
-          Nothing else. We do not sell it, we do not use it for marketing, and we share it only with
-          the providers named under &quot;Where it is processed&quot;.
+          With your agreement, we also call or text you to arrange a visit or to send invitations
+          and other messages (see &quot;Phone calls and messages&quot;). Nothing else. We do not
+          sell it or give it to anyone for their own marketing, and we share it only with the
+          providers named under &quot;Where it is processed&quot;.
         </P>
       </>
     ),
@@ -142,12 +144,15 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
     ),
     protection: (
       <List>
-        <li>Only members an admin has approved can sign in, and admins can end any sign-in.</li>
+        <li>Only members an admin has approved can use the app, and admins can end any sign-in.</li>
         <li>
           Connections are encrypted, passwords are stored only as hashes, and sign-in attempts are
           limited.
         </li>
-        <li>A phone drops its saved records when its member signs out.</li>
+        <li>
+          Signing out drops that member&apos;s sent records and the session&apos;s units from the
+          phone. Records not yet sent stay until they are sent.
+        </li>
         <li>We keep the latest details we know, and anyone can ask for a correction.</li>
       </List>
     ),

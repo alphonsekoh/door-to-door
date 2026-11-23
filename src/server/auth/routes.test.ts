@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   WAITING_PATH,
   isApiPath,
+  isPrivacyPath,
   isPublicPath,
   isPwaPath,
   isWaitingPath,
@@ -52,6 +53,14 @@ describe("the waiting page", () => {
     expect(isWaitingPath("/waiting")).toBe(true);
     expect(isWaitingPath("/waiting-room")).toBe(false);
     expect(isWaitingPath("/")).toBe(false);
+  });
+});
+
+describe("isPrivacyPath", () => {
+  it("matches only the policy", () => {
+    expect(isPrivacyPath("/privacy")).toBe(true);
+    expect(isPrivacyPath("/sign-in")).toBe(false);
+    expect(isPrivacyPath("/privacy/x")).toBe(false);
   });
 });
 

@@ -168,6 +168,21 @@ describe("AccountGate", () => {
       expect(replaceWith).not.toHaveBeenCalled();
     });
 
+    it("lets a waiting account open the privacy policy from the waiting page", async () => {
+      usePathname.mockReturnValue("/waiting");
+      sharedCurrentUser.mockResolvedValue({ id: "u1", role: "member", approval: "pending" });
+      const { Gate } = await freshGate();
+      const view = render(<Gate>page</Gate>);
+      await waitFor(() => {
+        expect(sharedCurrentUser).toHaveBeenCalled();
+      });
+      await act(() => Promise.resolve());
+      usePathname.mockReturnValue("/privacy");
+      view.rerender(<Gate>policy</Gate>);
+      expect(screen.getByText("policy")).toBeInTheDocument();
+      expect(replaceWith).not.toHaveBeenCalled();
+    });
+
     it("still gives the waiting page the signed-out message", async () => {
       usePathname.mockReturnValue("/waiting");
       const { Gate, store } = await freshGate();

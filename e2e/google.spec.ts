@@ -89,6 +89,12 @@ test("a new address asks to join, waits with no way into the app, and is let in 
   await page.getByRole("button", { name: "Save name" }).click();
   await expect(page.getByRole("status")).toHaveText("Name saved.");
 
+  // The policy opens from here, and Back returns, though the account is unapproved.
+  await page.getByRole("link", { name: "Privacy policy" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeVisible();
+  await page.getByRole("link", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Waiting for approval" })).toBeVisible();
+
   // Nothing else opens: the app's own screens send them back.
   await page.goto(local("/history", baseURL));
   await expect(page).toHaveURL(/\/waiting$/);

@@ -31,6 +31,14 @@ describe("privacy page", () => {
     expect(mail).toHaveAttribute("href", "mailto:dpo@example.com");
   });
 
+  it("names messaging among its purposes, and signing out as keeping unsent records", async () => {
+    render(await PrivacyPage());
+    const purposes = screen.getByRole("region", { name: "Why we record it" });
+    expect(purposes.textContent).toContain("call or text you");
+    expect(purposes.textContent).not.toContain("do not use it for marketing");
+    expect(document.body.textContent).toContain("Records not yet sent stay until they are sent.");
+  });
+
   it("offers a way back, and reads per request", async () => {
     render(await PrivacyPage());
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");

@@ -50,7 +50,7 @@ writeFileSync(
   CONFIG_PATH,
   stringify({
     database: { url: target.toString() },
-    privacy: { organisation: E2E_OPERATOR, dpoEmail: "dpo@example.com" },
+    privacy: { organisation: E2E_OPERATOR, dpoEmail: "firstname.lastname@example.com" },
     auth: {
       secureCookies: false,
       google: {
