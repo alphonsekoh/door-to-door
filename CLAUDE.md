@@ -179,20 +179,23 @@ later promotion would conflict. Nothing flows back from `stage` or `main` into `
 
 ## Workflow
 
-**[convention]** Each issue moves through five subagents in `.claude/agents/`. The owner
+**[convention]** Each issue moves through seven subagents in `.claude/agents/`. The owner
 (a human) makes product decisions and merges; no agent merges.
 
-| Agent      | Does                                                              | Skip when                     |
-| ---------- | ----------------------------------------------------------------- | ----------------------------- |
-| `planner`  | Issue → slice plan; edits `openapi.yaml` only                     | No API, schema or sync change |
-| `builder`  | Generate, server, UI, tests, gates; opens the stacked PR          | Never                         |
-| `verifier` | E2E, phone-width device pass, proves new tests fail when broken   | Docs, config or server-only   |
-| `reviewer` | Read-only review of invariants, authorization and conventions     | Never                         |
-| `docs`     | Records decisions in `docs/tasks/`, flags conflicts, updates docs | Never                         |
+| Agent        | Does                                                              | Skip when                     |
+| ------------ | ----------------------------------------------------------------- | ----------------------------- |
+| `planner`    | Issue → slice plan; edits `openapi.yaml` only                     | No API, schema or sync change |
+| `builder`    | Generate, server, UI, tests, gates; opens the stacked PR          | Never                         |
+| `prover`     | Breaks the code each key new test guards; proves the test fails   | The PR adds no tests          |
+| `e2e-runner` | Runs the E2E suite, reruns failures once, reports; no judgement   | Docs, config or server-only   |
+| `verifier`   | Phone-width device pass, offline and PWA checks, triages red E2E  | Docs, config or server-only   |
+| `reviewer`   | Read-only review of invariants, authorization and conventions     | Never                         |
+| `docs`       | Records decisions in `docs/tasks/`, flags conflicts, updates docs | Never                         |
 
-Bugs found by the verifier or reviewer go back to the builder on the same branch. The
-planner's open questions, and any decision conflict the docs agent flags, go to the owner
-before work continues.
+The prover mutates source, so it runs alone, after the builder. The e2e-runner then runs
+the suite, and the verifier and reviewer follow. Bugs found by the prover, verifier or
+reviewer go back to the builder on the same branch. The planner's open questions, and any
+decision conflict the docs agent flags, go to the owner before work continues.
 
 **[convention]** Decisions live in [`docs/tasks/`](docs/tasks/README.md), one file per
 issue with stable `D-<issue>-<n>` IDs. Check them before deciding anything; supersede
