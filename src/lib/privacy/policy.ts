@@ -57,7 +57,7 @@ export const days = (count: number): string => `${String(count)} ${count === 1 ?
 export const RETENTION: readonly { id: string; what: string; keep: string }[] = [
   {
     id: "households",
-    what: "A household's name, contact, religion and visit notes",
+    what: "A household's name, contact, religion, and visit and follow-up notes (including removal reasons)",
     keep: "24 months after the last visit or follow-up activity at that household, then erased",
   },
   {
@@ -68,7 +68,7 @@ export const RETENTION: readonly { id: string; what: string; keep: string }[] = 
   {
     id: "sign-ins",
     what: "Sign-in records and logs",
-    keep: "No more than 30 days",
+    keep: "30 days after the sign-in was last used",
   },
   {
     id: "attempts",

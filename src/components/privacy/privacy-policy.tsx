@@ -116,9 +116,9 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           <li>We stop using it within {RESPONSE_TIMES.withdrawal}.</li>
           <li>We erase it within {RESPONSE_TIMES.erasure}.</li>
           <li>
-            Erasing a household deletes its name, contact and religion, and deletes the visit notes
-            or detaches them from the unit. We keep only a note that it was erased, and when and by
-            whom.
+            Erasing a household deletes its name, contact and religion, its follow-up notes and
+            removal reasons, and deletes the visit notes or detaches them from the unit. We keep
+            only a note that it was erased, and when and by whom.
           </li>
           <li>A member who withdraws can no longer use the app.</li>
           <li>It also covers copies on phones and in logs.</li>

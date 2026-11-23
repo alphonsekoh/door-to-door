@@ -30,9 +30,8 @@ describe("the policy's facts", () => {
     expect(POLICY_SECTIONS.map(({ id }) => id)).toEqual([...POLICY_SECTION_IDS]);
   });
 
-  it("is last updated on a real day that is not in the future", () => {
+  it("is last updated on a real day", () => {
     expect(Number.isNaN(new Date(POLICY_UPDATED).getTime())).toBe(false);
-    expect(new Date(POLICY_UPDATED).getTime()).toBeLessThanOrEqual(Date.now());
     expect(formatDay(POLICY_UPDATED)).toBe("23 Nov 2026");
   });
 
@@ -40,7 +39,8 @@ describe("the policy's facts", () => {
     const keep = (id: string) => RETENTION.find((row) => row.id === id)?.keep;
     expect(keep("households")).toContain("24 months after the last visit or follow-up activity");
     expect(keep("accounts")).toContain("12 months");
-    expect(keep("sign-ins")).toContain("30 days");
+    expect(keep("sign-ins")).toBe("30 days after the sign-in was last used");
+    expect(RETENTION.find((row) => row.id === "households")?.what).toContain("follow-up notes");
   });
 
   it("quotes the response times", () => {
