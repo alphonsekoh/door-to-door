@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import {
   POLICY_SECTIONS,
   RESPONSE_TIMES,
-  RESTORE_WINDOW_DAYS,
+  RESTORE_WINDOW_HOURS,
   RETENTION,
-  days,
+  hours,
   type PrivacyContact,
   type SectionId,
 } from "@/lib/privacy/policy";
@@ -123,7 +123,7 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           <li>A member who withdraws can no longer use the app.</li>
           <li>It also covers copies on phones and in logs.</li>
           <li>
-            Our database provider can restore it as it was up to {days(RESTORE_WINDOW_DAYS)} back,
+            Our database provider can restore it as it was up to {hours(RESTORE_WINDOW_HOURS)} back,
             so erased data can remain in that history until then.
           </li>
         </List>

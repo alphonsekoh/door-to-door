@@ -37,10 +37,10 @@ Owner rulings of 2026-11-23:
 - **D-273-5 · Transfers named:** Neon (Singapore, ap-southeast-1), Vercel functions
   (Singapore; a US company whose network and logs may process requests elsewhere), and Google
   sign-in. _Research:_ R-260.
-- **D-273-6 · `RESTORE_WINDOW_DAYS` (`src/lib/privacy/policy.ts`) is an unverified
-  placeholder of 1.** Neon's restore window is being confirmed by the owner; it is one named
-  constant, tested to be a positive integer, quoted as "up to". **Must be confirmed before
-  merge.** _Research:_ R-260.
+- **D-273-6 · `RESTORE_WINDOW_HOURS` (`src/lib/privacy/policy.ts`) is 6.** The owner's
+  figure for Neon's free-tier maximum (2026-11-23), not read from the console; it is one named
+  constant, in hours because it is under a day, tested to be a positive integer, quoted as
+  "up to". Recheck it if the Neon plan changes. _Research:_ R-260.
 - **D-273-7 · The operator is a private individual, who is also the DPO and the compliance
   reviewer.** The config keys are `privacy.organisation` (the operator's name, a person's or a
   body's) and `privacy.dpoEmail`, but policy text and config errors say "operator" or "we",

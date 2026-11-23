@@ -46,13 +46,14 @@ export const POLICY_SECTIONS: readonly { id: SectionId; heading: string }[] = [
 ];
 
 /*
- * How far back Neon can restore the database, in days. UNVERIFIED: the owner
- * is confirming it in the Neon console. It is a placeholder until then, and
- * the policy quotes it as "up to" this long (must be confirmed before merge).
+ * How far back Neon can restore the database, in hours: 6, the owner's figure
+ * for the free tier's maximum (2026-11-23). Not read from the Neon console, so
+ * recheck it if the plan changes. The policy quotes it as "up to" this long.
  */
-export const RESTORE_WINDOW_DAYS = 1;
+export const RESTORE_WINDOW_HOURS = 6;
 
-export const days = (count: number): string => `${String(count)} ${count === 1 ? "day" : "days"}`;
+export const hours = (count: number): string =>
+  `${String(count)} ${count === 1 ? "hour" : "hours"}`;
 
 export const RETENTION: readonly { id: string; what: string; keep: string }[] = [
   {

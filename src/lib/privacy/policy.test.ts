@@ -5,9 +5,9 @@ import {
   POLICY_SECTION_IDS,
   POLICY_UPDATED,
   RESPONSE_TIMES,
-  RESTORE_WINDOW_DAYS,
+  RESTORE_WINDOW_HOURS,
   RETENTION,
-  days,
+  hours,
 } from "@/lib/privacy/policy";
 
 describe("the policy's facts", () => {
@@ -48,13 +48,13 @@ describe("the policy's facts", () => {
     expect(RESPONSE_TIMES.breachReport).toBe("3 calendar days");
   });
 
-  it("holds Neon's restore window as a positive whole number of days", () => {
-    expect(Number.isInteger(RESTORE_WINDOW_DAYS)).toBe(true);
-    expect(RESTORE_WINDOW_DAYS).toBeGreaterThan(0);
+  it("holds Neon's restore window as a positive whole number of hours", () => {
+    expect(Number.isInteger(RESTORE_WINDOW_HOURS)).toBe(true);
+    expect(RESTORE_WINDOW_HOURS).toBeGreaterThan(0);
   });
 
-  it("writes a count of days in the singular and the plural", () => {
-    expect(days(1)).toBe("1 day");
-    expect(days(7)).toBe("7 days");
+  it("writes a count of hours in the singular and the plural", () => {
+    expect(hours(1)).toBe("1 hour");
+    expect(hours(6)).toBe("6 hours");
   });
 });
