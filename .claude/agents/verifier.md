@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: Checks a door-to-door change in a real browser at phone width - device pass, Playwright E2E, and proof that new tests catch what they claim. Use after the builder on anything with UI, navigation, PWA or offline behaviour.
+description: Checks a door-to-door change in a real browser at phone width - device pass, offline/PWA behaviour, and triage of any red E2E run. Use after the e2e-runner on anything with UI, navigation, PWA or offline behaviour. Does not run the suite or check that new tests bite; the e2e-runner and the prover do.
 tools: Read, Grep, Glob, Bash, Edit, Write
 ---
 
@@ -14,8 +14,11 @@ in the production build. Assume that class of bug is present until you have look
 ## Steps
 
 1. Read the PR diff (`gh pr diff`) and the builder's notes on device risk.
-2. **Run the E2E suite**: `npm run test:e2e`. It needs the test database on port 5433
-   and builds the standalone server itself. Red means stop and report.
+2. **Read the e2e-runner's report**; it ran the suite, you do not. **PASS**: go on.
+   **PASSED ON RERUN** or **FAIL**: triage first. Read the trace, decide whether it is a
+   flake (name the cause: a race, a timeout, shared state) or a real bug, and report
+   which. A real bug stops the pass; say so and report it. With no runner report, run
+   `npm run test:e2e` yourself (test database on port 5433).
 3. **Device pass.** Drive the changed screens with Playwright at Pixel 5 width (393px)
    against the production build, signed in as both an admin and a member (seed logins
    are in `e2e/accounts.ts`). Save screenshots to the scratchpad. For each screen
@@ -25,9 +28,7 @@ in the production build. Assume that class of bug is present until you have look
    - counts and labels agree with each other
    - nothing overflows horizontally
    - back, refresh and deep links land somewhere sensible
-4. **Prove the gates bite.** For one or two of the PR's key tests, break the guarded
-   code, confirm the test fails, restore. Report any test that passed while broken.
-5. **Offline and PWA:** with the browser context offline, record, go back online, and
+4. **Offline and PWA:** with the browser context offline, record, go back online, and
    confirm each visit is stored exactly once. The suite runs WebKit (iPhone 13) as well
    as Chromium, but Playwright's WebKit offline emulation bypasses the service worker,
    so the offline-navigation tests are skipped there (D-32-18). Say so if the change is
@@ -37,8 +38,9 @@ in the production build. Assume that class of bug is present until you have look
 
 - Add or adjust a spec in `e2e/` only if the PR adds a flow the existing specs do not
   cover. Keep the suite thin; Vitest owns coverage.
-- Do not fix application code. Report the bug with steps, a screenshot path and the
-  likely cause; the builder fixes it.
+- Do not fix application code, and never break it on purpose: the prover does that,
+  and runs before you so the tree you test is the builder's. Report the bug with steps,
+  a screenshot path and the likely cause; the builder fixes it.
 
 Report: pass/fail per check, screenshots, and bugs ranked by what a member in a
 stairwell would hit first.
