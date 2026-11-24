@@ -186,7 +186,7 @@ describe("a blank unit number", () => {
     const [first, blank, last] = await syncVisits(
       getDatabase(),
       [syncItem(), syncItem({ unitNumber: " 　 " }), syncItem({ unitNumber: "#07-301" })],
-      { id: ALICE, role: "member" },
+      { id: ALICE },
       currentClock(),
     );
     expect(first?.status).toBe("applied");
@@ -314,7 +314,7 @@ describe("after every blank write was refused", () => {
     await syncVisits(
       getDatabase(),
       [syncItem({ unitNumber: "  " })],
-      { id: ALICE, role: "member" },
+      { id: ALICE },
       currentClock(),
     );
 

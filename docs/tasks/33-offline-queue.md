@@ -101,6 +101,7 @@ Owner decisions are marked **(owner)**.
   probed every 5 min (D-21-4). `conflict`, `not_found` and any unknown code are held
   for a tap (D-74-23). _Why:_ only an admin's action can change those answers. _Refined
   by D-117-16:_ `not_on_follow_up_list` is held and probed every 5 min too.
+  _Refined by D-272-2 and D-272-6:_ the server no longer sends `not_on_follow_up_list` for a visit; records already held land on their next probe.
 - **D-33-17 · Whole-batch responses.** No signal: queue-level backoff, nothing charged.
   `429`: wait 60 s, kept even on Retry. `401` or another member signed in: paused until
   the next page load. `403 account_deactivated` and `422 clock_skew`: retried at most

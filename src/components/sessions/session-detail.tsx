@@ -151,7 +151,8 @@ export function SessionDetail({ sessionId }: { sessionId: string }) {
         {session.kind === "follow_up" ? (
           <p className="-mt-3 flex flex-wrap items-center gap-2 text-caption text-foreground-muted">
             <KindBadge kind={session.kind} />
-            Members can record only households on its list.
+            Members can record any unit in its blocks; a visit at a household on its list marks its
+            follow-up done.
           </p>
         ) : null}
       </div>

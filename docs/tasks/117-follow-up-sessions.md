@@ -121,7 +121,7 @@ well." (D-117-62 onwards).
   its refusals cannot disagree (an integration test compares them case by case); a door
   marked done tonight stays on tonight's list, and one done last month is not tonight's
   work.~~ Superseded by D-117-40.
-- **D-117-15 · In a follow-up session a member records only at listed households (owner,
+- ~~**D-117-15 · In a follow-up session a member records only at listed households (owner,
   B and F).** Any other new visit is `409 not_on_follow_up_list` on `POST /visits`, and
   a sync item is `rejected` with the same code. The caller's role decides, so an admin is
   exempt, also recording on a member's behalf. Amending a stored visit, by PATCH or sync,
@@ -131,12 +131,14 @@ well." (D-117-62 onwards).
   rule is about who chooses the door; D-74-33 still governs amends. _Refined by D-117-40
   and D-117-45:_ the list is the picked households'; the check runs inside the write's
   transaction, under the session lock. _Refined by D-117-65:_ a new visit on the list
-  also marks the household's owed listed notes done.
+  also marks the household's owed listed notes done.~~ Superseded by D-272-2.
 - **D-117-16 · The queue holds a `not_on_follow_up_list` record and probes it every 5
   min**, as `session_not_active`; the sync sheet says "Not on the follow-up list. Sends
   once an admin adds this unit." Refines D-33-16. _Why:_ an admin listing the unit lets
   the same item through, and nothing unsent is dropped (D-33-2). _Wording refined by
   D-117-47:_ "Not on this session's list."; the unit must be listed and picked.
+  _Superseded in part by D-272-2:_ nothing new is held; records already held land on
+  their next probe (D-272-6).
 - **D-117-17 · The local copy is `v: 2` and carries the session's list (`revisits`,
   null when none was read).** A `v: 1` copy is read as a door-to-door session with no
   list, not deleted, and rewritten on the next online write. The offline shell reads the
@@ -145,13 +147,13 @@ well." (D-117-62 onwards).
   the copy's list. Refines D-77-3. _Why:_ a member offline when this deploys keeps the
   shell; a refusal there must not raise the account message (D-85-1) over a half-typed
   visit. _Refined by D-117-48:_ the list alone makes the copy usable.
-- **D-117-18 · Before refusing a unit, the recording form reads the list again**, within
+- ~~**D-117-18 · Before refusing a unit, the recording form reads the list again**, within
   the 4 s limit of D-33-25. With no list at all it queues the visit and the server holds
   it if unlisted. The refusal sits beside Save: "Not saved. This unit is not on the
   follow-up list." An admin is told "You can still record it as an admin" and never
   refused. _Why:_ the member was told to ask an admin, who may just have added it; weak
   signal must not block a save the server would take (D-25-3). _Wording refined by
-  D-117-47:_ "This unit is not on this session's list."
+  D-117-47:_ "This unit is not on this session's list."~~ Superseded by D-272-2.
 - **D-117-19 · In a follow-up session the form shows the block's listed units as chips,
   guesses no next unit and offers "Back to the list".** Save says "Save and next" only
   once the session is known to be door-to-door; until then it says "Save", using the
@@ -196,6 +198,7 @@ well." (D-117-62 onwards).
   record off the list. A failed list read stays inside the list. Refines D-24-1. _Why:_
   here the household, not the block, is the unit of work. _Refined by D-117-75:_ Mark
   done is for a door finished without a visit, and a Done row offers Reopen.
+  _Refined by D-272-9:_ every member, not only admins, sees "Blocks in this session"; the banner and hint wording are new.
 - **D-117-25 · Notes split into "On the follow-up list" and "Waiting for review"**,
   pinned above the timeline; a suggestion has a dashed edge. Every member sees
   "Suggested by Ann, waiting for review" (owner, D). Bylines name the suggester and the
@@ -213,6 +216,7 @@ well." (D-117-62 onwards).
   (a unit never visited). Refines D-35-10. _Why:_ one way onto the list, and no offer the
   server refuses. _Refined by D-117-47:_ a listed household not picked says "ask an
   admin to add it to this session".
+  _Refined by D-272-10:_ the off-list notice and its "ask an admin" text are gone; a member's save off the list offers Suggest (D-272-8).
 - **D-117-27 · `/follow-ups`: On the list (default), Waiting for review
   (`?view=review`), Mine (`?view=mine`).** The default is everyone's outstanding listed
   notes. Refines D-35-12. _Why:_ the list admins decide comes first; suggestions are a
@@ -296,7 +300,9 @@ well." (D-117-62 onwards).
   client mirror reads `ActiveSession.householdIds`.~~ Supersedes D-117-14. _Why:_ a block
   no longer says which doors a session is for; the list and its refusals still cannot
   disagree. _Refined by D-117-55:_ a resolution counts from the later of the start and
-  the pick; the mirror reads `ActiveSession.picks`.
+  the pick; the mirror reads `ActiveSession.picks`. _Refined by D-272-4 and D-272-15:_
+  recording is no longer a use of the rule; the agreement test compares the revisits list,
+  the marking (`done_visit_id`) and the note check.
 - **D-117-41 · Picks are sticky.** Resolving or removing a note never changes picks, and
   removing a note is never refused because a session picked it: the household leaves
   that session's list, and returns if it is listed or reopened again. _Why:_ the
@@ -337,6 +343,7 @@ well." (D-117-62 onwards).
   locks its author's user row `FOR SHARE` before the session; sync does not.
   _Refined by D-251-3:_ sync takes the lock and judges once per run of new records,
   for every record of the run, before the first write.
+  _Refined by D-272-5:_ under the lock it now judges only the session and the block.
 - **D-117-46 · "Also add to {session}" wherever an admin lists a door.** The household
   page, a "Needs a return visit" row, the recording form and listing a suggestion (now a
   sheet that shows it first) offer it, ticked, for the running follow-up session, else
@@ -355,6 +362,7 @@ well." (D-117-62 onwards).
   D-117-18, D-117-25, D-117-26. _Why:_ the session's picks, not the follow-up list, now
   decide; a form that refuses every unit helps nobody. _Refined by D-117-58:_ a session
   block with nothing on the list says so above its form.
+  _Refined by D-272-10:_ the "Not saved. This unit is not on this session's list." refusal is gone; a block outside the session reads the same for both kinds.
 - **D-117-48 · Offline, a follow-up session's list alone is enough.** A copy holding the
   list and no opened block is usable; the shell's home is "Households to revisit", and a
   block never opened is built from the list with only its listed households, and says
@@ -363,6 +371,7 @@ well." (D-117-62 onwards).
   unchanged. Refines D-117-17, D-77-3, D-77-4, D-77-12. _Why:_ in the stairwell, a member
   who read the list but opened no block had nothing to record with. _Kept by the owner,
   D-117-61:_ a row's interest chip may lag until sync.
+  _Kept by D-272-21:_ offline, only the list's blocks are offered.
 - **D-117-49 · Day-neutral words.** The block card reads "visited in this session" and
   unit rows are marked "this session". Refines D-111-7's "N visited tonight" and D-26-2's
   `tonight`. _Why:_ sessions run in the daytime too.
@@ -427,17 +436,18 @@ well." (D-117-62 onwards).
   "Someone's" with no name. The name helpers move to `src/lib/session/own-name.ts`,
   which the server can import. Refines D-117-32. _Why:_ the alert repeated the caption,
   and the `409` used the full name where the screen used the first.
-- **D-117-58 · A session block with nothing on the session's list says so.** A member
+- ~~**D-117-58 · A session block with nothing on the session's list says so.** A member
   there (a bookmark, or a block whose only pick left the list, D-117-41) reads "Nothing
   in this block is on this session's list." with Back to the list, above a form that
   stays. Not shown to admins, nor before the list is read. Refines D-117-47. _Why:_ a
   bare form refused every unit unexplained; a re-read that empties the block must not
-  throw away a half-typed visit.
+  throw away a half-typed visit.~~ Superseded by D-272-7.
 - **D-117-59 · In a follow-up session the Saved line's "Back to the list" has its own
   row.** Refines D-117-19. _Why:_ the line grew a row from "Sending…" to "Saved … on this
   phone." just after Save scrolled it into view, and scroll anchoring pushed it under
   the pinned count; an E2E holds its height. _Research:_ R-85. _Refined by D-117-71:_
   the follow-up row is there from "Sending…" on, for the same reason.
+  _Refined by D-272-19:_ `min-h-offer-back` holds the line from Sending to Suggest.
 - **D-117-60 · The last-household rule counts every pick, on the list or not (owner, no
   change).** D-117-42 stands, so a running session can be left with nothing on members'
   list. _Why:_ the owner: admins "can do that on the fly as they would remove and add
@@ -483,6 +493,7 @@ well." (D-117-62 onwards).
   marks nothing. A "No response" visit marks them too (owner, 28 Oct 2026); Undo or
   Reopen puts a note back. Refines D-117-15. _Why:_ the owner's request; on the server,
   so a queued visit counts too.
+  _Refined by D-272-22:_ "an admin off the list" now reads anyone off the list.
 - **D-117-66 · Credited to the visit's author, at the server's time (owner, 29 Oct
   2026).** `doneBy` is the visit's member, so Record for a member credits the member,
   not the admin that the brief's "the recorder" would name; an admin who wants the
@@ -520,6 +531,7 @@ well." (D-117-62 onwards).
   without signal; a save that marked nothing says nothing. Refines D-117-19, D-117-59.
   _Why:_ the owner asked for Undo; a row there from the start keeps the line one height.
   _Refined by D-136-6:_ Undo follows the words in their line.
+  _Refined by D-272-19:_ the line's height holds with an offer row.
 - **D-117-72 · Undo lasts as long as its Saved line.** Until another unit is typed or
   picked, the next save, or leaving. A late answer for a save no longer shown is
   dropped, and the double-tap guard is per save. Each Undo re-reads the list and the
@@ -531,12 +543,14 @@ well." (D-117-62 onwards).
   queued, and the offline shell never offers Undo: the list's Reopen does, with signal.
   Refines D-35-9. _Why:_ the brief asked that offline saves count; a queued reopen would
   be the offline follow-up change D-35-9 still rules out.
+  _Refined by D-272-17:_ a one-off whose household is later listed and picked is never retro-marked; a replay answers `unchanged`.
 - **D-117-74 · At the door, the save is what marks a listed note done.** In a follow-up
   session a note the save will mark (`marksDoneOnSave`) offers no Mark done on the
   recording form, and the section says "Saving your visit marks this done."; Edit and
   Remove stay. Admins off the list, door-to-door sessions and the household page keep
   Mark done. Extends D-35-7; refines D-117-25. _Why:_ the owner replaced the mark at the
   door with the save; two ways there would ask the member to choose.
+  _Refined by D-272-22:_ "an admin off the list" now reads anyone off the list.
 - **D-117-75 · The revisit list keeps Mark done and gains Reopen on Done rows.** Mark
   done is for a door finished without a visit. Reopen shows only where the viewer may
   reopen every note on the row, and reopens every done note there, not only those a

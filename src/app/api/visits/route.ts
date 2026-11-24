@@ -109,7 +109,6 @@ export const POST = withContract(
         memberId,
       },
       currentClock(),
-      { role: user.role },
     );
     return { status: 201, body: toRecordedVisit(visit, await notesMarkedDoneBy(db, visit.id)) };
   },

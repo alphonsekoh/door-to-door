@@ -1,15 +1,15 @@
 import { and, asc, eq, gte, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Database } from "@/db/client";
-import type { Role, SessionKind } from "@/db/schema";
+import type { SessionKind } from "@/db/schema";
 import { blocks, followUps, households, outingSessions, sessionHouseholds } from "@/db/schema";
-import { ConflictError } from "@/server/http/errors";
 
 /*
- * A follow-up session's list: where a member may record in that session, and
- * what the session screen shows them. One rule, written once, behind the
- * revisits endpoint, the recording refusal and a member's right to change a
- * listed note, so the list and its refusals cannot disagree.
+ * A follow-up session's list: what the session screen shows, which
+ * households' notes a visit marks done, and whether a member may change a
+ * listed note. One rule, written once, behind the revisits endpoint, the
+ * marking and that right, so they cannot disagree. It never decides where
+ * a visit may be recorded (D-272-2).
  *
  * Kept apart from revisits.ts, which reads visits, so the visit service can
  * use the rule without importing itself back.
@@ -85,28 +85,6 @@ export function onRevisitList(db: Database, session: RevisitSession): SQL {
   );
 }
 
-/* Matched on the trimmed unit, exactly as recording upserts the household. */
-export async function isUnitOnRevisitList(
-  db: Database,
-  session: RevisitSession,
-  blockId: string,
-  unitNumber: string,
-): Promise<boolean> {
-  const found = await db
-    .select({ id: followUps.id })
-    .from(followUps)
-    .innerJoin(households, eq(households.id, followUps.householdId))
-    .where(
-      and(
-        eq(households.blockId, blockId),
-        eq(households.unitNumber, unitNumber.trim()),
-        onRevisitList(db, session),
-      ),
-    )
-    .limit(1);
-  return found.length > 0;
-}
-
 /*
  * Whether a note is on the list of the follow-up session running now. Two
  * queries, so the rule is the list's own SQL rather than a copy of it joined
@@ -138,70 +116,4 @@ export async function isNoteOnActiveRevisitList(db: Database, noteId: string): P
 /* A unit as households are keyed: its block in either letter case, and its unit as stored. */
 export function placeKey(blockId: string, unitNumber: string): string {
   return `${blockId.toLowerCase()} ${unitNumber}`;
-}
-
-/* The refusal for recording off the list, worded once for every path that judges it. */
-export function offRevisitList(): ConflictError {
-  return new ConflictError(
-    "not_on_follow_up_list",
-    "This unit is not on this session's list. Ask an admin to add it.",
-  );
-}
-
-/*
- * In a follow-up session a member records only at listed households. The
- * caller's role decides, not the author's: an admin recording on a member's
- * behalf is exempt, as the admin is the one choosing to record there.
- */
-function listBinds(actor: { role: Role }, session: RevisitSession): boolean {
-  return actor.role !== "admin" && session.kind === "follow_up";
-}
-
-export async function assertMayRecordHere(
-  db: Database,
-  actor: { role: Role },
-  session: RevisitSession,
-  blockId: string,
-  unitNumber: string,
-): Promise<void> {
-  if (!listBinds(actor, session)) {
-    return;
-  }
-  if (!(await isUnitOnRevisitList(db, session, blockId, unitNumber))) {
-    throw offRevisitList();
-  }
-}
-
-/*
- * assertMayRecordHere for a batch's units, in one query: those of `places`
- * the caller may not record at. Units as stored, so already trimmed.
- */
-export async function unitsOffRevisitList<P extends { blockId: string; unitNumber: string }>(
-  db: Database,
-  actor: { role: Role },
-  session: RevisitSession,
-  places: readonly P[],
-): Promise<Set<P>> {
-  if (places.length === 0 || !listBinds(actor, session)) {
-    return new Set();
-  }
-  const listed = await db
-    .selectDistinct({ blockId: households.blockId, unitNumber: households.unitNumber })
-    .from(followUps)
-    .innerJoin(households, eq(households.id, followUps.householdId))
-    .where(
-      and(
-        inArray(
-          households.blockId,
-          places.map((place) => place.blockId),
-        ),
-        inArray(
-          households.unitNumber,
-          places.map((place) => place.unitNumber),
-        ),
-        onRevisitList(db, session),
-      ),
-    );
-  const on = new Set(listed.map((row) => placeKey(row.blockId, row.unitNumber)));
-  return new Set(places.filter((place) => !on.has(placeKey(place.blockId, place.unitNumber))));
 }

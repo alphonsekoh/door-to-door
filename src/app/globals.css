@@ -397,6 +397,21 @@
   container: saved-line / inline-size;
 }
 
+/* The line's least height with an offer and Back to the list under it: two
+   compact targets, the padding and the border. Where the offer sits beside
+   the words it is hidden until it arrives, so without this the first row
+   grows from a text line to a target as the send lands. */
+@utility min-h-offer-back {
+  min-height: calc(
+    10px + 2 *
+      clamp(
+        max(44px, calc(var(--reader-rem) * 1.5)),
+        calc(var(--reader-rem) * 2.75 - var(--short-by)),
+        calc(var(--reader-rem) * 2.75)
+      )
+  );
+}
+
 @utility offer-row {
   @container saved-line (width < 18.75rem) {
     flex-basis: 100%;

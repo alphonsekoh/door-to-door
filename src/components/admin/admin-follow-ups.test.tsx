@@ -481,7 +481,7 @@ describe("AdminFollowUps", () => {
     render(<AdminFollowUps />);
     const hint = await screen.findByRole("region", { name: "How the follow-up list works" });
     expect(hint).toHaveTextContent(
-      "Then create a Follow-up session and pick which of them to visit; members can record visits only at the households you pick.",
+      "Then create a Follow-up session and pick which of them to visit; members can record any unit in its blocks, and a visit at a household you pick marks its follow-up done.",
     );
     const first = await screen.findByRole("button", { name: "Add to list" });
     expect(first.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

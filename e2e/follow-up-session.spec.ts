@@ -108,10 +108,12 @@ test.afterEach(async ({ adminApi }) => {
   await endActiveSession(adminApi);
 });
 
-test("a member records only the households on a follow-up session's list", async ({
+test("a member records a unit off the list, and a listed one marks its follow-up done", async ({
   memberPage,
   adminApi,
-}) => {
+}, testInfo) => {
+  /* A door of this test's own, so a rerun never finds it visited already. */
+  const OFF_LIST = `#9${String(testInfo.project.name.length % 10)}-${String(Date.now()).slice(-5)}`;
   await startFollowUpSession(adminApi);
   await memberPage.addInitScript(holdFirstAnswers, HELD);
 
@@ -120,7 +122,9 @@ test("a member records only the households on a follow-up session's list", async
     memberPage.getByText("Tap a household to record your visit.", { exact: true }),
   ).toBeVisible();
   await expect(
-    memberPage.getByText("Visits can be recorded only at the households below."),
+    memberPage.getByText(
+      "Visit the households below; other units in their blocks can be recorded too.",
+    ),
   ).toBeVisible();
   const list = memberPage.getByRole("region", { name: "Households to revisit" });
   const row = list.locator(`a[href*="?unit=${encodeURIComponent(LISTED_UNIT)}"]`);
@@ -137,21 +141,37 @@ test("a member records only the households on a follow-up session's list", async
      the new unit is kept (#155). */
   const held = () => memberPage.evaluate((key) => sessionStorage.getItem(key), HELD);
   await expect.poll(held).toBe("held session, units");
-  await unit.fill("#09-999");
+  await unit.fill(OFF_LIST);
   expect(await held(), "the answers landed inside the fill").toBe("released session, units");
-  await expect(unit).toHaveValue("#09-999");
+  await expect(unit).toHaveValue(OFF_LIST);
 
-  /* A unit off the list is explained, and Save refuses it beside the button. */
+  /* A unit off the list is explained, and saved all the same: a one-off
+     visit with no follow-up to mark, which Suggest can follow. */
   await expect(
-    memberPage.getByText("#09-999 is not on this session's list", { exact: false }),
+    memberPage.getByText("Not on this session's list. You can still record it."),
   ).toBeVisible();
   await memberPage.getByRole("radio", { name: "High" }).click();
   const save = memberPage.getByRole("button", { name: "Save", exact: true });
   await expectTappable(save);
+  /* The queue posts /api/visits/sync. Held, so the line is measured while it
+     reads "Sending" and again once Suggest arrives: neither it nor the unit
+     field may move. */
+  const { promise: gate, resolve: release } = Promise.withResolvers<undefined>();
+  await memberPage.route("**/api/visits/sync", async (route) => {
+    await gate;
+    return route.fallback();
+  });
   await save.click();
-  await expect(memberPage.getByRole("alert").filter({ hasText: "Not saved." })).toHaveText(
-    "Not saved. This unit is not on this session's list.",
-  );
+  const oneOff = memberPage.getByRole("status").filter({ hasText: OFF_LIST });
+  await expect(oneOff).toContainText(`Sending ${OFF_LIST}`);
+  const before = { line: await oneOff.boundingBox(), field: await unit.boundingBox() };
+  release(undefined);
+  await expect(oneOff).not.toContainText("Follow-up marked done");
+  await expect(oneOff.getByRole("button", { name: "Suggest a return visit" })).toBeVisible();
+  const after = { line: await oneOff.boundingBox(), field: await unit.boundingBox() };
+  expect(after.line?.height, "the Saved line keeps its height").toBe(before.line?.height);
+  expect(after.field?.y, "the unit field stays put").toBe(before.field?.y);
+  await expect(memberPage.getByRole("alert").filter({ hasText: "Not saved" })).toHaveCount(0);
 
   /* A listed unit, picked from the chips, saves; the form then points back
      to the list rather than guessing the next door. */
@@ -303,89 +323,6 @@ test("a member's suggestion is reviewed by an admin, and the member is told it w
   ).toBeVisible();
   await declined.getByRole("button", { name: "Got it to all" }).click();
   await expect(declined).toBeHidden();
-});
-
-test("a visit to a unit taken off the list waits on the phone, and is sent once when it is listed again", async ({
-  memberPage,
-  adminApi,
-}, testInfo) => {
-  const session = await startFollowUpSession(adminApi);
-
-  /* A door of this test's own, on the list and in the session. An admin may
-     record anywhere in a follow-up session's blocks, which is how it comes
-     to exist. */
-  const unit = `#3${String(testInfo.project.name.length % 10)}-${String(Date.now()).slice(-5)}`;
-  const visited = await adminApi.post("/api/visits", {
-    data: { id: uuidv7(), blockId: SEED_BLOCK, unitNumber: unit, interestLevel: "medium" },
-  });
-  expect(visited.status()).toBe(201);
-  const { householdId } = (await visited.json()) as { householdId: string };
-  const listIt = async (): Promise<string> => {
-    const listed = await adminApi.post("/api/follow-ups", {
-      data: { householdId, note: "Asked us to come back" },
-    });
-    expect(listed.status()).toBe(201);
-    return ((await listed.json()) as { id: string }).id;
-  };
-  const first = await listIt();
-  const picked = await adminApi.post(`/api/sessions/${session}/households`, {
-    data: { householdIds: [householdId] },
-  });
-  expect(picked.status()).toBe(200);
-
-  await memberPage.goto(`/blocks/${SEED_BLOCK}`);
-  await untilLive(memberPage);
-  const chip = memberPage
-    .getByRole("list", { name: "On the list in this block" })
-    .getByRole("button", { name: unit });
-  await expect(chip).toBeVisible();
-
-  /* Taken off the list after the member's screen read it. The household
-     stays in the session, off its list. */
-  const removeNote = async (id: string) =>
-    (
-      await adminApi.post(`/api/follow-ups/${id}/remove`, { data: { reason: "Moved away" } })
-    ).status();
-  expect(await removeNote(first)).toBe(204);
-  await chip.click();
-  await memberPage.getByRole("radio", { name: "High" }).click();
-  await memberPage.getByRole("button", { name: "Save", exact: true }).click();
-
-  /* The server holds it, and the screen stops offering the door. */
-  const bar = memberPage.getByRole("button", { name: /1 not sent/ });
-  await expect(bar).toBeVisible();
-  await expect(memberPage.getByRole("status")).toContainText(`Saved ${unit} on this phone.`);
-  await expect(chip).toBeHidden();
-  await memberPage.getByLabel("Unit number").fill(unit);
-  await expect(
-    memberPage.getByText(`${unit} is not on this session's list`, { exact: false }),
-  ).toBeVisible();
-
-  await bar.click();
-  /* Named for what it holds, so it is renamed once everything is sent. */
-  const sheet = memberPage.getByRole("dialog");
-  await expect(sheet).toHaveAccessibleName("Records not sent");
-  await expect(sheet).toContainText(
-    "Not on this session's list. Sends once an admin adds this unit.",
-  );
-
-  /* Listed again, it is back on the session's list, and Retry sends it, once. */
-  const second = await listIt();
-  const retry = sheet.getByRole("button", { name: `Retry ${unit}` });
-  await expectTappable(retry);
-  await retry.click();
-  await expect(sheet).toContainText("Everything has been sent.");
-  await sheet.getByRole("button", { name: "Close" }).last().click();
-  await expect(bar).toBeHidden();
-
-  const door = (await (await adminApi.get(`/api/households/${householdId}`)).json()) as {
-    visits: { member: { name: string | null } }[];
-  };
-  /* Newest first (#160). */
-  expect(door.visits.map((visit) => visit.member.name)).toEqual(["Alice Tan", "Admin User"]);
-
-  /* Left as it found the list. */
-  expect(await removeNote(second)).toBe(204);
 });
 
 test.describe("without signal", () => {

@@ -13,8 +13,8 @@ waits. Tests only. Built in commit 58f3b83.
 
 ## Decisions
 
-- **D-176-1 · The probe is folded into the existing listed-household test.** "A member
-  records only the households on a follow-up session's list"
+- **D-176-1 · The probe is folded into the existing listed-household test.** "a member
+  records a unit off the list, and a listed one marks its follow-up done"
   (`e2e/follow-up-session.spec.ts:111`, `:56` before) now holds the answers and checks
   the unit is kept. No new test, spec or flow. _Why:_ D-37-6; that test already reaches
   the block screen by client navigation and fills `#09-999`.

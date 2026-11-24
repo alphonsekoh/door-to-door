@@ -45,9 +45,11 @@ The household/visit split is the heart of the app and the thing most likely to b
 - A session's **kind** is fixed at creation: door-to-door (`regular`) or `follow_up`. A
   follow-up session has households an admin picked from the follow-up list
   (`session_households`, never fewer than one), and its blocks follow them; nobody
-  attaches its blocks by hand. In it a member records only at households on its list,
-  and changes a listed follow-up only while it is on that list; admins are exempt. One
-  rule decides the list (`src/server/follow-ups/list-rule.ts`, D-117-40).
+  attaches its blocks by hand. Anyone records at any unit in its blocks, as in a
+  door-to-door session; a visit at a household on its list also marks that household's
+  follow-ups done, and one elsewhere is a one-off that marks nothing (D-272-2, D-272-3). A member
+  changes a listed follow-up only while it is on that list; admins are exempt. One rule
+  decides the list (`src/server/follow-ups/list-rule.ts`, D-117-40, D-272-4).
 - `visits.id` is a **client-generated UUIDv7** — this is what makes the offline queue
   idempotent. Do not replace it with a database default.
 - The word users see is **session** (D-111-7), as in the API (`/sessions`). Only the

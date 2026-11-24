@@ -331,17 +331,17 @@ describe("householdAction", () => {
 describe("offerLabel", () => {
   const suggestion = note({ id: "s9", status: "suggested" });
 
-  it("offers an admin the list, in a session of either kind", () => {
-    for (const inFollowUpSession of [false, true]) {
-      expect(offerLabel({ kind: "add_to_list" }, inFollowUpSession)).toBe("Add to follow-up list");
+  it("offers an admin the list, on or off a follow-up session's list", () => {
+    for (const onSessionList of [false, true]) {
+      expect(offerLabel({ kind: "add_to_list" }, onSessionList)).toBe("Add to follow-up list");
       // Adding the waiting suggestion is the same words: one door, one note.
-      expect(offerLabel({ kind: "promote", suggestion }, inFollowUpSession)).toBe(
+      expect(offerLabel({ kind: "promote", suggestion }, onSessionList)).toBe(
         "Add to follow-up list",
       );
     }
   });
 
-  it("offers a member a suggestion only in a door-to-door session", () => {
+  it("offers a member a suggestion, except at a door on the session's list", () => {
     expect(offerLabel({ kind: "suggest" }, false)).toBe("Suggest a return visit");
     expect(offerLabel({ kind: "suggest" }, true)).toBeNull();
   });

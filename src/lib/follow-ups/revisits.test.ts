@@ -4,7 +4,6 @@ import {
   groupByBlock,
   heldOffListKey,
   listedUnitsIn,
-  nothingListedHere,
   progress,
   revisitState,
   stateOnPhone,
@@ -150,33 +149,17 @@ describe("listedUnitsIn", () => {
 });
 
 describe("unitGate", () => {
-  it.each<[string, string, string, RevisitEntry[] | null | undefined, boolean, string]>([
-    ["a listed unit", "#01-01", "123", list, false, "ok"],
-    ["a listed unit typed loosely", " 01-01 ", "123", list, false, "ok"],
-    ["the same unit in another block", "#02-02", "125", list, false, "unlisted"],
-    ["an unlisted unit, for a member", "#09-09", "123", list, false, "unlisted"],
-    ["an unlisted unit, for an admin", "#09-09", "123", list, true, "admin_override"],
-    ["a list that could not be read, for a member", "#09-09", "123", null, false, "unknown"],
-    ["a list that could not be read, for an admin", "#09-09", "123", null, true, "ok"],
-    ["a list still being read, for a member", "#09-09", "123", undefined, false, "checking"],
-    ["a list still being read, for an admin", "#09-09", "123", undefined, true, "ok"],
-    ["nothing typed yet", "  ", "123", list, false, "ok"],
-  ])("%s", (_case, unit, blockId, revisits, isAdmin, expected) => {
-    expect(unitGate(unit, blockId, revisits, isAdmin)).toBe(expected);
-  });
-});
-
-describe("nothingListedHere", () => {
-  it.each<[string, string, RevisitEntry[] | null | undefined, boolean, boolean]>([
-    ["a block with nothing on the list, for a member", "999", list, false, true],
-    ["a block with households on the list", "123", list, false, false],
-    ["a block whose households are all done", "125", list, false, false],
-    ["an empty list, for a member", "123", [], false, true],
-    ["a block with nothing on the list, for an admin", "999", list, true, false],
-    ["a list still being read", "999", undefined, false, false],
-    ["a list that could not be read", "999", null, false, false],
-  ])("%s", (_case, blockId, revisits, isAdmin, expected) => {
-    expect(nothingListedHere(revisits, blockId, isAdmin)).toBe(expected);
+  it.each<[string, string, string, RevisitEntry[] | null | undefined, string]>([
+    ["a listed unit", "#01-01", "123", list, "ok"],
+    ["a listed unit typed loosely", " 01-01 ", "123", list, "ok"],
+    ["the same unit in another block", "#02-02", "125", list, "off_list"],
+    ["an unlisted unit", "#09-09", "123", list, "off_list"],
+    ["a block with nothing on the list", "#01-01", "999", list, "off_list"],
+    ["a list that could not be read", "#09-09", "123", null, "ok"],
+    ["a list still being read", "#09-09", "123", undefined, "ok"],
+    ["nothing typed yet", "  ", "123", list, "ok"],
+  ])("%s", (_case, unit, blockId, revisits, expected) => {
+    expect(unitGate(unit, blockId, revisits)).toBe(expected);
   });
 });
 

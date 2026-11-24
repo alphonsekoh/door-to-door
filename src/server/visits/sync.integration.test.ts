@@ -38,7 +38,7 @@ const clock: Clock = { now: NOW, toleranceMs: TOLERANCE_MS };
 const offset = (ms: number, base = NOW) => new Date(base.getTime() + ms).toISOString();
 
 const flush = (items: SyncItem[], memberId = ALICE, withClock: Clock = clock) =>
-  syncVisits(db, items, { id: memberId, role: "member" }, withClock);
+  syncVisits(db, items, { id: memberId }, withClock);
 
 const countVisits = async (): Promise<number> => {
   const { rows } = await pool.query<{ count: string }>(`SELECT count(*) FROM visits`);

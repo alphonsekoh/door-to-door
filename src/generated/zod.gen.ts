@@ -294,7 +294,7 @@ export const zHouseholdHistory = z.object({
  * the session, and it has at least one `listed`, not removed note that is
  * outstanding or was resolved after both the session started and the
  * household was picked (a draft counts outstanding notes only). This is
- * the set a member may record visits at in that session.
+ * the set whose owed notes a new visit in that session marks done.
  *
  */
 export const zRevisitEntry = z.object({

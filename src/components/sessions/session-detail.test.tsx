@@ -850,7 +850,11 @@ describe("a follow-up session", () => {
     serveKind("follow_up");
     render(<SessionDetail sessionId="s1" />);
     expect(await screen.findByText("Follow-up")).toBeInTheDocument();
-    expect(screen.getByText("Members can record only households on its list.")).toBeVisible();
+    expect(
+      screen.getByText(
+        "Members can record any unit in its blocks; a visit at a household on its list marks its follow-up done.",
+      ),
+    ).toBeVisible();
   });
 
   it("shows its households to revisit, fed the blocks and their visits", async () => {

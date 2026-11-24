@@ -37,7 +37,7 @@ describe("unexpected failures", () => {
     const [result] = await syncVisits(
       stub,
       [{ ...item, description: "private note" }],
-      { id: "u1", role: "member" },
+      { id: "u1" },
       clock,
     );
 
@@ -65,7 +65,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const results = await syncVisits(stub, [item, item, item], { id: "u1", role: "member" }, clock);
+    const results = await syncVisits(stub, [item, item, item], { id: "u1" }, clock);
     expect(results.map((r) => r.status)).toEqual(["rejected", "rejected", "rejected"]);
     expect(logged).toHaveBeenCalledTimes(1);
     expect(String(logged.mock.calls[0]?.[0])).not.toContain("10.0.0.12");
@@ -84,7 +84,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const results = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
+    const results = await syncVisits(stub, [item], { id: "u1" }, clock);
     expect(results).toHaveLength(1);
     expect(results[0]?.status).toBe("rejected");
   });
@@ -98,7 +98,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const [result] = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
+    const [result] = await syncVisits(stub, [item], { id: "u1" }, clock);
     expect(result?.error?.code).toBe("internal_error");
   });
 
@@ -113,7 +113,7 @@ describe("unexpected failures", () => {
       }),
     } as unknown as Database;
 
-    const [result] = await syncVisits(stub, [item], { id: "u1", role: "member" }, clock);
+    const [result] = await syncVisits(stub, [item], { id: "u1" }, clock);
     expect(result?.error?.message).not.toMatch(/hunter2/);
     expect(result?.error?.message).toBe("Could not save this record right now. Try again.");
   });
@@ -126,7 +126,7 @@ describe("a blank unit number", () => {
     const [result] = await syncVisits(
       untouchableDatabase(),
       [{ ...item, unitNumber: " \t " }],
-      { id: "u1", role: "member" },
+      { id: "u1" },
       clock,
     );
     expect(result).toMatchObject({ id: item.id, status: "rejected", visit: null });
@@ -142,13 +142,10 @@ describe("a blank unit number", () => {
 
 describe("splitting a batch's writes", () => {
   type Judged = Parameters<typeof splitWrites>[0][number];
-  const caller = { id: "u1", role: "member" as const };
   const write = (sessionId: string) => ({
     item,
     memberId: "u1",
-    caller,
     session: { id: sessionId, kind: "regular" as const, startedAt: new Date(0) },
-    judgeList: true,
     createdAt: new Date(0),
     updatedAt: new Date(0),
   });

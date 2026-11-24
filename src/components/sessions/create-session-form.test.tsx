@@ -151,7 +151,7 @@ describe("CreateSessionForm", () => {
     expect(screen.getByRole("radio", { name: /Door-to-door/ })).toBeChecked();
     expect(kinds).toHaveTextContent("Knock on every unit in the blocks you attach.");
     expect(kinds).toHaveTextContent(
-      "Go back to households you pick from the follow-up list. Members can record only those households.",
+      "Go back to households you pick from the follow-up list. Members can record any unit in its blocks; a visit at a listed household marks its follow-up done.",
     );
     expect(kinds).toHaveTextContent("You can't change this later.");
   });

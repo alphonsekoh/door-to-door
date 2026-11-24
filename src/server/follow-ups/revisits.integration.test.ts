@@ -3,11 +3,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { Database } from "@/db/client";
 import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
-import {
-  isNoteOnActiveRevisitList,
-  isUnitOnRevisitList,
-  type RevisitSession,
-} from "@/server/follow-ups/list-rule";
+import { isNoteOnActiveRevisitList, type RevisitSession } from "@/server/follow-ups/list-rule";
 import { listRevisits } from "@/server/follow-ups/revisits";
 import { getHouseholdHistory } from "@/server/visits/queries";
 import { createVisit } from "@/server/visits/service";
@@ -281,7 +277,10 @@ const noteOf = async (note: string) =>
   (await pool.query<{ id: string }>(`SELECT id FROM follow_ups WHERE note = $1`, [note])).rows[0]
     ?.id ?? "";
 
-describe("the list, the recording check and the note check agree", () => {
+const markedBy = async (visitId: string) =>
+  (await pool.query(`SELECT 1 FROM follow_ups WHERE done_visit_id = $1`, [visitId])).rowCount;
+
+describe("the list, the marking and the note check agree", () => {
   const cases: [string, string, string, string | null, boolean][] = [
     ["a picked household still owed", BLOCK_A, "#01-01", "Due soon", true],
     ["a note resolved during the session", BLOCK_A, "#05-05", "Resolved tonight", true],
@@ -299,29 +298,41 @@ describe("the list, the recording check and the note check agree", () => {
       (entry) => entry.block.id === blockId && entry.household.unitNumber === unit,
     );
     expect(listed).toBe(onList);
-    expect(await isUnitOnRevisitList(db, session, blockId, unit)).toBe(onList);
     if (note !== null) {
       expect(await isNoteOnActiveRevisitList(db, await noteOf(note))).toBe(onList);
     }
 
+    const visitId = nextVisitId();
     const recorded = createVisit(
       db,
-      { id: nextVisitId(), blockId, unitNumber: unit, interestLevel: "low", memberId: ALICE },
+      { id: visitId, blockId, unitNumber: unit, interestLevel: "low", memberId: ALICE },
       { now: new Date(), toleranceMs: 300_000 },
-      { role: "member" },
     );
-    if (onList) {
-      await expect(recorded).resolves.toMatchObject({ memberId: ALICE });
-    } else {
-      // A block the session does not cover is refused for that first, before the list.
-      await expect(recorded).rejects.toMatchObject({
-        code: blockId === UNATTACHED ? "conflict" : "not_on_follow_up_list",
-      });
+    // The list never refuses a visit; only a block the session lacks does.
+    if (blockId === UNATTACHED) {
+      await expect(recorded).rejects.toMatchObject({ code: "conflict" });
+      return;
+    }
+    await expect(recorded).resolves.toMatchObject({ memberId: ALICE });
+    if (!onList) {
+      expect(await markedBy(visitId)).toBe(0);
     }
   });
 
-  it("matches the unit number as recording stores it, trimmed", async () => {
-    expect(await isUnitOnRevisitList(db, session, BLOCK_A, "  #01-01 ")).toBe(true);
+  it("marks the listed note when the unit is typed with stray spaces", async () => {
+    const visitId = nextVisitId();
+    await createVisit(
+      db,
+      {
+        id: visitId,
+        blockId: BLOCK_A,
+        unitNumber: "  #01-01 ",
+        interestLevel: "low",
+        memberId: ALICE,
+      },
+      { now: new Date(), toleranceMs: 300_000 },
+    );
+    expect(await markedBy(visitId)).toBeGreaterThan(0);
   });
 });
 
@@ -359,27 +370,20 @@ describe("a household added to the session once it was running", () => {
       (candidate) => candidate.household.unitNumber === unit,
     );
     expect(entry?.notes.map((n) => n.note)).toEqual(onList ? [note] : undefined);
-    expect(await isUnitOnRevisitList(db, session, BLOCK_A, unit)).toBe(onList);
     expect(await isNoteOnActiveRevisitList(db, await noteOf(note))).toBe(onList);
-    const recorded = createVisit(
+    const visitId = nextVisitId();
+    await createVisit(
       db,
-      {
-        id: nextVisitId(),
-        blockId: BLOCK_A,
-        unitNumber: unit,
-        interestLevel: "low",
-        memberId: ALICE,
-      },
+      { id: visitId, blockId: BLOCK_A, unitNumber: unit, interestLevel: "low", memberId: ALICE },
       { now: new Date(), toleranceMs: 300_000 },
-      { role: "member" },
     );
-    await (onList
-      ? expect(recorded).resolves.toMatchObject({ memberId: ALICE })
-      : expect(recorded).rejects.toMatchObject({ code: "not_on_follow_up_list" }));
+    if (!onList) {
+      expect(await markedBy(visitId)).toBe(0);
+    }
   });
 });
 
-describe("a draft's list and its check agree", () => {
+describe("a draft's list", () => {
   const draft: RevisitSession = { ...session, startedAt: null };
   const cases: [string, string, string, boolean][] = [
     ["a picked household still owed", BLOCK_A, "#01-01", true],
@@ -394,7 +398,6 @@ describe("a draft's list and its check agree", () => {
       (entry) => entry.block.id === blockId && entry.household.unitNumber === unit,
     );
     expect(listed).toBe(onList);
-    expect(await isUnitOnRevisitList(db, draft, blockId, unit)).toBe(onList);
   });
 });
 
@@ -419,7 +422,6 @@ describe("a visit that marks the household's notes done", () => {
       db,
       { id: nextVisitId(), blockId: BLOCK_A, unitNumber, interestLevel: "low", memberId },
       { now: new Date(), toleranceMs: 300_000 },
-      { role: "member" },
     );
 
   it("keeps the household on the list, its notes done, and the member's to undo", async () => {
@@ -431,13 +433,12 @@ describe("a visit that marks the household's notes done", () => {
       ["Undated", ALICE],
       ["Done tonight too", null],
     ]);
-    // Still a door the member may record at, and a note they may reopen.
-    expect(await isUnitOnRevisitList(db, session, BLOCK_A, "#01-01")).toBe(true);
+    // Still a note the member may reopen.
     expect(await isNoteOnActiveRevisitList(db, await noteOf("Due soon"))).toBe(true);
   });
 
   it("marks nothing at a household off the list", async () => {
-    // An admin may record there; nothing there is this session's work.
+    // Nothing there is this session's work.
     await createVisit(
       db,
       {
@@ -448,7 +449,6 @@ describe("a visit that marks the household's notes done", () => {
         memberId: ADMIN,
       },
       { now: new Date(), toleranceMs: 300_000 },
-      { role: "admin" },
     );
     const { rows } = await pool.query(`SELECT done_at FROM follow_ups WHERE household_id = $1`, [
       NOT_PICKED,

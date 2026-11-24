@@ -353,11 +353,11 @@ describe("a follow-up session", () => {
     render(<ActiveSessionScreen />);
     // The badge beside its title, and the notice under it.
     expect(await screen.findAllByText("Follow-up")).toHaveLength(2);
-    const notice = screen.getByText(/Visits can be recorded only at the households below\.$/);
+    const notice = screen.getByText(/other units in their blocks can be recorded too\.$/);
     // "Follow-" over "up" read as two words at large text (#196).
     expect(within(notice).getByText("Follow-up")).toHaveClass("whole-word");
     expect(notice).toHaveTextContent(
-      /^Follow-up session\. Visits can be recorded only at the households below\.$/,
+      /^Follow-up session\. Visit the households below; other units in their blocks can be recorded too\.$/,
     );
     // Said at any hour: a session is not always in the evening.
     expect(screen.queryByText(/Tonight/)).toBeNull();
@@ -385,36 +385,36 @@ describe("a follow-up session", () => {
     expect(await screen.findByText("Pick a block to start recording.")).toBeVisible();
   });
 
-  it("tells an admin they can still record any unit, and where", async () => {
-    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
-    apiFetch.mockResolvedValue(session([block("123"), block("125")], "follow_up"));
-    render(<ActiveSessionScreen />);
-    expect(
-      await screen.findByText(/As an admin you can record any unit in this session's blocks\./),
-    ).toBeVisible();
-    expect(screen.getByText(/admin true/)).toBeInTheDocument();
-    // A block with nobody on the list is still reachable from here.
-    const blocks = screen.getByRole("region", { name: "Blocks in this session" });
-    expect(within(blocks).getByRole("link", { name: /Blk 125/ })).toHaveAttribute(
-      "href",
-      "/blocks/b-125",
-    );
+  it("shows every member the session's blocks, so any unit in them can be recorded", async () => {
+    for (const isAdmin of [false, true]) {
+      useRole.mockReturnValue({ userId: "u1", isAdmin });
+      apiFetch.mockResolvedValue(session([block("123"), block("125")], "follow_up"));
+      const view = render(<ActiveSessionScreen />);
+      await screen.findByText(new RegExp(`admin ${String(isAdmin)}`));
+      // A block with nobody on the list is still reachable from here.
+      const blocks = screen.getByRole("region", { name: "Blocks in this session" });
+      expect(within(blocks).getByRole("link", { name: /Blk 125/ })).toHaveAttribute(
+        "href",
+        "/blocks/b-125",
+      );
+      view.unmount();
+    }
   });
 
-  it("leaves the admin's block list out when the session has no blocks", async () => {
-    useRole.mockReturnValue({ userId: "a1", isAdmin: true });
+  it("leaves the block list out when the session has no blocks", async () => {
     apiFetch.mockResolvedValue(session([], "follow_up"));
     render(<ActiveSessionScreen />);
-    await screen.findByText(/admin true/);
+    await screen.findByText(/admin false/);
     expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
   });
 
-  it("drives the screen from the list of households, not the block cards", async () => {
+  it("drives the screen from the list of households, with the blocks below it", async () => {
     apiFetch.mockResolvedValue(session([block("123")], "follow_up"));
     render(<ActiveSessionScreen />);
     expect(await screen.findByText("revisits s1 tick 1 admin false")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Blk 123/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Blocks in this session" })).toBeNull();
+    // The list stands in for the cards; the blocks are below it.
+    const blocks = screen.getByRole("region", { name: "Blocks in this session" });
+    expect(within(blocks).getByRole("link", { name: /Blk 123/ })).toBeVisible();
     // The team card still works as in any session.
     expect(screen.getByText(/team card s1/)).toBeInTheDocument();
   });
@@ -438,8 +438,9 @@ describe("a follow-up session", () => {
       "Tap a household to record your visit. Saving your visit marks the household's follow-up done. If it still needs another visit, tap Undo, or Reopen on this list.",
     );
     expect(hint).toHaveTextContent("Use Mark done for one finished without a visit.");
-    // The same way to ask for a household as everywhere else.
-    expect(hint).toHaveTextContent("Type its unit in the block and tap Suggest a return visit");
+    expect(hint).toHaveTextContent(
+      "Knocked on a door that isn't on the list? Record it in its block as usual, then tap Suggest a return visit if it needs one; an admin reviews it.",
+    );
     expect(hint).not.toHaveTextContent(/ask an admin/i);
     fireEvent.click(within(hint).getByRole("button", { name: "Got it" }));
     expect(screen.queryByRole("region", { name: "How a follow-up session works" })).toBeNull();

@@ -34,6 +34,7 @@ replays fixed, keeps every sync rule exactly, and lowers the client's batch size
   number of round trips stays the same for any number of records (R-249). Refines
   D-74-31 and D-117-45: the session lock and the under-lock judgement happen once per
   run, not once per item.
+  _Refined by D-272-5:_ the run judges only each record's session and block; the list is no longer judged.
 - **D-251-4 · A run that fails for any reason rolls back, and its records go again one
   at a time on the per-record path** (`persist`, with its team retry). Reasons include
   fewer rows coming back than were sent (an id stored meanwhile), a disbanded team, a
