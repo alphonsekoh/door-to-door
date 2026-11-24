@@ -41,6 +41,10 @@ describe("the policy's facts", () => {
     expect(keep("accounts")).toContain("12 months");
     expect(keep("sign-ins")).toBe("30 days after the sign-in was last used");
     expect(RETENTION.find((row) => row.id === "households")?.what).toContain("follow-up notes");
+    // The phone's copy holds each listed unit's earlier visits (#275).
+    expect(keep("phones")).toContain(
+      "the session's units, with their earlier visits, for 12 hours or until sign-out",
+    );
   });
 
   it("quotes the response times", () => {
