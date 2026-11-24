@@ -69,7 +69,10 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
         <P>On members&apos; phones:</P>
         <List>
           <li>Records waiting to be sent.</li>
-          <li>A copy of the session&apos;s units, so recording works without signal.</li>
+          <li>
+            A copy of the session&apos;s units, with their earlier visits, so recording works
+            without signal.
+          </li>
         </List>
       </>
     ),
@@ -150,8 +153,8 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           limited.
         </li>
         <li>
-          Signing out drops that member&apos;s sent records and the session&apos;s units from the
-          phone. Records not yet sent stay until they are sent.
+          Signing out drops that member&apos;s sent records and the session&apos;s units, with their
+          earlier visits, from the phone. Records not yet sent stay until they are sent.
         </li>
         <li>We keep the latest details we know, and anyone can ask for a correction.</li>
       </List>

@@ -79,7 +79,7 @@ export const RETENTION: readonly { id: string; what: string; keep: string }[] = 
   {
     id: "phones",
     what: "Copies on a member's phone",
-    keep: "Records not yet sent, until they are sent; sent records for 24 hours or until that member signs out; the session's units for 12 hours or until sign-out. Unsent records are not dropped by signing out",
+    keep: "Records not yet sent, until they are sent; sent records for 24 hours or until that member signs out; the session's units, with their earlier visits, for 12 hours or until sign-out. Unsent records are not dropped by signing out",
   },
 ];
 
