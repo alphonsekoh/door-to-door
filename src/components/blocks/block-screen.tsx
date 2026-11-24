@@ -8,6 +8,7 @@ import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { PageHeader } from "@/components/ui/page-header";
 import { SaveNotReady } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
+import { useThreadCache } from "@/components/sync/thread-cache";
 import type {
   ActiveSession,
   HouseholdSummary,
@@ -186,6 +187,14 @@ export function BlockScreen({
     }
   }, [followUpSession, noteRevisits]);
 
+  /* The session's units' threads: kept for the form and for the offline
+     shell, read in the background as the list arrives. */
+  const { threads, noteRead } = useThreadCache({
+    outingId: followUpSession?.session.id ?? null,
+    revisits,
+    preload: true,
+  });
+
   /*
    * Read with every answer about the session, and again whenever the list
    * may have moved under the screen: a record reached the server, the server
@@ -303,6 +312,7 @@ export function BlockScreen({
           active={active}
           initialUnit={initialUnit}
           guessNext={guessNext}
+          {...(followUpSession === null ? {} : { threads, onThreadRead: noteRead })}
           unitsNote={
             known === null && error !== null
               ? "Not every unit of this block could be loaded, so one not listed here may still have been visited."

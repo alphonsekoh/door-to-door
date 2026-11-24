@@ -4,7 +4,8 @@ import { useState } from "react";
 import { type FollowUpRule, RecordVisitForm } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { UnitList } from "@/components/ui/unit-list";
-import type { ActiveSession, HouseholdSummary } from "@/generated/types.gen";
+import type { ActiveSession, HouseholdHistory, HouseholdSummary } from "@/generated/types.gen";
+import type { LocalThread } from "@/lib/offline/local-copy";
 import type { OutingAnswer } from "@/lib/sync/outing";
 import type { UnitRow } from "@/lib/sync/unit-overlay";
 
@@ -30,6 +31,9 @@ type Props = {
   guessNext?: boolean;
   /* Said above the units, where they are not all of the block's. */
   unitsNote?: string | null;
+  /* A follow-up session's stored unit threads, and where one the form read goes. */
+  threads?: readonly LocalThread[];
+  onThreadRead?: (history: HouseholdHistory) => void;
 };
 
 /* A block's two views, the form and its units, for the block screen and the
@@ -49,6 +53,8 @@ export function BlockViews({
   initialUnit = "",
   guessNext = true,
   unitsNote = null,
+  threads,
+  onThreadRead,
 }: Props) {
   const { inFlight } = useSyncQueue();
   const [tab, setTab] = useState<Tab>("record");
@@ -112,6 +118,8 @@ export function BlockViews({
             onRecorded={onRecorded}
             showHistoryLine={!offline}
             {...(onDirtyChange === undefined ? {} : { onDirtyChange })}
+            {...(threads === undefined ? {} : { threads })}
+            {...(onThreadRead === undefined ? {} : { onThreadRead })}
           />
         </div>
       ) : (

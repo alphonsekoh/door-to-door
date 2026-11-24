@@ -6,6 +6,7 @@ import { DockHost } from "@/components/ui/docked-actions";
 import { PageHeader } from "@/components/ui/page-header";
 import { ReloadWhenOnline } from "@/components/pwa/reload-when-online";
 import { useSyncQueue } from "@/components/sync/sync-provider";
+import { useThreadCache } from "@/components/sync/thread-cache";
 import { goTo } from "@/lib/session/navigate";
 import { ShellRevisits } from "@/components/shell/shell-revisits";
 import {
@@ -380,10 +381,20 @@ function Recording({
     const list = await readList(outingId);
     if (list !== null && mine === generation.current) {
       onRevisits(list);
-      updateLocalCopy((current) => replaceRevisits(current, outingId, list)).catch(() => undefined);
+      updateLocalCopy((current) => replaceRevisits(current, outingId, list, Date.now())).catch(
+        () => undefined,
+      );
     }
     return list;
   }, [readList, outingId, onRevisits]);
+
+  /* The threads the copy holds, read again once the server answers. */
+  const { threads, noteRead } = useThreadCache({
+    outingId,
+    revisits,
+    preload: reachable && followUp,
+    copy,
+  });
 
   /* A record held or sent proves the server answered, sooner than the
      reconnect row may say so. */
@@ -427,6 +438,7 @@ function Recording({
         onDirtyChange={onDirtyChange}
         followUp={followUp ? { revisits, recheck } : null}
         initialUnit={unit}
+        {...(followUp ? { threads, onThreadRead: noteRead } : {})}
         unitsNote={
           block.savedAt === null
             ? "This block was not opened with signal, so only its households on the list are saved on this phone."

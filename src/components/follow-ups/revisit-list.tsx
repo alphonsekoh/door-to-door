@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { OverdueBadge } from "@/components/follow-ups/follow-up-item";
 import { RevisitPill } from "@/components/follow-ups/revisit-pill";
 import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
+import { useThreadCache } from "@/components/sync/thread-cache";
 import { InterestChip } from "@/components/ui/interest-chip";
 import { UnitNumber } from "@/components/ui/unit-number";
 import type { ActiveSession, RevisitEntry, RevisitList as List } from "@/generated/types.gen";
@@ -61,6 +62,14 @@ export function RevisitList({
       if (mine === generation.current) setState({ status: "error" });
     }
   }, [sessionId, noteRevisits]);
+
+  /* Each read of the list fills the phone's threads of its units, so they
+     open at once in the field, offline too. */
+  useThreadCache({
+    outingId: sessionId,
+    revisits: state.status === "ready" ? state.entries : null,
+    preload: true,
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => void load(), 0);

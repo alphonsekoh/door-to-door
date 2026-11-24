@@ -1067,6 +1067,12 @@ test.describe("as the session answers", () => {
 
     await startFollowUpSession(adminApi);
     try {
+      /* The listed unit's thread is on top, above the interest level (#275):
+         it opens from the phone's copy, which the Session screen fills with
+         signal, so the fresh read replaces it without moving anything. */
+      await page.unroute("**/api/sessions/active");
+      await page.goto("/");
+      await expect.poll(() => threadsOnPhone(page)).toBe(1);
       answer = await holdBack("**/api/sessions/active");
       const history = await holdBack("**/api/households/*");
       await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
@@ -1083,6 +1089,9 @@ test.describe("as the session answers", () => {
 
       await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
       await expect(line).toHaveText("Checking this unit's history…");
+      const thread = page.getByRole("region", { name: "What we know about this unit" });
+      await expect(thread).toBeVisible();
+      await expect(thread).toContainText("Polite but not interested");
       const tapped = [
         line,
         page.getByRole("radio", { name: "Medium" }),
@@ -1093,9 +1102,6 @@ test.describe("as the session answers", () => {
         null,
       );
       history();
-      await expect(
-        page.getByRole("region", { name: "What we know about this unit" }),
-      ).toBeVisible();
       await expect(seeHistory).toBeVisible();
       expect(
         await Promise.all(tapped.map((target) => target.boundingBox())),
@@ -1106,6 +1112,28 @@ test.describe("as the session answers", () => {
     }
   });
 });
+
+/* The units' threads the phone has kept for recording offline (#275). */
+function threadsOnPhone(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const open = indexedDB.open("door-to-door-local");
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore("copy");
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          const get = db.transaction("copy").objectStore("copy").get("current");
+          get.onsuccess = () => {
+            const copy = get.result as { threads?: unknown[] } | undefined;
+            db.close();
+            resolve(copy?.threads?.length ?? 0);
+          };
+        };
+      }),
+  );
+}
 
 /* The blocks the phone has kept for recording offline. */
 function blocksOnPhone(page: Page): Promise<string[]> {

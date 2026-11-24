@@ -29,6 +29,12 @@ vi.mock("@/components/sync/local-copy-writer", () => ({
 const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
+const { useThreadCache, noteRead } = vi.hoisted(() => ({
+  useThreadCache: vi.fn(),
+  noteRead: vi.fn(),
+}));
+vi.mock("@/components/sync/thread-cache", () => ({ useThreadCache }));
+
 /* Unavailable unless a test says otherwise, so a save goes straight to the
    server as it does where IndexedDB cannot be opened. */
 const { useSyncQueue } = vi.hoisted(() => ({ useSyncQueue: vi.fn() }));
@@ -128,6 +134,7 @@ async function openUnit(unitNumber: string): Promise<void> {
 beforeEach(() => {
   vi.clearAllMocks();
   useSyncQueue.mockReturnValue(NO_QUEUE);
+  useThreadCache.mockReturnValue({ threads: [], noteRead });
   useRole.mockReturnValue({
     userId: "u1",
     role: "member",
@@ -1300,12 +1307,51 @@ describe("in a follow-up session", () => {
     expect(field).toHaveValue("#09-999");
   });
 
+  it("keeps the session's threads for the form, and the history it reads as one", async () => {
+    const household = revisits.data[0]?.household;
+    if (household === undefined) throw new Error("expected a household");
+    const stored = {
+      history: {
+        household,
+        block: followUp.blocks[0]?.block,
+        visits: [],
+        answered: false,
+        pagination: { limit: 20, offset: 0, total: 0, hasMore: false },
+        followUps: [],
+      },
+      savedAt: Date.now(),
+    };
+    useThreadCache.mockReturnValue({ threads: [stored], noteRead });
+    const read = { ...stored.history, household: { ...household, name: "Mrs Tan" } };
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return Promise.resolve(followUp);
+      if (path === "/sessions/s1/teams") return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") return Promise.resolve(revisits);
+      if (path.startsWith("/households/h0")) return Promise.resolve(read);
+      return Promise.resolve(list(["#05-123"]));
+    });
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    const region = await screen.findByRole("region", { name: "What we know about this unit" });
+    expect(region.compareDocumentPosition(screen.getByText("Interest level"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    await waitFor(() => {
+      expect(noteRead).toHaveBeenCalledWith(read);
+    });
+    expect(useThreadCache).toHaveBeenLastCalledWith({
+      outingId: "s1",
+      revisits: revisits.data,
+      preload: true,
+    });
+  });
+
   it("asks for no list in a door-to-door session", async () => {
     serve(list([]), { ...followUp, session: { ...followUp.session, kind: "regular" } });
     render(<BlockScreen blockId="b1" />);
     await screen.findByRole("heading", { level: 1, name: "Blk 123" });
     expect(apiFetch).not.toHaveBeenCalledWith("/sessions/s1/revisits");
     expect(screen.queryByText(/You can record any unit in this block/)).toBeNull();
+    expect(useThreadCache).toHaveBeenLastCalledWith(expect.objectContaining({ outingId: null }));
   });
 
   it("lets only the newest list land when the session answers twice", async () => {

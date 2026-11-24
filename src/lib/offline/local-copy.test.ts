@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
-import type { ActiveSession, HouseholdSummary, RevisitEntry } from "@/generated/types.gen";
+import type {
+  ActiveSession,
+  HouseholdHistory,
+  HouseholdSummary,
+  RevisitEntry,
+} from "@/generated/types.gen";
 import {
   LOCAL_COPY_TTL_MS,
   copyExpired,
+  liveThreads,
+  noteThreads,
+  withThreads,
   type LocalCopy,
   noteBlock,
   noteOuting,
@@ -150,12 +158,13 @@ function queued(unitNumber: string, at: number, overrides: Partial<QueuedVisit> 
 describe("noteOuting", () => {
   it("starts a copy for the member with the outing and no blocks", () => {
     expect(noteOuting(null, ALICE, active(), NOW)).toEqual({
-      v: 2,
+      v: 3,
       member: ALICE,
       savedAt: NOW,
       outing: active().session,
       blocks: [],
       revisits: null,
+      threads: [],
     });
   });
 
@@ -268,7 +277,9 @@ describe("readCopy", () => {
   it.each([
     ["nothing", undefined],
     ["a string", "Alice"],
-    ["a copy of an unknown version", { ...copyWithBlock(), v: 3 }],
+    ["a copy of an unknown version", { ...copyWithBlock(), v: 4 }],
+    ["no threads field", { ...copyWithBlock(), threads: undefined }],
+    ["a bad thread", { ...copyWithBlock(), threads: [{ history: null, savedAt: NOW }] }],
     ["no follow-up list field", { ...copyWithBlock(), revisits: undefined }],
     ["a bad follow-up list", { ...copyWithBlock(), revisits: [{ household: null }] }],
     ["no member", { ...copyWithBlock(), member: null }],
@@ -288,7 +299,7 @@ describe("readCopy", () => {
 
 /* As the build before follow-up sessions wrote it. */
 function v1Copy(): unknown {
-  const { revisits: _list, outing, ...rest } = copyWithBlock();
+  const { revisits: _list, threads: _threads, outing, ...rest } = copyWithBlock();
   if (outing === null) throw new Error("expected an outing");
   const { kind: _kind, ...before } = outing;
   return { ...rest, v: 1, outing: before };
@@ -306,7 +317,7 @@ describe("readCopy, for a copy written before follow-up sessions", () => {
 
   it("keeps a copy with no outing", () => {
     expect(readCopy({ ...(v1Copy() as LocalCopy), outing: null })).toMatchObject({
-      v: 2,
+      v: 3,
       outing: null,
       revisits: null,
     });
@@ -323,15 +334,18 @@ describe("readCopy, for a copy written before follow-up sessions", () => {
 describe("replaceRevisits", () => {
   it("puts the list read again onto the copy of that outing, keeping its age", () => {
     const copy = copyWithBlock();
-    expect(replaceRevisits(copy, TONIGHT, revisits())).toEqual({ ...copy, revisits: revisits() });
+    expect(replaceRevisits(copy, TONIGHT, revisits(), NOW)).toEqual({
+      ...copy,
+      revisits: revisits(),
+    });
   });
 
   it("leaves another outing's copy, or none, as it was", () => {
     const copy = copyWithBlock();
-    expect(replaceRevisits(copy, LAST_WEEK, revisits())).toBe(copy);
-    expect(replaceRevisits(null, TONIGHT, revisits())).toBeNull();
+    expect(replaceRevisits(copy, LAST_WEEK, revisits(), NOW)).toBe(copy);
+    expect(replaceRevisits(null, TONIGHT, revisits(), NOW)).toBeNull();
     const none = noteOuting(null, ALICE, null, NOW);
-    expect(replaceRevisits(none, TONIGHT, revisits())).toBe(none);
+    expect(replaceRevisits(none, TONIGHT, revisits(), NOW)).toBe(none);
   });
 });
 
@@ -491,5 +505,114 @@ describe("offlineRows", () => {
       ["#05-01", "synced"],
       ["#05-03", "synced"],
     ]);
+  });
+});
+
+/* The list's household, read as a thread. */
+function history(unit = household("#05-01")): HouseholdHistory {
+  return {
+    household: unit.household,
+    block: block(unit.household.blockId, "123"),
+    visits: unit.latestVisit === null ? [] : [unit.latestVisit],
+    answered: true,
+    pagination: { total: 1, limit: 20, offset: 0, hasMore: false },
+    followUps: [],
+  };
+}
+
+function must<T>(value: T | null): T {
+  if (value === null) throw new Error("expected a value");
+  return value;
+}
+
+function listedCopy(): LocalCopy {
+  return noteRevisits(copyWithBlock(), ALICE, active(), revisits(), NOW);
+}
+
+describe("readCopy, for a copy written before threads", () => {
+  it("reads a v2 copy as one with no threads", () => {
+    const { threads: _threads, ...rest } = listedCopy();
+    const read = readCopy({ ...rest, v: 2 });
+    expect(read).toEqual(listedCopy());
+    expect(read?.threads).toEqual([]);
+  });
+});
+
+describe("readCopy, with threads", () => {
+  it("reads back a copy that holds a thread", () => {
+    const copy = must(noteThreads(listedCopy(), TONIGHT, [history()], NOW));
+    expect(readCopy(structuredClone(copy))).toEqual(copy);
+  });
+});
+
+describe("liveThreads and withThreads", () => {
+  it("keeps a thread through exactly 12 hours from its own read, not a moment more", () => {
+    const thread = { history: history(), savedAt: NOW };
+    expect(liveThreads([thread], NOW + LOCAL_COPY_TTL_MS)).toEqual([thread]);
+    expect(liveThreads([thread], NOW + LOCAL_COPY_TTL_MS + 1)).toEqual([]);
+  });
+
+  it("replaces the older thread of a household and keeps the others", () => {
+    const other = household("#05-02");
+    const kept = { history: history(other), savedAt: NOW };
+    const next = withThreads([{ history: history(), savedAt: NOW }, kept], [history()], NOW + 5);
+    expect(next).toEqual([kept, { history: history(), savedAt: NOW + 5 }]);
+  });
+});
+
+describe("noteThreads", () => {
+  it("stores a listed household's thread without moving the copy's age", () => {
+    const copy = listedCopy();
+    const next = noteThreads(copy, TONIGHT, [history()], NOW + 1000);
+    expect(next?.threads).toEqual([{ history: history(), savedAt: NOW + 1000 }]);
+    expect(next?.savedAt).toBe(copy.savedAt);
+  });
+
+  it("ignores a household that is not on the list", () => {
+    const copy = listedCopy();
+    expect(noteThreads(copy, TONIGHT, [history(household("#09-09"))], NOW)).toBe(copy);
+  });
+
+  it("writes only onto the copy of that outing, and never makes one", () => {
+    const copy = listedCopy();
+    expect(noteThreads(copy, LAST_WEEK, [history()], NOW)).toBe(copy);
+    expect(noteThreads(null, TONIGHT, [history()], NOW)).toBeNull();
+    const unlisted = copyWithBlock();
+    expect(noteThreads(unlisted, TONIGHT, [history()], NOW)).toBe(unlisted);
+  });
+
+  it("writes nothing when nothing changes", () => {
+    const copy = listedCopy();
+    expect(noteThreads(copy, TONIGHT, [], NOW)).toBe(copy);
+  });
+
+  it("drops a thread that has expired as it writes", () => {
+    const copy = noteThreads(listedCopy(), TONIGHT, [history()], NOW);
+    const later = NOW + LOCAL_COPY_TTL_MS + 1;
+    expect(noteThreads(copy, TONIGHT, [], later)?.threads).toEqual([]);
+  });
+});
+
+describe("threads follow the list", () => {
+  const withThread = () => must(noteThreads(listedCopy(), TONIGHT, [history()], NOW));
+
+  it("are dropped when a list read no longer names the household", () => {
+    const next = noteRevisits(withThread(), ALICE, active(), [], NOW + 1);
+    expect(next.threads).toEqual([]);
+    expect(replaceRevisits(withThread(), TONIGHT, [], NOW + 1)?.threads).toEqual([]);
+  });
+
+  it("stay while the list names the household, and are dropped once expired", () => {
+    expect(noteRevisits(withThread(), ALICE, active(), revisits(), NOW + 1).threads).toHaveLength(
+      1,
+    );
+    const later = NOW + LOCAL_COPY_TTL_MS + 1;
+    expect(replaceRevisits(withThread(), TONIGHT, revisits(), later)?.threads).toEqual([]);
+  });
+
+  it("stay for the same outing and are dropped for another, or another member", () => {
+    expect(noteOuting(withThread(), ALICE, active(), NOW + 1).threads).toHaveLength(1);
+    expect(noteOuting(withThread(), ALICE, active(LAST_WEEK), NOW + 1).threads).toEqual([]);
+    expect(noteOuting(withThread(), BEN, active(), NOW + 1).threads).toEqual([]);
   });
 });

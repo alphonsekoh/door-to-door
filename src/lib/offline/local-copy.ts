@@ -2,11 +2,18 @@ import { z } from "zod";
 import type {
   ActiveSession,
   Block,
+  HouseholdHistory,
   HouseholdSummary,
   OutingSession,
   RevisitEntry,
 } from "@/generated/types.gen";
-import { zBlock, zHouseholdSummary, zOutingSession, zRevisitEntry } from "@/generated/zod.gen";
+import {
+  zBlock,
+  zHouseholdHistory,
+  zHouseholdSummary,
+  zOutingSession,
+  zRevisitEntry,
+} from "@/generated/zod.gen";
 import { groupByBlock } from "@/lib/follow-ups/revisits";
 import type { QueuedVisit } from "@/lib/sync/types";
 import { type UnitRow, overlayQueued } from "@/lib/sync/unit-overlay";
@@ -26,13 +33,19 @@ export type LocalMember = { id: string; name: string };
 
 export type LocalBlock = { block: Block; households: HouseholdSummary[]; savedAt: number };
 
+/* A listed unit's history as last read with signal (#275). Each expires 12 h
+   after its own read, not the copy's last write: reading the list again
+   must not keep a stale thread, and a person's notes, alive. */
+export type LocalThread = { history: HouseholdHistory; savedAt: number };
+
 /*
  * v2 adds a follow-up session's list, so the shell can tell a member which
- * units they may record. A v1 copy is read as a v2 one with no list, so a
- * member offline when this ships can still open the session they saved.
+ * units they may record; v3 the histories of the households on it. An older
+ * copy is read as a v3 one with no list or no threads, so a member offline
+ * when this ships can still open the session they saved.
  */
 export type LocalCopy = {
-  v: 2;
+  v: 3;
   member: LocalMember;
   /* The last write, which is what the copy's age is measured from. */
   savedAt: number;
@@ -40,12 +53,14 @@ export type LocalCopy = {
   blocks: LocalBlock[];
   /* The outing's follow-up list as last read; null when none was read. */
   revisits: RevisitEntry[] | null;
+  /* Only for households on `revisits`. */
+  threads: LocalThread[];
 };
 
 export type UsableCopy = LocalCopy & { outing: OutingSession };
 
 const zLocalCopy = z.object({
-  v: z.literal(2),
+  v: z.literal(3),
   member: z.object({ id: z.string().min(1), name: z.string().min(1) }),
   savedAt: z.number(),
   outing: zOutingSession.nullable(),
@@ -53,16 +68,22 @@ const zLocalCopy = z.object({
     z.object({ block: zBlock, households: z.array(zHouseholdSummary), savedAt: z.number() }),
   ),
   revisits: z.array(zRevisitEntry).nullable(),
+  threads: z.array(z.object({ history: zHouseholdHistory, savedAt: z.number() })),
 });
+
+/* As the build before threads wrote it. */
+const zLocalCopyV2 = zLocalCopy.omit({ threads: true }).extend({ v: z.literal(2) });
+
+type LocalCopyV2 = Omit<LocalCopy, "v" | "threads"> & { v: 2 };
 
 /* As the build before session kinds wrote it. Its outing has a kind only
    when the server it read was already newer than it. */
-const zLocalCopyV1 = zLocalCopy.omit({ v: true, revisits: true, outing: true }).extend({
+const zLocalCopyV1 = zLocalCopyV2.omit({ v: true, revisits: true, outing: true }).extend({
   v: z.literal(1),
   outing: zOutingSession.partial({ kind: true }).nullable(),
 });
 
-type LocalCopyV1 = Omit<LocalCopy, "v" | "revisits" | "outing"> & {
+type LocalCopyV1 = Omit<LocalCopy, "v" | "revisits" | "outing" | "threads"> & {
   v: 1;
   outing: (Omit<OutingSession, "kind"> & Partial<Pick<OutingSession, "kind">>) | null;
 };
@@ -71,11 +92,40 @@ export function readCopy(raw: unknown): LocalCopy | null {
   /* The value as stored, not zod's copy, whose optional fields do not fit
      the contract's types under exactOptionalPropertyTypes. */
   if (zLocalCopy.safeParse(raw).success) return raw as LocalCopy;
+  if (zLocalCopyV2.safeParse(raw).success) return { ...(raw as LocalCopyV2), v: 3, threads: [] };
   if (!zLocalCopyV1.safeParse(raw).success) return null;
   const old = raw as LocalCopyV1;
   /* Every session before kinds existed was door-to-door. */
   const outing = old.outing === null ? null : { ...old.outing, kind: old.outing.kind ?? "regular" };
-  return { ...old, v: 2, outing, revisits: null };
+  return { ...old, v: 3, outing, revisits: null, threads: [] };
+}
+
+/* Past its 12 hours from its own read; exactly 12 h is still kept (D-77-5). */
+export function liveThreads(threads: readonly LocalThread[], now: number): LocalThread[] {
+  return threads.filter((thread) => now - thread.savedAt <= LOCAL_COPY_TTL_MS);
+}
+
+/* Households no longer on the list have no thread to keep. */
+function threadsOnList(
+  threads: readonly LocalThread[],
+  revisits: readonly RevisitEntry[],
+  now: number,
+): LocalThread[] {
+  const listed = new Set(revisits.map((entry) => entry.household.id));
+  return liveThreads(threads, now).filter((thread) => listed.has(thread.history.household.id));
+}
+
+/* Histories as threads read at `now`, each replacing the older one for its household. */
+export function withThreads(
+  threads: readonly LocalThread[],
+  histories: readonly HouseholdHistory[],
+  now: number,
+): LocalThread[] {
+  const replaced = new Set(histories.map((history) => history.household.id));
+  return [
+    ...threads.filter((thread) => !replaced.has(thread.history.household.id)),
+    ...histories.map((history) => ({ history, savedAt: now })),
+  ];
 }
 
 /* Another member's copy is never built on: theirs is replaced, not merged. */
@@ -100,8 +150,16 @@ export function noteOuting(
   const blocks = same
     ? base.blocks.filter((b) => active.blocks.some((e) => e.block.id === b.block.id))
     : [];
-  /* Another outing's list says nothing about this one's. */
-  return { v: 2, member, savedAt: now, outing, blocks, revisits: same ? base.revisits : null };
+  /* Another outing's list, and the threads on it, say nothing about this one's. */
+  return {
+    v: 3,
+    member,
+    savedAt: now,
+    outing,
+    blocks,
+    revisits: same ? base.revisits : null,
+    threads: same ? base.threads : [],
+  };
 }
 
 /* A follow-up session's list, as the session or block screen read it. */
@@ -112,7 +170,8 @@ export function noteRevisits(
   revisits: RevisitEntry[],
   now: number,
 ): LocalCopy {
-  return { ...noteOuting(copy, member, active, now), revisits };
+  const base = noteOuting(copy, member, active, now);
+  return { ...base, revisits, threads: threadsOnList(base.threads, revisits, now) };
 }
 
 /*
@@ -123,9 +182,30 @@ export function replaceRevisits(
   copy: LocalCopy | null,
   outingId: string,
   revisits: RevisitEntry[],
+  now: number,
 ): LocalCopy | null {
   if (copy?.outing?.id !== outingId) return copy;
-  return { ...copy, revisits };
+  return { ...copy, revisits, threads: threadsOnList(copy.threads, revisits, now) };
+}
+
+/*
+ * Units' histories read with signal. Only onto the copy of the outing they
+ * were read for, and only for households on its list: it never makes a copy,
+ * and never moves the copy's own age, which is the member's session, not the
+ * threads'. The same copy back when nothing changes, so nothing is written.
+ */
+export function noteThreads(
+  copy: LocalCopy | null,
+  outingId: string,
+  histories: readonly HouseholdHistory[],
+  now: number,
+): LocalCopy | null {
+  if (copy?.outing?.id !== outingId || copy.revisits === null) return copy;
+  const listed = new Set(copy.revisits.map((entry) => entry.household.id));
+  const fresh = histories.filter((history) => listed.has(history.household.id));
+  const live = liveThreads(copy.threads, now);
+  if (fresh.length === 0 && live.length === copy.threads.length) return copy;
+  return { ...copy, threads: withThreads(live, fresh, now) };
 }
 
 /*
