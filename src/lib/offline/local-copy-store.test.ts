@@ -2,7 +2,7 @@ import "fake-indexeddb/auto";
 import { IDBFactory } from "fake-indexeddb";
 import { openDB } from "idb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LOCAL_COPY_TTL_MS, type LocalCopy } from "@/lib/offline/local-copy";
+import { LOCAL_COPY_TTL_MS, type LocalCopy, type LocalThread } from "@/lib/offline/local-copy";
 import {
   LOCAL_DATABASE_NAME,
   clearLocalCopy,
@@ -16,12 +16,43 @@ const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 const ALICE = "0190a000-0000-7000-8000-00000000000a";
 
 const copy = (name = "Alice"): LocalCopy => ({
-  v: 2,
+  v: 3,
   member: { id: ALICE, name },
   savedAt: NOW,
   outing: null,
   blocks: [],
   revisits: null,
+  threads: [],
+});
+
+const STAMP = "2026-10-15T09:00:00.000Z";
+
+/* A listed unit's history, read at `savedAt`. */
+const thread = (unit: string, savedAt: number): LocalThread => ({
+  savedAt,
+  history: {
+    household: {
+      id: `0190a000-0000-7000-8000-${unit.padStart(12, "0")}`,
+      blockId: "0190a000-0000-7000-8000-000000000123",
+      unitNumber: `#05-${unit}`,
+      name: null,
+      contact: null,
+      religion: null,
+      createdAt: STAMP,
+      updatedAt: STAMP,
+    },
+    block: {
+      id: "0190a000-0000-7000-8000-000000000123",
+      name: "123",
+      street: "Ang Mo Kio Ave 3",
+      postalCode: null,
+      createdAt: STAMP,
+    },
+    visits: [],
+    answered: false,
+    pagination: { total: 0, limit: 20, offset: 0, hasMore: false },
+    followUps: [],
+  },
 });
 
 async function raw(): Promise<unknown> {
@@ -96,6 +127,22 @@ describe("the local copy on disk", () => {
     expect(await loadLocalCopy()).not.toBeNull();
     await updateLocalCopy(() => copy());
     expect(await loadLocalCopy()).toBeNull();
+  });
+
+  it("drops a thread past its own twelve hours, keeping the copy and the others", async () => {
+    const old = thread("01", NOW - LOCAL_COPY_TTL_MS - 1);
+    const recent = thread("02", NOW - 1000);
+    await updateLocalCopy(() => ({ ...copy(), savedAt: NOW - 1000, threads: [old, recent] }));
+    const loaded = await loadLocalCopy(NOW);
+    expect(loaded?.threads).toEqual([recent]);
+    expect(loaded?.savedAt).toBe(NOW - 1000);
+    expect(((await raw()) as LocalCopy).threads).toEqual([recent]);
+  });
+
+  it("leaves a copy whose threads are all live as it was", async () => {
+    const recent = thread("02", NOW - 1000);
+    await updateLocalCopy(() => ({ ...copy(), threads: [recent] }));
+    expect(await loadLocalCopy(NOW)).toEqual({ ...copy(), threads: [recent] });
   });
 
   it("reads an unreadable copy as nothing, and deletes it", async () => {

@@ -24,6 +24,9 @@ vi.mock("@/components/sync/local-copy-writer", () => ({
   useLocalCopyWriter: () => ({ noteRevisits }),
 }));
 
+const { useThreadCache } = vi.hoisted(() => ({ useThreadCache: vi.fn() }));
+vi.mock("@/components/sync/thread-cache", () => ({ useThreadCache }));
+
 const STAMP = "2026-10-20T10:00:00.000Z";
 
 const ACTIVE = {
@@ -143,6 +146,7 @@ function watchScrolls() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useThreadCache.mockReturnValue({ threads: [], noteRead: vi.fn() });
   useOnline.mockReturnValue(true);
   useRole.mockReturnValue({ userId: "u1", isAdmin: false });
 });
@@ -160,6 +164,23 @@ describe("RevisitList", () => {
     expect(await screen.findByText("#05-123")).toBeInTheDocument();
     expect(apiFetch).toHaveBeenCalledWith("/sessions/s1/revisits");
     expect(noteRevisits).toHaveBeenCalledWith(ACTIVE, data);
+  });
+
+  it("fills the phone's threads from the list it read, and from nothing before it", async () => {
+    const data = [entry("#05-123")];
+    apiFetch.mockResolvedValue(list(data));
+    render(<RevisitList active={ACTIVE} tick={1} isAdmin={false} />);
+    expect(useThreadCache).toHaveBeenCalledWith({
+      outingId: "s1",
+      revisits: null,
+      preload: true,
+    });
+    await screen.findByText("#05-123");
+    expect(useThreadCache).toHaveBeenLastCalledWith({
+      outingId: "s1",
+      revisits: data,
+      preload: true,
+    });
   });
 
   it("groups households by block, each with a way into its block", async () => {

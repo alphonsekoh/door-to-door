@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect, useRef } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActiveSessionScreen } from "@/components/sessions/active-session";
 import { ApiRequestError } from "@/lib/api-client";
@@ -22,6 +23,7 @@ const { useRole } = vi.hoisted(() => ({ useRole: vi.fn() }));
 vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 
 /* Tested on its own; here only that it is given the session and the beat. */
+const { listMounted } = vi.hoisted(() => ({ listMounted: vi.fn<(id: string) => void>() }));
 vi.mock("@/components/follow-ups/revisit-list", () => ({
   RevisitList: ({
     active,
@@ -31,7 +33,13 @@ vi.mock("@/components/follow-ups/revisit-list", () => ({
     active: { session: { id: string } };
     tick: number;
     isAdmin: boolean;
-  }) => <p>{`revisits ${active.session.id} tick ${String(tick)} admin ${String(isAdmin)}`}</p>,
+  }) => {
+    const first = useRef(active.session.id);
+    useEffect(() => {
+      listMounted(first.current);
+    }, []);
+    return <p>{`revisits ${active.session.id} tick ${String(tick)} admin ${String(isAdmin)}`}</p>;
+  },
 }));
 
 vi.mock("@/components/teams/outing-team", () => ({
@@ -425,6 +433,17 @@ describe("a follow-up session", () => {
     await screen.findByText(/revisits s1 tick 1/);
     await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(await screen.findByText(/revisits s1 tick 2/)).toBeInTheDocument();
+  });
+
+  it("starts the list over when another session runs, rather than carrying the old one", async () => {
+    apiFetch.mockResolvedValueOnce(session([], "follow_up"));
+    render(<ActiveSessionScreen />);
+    await screen.findByText(/revisits s1 tick 1/);
+    const next = session([], "follow_up");
+    apiFetch.mockResolvedValue({ ...next, session: { ...next.session, id: "s2" } });
+    await userEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByText(/revisits s2/);
+    expect(listMounted.mock.calls).toEqual([["s1"], ["s2"]]);
   });
 
   it("explains how it works once, until dismissed on this phone", async () => {

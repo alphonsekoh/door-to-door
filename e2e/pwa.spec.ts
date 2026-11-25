@@ -48,10 +48,12 @@ function savedCopyMember(page: Page): Promise<string | null> {
 
 /* What the local copy holds for the shell: the list's length (null when
    none was read) and how many blocks were opened. */
-function savedCopyShape(page: Page): Promise<{ revisits: number | null; blocks: number } | null> {
+type CopyShape = { revisits: number | null; blocks: number; threads: number };
+
+function savedCopyShape(page: Page): Promise<CopyShape | null> {
   return page.evaluate(
     () =>
-      new Promise<{ revisits: number | null; blocks: number } | null>((resolve) => {
+      new Promise<CopyShape | null>((resolve) => {
         const open = indexedDB.open("door-to-door-local");
         open.onupgradeneeded = () => {
           open.result.createObjectStore("copy");
@@ -61,12 +63,16 @@ function savedCopyShape(page: Page): Promise<{ revisits: number | null; blocks: 
           const get = db.transaction("copy").objectStore("copy").get("current");
           get.onsuccess = () => {
             const copy = get.result as
-              { revisits: unknown[] | null; blocks: unknown[] } | undefined;
+              { revisits: unknown[] | null; blocks: unknown[]; threads: unknown[] } | undefined;
             db.close();
             resolve(
               copy === undefined
                 ? null
-                : { revisits: copy.revisits?.length ?? null, blocks: copy.blocks.length },
+                : {
+                    revisits: copy.revisits?.length ?? null,
+                    blocks: copy.blocks.length,
+                    threads: copy.threads.length,
+                  },
             );
           };
         };
@@ -361,8 +367,8 @@ test.describe("the worker in charge", () => {
         .getByRole("region", { name: "Households to revisit" })
         .locator(`a[href*="?unit=${encodeURIComponent(listed)}"]`);
       await expect(row).toBeVisible();
-      // The session screen saved its list; no block was ever opened.
-      await expect.poll(() => savedCopyShape(page)).toEqual({ revisits: 1, blocks: 0 });
+      // The session screen saved its list, and the unit's thread; no block was ever opened.
+      await expect.poll(() => savedCopyShape(page)).toEqual({ revisits: 1, blocks: 0, threads: 1 });
 
       await page.context().setOffline(true);
       await row.click();
@@ -372,9 +378,22 @@ test.describe("the worker in charge", () => {
       // Straight to the household it was tapped for, as online.
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
       await expect(page.getByLabel("Unit number")).toHaveValue(listed);
+      // The thread read with signal sits above the interest level, with its age.
+      const thread = page.getByRole("region", { name: "What we know about this unit" });
+      await expect(thread).toContainText("Polite but not interested");
+      await expect(thread).toContainText("As last read with signal");
+      const above = await thread.boundingBox();
+      const picker = await page.getByRole("radiogroup", { name: "Interest level" }).boundingBox();
+      expect(above !== null && picker !== null && above.y < picker.y).toBe(true);
       await page.getByRole("radio", { name: "High" }).click();
       await page.getByRole("button", { name: "Save", exact: true }).click();
       await expect(page.getByText(`Saved ${listed} on this phone.`)).toBeVisible();
+      // Reopened, the record not yet sent is at the top of the thread.
+      await page.getByRole("button", { name: "The list" }).click();
+      await page.getByRole("button", { name: /^#05-123/ }).click();
+      await expect(
+        page.getByRole("list", { name: "Timeline" }).getByRole("listitem").first(),
+      ).toContainText("Not sent yet");
 
       await page.getByRole("button", { name: "The list" }).click();
       const list = page.getByRole("region", { name: "Households to revisit" });

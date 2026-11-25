@@ -15,9 +15,11 @@ import {
   type LocalCopy,
   noteBlock,
   noteRevisits,
+  noteThreads,
 } from "@/lib/offline/local-copy";
 import { shellState } from "@/lib/offline/shell-state";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
+import { history, visit } from "../../../test/thread-fixtures";
 import { createMemoryQueue } from "@/lib/sync/memory-queue";
 import type { SignedIn } from "@/lib/sync/signed-in";
 import type { SendOutcome, SyncQueue } from "@/lib/sync/types";
@@ -150,6 +152,11 @@ function mount({
 }
 
 const user = () => userEvent.setup();
+
+function must<T>(value: T | null): T {
+  if (value === null) throw new Error("expected a value");
+  return value;
+}
 
 async function continueAsAlice() {
   await user().click(await screen.findByRole("button", { name: "Continue as Alice Tan" }));
@@ -939,6 +946,91 @@ describe("OfflineShell, from a follow-up session's list", () => {
     expect(
       within(within(list()).getByRole("button", { name: /^#11-90/ })).getByText("Visited"),
     ).toBeInTheDocument();
+  });
+
+  it("opens a household with the thread the phone read of it, above the interest level", async () => {
+    const stored = {
+      ...history(1, [
+        visit("0190a000-0000-7000-8000-0000000000e2", { description: "Asked for the booklet" }),
+      ]),
+      household: { ...household.household, religion: "hindu" as const },
+    };
+    const copy = must(noteThreads(listOnly(), ALICE.id, OUTING, [stored], NOW));
+    mount({ copy });
+    await continueAsAlice();
+    await user().click(within(list()).getByRole("button", { name: /^#05-01/ }));
+
+    const region = screen.getByRole("region", { name: "What we know about this unit" });
+    expect(region).toHaveTextContent("Asked for the booklet");
+    expect(region).toHaveTextContent("Religion: Hindu");
+    expect(region).toHaveTextContent("As last read with signal,");
+    expect(region.compareDocumentPosition(screen.getByText("Interest level"))).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it("says saving marks the unit's owed note done, and offers no Mark done, with no session known", async () => {
+    const base = { ...history(1), household: household.household };
+    const owed = {
+      id: "0190a000-0000-7000-8000-0000000000f1",
+      householdId: base.household.id,
+      blockId: base.household.blockId,
+      status: "listed" as const,
+      listedAt: base.household.createdAt,
+      listedBy: null,
+      deletedAt: null,
+      deletedBy: null,
+      deleteReason: null,
+      waitingSuggestionBy: null,
+      blockName: "123",
+      unitNumber: base.household.unitNumber,
+      visitId: null,
+      author: { id: "0190a000-0000-7000-8000-00000000000b", name: "Ben Lim" },
+      note: "Bring the booklet",
+      dueDate: null,
+      doneAt: null,
+      doneBy: null,
+      createdAt: base.household.createdAt,
+    };
+    const copy = must(
+      noteThreads(listOnly(), ALICE.id, OUTING, [{ ...base, followUps: [owed] }], NOW),
+    );
+    mount({ copy });
+    await continueAsAlice();
+    await user().click(within(list()).getByRole("button", { name: /^#05-01/ }));
+
+    const region = screen.getByRole("region", { name: "What we know about this unit" });
+    expect(region).toHaveTextContent("Bring the booklet");
+    expect(region).toHaveTextContent("Saving your visit marks this done.");
+    expect(region).not.toHaveTextContent("You can mark this done during");
+    expect(within(region).queryByRole("button", { name: "Mark done" })).toBeNull();
+  });
+
+  it("reads the threads it lacks once the server answers, and keeps them in the copy", async () => {
+    const stored = {
+      ...history(1, [
+        visit("0190a000-0000-7000-8000-0000000000e2", { description: "Asked for the booklet" }),
+      ]),
+      household: household.household,
+    };
+    const fetch = vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(stored) }));
+    vi.stubGlobal("fetch", fetch);
+    const copy = listOnly([onTheList()]);
+    mount({ copy, probe: () => Promise.resolve({ kind: "member", id: ALICE.id }) });
+    await continueAsAlice();
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        `/api/households/${household.household.id}?limit=20&offset=0`,
+        expect.anything(),
+      );
+    });
+    await waitFor(() => {
+      expect(updateLocalCopy).toHaveBeenCalled();
+    });
+    const change = updateLocalCopy.mock.calls.at(-1)?.[0];
+    expect((change?.(copy) as LocalCopy).threads.map((t) => t.history.household.id)).toEqual([
+      household.household.id,
+    ]);
   });
 
   it("opens a block whole when it was opened with signal, saying nothing of what is missing", async () => {

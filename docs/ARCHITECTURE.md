@@ -539,7 +539,8 @@ look for the same names. Only the plain-http runs, E2E and Compose, turn it off
   screens read the first page; `HouseholdHistoryPanel` reads older ones on "Show earlier
   visits" and holds them across re-reads of the first, each visit once by id
   (`src/lib/households/history-pages.ts`, D-160-6, D-160-7, D-160-16). On the recording
-  form the panel is last, and for a unit among the block's units read, a held line
+  form the panel is last, except at a unit on the running follow-up session's list, where
+  it is the unit's thread above Interest level, newest first (D-275-3, D-275-4); for a unit among the block's units read, a held line
   under the unit field says its key facts and leads down to it
   (`src/lib/households/history-summary.ts`, D-196-4, D-196-18, D-196-29). The offline
   page draws no line, though its form still reads the history for the panel
@@ -682,8 +683,9 @@ offline: SW fallback /offline ─► OfflineShell ─► loadLocalCopy, usableCo
            ─► BlockViews (in-page, not amendable, no history line) ─► queue as usual
 ```
 
-- The copy (`src/lib/offline/`, `v: 2`) holds the member, the session, each opened
-  block's `HouseholdSummary[]` and a follow-up session's list, validated with the
+- The copy (`src/lib/offline/`, `v: 3`) holds the member, the session, each opened
+  block's `HouseholdSummary[]`, a follow-up session's list and the threads of its
+  households (`useThreadCache`, 12 h each, D-275-10 to D-275-12), validated with the
   generated Zod on read (D-77-3, D-117-17). The shell reads the list again once the
   server answers. A follow-up session's list alone makes the copy usable: the shell's
   home is then the list, and a block never opened is built from it with only its listed

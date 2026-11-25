@@ -18,6 +18,7 @@ import { UndoMarkedButton } from "@/components/follow-ups/undo-marked-button";
 import {
   type HistoryPanelHandle,
   HouseholdHistoryPanel,
+  type Thread,
 } from "@/components/households/household-history";
 import { InterestPicker } from "@/components/ui/interest-picker";
 import { NotSavedDialog } from "@/components/ui/not-saved-dialog";
@@ -43,6 +44,7 @@ import {
 import { type RevisitState, listedUnitsIn, unitGate } from "@/lib/follow-ups/revisits";
 import { type HouseholdAction, householdAction, offerLabel } from "@/lib/follow-ups/rights";
 import { historyPath } from "@/lib/households/history-pages";
+import { RELIGIONS } from "@/lib/households/religion";
 import {
   HISTORY_UNREAD,
   LONGEST_SUMMARY,
@@ -67,7 +69,9 @@ import { useEarlyInput } from "@/lib/hooks/use-early-input";
 import { useLive } from "@/lib/hooks/use-live";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
+import type { LocalThread } from "@/lib/offline/local-copy";
 import { useShellState } from "@/lib/offline/shell-state";
+import { newerThread, queuedInThread, threadAt } from "@/lib/offline/threads";
 import { type VisitFields, buildVisitRequest } from "@/lib/sync/enqueue";
 import { isEntryField } from "@/lib/whole-control";
 import { type OutingAnswer, askOutingWithin } from "@/lib/sync/outing";
@@ -79,14 +83,6 @@ import {
   unitNumberFault,
 } from "@/lib/units/unit-number";
 import { SheetPresence } from "@/components/ui/sheet";
-
-const RELIGIONS: { value: Religion; label: string }[] = [
-  { value: "buddhist", label: "Buddhist" },
-  { value: "christian", label: "Christian" },
-  { value: "hindu", label: "Hindu" },
-  { value: "freethinker", label: "Freethinker" },
-  { value: "others", label: "Others" },
-];
 
 export type FormErrors = { unitNumber?: string; interestLevel?: string };
 
@@ -195,6 +191,11 @@ type Props = {
      offline page: there it said the history could not be read at every
      known door, an error just where there is no signal (owner, 2026-11-18). */
   showHistoryLine?: boolean;
+  /* In a follow-up session, the phone's stored threads of the units on the
+     list, which open a unit's thread at once; and where a thread this form
+     read goes, to be kept. */
+  threads?: readonly LocalThread[];
+  onThreadRead?: (history: HouseholdHistory) => void;
 };
 
 /* The status line for a save that went into the queue. */
@@ -228,6 +229,8 @@ function heldWords(unitNumber: string): string {
   return `Saved ${unbroken(unitNumber)} on this phone.`;
 }
 
+const NO_THREADS: readonly LocalThread[] = [];
+
 const OUTING_UNKNOWN =
   "Could not load the session, so this visit is not saved yet. Check your signal and try again.";
 const NO_OUTING = "No session is running, so this visit is not saved yet.";
@@ -244,6 +247,8 @@ export function RecordVisitForm({
   onRecorded,
   onDirtyChange,
   showHistoryLine = true,
+  threads = NO_THREADS,
+  onThreadRead,
 }: Props) {
   const sync = useSyncQueue();
   const { userId, isAdmin } = useRole();
@@ -298,6 +303,11 @@ export function RecordVisitForm({
   const undoFocus = useRefusalFocus();
   const savedId = saved?.visitId ?? null;
   const live = useLive();
+  /* The newest handler, so the read below is not started again when it changes. */
+  const threadRead = useRef(onThreadRead);
+  useEffect(() => {
+    threadRead.current = onThreadRead;
+  }, [onThreadRead]);
 
   /* A unit typed into the server's HTML, on a slow connection, before the
      page was live (#113); the interest level is the picker's own. */
@@ -349,6 +359,7 @@ export function RecordVisitForm({
         startTransition(() => {
           setHistory(data);
           setReadAt(new Date());
+          threadRead.current?.(data);
         });
       })
       .catch(() => {
@@ -398,6 +409,35 @@ export function RecordVisitForm({
   /* The typed unit's own history: one still showing for the unit typed
      before must not decide what this one offers. */
   const here = history !== null && history.household.id === matchId ? history : null;
+  /*
+   * A unit on the follow-up session's list opens as a thread, above the
+   * interest level (#275): at once from the phone's copy when it has one, or
+   * once the unit's own read lands. It stays above the picker as the read
+   * replaces the copy, so a late arrival can push the picker down (owner, 2026-11-24).
+   * Every other unit keeps the history last in the form (D-196-4).
+   */
+  const cached = threadAt(threads, blockId, typed);
+  const readHere: LocalThread | null =
+    here === null ? null : { history: here, savedAt: readAt.getTime() };
+  const onList = followUp?.revisits != null && gate === "ok";
+  const shown =
+    cached !== undefined || (onList && here !== null) ? newerThread(readHere, cached) : null;
+  const thread: Thread | null =
+    shown === null
+      ? null
+      : {
+          cachedAt:
+            shown === cached && (shell.active || (matchId !== null && unread === matchId))
+              ? shown.savedAt
+              : null,
+          queued: queuedInThread(
+            sync.records,
+            blockId,
+            typed,
+            new Set(shown.history.visits.map((visit) => visit.id)),
+            shown.savedAt,
+          ),
+        };
   /* What the line under the unit field says of its history, from the render
      the unit matches one of the block's. Without the line the history is
      still read, for the panel and for what a refusal off the list offers. */
@@ -589,6 +629,13 @@ export function RecordVisitForm({
     void followUp?.recheck?.();
     onRecorded();
   }
+
+  const refreshHistory = () => {
+    /* Mark done answers while the next unit may be typed (#155). */
+    startTransition(() => {
+      setReloadKey((key) => key + 1);
+    });
+  };
 
   /* A queued save's household comes from the server's row once sent. */
   const queued = saved === null ? undefined : sync.records.find((r) => r.id === saved.visitId);
@@ -883,6 +930,21 @@ export function RecordVisitForm({
         </div>
       )}
 
+      {/* A unit on the follow-up list: what was said at its door, under the
+          chips and above the interest level, where it is read first. */}
+      {shown === null || thread === null ? null : (
+        <HouseholdHistoryPanel
+          ref={historyPanel}
+          key={shown.history.household.id}
+          history={shown.history}
+          active={active}
+          atDoor
+          onSessionList
+          thread={thread}
+          onChanged={refreshHistory}
+        />
+      )}
+
       <SheetPresence>
         {saved === null || householdId === null || !noting ? null : (
           <FollowUpSheet
@@ -1009,20 +1071,16 @@ export function RecordVisitForm({
 
       {/* Last, after everything a member taps: it lands once the unit's
           history is read, and above the interest level it pushed the picker
-          down under a thumb on its way to it (#196). */}
-      {history === null ? null : (
+          down under a thumb on its way to it (#196). A thread is the one
+          exception, above (#275). */}
+      {history === null || thread !== null ? null : (
         <HouseholdHistoryPanel
           ref={historyPanel}
           key={history.household.id}
           history={history}
           active={active}
           atDoor
-          onChanged={() => {
-            /* Mark done answers while the next unit may be typed (#155). */
-            startTransition(() => {
-              setReloadKey((key) => key + 1);
-            });
-          }}
+          onChanged={refreshHistory}
         />
       )}
 

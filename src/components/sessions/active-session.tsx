@@ -191,7 +191,12 @@ function SessionBody({
             Visit the households below; other units in their blocks can be recorded too.
           </p>
           {/* The list stands in for the block cards: each group opens its block. */}
-          <RevisitList active={state.data} tick={tick} isAdmin={isAdmin} />
+          <RevisitList
+            key={state.data.session.id}
+            active={state.data}
+            tick={tick}
+            isAdmin={isAdmin}
+          />
           <HintCard id="follow-up-session" title="How a follow-up session works">
             Tap a household to record your visit. Saving your visit marks the household&apos;s
             follow-up done. If it still needs another visit, tap Undo, or Reopen on this list. Use

@@ -46,6 +46,7 @@ export function FollowUpItem({
   now,
   active,
   atDoor = false,
+  onSessionList = false,
   showUnit = false,
   onChanged,
   onEdit,
@@ -57,6 +58,9 @@ export function FollowUpItem({
   active: ActiveSession | null;
   /* On the recording form, where saving the visit may mark it done. */
   atDoor?: boolean;
+  /* The running follow-up session's list holds this household, though
+     `active` is not known (the offline shell's thread). */
+  onSessionList?: boolean;
   showUnit?: boolean;
   onChanged?: () => void;
   onEdit?: (note: FollowUp) => void;
@@ -106,6 +110,7 @@ export function FollowUpItem({
         note={note}
         active={active}
         atDoor={atDoor}
+        onSessionList={onSessionList}
         onChanged={onChanged}
         onEdit={onEdit}
         onPromoted={onPromoted}
@@ -118,6 +123,7 @@ function FollowUpControls({
   note,
   active,
   atDoor,
+  onSessionList,
   onChanged,
   onEdit,
   onPromoted,
@@ -125,6 +131,7 @@ function FollowUpControls({
   note: FollowUp;
   active: ActiveSession | null;
   atDoor: boolean;
+  onSessionList: boolean;
   onChanged: (() => void) | undefined;
   onEdit: ((note: FollowUp) => void) | undefined;
   onPromoted: ((message: string) => void) | undefined;
@@ -164,7 +171,11 @@ function FollowUpControls({
 
   /* At the door, saving the visit marks it done: the owner's one way, so
      a second button there would only ask the member to choose. */
-  const resolvable = rights.canResolve && !(atDoor && marksDoneOnSave(note, active));
+  const savesIt =
+    atDoor &&
+    (marksDoneOnSave(note, active) ||
+      (onSessionList && note.status === "listed" && note.doneAt === null));
+  const resolvable = rights.canResolve && !savesIt;
   const editable = onEdit !== undefined && rights.canEditText;
   const offers = resolvable || rights.canPromote || editable || rights.canRemove;
   const removeLabel = !isAdmin
@@ -233,7 +244,7 @@ function FollowUpControls({
       ) : null}
       {/* A note resolved before a session starts is never on its list, so
           no session will let a member reopen it. */}
-      {rights.locked ? (
+      {rights.locked && !savesIt ? (
         <p className="mt-1 text-caption text-foreground-muted">
           {done
             ? "Ask an admin if it needs reopening."

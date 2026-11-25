@@ -10,6 +10,7 @@ import {
 } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
+import { ThreadQueued, ThreadVisit } from "@/components/households/thread-entry";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -32,7 +33,9 @@ import {
   keepFirstPage,
   timelineNotes,
 } from "@/lib/households/history-pages";
-import { formatDay } from "@/lib/history/dates";
+import { formatDay, formatDayTime } from "@/lib/history/dates";
+import { RELIGION_LABEL } from "@/lib/households/religion";
+import type { QueuedVisit } from "@/lib/sync/types";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
 import { useRole } from "@/lib/hooks/use-role";
 import { stillAt } from "@/lib/still-at";
@@ -71,8 +74,16 @@ const INTEREST_LABEL: Record<string, string> = {
  * page; parents key the panel by unit, so they never cross to another door.
  *
  * At the door it is last in the form, and the line under the unit field
- * leads down to it (See history, `show`).
+ * leads down to it (See history, `show`), except as a thread (below).
+ *
+ * At a unit on a follow-up session's list the panel is the unit's thread
+ * (#275): above the interest picker, newest first, with the religion when it
+ * is known, this phone's own records on top, and older visits asked for below
+ * the oldest shown. `cachedAt` is set when what is shown is the copy from the
+ * phone's last read with signal, and the read for now did not come.
  */
+export type Thread = { cachedAt: number | null; queued: readonly QueuedVisit[] };
+
 export type HistoryPanelHandle = {
   /* Its top into view, clear of the pinned sync row, and focus on its first
      line, so a screen reader reads on from there. That line, not the
@@ -88,6 +99,8 @@ export function HouseholdHistoryPanel({
   onChanged,
   anchorVisits = false,
   atDoor = false,
+  onSessionList = false,
+  thread,
   ref,
 }: {
   history: HouseholdHistory;
@@ -97,6 +110,10 @@ export function HouseholdHistoryPanel({
   /* Offer a follow-up anchored to each visit row. */
   anchorVisits?: boolean;
   atDoor?: boolean;
+  /* This unit is on the running follow-up session's list, though `active` may
+     be unknown: the offline shell's thread. Saving marks its owed notes done. */
+  onSessionList?: boolean;
+  thread?: Thread;
   ref?: Ref<HistoryPanelHandle>;
 }) {
   const { household, followUps } = history;
@@ -132,7 +149,9 @@ export function HouseholdHistoryPanel({
     setEarlier((current) => keepFirstPage(current, shownFirst));
   }
   const owed = sortOutstanding(followUps.filter(isOwed));
-  const markedOnSave = atDoor ? owed.filter((note) => marksDoneOnSave(note, active)).length : 0;
+  const markedOnSave = atDoor
+    ? owed.filter((note) => onSessionList || marksDoneOnSave(note, active)).length
+    : 0;
   const waiting = followUps.filter(awaitsReview);
   const held = holdVisits(history, earlier);
   /* Still oldest first, so the trajectory reads down to the newest knock. */
@@ -206,11 +225,36 @@ export function HouseholdHistoryPanel({
       now={now}
       active={active}
       atDoor={atDoor}
+      onSessionList={onSessionList}
       onChanged={onChanged}
       onEdit={edit}
       onPromoted={setSent}
     />
   );
+
+  const earlierVisits = held.more ? (
+    <div className="mt-3">
+      <button
+        ref={earlierControl}
+        type="button"
+        disabled={loadingEarlier}
+        onClick={showEarlier}
+        className="min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
+      >
+        {loadingEarlier ? "Loading…" : "Show earlier visits"}
+      </button>
+      {/* Only the door has a Save pinned over the page. */}
+      {earlierFailed ? (
+        <p
+          ref={earlierFailure}
+          role="status"
+          className={`mt-1 text-caption text-foreground-muted ${atDoor ? "scroll-clear-chrome" : "scroll-clear-nav"}`}
+        >
+          Could not load earlier visits.
+        </p>
+      ) : null}
+    </div>
+  ) : null;
 
   return (
     <section
@@ -224,6 +268,16 @@ export function HouseholdHistoryPanel({
       </p>
       {household.contact === null ? null : (
         <p className="text-caption text-foreground-muted">{household.contact}</p>
+      )}
+      {thread === undefined || household.religion === null ? null : (
+        <p className="text-caption text-foreground-muted">
+          Religion: {RELIGION_LABEL[household.religion]}
+        </p>
+      )}
+      {thread?.cachedAt == null ? null : (
+        <p className="text-caption text-foreground-muted">
+          As last read with signal, {formatDayTime(thread.cachedAt)}.
+        </p>
       )}
 
       {sent === null ? null : (
@@ -264,31 +318,33 @@ export function HouseholdHistoryPanel({
       ) : null}
 
       {/* Above the oldest visit shown, where the older ones will go. */}
-      {held.more ? (
-        <div className="mt-3">
-          <button
-            ref={earlierControl}
-            type="button"
-            disabled={loadingEarlier}
-            onClick={showEarlier}
-            className="min-h-11 w-full btn-secondary rounded-lg px-3 text-body font-medium"
-          >
-            {loadingEarlier ? "Loading…" : "Show earlier visits"}
-          </button>
-          {/* Only the door has a Save pinned over the page. */}
-          {earlierFailed ? (
-            <p
-              ref={earlierFailure}
-              role="status"
-              className={`mt-1 text-caption text-foreground-muted ${atDoor ? "scroll-clear-chrome" : "scroll-clear-nav"}`}
-            >
-              Could not load earlier visits.
-            </p>
-          ) : null}
-        </div>
-      ) : null}
+      {thread === undefined ? earlierVisits : null}
 
-      {timeline.length > 0 ? (
+      {thread === undefined ? null : (
+        <>
+          {thread.queued.length + timeline.length === 0 ? null : (
+            <ol aria-label="Timeline" className="mt-3 space-y-3">
+              {thread.queued.map((record) => (
+                <ThreadQueued key={record.id} record={record} />
+              ))}
+              {[...timeline].reverse().map((entry) =>
+                entry.kind === "visit" ? (
+                  <ThreadVisit key={entry.item.id} visit={entry.item} />
+                ) : (
+                  <li key={entry.item.id} className="truncate text-caption text-foreground-muted">
+                    <span className="font-medium">Follow-up done</span>
+                    {" · "}
+                    {entry.item.note}
+                  </li>
+                ),
+              )}
+            </ol>
+          )}
+          {earlierVisits}
+        </>
+      )}
+
+      {thread !== undefined || timeline.length === 0 ? null : (
         <ol aria-label="Timeline" className="mt-3 space-y-3">
           {timeline.map((entry) =>
             entry.kind === "visit" ? (
@@ -330,7 +386,7 @@ export function HouseholdHistoryPanel({
             ),
           )}
         </ol>
-      ) : null}
+      )}
 
       <SheetPresence>
         {sheet === null ? null : (

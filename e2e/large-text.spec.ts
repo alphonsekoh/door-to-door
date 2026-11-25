@@ -1067,22 +1067,85 @@ test.describe("as the session answers", () => {
 
     await startFollowUpSession(adminApi);
     try {
+      /* The listed unit's thread is on top, above the interest level (#275).
+         Tapped from the Session screen, which holds it, the thread is there
+         on the first paint and nothing under it moves as the session
+         answers, bar the notice and the chips that land above it. */
+      await page.unroute("**/api/sessions/active");
+      await page.goto("/");
+      /* A load resets the text size, so it is set before the form first draws. */
+      await atCap(page);
+      await expect.poll(() => threadsOnPhone(page)).toBe(1);
+      const row = page
+        .getByRole("region", { name: "Households to revisit" })
+        .locator(`a[href*="?unit=${encodeURIComponent(LISTED_UNIT)}"]`);
+      await expect(row).toBeVisible();
       answer = await holdBack("**/api/sessions/active");
       const history = await holdBack("**/api/households/*");
-      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
-      await atCap(page);
+      /* Taken in the commit that first draws Medium, before any paint and
+         before this test waits on anything. */
+      await page.evaluate(() => {
+        const seen = window as unknown as { firstForm?: { thread: boolean; gap: number } };
+        delete seen.firstForm;
+        const watch = new MutationObserver(() => {
+          const medium = document.querySelector('input[type="radio"][value="medium"]');
+          if (medium === null) return;
+          watch.disconnect();
+          const thread = document.querySelector('[aria-label="What we know about this unit"]');
+          const at = medium.getBoundingClientRect().top;
+          seen.firstForm = {
+            thread: thread !== null,
+            gap: thread === null ? 0 : at - thread.getBoundingClientRect().top,
+          };
+        });
+        watch.observe(document.body, { childList: true, subtree: true });
+      });
+      await row.click();
+      await page.waitForURL(/\/blocks\/.*\?unit=/);
       await untilLive(page);
+      const thread = page.getByRole("region", { name: "What we know about this unit" });
+      await expect(thread).toBeVisible();
+      const medium = page.getByRole("radio", { name: "Medium" });
+      /* The notice and the chips land between the unit field and the thread
+         (#200, accepted in D-200-3): the field holds its place, and Medium
+         keeps its distance from the thread it sits under. */
+      const gapBelowThread = async () => {
+        const [at, top] = await Promise.all([medium.boundingBox(), thread.boundingBox()]);
+        if (at === null || top === null) throw new Error("No Medium or thread to measure");
+        return at.y - top.y;
+      };
       const opened = await unit.boundingBox();
-      expect(opened, "the unit field as the screen opens").not.toBeNull();
+      const gap = await gapBelowThread();
+      /* Measured in the page like the first draw, not by the browser's
+         box: the two can differ by a subpixel on WebKit. */
+      const settled = await page.evaluate(() => {
+        const medium = document.querySelector('input[type="radio"][value="medium"]');
+        const thread = document.querySelector('[aria-label="What we know about this unit"]');
+        if (medium === null || thread === null) throw new Error("No Medium or thread to measure");
+        return medium.getBoundingClientRect().top - thread.getBoundingClientRect().top;
+      });
+      const first = await page.evaluate(
+        () =>
+          (window as unknown as { firstForm?: { thread: boolean; gap: number } }).firstForm ?? null,
+      );
+      expect(first?.thread, "the thread is on the form's first paint, not after the copy").toBe(
+        true,
+      );
+      expect(first?.gap, "Medium under the thread, from the first paint to all landed").toBeCloseTo(
+        settled,
+        0,
+      );
       answer();
       await expect(page.getByText(/You can record any unit in this block/)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+      await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
       expect(await unit.boundingBox(), "the unit field as a follow-up session answers").toEqual(
         opened,
       );
-
-      await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      expect(await gapBelowThread(), "Medium under the thread as the session answers").toBe(gap);
       await expect(line).toHaveText("Checking this unit's history…");
+      await expect(thread).toBeVisible();
+      await expect(thread).toContainText("Polite but not interested");
       const tapped = [
         line,
         page.getByRole("radio", { name: "Medium" }),
@@ -1093,9 +1156,6 @@ test.describe("as the session answers", () => {
         null,
       );
       history();
-      await expect(
-        page.getByRole("region", { name: "What we know about this unit" }),
-      ).toBeVisible();
       await expect(seeHistory).toBeVisible();
       expect(
         await Promise.all(tapped.map((target) => target.boundingBox())),
@@ -1106,6 +1166,28 @@ test.describe("as the session answers", () => {
     }
   });
 });
+
+/* The units' threads the phone has kept for recording offline (#275). */
+function threadsOnPhone(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const open = indexedDB.open("door-to-door-local");
+        open.onupgradeneeded = () => {
+          open.result.createObjectStore("copy");
+        };
+        open.onsuccess = () => {
+          const db = open.result;
+          const get = db.transaction("copy").objectStore("copy").get("current");
+          get.onsuccess = () => {
+            const copy = get.result as { threads?: unknown[] } | undefined;
+            db.close();
+            resolve(copy?.threads?.length ?? 0);
+          };
+        };
+      }),
+  );
+}
 
 /* The blocks the phone has kept for recording offline. */
 function blocksOnPhone(page: Page): Promise<string[]> {
@@ -1366,9 +1448,9 @@ test.describe("a follow-up session", () => {
     await endActiveSession(adminApi);
   });
 
-  /* As a thumb does: down to the interest level. The door's history lands
-     after it, at the end of the form, so a tap made as it lands meets what
-     it aimed at (#196). */
+  /* As a thumb does: down to the interest level. The unit's thread is above
+     it (#275) and, opened cold, lands late: a spec that scrolls before it
+     does is measuring a page that then shrinks, so wait for it first. */
   async function pickMedium(page: Page): Promise<void> {
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
@@ -1596,6 +1678,9 @@ test.describe("a follow-up session", () => {
       await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
       await untilLive(page);
       await atCap(page);
+      await expect(
+        page.getByRole("region", { name: "What we know about this unit" }),
+      ).toBeVisible();
       /* Weak signal: the first send hangs until the test lets it go, then
          every one fails. */
       const held = Promise.withResolvers<undefined>();

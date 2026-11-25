@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { type LocalCopy, copyExpired, readCopy } from "@/lib/offline/local-copy";
+import { type LocalCopy, copyExpired, liveThreads, readCopy } from "@/lib/offline/local-copy";
 
 /*
  * The local copy on disk. A database of its own, never the queue's
@@ -38,15 +38,20 @@ async function withStore<T>(
 /*
  * What is saved, or null. Anything unreadable is deleted: it is a cache. So
  * is a copy past its 12 hours, which nothing can use again and which still
- * names households and their contacts.
+ * names households and their contacts..
  */
 export function loadLocalCopy(now = Date.now()): Promise<LocalCopy | null> {
   return withStore(async (db) => {
     const tx = db.transaction(STORE, "readwrite");
     const raw: unknown = await tx.store.get(KEY);
     const read = readCopy(raw);
-    const copy = read === null || copyExpired(read, now) ? null : read;
-    if (copy === null && raw !== undefined) await tx.store.delete(KEY);
+    const usable = read === null || copyExpired(read, now) ? null : read;
+    if (usable === null && raw !== undefined) await tx.store.delete(KEY);
+    /* A thread past its own 12 hours goes the same way, the copy staying. */
+    const threads = usable === null ? [] : liveThreads(usable.threads, now);
+    const copy =
+      usable !== null && threads.length !== usable.threads.length ? { ...usable, threads } : usable;
+    if (copy !== null && copy !== usable) await tx.store.put(copy, KEY);
     await tx.done;
     return copy;
   }, null);

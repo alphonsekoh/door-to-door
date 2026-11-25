@@ -8,6 +8,7 @@ import { useLocalCopyWriter } from "@/components/sync/local-copy-writer";
 import { PageHeader } from "@/components/ui/page-header";
 import { SaveNotReady } from "@/components/visits/record-visit-form";
 import { useSyncQueue } from "@/components/sync/sync-provider";
+import { useThreadCache } from "@/components/sync/thread-cache";
 import type {
   ActiveSession,
   HouseholdSummary,
@@ -36,9 +37,11 @@ export function BlockScreen({
   const { userId } = useRole();
   const { records, syncedVersion } = useSyncQueue();
   const { noteBlock, noteRevisits } = useLocalCopyWriter();
-  /* A follow-up session's list: undefined until first read, null if that
-     read failed. A later failed read keeps the list already shown. */
-  const [revisits, setRevisits] = useState<RevisitEntry[] | null | undefined>(undefined);
+  /* A follow-up session's list with the session it was read for, so after a
+     switch it is not handed on as the new session's. */
+  const [listRead, setListRead] = useState<
+    { sessionId: string; list: RevisitEntry[] | null } | undefined
+  >(undefined);
   /* The last read that got every page; null until one has, so the copy is
      never written with a list that was merely not loaded yet, or only in part. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
@@ -163,6 +166,12 @@ export function BlockScreen({
    * that asked, which judges the unit by it.
    */
   const followUpSession = active?.session.kind === "follow_up" ? active : null;
+  /* Undefined until the running session's list is first read, null if that
+     read failed. A later failed read keeps the list already shown. */
+  const revisits =
+    listRead !== undefined && listRead.sessionId === followUpSession?.session.id
+      ? listRead.list
+      : undefined;
   const revisitsGeneration = useRef(0);
   const readRevisits = useCallback(async (): Promise<RevisitEntry[] | null> => {
     if (followUpSession === null) return null;
@@ -171,7 +180,7 @@ export function BlockScreen({
       const list = await apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`);
       if (mine === revisitsGeneration.current) {
         startTransition(() => {
-          setRevisits(list.data);
+          setListRead({ sessionId: followUpSession.session.id, list: list.data });
         });
         noteRevisits(followUpSession, list.data);
       }
@@ -179,12 +188,31 @@ export function BlockScreen({
     } catch {
       if (mine === revisitsGeneration.current) {
         startTransition(() => {
-          setRevisits((current) => current ?? null);
+          setListRead((current) =>
+            current?.sessionId === followUpSession.session.id
+              ? current
+              : { sessionId: followUpSession.session.id, list: null },
+          );
         });
       }
       return null;
     }
   }, [followUpSession, noteRevisits]);
+
+  /* The kind another screen learnt counts until this one's own answer. */
+  const heard = useKnownSessionKind();
+
+  /* The session's units' threads: kept for the form and for the offline
+     shell, read in the background as the list arrives. Told by the Session
+     screen that a follow-up session runs, the copy's threads are drawn with
+     the unit, not with this screen's own answer 300ms later, which pushed
+     the form down by a whole thread (#275). */
+  const { threads, noteRead } = useThreadCache({
+    outingId: followUpSession?.session.id ?? null,
+    revisits,
+    preload: true,
+    assumeCopyOuting: active === null && heard === "follow_up",
+  });
 
   /*
    * Read with every answer about the session, and again whenever the list
@@ -264,7 +292,6 @@ export function BlockScreen({
    * until its answer came back told a member in weak signal the wrong thing.
    * The kind another screen learnt counts until this one's own answer.
    */
-  const heard = useKnownSessionKind();
   const kind = active === null ? heard : active.session.kind;
   const guessNext = kind === "regular" || kind === null;
 
@@ -303,6 +330,8 @@ export function BlockScreen({
           active={active}
           initialUnit={initialUnit}
           guessNext={guessNext}
+          threads={threads}
+          onThreadRead={noteRead}
           unitsNote={
             known === null && error !== null
               ? "Not every unit of this block could be loaded, so one not listed here may still have been visited."

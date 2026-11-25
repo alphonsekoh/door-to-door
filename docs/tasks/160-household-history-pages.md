@@ -53,6 +53,8 @@ here from #126 by the owner (D-126-13).
   top, above the oldest visit shown. While older visits remain unread, a resolved note
   older than the oldest visit shown waits with them (**refines D-35-6**). _Why:_ a note
   from years back above this year's visits would hide the gap between them.
+  _Superseded in part by D-275-4 (owner, 2026-11-23):_ in thread mode, Show earlier visits
+  comes after the oldest entry. _D-160-12 refined by D-275-19._
 - **D-160-9 · An older page, or its failure, lands in `startTransition` (extends
   D-155-2).** Its land-while-typing test does not prove the transition is needed, and
   cannot fail: the panel's state renders only the panel, never the form that holds the
