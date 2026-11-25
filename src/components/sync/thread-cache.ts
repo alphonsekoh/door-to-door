@@ -93,8 +93,12 @@ export function useThreadCache({
 
   useEffect(() => {
     storedRef.current = stored ?? NONE;
-    if (stored !== null && userId !== undefined) remembered = { userId, stored };
-  }, [stored, userId]);
+    if (stored === null || userId === undefined) return;
+    /* The newest list, once the screen's own is read for the session it runs. */
+    const own =
+      given !== null && stored.outingId === given && Array.isArray(revisits) ? revisits : null;
+    remembered = { userId, stored: own === null ? stored : { ...stored, revisits: own } };
+  }, [stored, userId, given, revisits]);
   useEffect(() => {
     revisitsRef.current = revisits;
   }, [revisits]);
@@ -131,14 +135,18 @@ export function useThreadCache({
         const fresh = listed === null ? [] : histories.filter((h) => listed.has(h.household.id));
         if (fresh.length === 0) return current;
         const same = current?.outingId === outingId;
+        /* The screen's list is the running session's only when the session is
+           told, not assumed from the copy; an unread list never wipes a known one. */
+        const own =
+          given !== null && Array.isArray(revisitsRef.current) ? revisitsRef.current : null;
         return {
           outingId,
-          revisits: same ? current.revisits : null,
+          revisits: own ?? (same ? current.revisits : null),
           threads: withThreads(same ? current.threads : [], fresh, now),
         };
       });
     },
-    [outingId],
+    [outingId, given],
   );
 
   const loaded = stored !== null;

@@ -1080,6 +1080,24 @@ test.describe("as the session answers", () => {
       await expect(row).toBeVisible();
       answer = await holdBack("**/api/sessions/active");
       const history = await holdBack("**/api/households/*");
+      /* Taken in the commit that first draws Medium, before any paint and
+         before this test waits on anything. */
+      await page.evaluate(() => {
+        const seen = window as unknown as { firstForm?: { thread: boolean; gap: number } };
+        delete seen.firstForm;
+        const watch = new MutationObserver(() => {
+          const medium = document.querySelector('input[type="radio"][value="medium"]');
+          if (medium === null) return;
+          watch.disconnect();
+          const thread = document.querySelector('[aria-label="What we know about this unit"]');
+          const at = medium.getBoundingClientRect().top;
+          seen.firstForm = {
+            thread: thread !== null,
+            gap: thread === null ? 0 : at - thread.getBoundingClientRect().top,
+          };
+        });
+        watch.observe(document.body, { childList: true, subtree: true });
+      });
       await row.click();
       await page.waitForURL(/\/blocks\/.*\?unit=/);
       await atCap(page);
@@ -1097,6 +1115,14 @@ test.describe("as the session answers", () => {
       };
       const opened = await unit.boundingBox();
       const gap = await gapBelowThread();
+      const first = await page.evaluate(
+        () =>
+          (window as unknown as { firstForm?: { thread: boolean; gap: number } }).firstForm ?? null,
+      );
+      expect(first?.thread, "the thread is on the form's first paint, not after the copy").toBe(
+        true,
+      );
+      expect(first?.gap, "Medium under the thread, from the first paint to all landed").toBe(gap);
       answer();
       await expect(page.getByText(/You can record any unit in this block/)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();

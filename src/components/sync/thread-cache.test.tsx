@@ -487,4 +487,66 @@ describe("useThreadCache, handing the threads to the next screen", () => {
     const second = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
     expect(second.result.current.threads).toEqual([]);
   });
+
+  it.each([
+    ["another outing's copy", copyWith([], ALICE, "0190a000-0000-7000-8000-0000000000ee")],
+    ["no copy", null],
+  ])("lists the units for the next screen's first paint after %s", async (_name, copy) => {
+    loadLocalCopy.mockResolvedValue(copy);
+    readThread.mockImplementation((id: string) =>
+      Promise.resolve(id === history(1).household.id ? history(1) : null),
+    );
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
+
+  it("never lets a list taken from the copy's outing show a thread of another", async () => {
+    loadLocalCopy.mockResolvedValue(null);
+    readThread.mockImplementation((id: string) =>
+      Promise.resolve(id === history(1).household.id ? history(1) : null),
+    );
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: true });
+    await waitFor(() => {
+      expect(first.result.current.threads).toHaveLength(1);
+    });
+    first.unmount();
+
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    const second = hook({
+      outingId: "0190a000-0000-7000-8000-0000000000ee",
+      revisits: undefined,
+      preload: false,
+    });
+    expect(second.result.current.threads).toEqual([]);
+  });
+
+  it("hands on the list the screen read, not the older one in the copy", async () => {
+    loadLocalCopy.mockResolvedValue({ ...copyWith([thread(1, Date.now())]), revisits: [] });
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
 });
