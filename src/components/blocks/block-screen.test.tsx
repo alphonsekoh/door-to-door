@@ -1377,6 +1377,31 @@ describe("in a follow-up session", () => {
     ).toBeInTheDocument();
   });
 
+  it("hands the thread cache no list of the session that ended, once another runs", async () => {
+    let answer: Promise<unknown> = Promise.resolve(followUp);
+    apiFetch.mockImplementation((path: string) => {
+      if (path.startsWith("/sessions/active")) return answer;
+      if (path.endsWith("/teams")) return Promise.resolve({ data: [] });
+      if (path === "/sessions/s1/revisits") return Promise.resolve(revisits);
+      if (path === "/sessions/s2/revisits") return new Promise(() => undefined);
+      return Promise.resolve(list(["#05-123"]));
+    });
+    const view = render(<BlockScreen blockId="b1" />);
+    await waitFor(() => {
+      expect(useThreadCache).toHaveBeenLastCalledWith(
+        expect.objectContaining({ outingId: "s1", revisits: revisits.data }),
+      );
+    });
+    answer = Promise.resolve({ ...followUp, session: { ...followUp.session, id: "s2" } });
+    /* The screen is reused for the next block, and asks who runs again. */
+    view.rerender(<BlockScreen blockId="b2" />);
+    await waitFor(() => {
+      expect(useThreadCache).toHaveBeenLastCalledWith(
+        expect.objectContaining({ outingId: "s2", revisits: undefined }),
+      );
+    });
+  });
+
   it("asks for no list in a door-to-door session", async () => {
     serve(list([]), { ...followUp, session: { ...followUp.session, kind: "regular" } });
     render(<BlockScreen blockId="b1" />);

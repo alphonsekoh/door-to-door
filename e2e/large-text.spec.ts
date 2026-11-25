@@ -1073,6 +1073,8 @@ test.describe("as the session answers", () => {
          answers, bar the notice and the chips that land above it. */
       await page.unroute("**/api/sessions/active");
       await page.goto("/");
+      /* A load resets the text size, so it is set before the form first draws. */
+      await atCap(page);
       await expect.poll(() => threadsOnPhone(page)).toBe(1);
       const row = page
         .getByRole("region", { name: "Households to revisit" })
@@ -1100,7 +1102,6 @@ test.describe("as the session answers", () => {
       });
       await row.click();
       await page.waitForURL(/\/blocks\/.*\?unit=/);
-      await atCap(page);
       await untilLive(page);
       const thread = page.getByRole("region", { name: "What we know about this unit" });
       await expect(thread).toBeVisible();
@@ -1115,6 +1116,14 @@ test.describe("as the session answers", () => {
       };
       const opened = await unit.boundingBox();
       const gap = await gapBelowThread();
+      /* Measured in the page like the first draw, not by the browser's
+         box: the two can differ by a subpixel on WebKit. */
+      const settled = await page.evaluate(() => {
+        const medium = document.querySelector('input[type="radio"][value="medium"]');
+        const thread = document.querySelector('[aria-label="What we know about this unit"]');
+        if (medium === null || thread === null) throw new Error("No Medium or thread to measure");
+        return medium.getBoundingClientRect().top - thread.getBoundingClientRect().top;
+      });
       const first = await page.evaluate(
         () =>
           (window as unknown as { firstForm?: { thread: boolean; gap: number } }).firstForm ?? null,
@@ -1122,7 +1131,10 @@ test.describe("as the session answers", () => {
       expect(first?.thread, "the thread is on the form's first paint, not after the copy").toBe(
         true,
       );
-      expect(first?.gap, "Medium under the thread, from the first paint to all landed").toBe(gap);
+      expect(first?.gap, "Medium under the thread, from the first paint to all landed").toBeCloseTo(
+        settled,
+        0,
+      );
       answer();
       await expect(page.getByText(/You can record any unit in this block/)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();

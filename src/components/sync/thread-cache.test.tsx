@@ -512,24 +512,133 @@ describe("useThreadCache, handing the threads to the next screen", () => {
     expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
   });
 
-  it("never lets a list taken from the copy's outing show a thread of another", async () => {
+  const ENDED = "0190a000-0000-7000-8000-0000000000ee";
+  const nextScreen = () => {
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    return hook({ outingId: null, revisits: undefined, preload: false, assumeCopyOuting: true });
+  };
+
+  it("hands on no thread of the session that ended, before one of the new is read", async () => {
+    loadLocalCopy.mockResolvedValue({ ...copyWith([thread(1, Date.now())], ALICE, ENDED) });
+    readThread.mockReturnValue(new Promise(() => undefined));
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalled();
+    });
+    first.unmount();
+
+    const second = nextScreen();
+    expect(second.result.current.threads).toEqual([]);
+  });
+
+  it("starts the threads over for a new session, and reads each unit of its list", async () => {
+    const other = "0190a000-0000-7000-8000-0000000000ff";
     loadLocalCopy.mockResolvedValue(null);
+    readThread.mockImplementation((id: string) =>
+      Promise.resolve(
+        [1, 2, 3, 4].map((n) => history(n)).find((h) => h.household.id === id) ?? null,
+      ),
+    );
+    const view = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 2), preload: true });
+    await waitFor(() => {
+      expect(ids(view.result.current.threads)).toEqual(["#05-01", "#05-02"]);
+    });
+    readThread.mockReturnValue(new Promise(() => undefined));
+    view.rerender({ outingId: other, revisits: null, preload: true });
+    expect(view.result.current.threads).toEqual([]);
+    view.rerender({ outingId: other, revisits: LIST.slice(0, 2), preload: true });
+    expect(view.result.current.threads).toEqual([]);
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(2 + 2);
+    });
+  });
+
+  it("stops a read for the session that ended when another is told", async () => {
+    const other = "0190a000-0000-7000-8000-0000000000ff";
+    loadLocalCopy.mockResolvedValue(null);
+    let release: (value: HouseholdHistory | null) => void = () => undefined;
+    readThread.mockReturnValueOnce(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
+    readThread.mockResolvedValue(null);
+    const view = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(1);
+    });
+    view.rerender({ outingId: other, revisits: null, preload: true });
+    await act(async () => {
+      release(history(1));
+      await Promise.resolve();
+    });
+    expect(updateLocalCopy).not.toHaveBeenCalled();
+    expect(view.result.current.threads).toEqual([]);
+  });
+
+  it("reads a unit again when the copy took no thread of it, until the copy has the list", async () => {
+    const disk: { copy: LocalCopy | null } = {
+      copy: { ...copyWith([], ALICE, OUTING_ID), revisits: null },
+    };
+    loadLocalCopy.mockImplementation(() => Promise.resolve(disk.copy));
+    updateLocalCopy.mockImplementation((change) => {
+      disk.copy = change(disk.copy);
+      return Promise.resolve();
+    });
+    readThread.mockImplementation((id: string) =>
+      Promise.resolve([1, 2].map((n) => history(n)).find((h) => h.household.id === id) ?? null),
+    );
+    const first = LIST.slice(0, 2);
+    const view = hook({ outingId: OUTING_ID, revisits: first, preload: true });
+    await waitFor(() => {
+      expect(ids(view.result.current.threads)).toEqual(["#05-01", "#05-02"]);
+    });
+    expect(disk.copy?.threads).toEqual([]);
+
+    /* The list reaches the copy, and the screen's next read of it. */
+    disk.copy = { ...copyWith([], ALICE, OUTING_ID), revisits: first };
+    view.rerender({ outingId: OUTING_ID, revisits: [...first], preload: true });
+    await waitFor(() => {
+      expect(disk.copy?.threads.map((t) => t.history.household.unitNumber)).toEqual([
+        "#05-01",
+        "#05-02",
+      ]);
+    });
+  });
+
+  it("keeps the list it handed on when a later read of it fails", async () => {
+    loadLocalCopy.mockResolvedValue(
+      copyWith(
+        [1, 2, 3].map((n) => thread(n, Date.now())),
+        ALICE,
+        OUTING_ID,
+      ),
+    );
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 2), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01", "#05-02"]);
+    });
+    first.rerender({ outingId: OUTING_ID, revisits: null, preload: true });
+    first.unmount();
+
+    expect(ids(nextScreen().result.current.threads)).toEqual(["#05-01", "#05-02"]);
+  });
+
+  it("hands on the list a copy of another session's gave a read that then failed", async () => {
+    loadLocalCopy.mockResolvedValue(copyWith([], ALICE, ENDED));
     readThread.mockImplementation((id: string) =>
       Promise.resolve(id === history(1).household.id ? history(1) : null),
     );
     const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: true });
     await waitFor(() => {
-      expect(first.result.current.threads).toHaveLength(1);
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
     });
+    first.rerender({ outingId: OUTING_ID, revisits: null, preload: true });
+    /* A failed read leaves what was known on screen. */
+    expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
     first.unmount();
 
-    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
-    const second = hook({
-      outingId: "0190a000-0000-7000-8000-0000000000ee",
-      revisits: undefined,
-      preload: false,
-    });
-    expect(second.result.current.threads).toEqual([]);
+    expect(ids(nextScreen().result.current.threads)).toEqual(["#05-01"]);
   });
 
   it("hands on the list the screen read, not the older one in the copy", async () => {

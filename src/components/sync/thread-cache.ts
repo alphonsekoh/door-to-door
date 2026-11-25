@@ -22,6 +22,8 @@ type Stored = {
 
 const NONE: Stored = { outingId: null, revisits: null, threads: [] };
 
+const emptyFor = (outingId: string): Stored => ({ outingId, revisits: null, threads: [] });
+
 /* What this page last held, for the member it was read for. A screen opened
    from another starts from it: reading the copy from IndexedDB lands a frame
    after the first paint, which on an iPhone is enough to push the form down
@@ -87,21 +89,43 @@ export function useThreadCache({
   });
   const outingId = given ?? (assumeCopyOuting ? (stored?.outingId ?? null) : null);
   const revisitsRef = useRef(revisits);
+  const outingRef = useRef(outingId);
   const storedRef = useRef<Stored>(stored ?? NONE);
   const alive = useRef(true);
-  const running = useRef(false);
+  /* Units not yet in the copy's own threads: kept in memory, read again. */
+  const unwritten = useRef(new Set<string>());
+  /* The session whose threads a read is going on for. */
+  const running = useRef<string | null>(null);
+
+  /* A session switch: what is held was another session's, and starts over
+     for this one. Set while rendering, so no frame draws or hands on the
+     old session's threads. */
+  if (given !== null && stored !== null && stored.outingId !== given) {
+    setStored(emptyFor(given));
+  }
 
   useEffect(() => {
     storedRef.current = stored ?? NONE;
     if (stored === null || userId === undefined) return;
-    /* The newest list, once the screen's own is read for the session it runs. */
-    const own =
-      given !== null && stored.outingId === given && Array.isArray(revisits) ? revisits : null;
-    remembered = { userId, stored: own === null ? stored : { ...stored, revisits: own } };
+    /* The newest list read for the session this screen runs. With none (a
+       read failed or is under way), the list last handed on for the same
+       member and session stands, not the copy's older one. */
+    const before =
+      remembered !== null &&
+      remembered.userId === userId &&
+      remembered.stored.outingId === stored.outingId
+        ? remembered.stored.revisits
+        : null;
+    const own = given !== null && Array.isArray(revisits) ? revisits : (before ?? stored.revisits);
+    remembered = {
+      userId,
+      stored: own === stored.revisits ? stored : { ...stored, revisits: own },
+    };
   }, [stored, userId, given, revisits]);
   useEffect(() => {
     revisitsRef.current = revisits;
-  }, [revisits]);
+    outingRef.current = outingId;
+  }, [revisits, outingId]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -124,9 +148,16 @@ export function useThreadCache({
     (histories: readonly HouseholdHistory[]) => {
       if (outingId === null) return;
       const now = Date.now();
-      updateLocalCopy((current) => noteThreads(current, outingId, histories, now)).catch(
-        () => undefined,
-      );
+      updateLocalCopy((current) => {
+        /* A copy with no list for this session takes none, and memory must
+           not then say they are held: they are read again with the list. */
+        const taken = current?.outing?.id === outingId && current.revisits !== null;
+        for (const history of histories) {
+          if (taken) unwritten.current.delete(history.household.id);
+          else unwritten.current.add(history.household.id);
+        }
+        return noteThreads(current, outingId, histories, now);
+      }).catch(() => undefined);
       if (!alive.current) return;
       /* Only a unit on the list, as the copy keeps them: one off it must not
          open as a thread before the list says so. */
@@ -135,8 +166,8 @@ export function useThreadCache({
         const fresh = listed === null ? [] : histories.filter((h) => listed.has(h.household.id));
         if (fresh.length === 0) return current;
         const same = current?.outingId === outingId;
-        /* The screen's list is the running session's only when the session is
-           told, not assumed from the copy; an unread list never wipes a known one. */
+        /* Callers hand over a list only for the session they tell, so it is
+           this session's; with none read, the list held stays. */
         const own =
           given !== null && Array.isArray(revisitsRef.current) ? revisitsRef.current : null;
         return {
@@ -151,21 +182,27 @@ export function useThreadCache({
 
   const loaded = stored !== null;
   useEffect(() => {
-    if (!preload || !loaded || outingId === null || revisits == null || running.current) return;
+    if (!preload || !loaded || outingId === null || revisits == null) return;
+    if (running.current === outingId) return;
     const current = storedRef.current;
-    const held = current.outingId === outingId ? current.threads : [];
+    const held =
+      current.outingId === outingId
+        ? current.threads.filter((thread) => !unwritten.current.has(thread.history.household.id))
+        : [];
     const ids = staleThreads(revisits, held, Date.now());
     if (ids.length === 0) return;
-    running.current = true;
+    running.current = outingId;
     void (async () => {
       for (let at = 0; at < ids.length && alive.current; at += PRELOAD_AT_ONCE) {
         const read = await Promise.all(
           ids.slice(at, at + PRELOAD_AT_ONCE).map((id) => readThread(id)),
         );
+        /* Another session since: these are not its units. */
+        if (outingRef.current !== outingId) break;
         const got = read.filter((history) => history !== null);
         if (got.length > 0) keep(got);
       }
-      running.current = false;
+      if (running.current === outingId) running.current = null;
     })();
   }, [preload, loaded, outingId, revisits, keep]);
 

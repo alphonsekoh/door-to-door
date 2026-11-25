@@ -39,7 +39,11 @@ export function BlockScreen({
   const { noteBlock, noteRevisits } = useLocalCopyWriter();
   /* A follow-up session's list: undefined until first read, null if that
      read failed. A later failed read keeps the list already shown. */
-  const [revisits, setRevisits] = useState<RevisitEntry[] | null | undefined>(undefined);
+  /* The list with the session it was read for: after a switch it is not the
+     new session's, and is not handed on as if it were. */
+  const [read, setRead] = useState<{ sessionId: string; list: RevisitEntry[] | null } | undefined>(
+    undefined,
+  );
   /* The last read that got every page; null until one has, so the copy is
      never written with a list that was merely not loaded yet, or only in part. */
   const [known, setKnown] = useState<HouseholdSummary[] | null>(null);
@@ -164,6 +168,8 @@ export function BlockScreen({
    * that asked, which judges the unit by it.
    */
   const followUpSession = active?.session.kind === "follow_up" ? active : null;
+  const revisits =
+    read !== undefined && read.sessionId === followUpSession?.session.id ? read.list : undefined;
   const revisitsGeneration = useRef(0);
   const readRevisits = useCallback(async (): Promise<RevisitEntry[] | null> => {
     if (followUpSession === null) return null;
@@ -172,7 +178,7 @@ export function BlockScreen({
       const list = await apiFetch<RevisitList>(`/sessions/${followUpSession.session.id}/revisits`);
       if (mine === revisitsGeneration.current) {
         startTransition(() => {
-          setRevisits(list.data);
+          setRead({ sessionId: followUpSession.session.id, list: list.data });
         });
         noteRevisits(followUpSession, list.data);
       }
@@ -180,7 +186,11 @@ export function BlockScreen({
     } catch {
       if (mine === revisitsGeneration.current) {
         startTransition(() => {
-          setRevisits((current) => current ?? null);
+          setRead((current) =>
+            current?.sessionId === followUpSession.session.id
+              ? current
+              : { sessionId: followUpSession.session.id, list: null },
+          );
         });
       }
       return null;
