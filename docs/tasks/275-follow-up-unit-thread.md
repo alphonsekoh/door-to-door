@@ -95,9 +95,16 @@ question (2026-11-24) is D-275-5.
   to the session it was read for: the Session screen's list is keyed by session, and the
   block screen passes its list only for the session it was read for, so after a switch
   the Session screen shows "Loading the list…" rather than the ended session's. A unit whose thread
-  the copy did not take (it had no list for that session yet) is read again at the next
-  list read. _Why:_ after a switch the copy otherwise kept too few of the new session's
-  threads, and a quick tap could draw the old session's thread for a frame (verifier r3).
+  the copy did not take (no list for that session yet, or the write failed) is read again
+  once, then only when the copy's own list names it, so a copy that cannot be written
+  costs no read per poll. Threads are written only into the signed-in member's own copy
+  (in the offline shell, the member of the copy it was given), and only for units on its
+  list. When a screen reads the copy, it merges with what memory holds for the same
+  member and session: per household the newer thread still within its 12 hours stands,
+  and memory's list wins; a copy that cannot be read leaves memory as it is. _Why:_ after
+  a switch the copy otherwise kept too few of the new session's threads, and a quick tap
+  could draw the old session's thread for a frame (verifier r3); a phone whose storage
+  fails would otherwise lose the handed-on thread a frame after drawing it.
 - **D-275-12 · No new server read; the preload reuses `GET /households/{id}`.** It runs
   whenever the running follow-up session's list is read with signal (Session or block
   screen), 3 at a time, one run at a time, failing silently (a thread not read is read by
