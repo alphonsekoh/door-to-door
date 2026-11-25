@@ -189,18 +189,38 @@ export function replaceRevisits(
 }
 
 /*
- * Units' histories read with signal. Only onto the copy of the outing they
- * were read for, and only for households on its list: it never makes a copy,
- * and never moves the copy's own age, which is the member's session, not the
- * threads'. The same copy back when nothing changes, so nothing is written.
+ * Whether the copy is this member's and holds this outing's list: the only
+ * copy a unit's thread may be written into.
+ */
+export function copyTakesThreads(
+  copy: LocalCopy | null,
+  memberId: string | undefined,
+  outingId: string,
+): copy is LocalCopy & { revisits: RevisitEntry[] } {
+  return (
+    copy !== null &&
+    memberId !== undefined &&
+    copy.member.id === memberId &&
+    copy.outing?.id === outingId &&
+    copy.revisits !== null
+  );
+}
+
+/*
+ * Units' histories read with signal. Only onto this member's copy of the
+ * outing they were read for, and only for households on its list: it never
+ * makes a copy, and never moves the copy's own age, which is the member's
+ * session, not the threads'. The same copy back when nothing changes, so
+ * nothing is written.
  */
 export function noteThreads(
   copy: LocalCopy | null,
+  memberId: string | undefined,
   outingId: string,
   histories: readonly HouseholdHistory[],
   now: number,
 ): LocalCopy | null {
-  if (copy?.outing?.id !== outingId || copy.revisits === null) return copy;
+  if (!copyTakesThreads(copy, memberId, outingId)) return copy;
   const listed = new Set(copy.revisits.map((entry) => entry.household.id));
   const fresh = histories.filter((history) => listed.has(history.household.id));
   const live = liveThreads(copy.threads, now);

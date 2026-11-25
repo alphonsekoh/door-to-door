@@ -955,7 +955,7 @@ describe("OfflineShell, from a follow-up session's list", () => {
       ]),
       household: { ...household.household, religion: "hindu" as const },
     };
-    const copy = must(noteThreads(listOnly(), OUTING, [stored], NOW));
+    const copy = must(noteThreads(listOnly(), ALICE.id, OUTING, [stored], NOW));
     mount({ copy });
     await continueAsAlice();
     await user().click(within(list()).getByRole("button", { name: /^#05-01/ }));
@@ -992,7 +992,9 @@ describe("OfflineShell, from a follow-up session's list", () => {
       doneBy: null,
       createdAt: base.household.createdAt,
     };
-    const copy = must(noteThreads(listOnly(), OUTING, [{ ...base, followUps: [owed] }], NOW));
+    const copy = must(
+      noteThreads(listOnly(), ALICE.id, OUTING, [{ ...base, followUps: [owed] }], NOW),
+    );
     mount({ copy });
     await continueAsAlice();
     await user().click(within(list()).getByRole("button", { name: /^#05-01/ }));

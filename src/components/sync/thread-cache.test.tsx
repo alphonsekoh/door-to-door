@@ -531,21 +531,14 @@ describe("useThreadCache, handing the threads to the next screen", () => {
     expect(second.result.current.threads).toEqual([]);
   });
 
-  it("starts the threads over for a new session, and reads each unit of its list", async () => {
+  it("reads a new session's units while a read for the one before is still out", async () => {
     const other = "0190a000-0000-7000-8000-0000000000ff";
     loadLocalCopy.mockResolvedValue(null);
-    readThread.mockImplementation((id: string) =>
-      Promise.resolve(
-        [1, 2, 3, 4].map((n) => history(n)).find((h) => h.household.id === id) ?? null,
-      ),
-    );
+    readThread.mockReturnValue(new Promise(() => undefined));
     const view = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 2), preload: true });
     await waitFor(() => {
-      expect(ids(view.result.current.threads)).toEqual(["#05-01", "#05-02"]);
+      expect(readThread).toHaveBeenCalledTimes(2);
     });
-    readThread.mockReturnValue(new Promise(() => undefined));
-    view.rerender({ outingId: other, revisits: null, preload: true });
-    expect(view.result.current.threads).toEqual([]);
     view.rerender({ outingId: other, revisits: LIST.slice(0, 2), preload: true });
     expect(view.result.current.threads).toEqual([]);
     await waitFor(() => {
@@ -657,5 +650,133 @@ describe("useThreadCache, handing the threads to the next screen", () => {
       assumeCopyOuting: true,
     });
     expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
+
+  /* A copy as the disk holds it, taking what a screen keeps into it. */
+  function disk(copy: LocalCopy | null) {
+    const held = { copy };
+    loadLocalCopy.mockImplementation(() => Promise.resolve(held.copy));
+    updateLocalCopy.mockImplementation((change) => {
+      held.copy = change(held.copy);
+      return Promise.resolve();
+    });
+    return held;
+  }
+  const readsOf = (...numbers: number[]) =>
+    readThread.mockImplementation((id: string) =>
+      Promise.resolve(numbers.map((n) => history(n)).find((h) => h.household.id === id) ?? null),
+    );
+
+  it("reads a unit the copy never takes once more, then waits for the copy to change", async () => {
+    const held = disk({ ...copyWith([], ALICE, ENDED), revisits: null });
+    readsOf(1, 2);
+    const list = LIST.slice(0, 2);
+    const view = hook({ outingId: OUTING_ID, revisits: list, preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(2);
+    });
+    for (let poll = 0; poll < 4; poll += 1) {
+      view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+    expect(readThread).toHaveBeenCalledTimes(2 + 2);
+
+    /* The copy gains the session's list: the threads are read and written. */
+    held.copy = { ...copyWith([], ALICE, OUTING_ID), revisits: list };
+    view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+    await waitFor(() => {
+      expect(held.copy?.threads).toHaveLength(2);
+    });
+    expect(readThread).toHaveBeenCalledTimes(2 + 2 + 2);
+    view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(readThread).toHaveBeenCalledTimes(2 + 2 + 2);
+  });
+
+  it("counts a unit as written only when it is on the copy's list", async () => {
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: LIST.slice(0, 1) });
+    readsOf(1, 2);
+    const list = LIST.slice(0, 2);
+    const view = hook({ outingId: OUTING_ID, revisits: list, preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(3);
+    });
+    expect(readThread).toHaveBeenLastCalledWith(history(2).household.id);
+  });
+
+  it("never writes a thread into another member's copy", async () => {
+    const held = disk({ ...copyWith([], "someone-else", OUTING_ID), revisits: LIST });
+    readsOf(1);
+    const view = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(ids(view.result.current.threads)).toEqual(["#05-01"]);
+    });
+    expect(held.copy?.threads).toEqual([]);
+    expect(held.copy?.member.id).toBe("someone-else");
+  });
+
+  it("keeps a thread and the list memory holds when the screen's own read of the copy lands without them", async () => {
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: null });
+    readsOf(1);
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: [] });
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
+
+  it.each([
+    ["the copy's, when it is newer", 1000, "Named on the copy"],
+    ["memory's, when it is newer", -1000, "Named in memory"],
+  ])("takes %s", async (_name, offset, expected) => {
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: null });
+    readThread.mockResolvedValue({
+      ...history(1),
+      household: { ...history(1).household, name: "Named in memory" },
+    });
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    const onCopy = thread(1, Date.now() + offset, {
+      household: { ...history(1).household, name: "Named on the copy" },
+    });
+    disk(copyWith([onCopy], ALICE, OUTING_ID));
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(second.result.current.threads.map((t) => t.history.household.name)).toEqual([expected]);
   });
 });

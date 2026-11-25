@@ -540,7 +540,7 @@ describe("readCopy, for a copy written before threads", () => {
 
 describe("readCopy, with threads", () => {
   it("reads back a copy that holds a thread", () => {
-    const copy = must(noteThreads(listedCopy(), TONIGHT, [history()], NOW));
+    const copy = must(noteThreads(listedCopy(), ALICE.id, TONIGHT, [history()], NOW));
     expect(readCopy(structuredClone(copy))).toEqual(copy);
   });
 });
@@ -563,38 +563,44 @@ describe("liveThreads and withThreads", () => {
 describe("noteThreads", () => {
   it("stores a listed household's thread without moving the copy's age", () => {
     const copy = listedCopy();
-    const next = noteThreads(copy, TONIGHT, [history()], NOW + 1000);
+    const next = noteThreads(copy, ALICE.id, TONIGHT, [history()], NOW + 1000);
     expect(next?.threads).toEqual([{ history: history(), savedAt: NOW + 1000 }]);
     expect(next?.savedAt).toBe(copy.savedAt);
   });
 
   it("ignores a household that is not on the list", () => {
     const copy = listedCopy();
-    expect(noteThreads(copy, TONIGHT, [history(household("#09-09"))], NOW)).toBe(copy);
+    expect(noteThreads(copy, ALICE.id, TONIGHT, [history(household("#09-09"))], NOW)).toBe(copy);
   });
 
   it("writes only onto the copy of that outing, and never makes one", () => {
     const copy = listedCopy();
-    expect(noteThreads(copy, LAST_WEEK, [history()], NOW)).toBe(copy);
-    expect(noteThreads(null, TONIGHT, [history()], NOW)).toBeNull();
+    expect(noteThreads(copy, ALICE.id, LAST_WEEK, [history()], NOW)).toBe(copy);
+    expect(noteThreads(null, ALICE.id, TONIGHT, [history()], NOW)).toBeNull();
     const unlisted = copyWithBlock();
-    expect(noteThreads(unlisted, TONIGHT, [history()], NOW)).toBe(unlisted);
+    expect(noteThreads(unlisted, ALICE.id, TONIGHT, [history()], NOW)).toBe(unlisted);
+  });
+
+  it("never writes into another member's copy, or one for no known member", () => {
+    const copy = listedCopy();
+    expect(noteThreads(copy, "someone-else", TONIGHT, [history()], NOW)).toBe(copy);
+    expect(noteThreads(copy, undefined, TONIGHT, [history()], NOW)).toBe(copy);
   });
 
   it("writes nothing when nothing changes", () => {
     const copy = listedCopy();
-    expect(noteThreads(copy, TONIGHT, [], NOW)).toBe(copy);
+    expect(noteThreads(copy, ALICE.id, TONIGHT, [], NOW)).toBe(copy);
   });
 
   it("drops a thread that has expired as it writes", () => {
-    const copy = noteThreads(listedCopy(), TONIGHT, [history()], NOW);
+    const copy = noteThreads(listedCopy(), ALICE.id, TONIGHT, [history()], NOW);
     const later = NOW + LOCAL_COPY_TTL_MS + 1;
-    expect(noteThreads(copy, TONIGHT, [], later)?.threads).toEqual([]);
+    expect(noteThreads(copy, ALICE.id, TONIGHT, [], later)?.threads).toEqual([]);
   });
 });
 
 describe("threads follow the list", () => {
-  const withThread = () => must(noteThreads(listedCopy(), TONIGHT, [history()], NOW));
+  const withThread = () => must(noteThreads(listedCopy(), ALICE.id, TONIGHT, [history()], NOW));
 
   it("are dropped when a list read no longer names the household", () => {
     const next = noteRevisits(withThread(), ALICE, active(), [], NOW + 1);
