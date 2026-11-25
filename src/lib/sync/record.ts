@@ -61,8 +61,10 @@ export function readRecord(raw: unknown): QueuedVisit {
 
   const salvage = zSalvageable.safeParse(raw);
   if (salvage.success && salvage.data.id === salvage.data.item.id) {
-    /* Its age from the knock, which was validated: bookkeeping that cannot be
-       trusted must not read as 1970, or the next purge would delete a sendable record. */
+    /* Its age from the knock, which was validated, and from the stored stamp
+       only when that is older: an unreadable or zero stamp must not read as
+       1970 (the next purge would delete a sendable record), nor a restamp
+       outlive the 30 days. */
     const savedAt = Date.parse(salvage.data.item.clientCreatedAt);
     return {
       id: salvage.data.id,
@@ -73,7 +75,7 @@ export function readRecord(raw: unknown): QueuedVisit {
       skewCount: 0,
       nextAttemptAt: 0,
       lastError: null,
-      enqueuedAt: savedAt,
+      enqueuedAt: typeof stamp === "number" && stamp > 0 ? Math.min(stamp, savedAt) : savedAt,
       syncedAt: null,
       serverVisit: null,
     };

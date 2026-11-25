@@ -179,43 +179,33 @@ async function eraseDueHousehold(
 }
 
 /*
- * The one rule for when an account is due, which dueAccounts asks in SQL and
- * the erasure asks again under the account's lock. A request nobody answered
- * is judged from updated_at: unblocking stamps it, so a request turned down
- * long ago and reopened today starts its 12 months over, while one left
- * untouched has updated_at equal to created_at.
+ * The one rule for when an account is due, asked of the list and again under
+ * the account's lock. A sign-up nobody answered runs its 12 months from when
+ * it was made, or from when an admin last put it back to waiting
+ * (reopened_at): not from updated_at, which any save of the name moves.
  */
-function accountDue(
-  row: {
-    approval: string;
-    deactivatedAt: Date | null;
-    updatedAt: Date;
-  },
-  cutoff: Date,
-): boolean {
-  if (row.approval === "approved") {
-    return row.deactivatedAt !== null && row.deactivatedAt < cutoff;
-  }
-  return row.updatedAt < cutoff;
+function accountDueWhere(cutoff: Date) {
+  return and(
+    isNull(users.erasedAt),
+    or(
+      // Left, and so deactivated: the 12 months run from then.
+      and(eq(users.approval, "approved"), lt(users.deactivatedAt, cutoff)),
+      // Turned down: nothing else changes a blocked account.
+      and(eq(users.approval, "blocked"), lt(users.updatedAt, cutoff)),
+      // Asked to join and never answered, or turned down and reopened.
+      and(
+        eq(users.approval, "pending"),
+        lt(sql`coalesce(${users.reopenedAt}, ${users.createdAt})`, cutoff),
+      ),
+    ),
+  );
 }
 
 async function dueAccounts(db: Database, cutoff: Date): Promise<string[]> {
   const due = await db
     .select({ id: users.id })
     .from(users)
-    .where(
-      and(
-        isNull(users.erasedAt),
-        or(
-          // Left, and so deactivated: the 12 months run from then.
-          and(eq(users.approval, "approved"), lt(users.deactivatedAt, cutoff)),
-          // Turned down: nothing else changes a blocked account.
-          and(eq(users.approval, "blocked"), lt(users.updatedAt, cutoff)),
-          // Asked to join and never answered, or turned down and reopened.
-          and(eq(users.approval, "pending"), lt(users.updatedAt, cutoff)),
-        ),
-      ),
-    )
+    .where(accountDueWhere(cutoff))
     .orderBy(asc(users.createdAt), asc(users.id))
     .limit(MAX_ERASURES_PER_RUN + 1);
   return due.map((row) => row.id);
@@ -271,18 +261,11 @@ export async function runRetention(db: Database, clock: Clock): Promise<Retentio
         const erased = await db.transaction(async (tx) => {
           await lockAccountChange(tx, id);
           // An admin may have reactivated, approved or unblocked it since the list.
-          const current = firstOrThrow(
-            await tx
-              .select({
-                approval: users.approval,
-                deactivatedAt: users.deactivatedAt,
-                updatedAt: users.updatedAt,
-              })
-              .from(users)
-              .where(eq(users.id, id)),
-            "the account",
-          );
-          if (!accountDue(current, accountCutoff)) return false;
+          const stillDue = await tx
+            .select({ id: users.id })
+            .from(users)
+            .where(and(eq(users.id, id), accountDueWhere(accountCutoff)));
+          if (stillDue.length === 0) return false;
           await eraseAccount(tx, id, null, now);
           /* As for a household: the job met any open request for it, by nobody. */
           await tx

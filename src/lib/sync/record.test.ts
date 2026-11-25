@@ -77,6 +77,9 @@ describe("readRecord", () => {
     expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(saved);
     expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(saved);
     expect(readRecord({ ...good, attempts: -1, enqueuedAt: 0 }).enqueuedAt).toBe(saved);
+    // The older of the two, so a restamped record is not kept past its 30 days.
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: saved - 5 }).enqueuedAt).toBe(saved - 5);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: saved + 5 }).enqueuedAt).toBe(saved);
   });
 
   it("does not salvage a record whose owner is lost, so it is never sent as anyone", () => {

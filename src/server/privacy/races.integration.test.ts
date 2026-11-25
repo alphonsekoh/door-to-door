@@ -5,6 +5,7 @@ import * as schema from "@/db/schema";
 import { createTestPool, truncateAll } from "@/db/testing";
 import { eraseHousehold } from "@/server/privacy/erasure";
 import { eraseRequest } from "@/server/privacy/requests";
+import { updateOwnName } from "@/server/users/service";
 import { syncVisits } from "@/server/visits/sync";
 import { getVisit, updateVisit } from "@/server/visits/service";
 
@@ -16,6 +17,8 @@ import { getVisit, updateVisit } from "@/server/visits/service";
 
 const pool = createTestPool();
 const db = drizzle(pool, { schema }) as unknown as Database;
+/* Its own connection: the pool's two are the held lock and the waiting write. */
+const watcher = createTestPool();
 
 const ADMIN = "27927903-0000-4000-8000-000000000001";
 const ALICE = "27927903-0000-4000-8000-000000000002";
@@ -58,6 +61,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await watcher.end();
   await pool.end();
 });
 
@@ -196,5 +200,43 @@ describe("a visit read back after an erasure", () => {
   it("is not found, not a server error", async () => {
     await pool.query(`DELETE FROM visits WHERE id = $1`, [VISIT]);
     await expect(getVisit(db, VISIT)).rejects.toMatchObject({ status: 404 });
+  });
+});
+
+describe("a rename waiting behind an account erasure", () => {
+  it("is refused, and the erased account keeps no name", async () => {
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [ALICE]);
+      const rename = updateOwnName(db, ALICE, "Alice B").then(
+        () => null,
+        (error: unknown) => error,
+      );
+      const startedAt = Date.now();
+      for (;;) {
+        const { rows } = await watcher.query(
+          `SELECT 1 FROM pg_stat_activity
+           WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()`,
+        );
+        if (rows.length > 0) break;
+        if (Date.now() - startedAt > 10_000) throw new Error("the rename never waited");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      await holder.query(
+        `UPDATE users SET name = NULL, email = 'erased@erased.invalid', erased_at = now() WHERE id = $1`,
+        [ALICE],
+      );
+      await holder.query("COMMIT");
+
+      expect(await rename).toMatchObject({ message: "Your account no longer exists." });
+      const { rows } = await pool.query<{ name: string | null }>(
+        `SELECT name FROM users WHERE id = $1`,
+        [ALICE],
+      );
+      expect(rows[0]?.name).toBeNull();
+    } finally {
+      holder.release();
+    }
   });
 });

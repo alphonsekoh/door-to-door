@@ -18,10 +18,10 @@ import { hashPassword } from "@/server/password";
  *
  * Deactivated users are excluded from listings by default and not deleted
  * when they leave: their records stay attributed to them, because history has
- * to survive someone leaving. Only erasure (#279) anonymises one, and the
- * records stay then too. So is everyone not approved (#249): the team, its pickers
- * and its counts are the approved accounts, and the queue is asked for by
- * name.
+ * to survive someone leaving. So is everyone not approved (#249): the team,
+ * its pickers and its counts are the approved accounts, and the queue is
+ * asked for by name. Only erasure (#279) anonymises one, and the records
+ * stay then too.
  */
 
 export type UserRow = {
@@ -325,11 +325,17 @@ export async function updateOwnName(db: Database, userId: string, raw: string): 
   if (!checked.ok) {
     throw new ValidationError(checked.message);
   }
-  await getUser(db, userId, "Your account no longer exists.");
-  await db
+  /* Guarded in the UPDATE itself: an erasure that commits while it waits on
+     the row lock must not get the name back (Postgres re-checks only the
+     filter, so the check has to be in it). */
+  const renamed = await db
     .update(users)
     .set({ name: checked.name, updatedAt: new Date() })
-    .where(eq(users.id, userId));
+    .where(and(eq(users.id, userId), isNull(users.erasedAt)))
+    .returning({ id: users.id });
+  if (renamed.length === 0) {
+    throw new NotFoundError("Your account no longer exists.");
+  }
   return getUser(db, userId);
 }
 
@@ -348,10 +354,11 @@ async function moveApproval(
   from: Approval,
   to: Approval,
   refusal: (current: Approval) => string,
+  extra: { reopenedAt?: Date } = {},
 ): Promise<UserRow> {
   const moved = await db
     .update(users)
-    .set({ approval: to, updatedAt: new Date() })
+    .set({ approval: to, updatedAt: new Date(), ...extra })
     .where(and(eq(users.id, id), eq(users.approval, from), isNull(users.erasedAt)))
     .returning({ id: users.id });
   if (moved.length === 0) {
@@ -387,7 +394,9 @@ export function rejectUser(db: Database, id: string): Promise<UserRow> {
 }
 
 export function unblockUser(db: Database, id: string): Promise<UserRow> {
-  return moveApproval(db, id, "blocked", "pending", () => "They aren't blocked.");
+  return moveApproval(db, id, "blocked", "pending", () => "They aren't blocked.", {
+    reopenedAt: new Date(),
+  });
 }
 
 /*

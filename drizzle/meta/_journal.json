@@ -71,6 +71,13 @@
       "when": 1795591421994,
       "tag": "0009_faulty_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795611278092,
+      "tag": "0010_mighty_the_order",
+      "breakpoints": true
     }
   ]
 }

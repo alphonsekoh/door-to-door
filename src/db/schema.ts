@@ -64,6 +64,12 @@ export const users = pgTable(
      * the visits and notes it recorded still point at it.
      */
     erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }),
+    /*
+     * When an admin moved a turned-down request back to waiting (#279). Only
+     * that sets it: updated_at moves on any save, so a request left waiting
+     * could never age out if it were judged from there.
+     */
+    reopenedAt: timestamp("reopened_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },

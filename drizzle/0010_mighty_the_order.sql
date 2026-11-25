@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "reopened_at" timestamp with time zone;

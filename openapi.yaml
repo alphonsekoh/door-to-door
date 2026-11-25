@@ -52,7 +52,8 @@ info:
     admin carried out a request, or when the job met an open request; for an
     erasure purely at the end of the retention period, the cutoff, 24 months
     before that run, so a record saved since then and synced late is kept.
-    (Its `updated_at` holds when the erasure actually happened.) A visit
+    (Its `updated_at` holds when the erasure actually happened, until the
+    unit next changes; the run's record keeps it.) A visit
     whose `clientCreatedAt` is earlier than that time is refused
     `household_erased`, by `POST /visits` and per item by
     `POST /visits/sync`. A visit recorded after it is a new knock and is

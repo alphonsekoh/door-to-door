@@ -18,6 +18,8 @@ import { MAX_ERASURES_PER_RUN, runRetention } from "@/server/privacy/retention";
 
 const pool = createTestPool();
 const db = drizzle(pool, { schema }) as unknown as Database;
+/* Its own connection: the pool's two are the held lock and the job. */
+const watcher = createTestPool();
 
 const ADMIN = "27927901-0000-4000-8000-000000000001";
 const ALICE = "27927901-0000-4000-8000-000000000002";
@@ -31,6 +33,20 @@ const clock: Clock = { now: NOW, toleranceMs: 0 };
 const HOUSEHOLD_CUTOFF = new Date("2024-11-25T18:00:00.000Z");
 const ACCOUNT_CUTOFF = new Date("2025-11-25T18:00:00.000Z");
 const ms = (date: Date, delta: number) => new Date(date.getTime() + delta);
+
+/* Until some statement is blocked on a lock, so a test never changes things before the job is parked. */
+async function untilBlocked(): Promise<void> {
+  const startedAt = Date.now();
+  for (;;) {
+    const { rows } = await watcher.query(
+      `SELECT 1 FROM pg_stat_activity
+       WHERE wait_event_type = 'Lock' AND datname = current_database() AND pid <> pg_backend_pid()`,
+    );
+    if (rows.length > 0) return;
+    if (Date.now() - startedAt > 10_000) throw new Error("nothing waited on a lock");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
 
 const count = async (table: string, where = "true"): Promise<number> =>
   Number(
@@ -80,6 +96,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  await watcher.end();
   await pool.end();
 });
 
@@ -260,6 +277,12 @@ describe("accounts", () => {
     expect(await left("back@t.local")).toBe(false);
   });
 
+  it("keeps a waiting sign-up's 12 months from when it was made, however often its name is saved", async () => {
+    // Made long ago and saved lately: updated_at moves on any save, reopened_at does not.
+    await user("ask@t.local", "pending", { created: ms(ACCOUNT_CUTOFF, -1), updated: NOW });
+    expect((await runRetention(db, clock)).accounts).toBe(1);
+  });
+
   it("carries out the account's open request, by nobody", async () => {
     await user("gone@t.local", "approved", { deactivated: ms(ACCOUNT_CUTOFF, -1) });
     await pool.query(
@@ -308,7 +331,7 @@ describe("accounts", () => {
       await holder.query("BEGIN");
       await holder.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [target]);
       const run = runRetention(db, clock);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await untilBlocked();
       await holder.query(change, [target, NOW]);
       await holder.query("COMMIT");
       return (await run).accounts;
@@ -350,8 +373,7 @@ describe("accounts", () => {
       await holder.query("BEGIN");
       await holder.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [target]);
       const run = runRetention(db, clock);
-      // Let the job read its list and queue on the row.
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await untilBlocked();
       await holder.query(`UPDATE users SET erased_at = now() WHERE id = $1`, [target]);
       await holder.query("COMMIT");
       expect((await run).accounts).toBe(0);
@@ -384,7 +406,7 @@ describe("a household recorded at while the job ran", () => {
       await holder.query("BEGIN");
       await holder.query(`SELECT id FROM households WHERE id = $1 FOR UPDATE`, [H1]);
       const run = runRetention(db, clock);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await untilBlocked();
       await holder.query(
         `INSERT INTO visits (id, household_id, session_id, member_id, interest_level,
                              client_created_at, created_at, updated_at)
@@ -495,7 +517,7 @@ describe("what a retention erasure refuses afterwards", () => {
       await holder.query("BEGIN");
       await holder.query(`SELECT id FROM households WHERE id = $1 FOR UPDATE`, [H1]);
       const run = runRetention(db, clock);
-      await new Promise((resolve) => setTimeout(resolve, 300));
+      await untilBlocked();
       await holder.query(`DELETE FROM visits WHERE household_id = $1`, [H1]);
       await holder.query(`UPDATE households SET name = NULL, erased_at = $2 WHERE id = $1`, [
         H1,
