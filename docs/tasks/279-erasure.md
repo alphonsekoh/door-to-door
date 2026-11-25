@@ -55,10 +55,10 @@ _(owner)_.
   account is on no list and `GET /users/{id}` answers 404. A later Google sign-in with the
   same email makes a new pending account. Supersedes D-29-3. _(owner, Q1 and Q5.)_
 - **D-279-12 · Account periods.** Approved: 12 months from `deactivated_at`. Blocked: from
-  `updated_at`. Pending: from `updated_at`, which is `created_at` until an admin turns
-  the request down and puts it back to waiting, so reopening starts the 12 months over.
-  The job re-checks each account under its lock (`accountDue`) and spares one an admin
-  reactivated, approved or reopened while it ran. Sign-ins: D-125-7's bound, now also
+  `updated_at`. Pending: from `reopened_at` (set only when an admin puts a turned-down
+  request back to waiting), else `created_at`; saving a name while waiting does not
+  restart it. One SQL rule (`accountDueWhere`) picks the accounts and re-checks each under
+  its lock, sparing one an admin reactivated, approved or reopened while the job ran. Sign-ins: D-125-7's bound, now also
   deleted by the job. Constants live in `src/lib/privacy/policy.ts` (extends
   D-273-14). Refines D-125-7. _(owner, Q1: turned-down and unanswered sign-ups go too.)_
 - **D-279-13 · The job takes its time from an injected `Clock`,** one transaction per
