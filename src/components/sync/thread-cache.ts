@@ -7,6 +7,7 @@ import {
   type LocalCopy,
   type LocalThread,
   copyTakesThreads,
+  liveThreads,
   noteThreads,
   withThreads,
 } from "@/lib/offline/local-copy";
@@ -41,7 +42,7 @@ export function forgetThreads(): void {
 function merged(memory: Stored | null, disk: Stored): Stored {
   if (memory?.outingId !== disk.outingId) return disk;
   const byHousehold = new Map(disk.threads.map((thread) => [thread.history.household.id, thread]));
-  for (const thread of memory.threads) {
+  for (const thread of liveThreads(memory.threads, Date.now())) {
     const other = byHousehold.get(thread.history.household.id);
     if (other === undefined || thread.savedAt > other.savedAt) {
       byHousehold.set(thread.history.household.id, thread);
@@ -116,7 +117,8 @@ export function useThreadCache({
      threads (it gains a list for the session) rather than read at every poll. */
   const unwritten = useRef(new Set<string>());
   const retried = useRef(new Set<string>());
-  /* Whose copy a thread may be written into. */
+  /* Whose copy a thread may be written into. The offline shell has no signed-in
+     user to name, so it is the member of the copy it was given. */
   const owner = userId ?? copy?.member.id;
   /* The session whose threads a read is going on for. */
   const running = useRef<string | null>(null);
@@ -164,9 +166,12 @@ export function useThreadCache({
       .catch(() => null)
       .then((loaded) => {
         if (!alive.current) return;
-        setStored((current) =>
-          loaded?.member.id === userId ? merged(current, fromCopy(loaded)) : NONE,
-        );
+        /* No copy (never written, or storage fails) takes nothing from what
+           memory holds: it is keyed by member, and a sign-in is a page load. */
+        setStored((current) => {
+          if (loaded === null) return current ?? NONE;
+          return loaded.member.id === userId ? merged(current, fromCopy(loaded)) : NONE;
+        });
       });
   }, [copy, userId]);
 
@@ -190,7 +195,10 @@ export function useThreadCache({
           }
         }
         return noteThreads(current, owner, outingId, histories, now);
-      }).catch(() => undefined);
+      }).catch(() => {
+        /* The write failed after the unit was counted as written. */
+        for (const history of histories) unwritten.current.add(history.household.id);
+      });
       if (!alive.current) return;
       /* Only a unit on the list, as the copy keeps them: one off it must not
          open as a thread before the list says so. */
@@ -230,11 +238,12 @@ export function useThreadCache({
       const waiting = ids.filter((id) => retried.current.has(id));
       if (waiting.length > 0) {
         const onDisk = await loadLocalCopy().catch(() => null);
-        if (copyTakesThreads(onDisk, owner, outingId)) {
-          for (const id of waiting) retried.current.delete(id);
-        } else {
-          todo = ids.filter((id) => !retried.current.has(id));
-        }
+        /* Only a unit the copy's own list names can be written there. */
+        const listed = copyTakesThreads(onDisk, owner, outingId)
+          ? new Set(onDisk.revisits.map((entry) => entry.household.id))
+          : new Set<string>();
+        for (const id of waiting) if (listed.has(id)) retried.current.delete(id);
+        todo = ids.filter((id) => !retried.current.has(id));
       }
       for (let at = 0; at < todo.length && alive.current; at += PRELOAD_AT_ONCE) {
         const batch = todo.slice(at, at + PRELOAD_AT_ONCE);

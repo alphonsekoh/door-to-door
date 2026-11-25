@@ -96,6 +96,7 @@ describe("useThreadCache, reading the copy", () => {
     loadLocalCopy.mockResolvedValue(copyWith([thread(1, Date.now())], "someone-else"));
     const theirs = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
     loadLocalCopy.mockRejectedValue(new Error("no IndexedDB"));
+    forgetThreads();
     const broken = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
     await act(async () => {
       await Promise.resolve();
@@ -653,11 +654,12 @@ describe("useThreadCache, handing the threads to the next screen", () => {
   });
 
   /* A copy as the disk holds it, taking what a screen keeps into it. */
-  function disk(copy: LocalCopy | null) {
+  function disk(copy: LocalCopy | null, writes = true) {
     const held = { copy };
     loadLocalCopy.mockImplementation(() => Promise.resolve(held.copy));
     updateLocalCopy.mockImplementation((change) => {
-      held.copy = change(held.copy);
+      const next = change(held.copy);
+      if (writes) held.copy = next;
       return Promise.resolve();
     });
     return held;
@@ -778,5 +780,110 @@ describe("useThreadCache, handing the threads to the next screen", () => {
       await Promise.resolve();
     });
     expect(second.result.current.threads.map((t) => t.history.household.name)).toEqual([expected]);
+  });
+
+  it("keeps what memory handed on when there is no copy to read", async () => {
+    disk(null);
+    readsOf(1);
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
+
+  it("never reads a unit again that the copy's own list does not name", async () => {
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: LIST.slice(0, 1) }, false);
+    readsOf(1, 2);
+    const list = LIST.slice(0, 2);
+    const view = hook({ outingId: OUTING_ID, revisits: list, preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(2);
+    });
+    for (let poll = 0; poll < 5; poll += 1) {
+      view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+    /* Unit 2 once more, as the copy's list does not name it; then none. */
+    expect(readThread).toHaveBeenCalledTimes(2 + 1);
+  });
+
+  it("reads a unit again after a write that failed", async () => {
+    updateLocalCopy.mockRejectedValue(new Error("quota"));
+    loadLocalCopy.mockResolvedValue({ ...copyWith([], ALICE, OUTING_ID), revisits: LIST });
+    readsOf(1);
+    const list = LIST.slice(0, 1);
+    const view = hook({ outingId: OUTING_ID, revisits: list, preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(1);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    view.rerender({ outingId: OUTING_ID, revisits: [...list], preload: true });
+    await waitFor(() => {
+      expect(readThread).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("drops a thread memory holds past its 12 hours when the copy read lands", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.now() - 13 * 60 * 60 * 1000);
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: null });
+    readsOf(1);
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(0, 1), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+    vi.useRealTimers();
+
+    disk(copyWith([], ALICE, OUTING_ID));
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(second.result.current.threads).toEqual([]);
+  });
+
+  it("never shows the threads memory holds for one session under the copy's other", async () => {
+    disk({ ...copyWith([], ALICE, OUTING_ID), revisits: null });
+    readsOf(2);
+    const first = hook({ outingId: OUTING_ID, revisits: LIST.slice(1, 2), preload: true });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-02"]);
+    });
+    first.unmount();
+
+    disk({ ...copyWith([thread(1, Date.now())], ALICE, ENDED), revisits: LIST });
+    const second = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
   });
 });
