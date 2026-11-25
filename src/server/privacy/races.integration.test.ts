@@ -99,7 +99,8 @@ describe("a write waiting behind an erasure", () => {
       const [outcome] = await run;
       expect(outcome).toMatchObject({ status: "rejected", error: { code: "household_erased" } });
     } finally {
-      holder.release();
+      // Destroyed, not pooled: on a failed wait its transaction still holds the row.
+      holder.release(true);
     }
     expect(await count("visits")).toBe(0);
     expect(
@@ -131,7 +132,7 @@ describe("a write waiting behind an erasure", () => {
       await holder.query("COMMIT");
       expect(await outcome).toBe(404);
     } finally {
-      holder.release();
+      holder.release(true);
     }
   });
 });
@@ -151,7 +152,7 @@ describe("an erasure waiting behind a write", () => {
       await holder.query("COMMIT");
       await erasure;
     } finally {
-      holder.release();
+      holder.release(true);
     }
     expect(await count("visits")).toBe(0);
   });
@@ -189,7 +190,7 @@ describe("two admins carrying out one request", () => {
       await holder.query("COMMIT");
       expect(await second).toBe(409);
     } finally {
-      holder.release();
+      holder.release(true);
     }
     // The second's own erasure was rolled back with its refusal.
     expect(await count("visits")).toBe(1);
@@ -236,7 +237,7 @@ describe("a rename waiting behind an account erasure", () => {
       );
       expect(rows[0]?.name).toBeNull();
     } finally {
-      holder.release();
+      holder.release(true);
     }
   });
 });

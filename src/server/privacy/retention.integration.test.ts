@@ -336,7 +336,8 @@ describe("accounts", () => {
       await holder.query("COMMIT");
       return (await run).accounts;
     } finally {
-      holder.release();
+      // Destroyed, not pooled: on a failed wait its transaction still holds the row.
+      holder.release(true);
     }
   };
 
@@ -378,7 +379,7 @@ describe("accounts", () => {
       await holder.query("COMMIT");
       expect((await run).accounts).toBe(0);
     } finally {
-      holder.release();
+      holder.release(true);
     }
   });
 });
@@ -416,7 +417,7 @@ describe("a household recorded at while the job ran", () => {
       await holder.query("COMMIT");
       expect((await run).households).toBe(0);
     } finally {
-      holder.release();
+      holder.release(true);
     }
     expect(await erased(H1)).toBe(false);
     expect(await count("visits", `household_id = '${H1}'`)).toBe(2);
@@ -526,7 +527,7 @@ describe("what a retention erasure refuses afterwards", () => {
       await holder.query("COMMIT");
       expect((await run).households).toBe(0);
     } finally {
-      holder.release();
+      holder.release(true);
     }
   });
 });
