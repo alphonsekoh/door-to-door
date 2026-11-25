@@ -57,11 +57,6 @@ question (2026-11-24) is D-275-5.
   first frame in 8 of 8 runs, +0. _Why:_ nothing above the unit field may arrive late
   (D-181-7, D-200-1), and this is below it.
 - **D-275-7 · Known limits, accepted with the above.**
-  - First tap of a session on a phone whose copy had no list at the Session screen's mount
-    (in practice the first open of every follow-up session): `remembered` carries no list,
-    so the form draws one frame before the thread. iPhone 13 late in 6 of 6 (+579 at 17px,
-    +2,318 at 32px); Chromium 32px 3 of 6. Later taps are on time. The verifier suggested
-    keeping the hook's own list in `keep()`; not on this branch.
   - A teammate's visit recorded after the preload: the stored thread opens without it and
     the unit's read adds it above the picker (Medium +618px at 32px).
   - At 32px on a cold open, a Save made while the thread lands left the next unit's field
@@ -95,7 +90,14 @@ question (2026-11-24) is D-275-5.
   list is unread or failed, threads show, and reads are kept, only for units on the copy's
   list; with no list known none show or are kept. _Why:_ a unit off the list must not open
   as a thread before the list says so. This replaces the builder's first rule (any read
-  kept).
+  kept). A screen told another session starts its threads over, so nothing of the ended
+  session is shown or handed on, and its preload batch stops. Each screen's list is tied
+  to the session it was read for: the Session screen's list is keyed by session, and the
+  block screen passes its list only for the session it was read for, so after a switch
+  the Session screen shows "Loading the list…" rather than the ended session's. A unit whose thread
+  the copy did not take (it had no list for that session yet) is read again at the next
+  list read. _Why:_ after a switch the copy otherwise kept too few of the new session's
+  threads, and a quick tap could draw the old session's thread for a frame (verifier r3).
 - **D-275-12 · No new server read; the preload reuses `GET /households/{id}`.** It runs
   whenever the running follow-up session's list is read with signal (Session or block
   screen), 3 at a time, one run at a time, failing silently (a thread not read is read by
@@ -106,8 +108,14 @@ question (2026-11-24) is D-275-5.
   not `apiFetch`.** _Why:_ as the list read (D-117-17, D-85-1): a background refusal must
   not raise the account message.
 - **D-275-14 · Threads pass to the next screen in memory only** (`remembered`, keyed by
-  member). _Why:_ reading the copy from IndexedDB lands a frame after first paint; a reload
-  reads the copy as before.
+  member). It carries the running session's newest list with its threads: the screen's
+  own list once read, else the last one it handed on for the same member and session. So
+  the first tap of a new session has its thread on the first frame, though the copy held
+  no list for it when the Session screen opened: 144 of 144 taps (verifier r3; both
+  engines, default and 32px text, member and admin, from an empty phone, an earlier
+  session's copy, or the app opened before the session began), where it was late 6 of 6
+  on iPhone before. _Why:_ reading the copy from IndexedDB lands a frame after first paint;
+  a reload reads the copy as before.
 - **D-275-15 · `assumeCopyOuting`.** When the remembered session kind is `follow_up` and
   this screen's own session read has not answered, the copy's outing is taken as the one
   running, so stored threads show on the first paint. The answer replaces it. _Why:_ the
