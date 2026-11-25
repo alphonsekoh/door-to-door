@@ -239,14 +239,16 @@ describe("a record not kept because its unit was erased (#279)", () => {
 describe("deleteNote", () => {
   const day = (iso: string) => Date.parse(iso);
 
-  it("tells a held or stopped record the day it goes, 30 days after it was saved", () => {
+  it("tells every unsent record the day it goes, 30 days after it was saved", () => {
     const saved = day("2026-10-15T10:00:00.000Z");
     expect(deleteNote(record({ state: "held", enqueuedAt: saved }))).toBe(
       "Deleted from this phone on 14 Nov 2026 if not sent.",
     );
-    expect(deleteNote(record({ state: "quarantined", enqueuedAt: saved }))).toBe(
-      "Deleted from this phone on 14 Nov 2026 if not sent.",
-    );
+    for (const state of ["queued", "failed", "quarantined"] as const) {
+      expect(deleteNote(record({ state, enqueuedAt: saved }))).toBe(
+        "Deleted from this phone on 14 Nov 2026 if not sent.",
+      );
+    }
   });
 
   it("says it goes at the next start when its saved time cannot be read", () => {
@@ -255,9 +257,7 @@ describe("deleteNote", () => {
     );
   });
 
-  it("says nothing of a record that is still retrying, or sent", () => {
-    for (const state of ["queued", "failed", "synced"] as const) {
-      expect(deleteNote(record({ state }))).toBeNull();
-    }
+  it("says nothing of a record that is sent", () => {
+    expect(deleteNote(record({ state: "synced" }))).toBeNull();
   });
 });

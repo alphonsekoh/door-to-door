@@ -5,8 +5,9 @@ import type { QueuedVisit, SendOutcome } from "@/lib/sync/types";
 
 /*
  * What happens to a record, or to the whole queue, after the server answers.
- * Nothing here deletes a record that has not been sent (D-33-2): every path
- * ends in synced, in a retry, or in a state that waits for a tap.
+ * A record that has not been sent is kept (D-33-2): every path ends in
+ * synced, in a retry, or in a state that waits for a tap. The one exception
+ * is a household erased: its record is stripped to a stub (eraseStub).
  */
 
 export type BlockReason =

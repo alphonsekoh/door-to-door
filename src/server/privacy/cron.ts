@@ -23,7 +23,7 @@ export function checkCronBearer(request: Request, env: EnvSource = process.env):
   }
 }
 
-/* Constant time, whatever the lengths: both sides are hashed-length by padding to one buffer size. */
+/* Constant time, whatever the lengths: both sides are padded to one buffer size. */
 function sameSecret(sent: string, secret: string): boolean {
   const a = Buffer.from(sent);
   const b = Buffer.from(secret);

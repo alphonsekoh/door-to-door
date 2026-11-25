@@ -299,7 +299,10 @@ export const households = pgTable(
     /*
      * Set when the household's data was erased (#279): the row stays as the
      * unit alone, so a record made before this moment is refused rather than
-     * recreating it.
+     * recreating it. The time an admin carried out a request, or the job met
+     * an open request; for an erasure purely at the end of the retention
+     * period, the cutoff 24 months before the run. `updated_at` holds when
+     * the erasure actually happened.
      */
     erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }),
     // When someone marked the contact as not to be called or messaged.

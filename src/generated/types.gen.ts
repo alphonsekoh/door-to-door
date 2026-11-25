@@ -3285,8 +3285,8 @@ export type CreateVisitErrors = {
      * deactivated (`conflict`), or no session is active
      * (`session_not_active`), or the block is not attached to the active
      * session, or a member is recording an unlisted unit in a follow-up
-     * session (`not_on_follow_up_list`), or the unit was erased after
-     * `clientCreatedAt` (`household_erased`; see "Erasure and
+     * session (`not_on_follow_up_list`), or the unit's erasure time is
+     * after `clientCreatedAt` (`household_erased`; see "Erasure and
      * retention").
      *
      */

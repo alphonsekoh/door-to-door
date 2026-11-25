@@ -86,7 +86,7 @@ export const RETENTION: readonly { id: string; what: string; keep: string }[] = 
   {
     id: "requests",
     what: "A sign-up request that was turned down, or never answered",
-    keep: "12 months after it was turned down, or after it was made if nobody answered, then erased",
+    keep: "12 months after it was turned down, or after it was made if nobody answered (or after it was last put back to waiting, if turned down and then reopened), then erased",
   },
   {
     id: "sign-ins",

@@ -63,11 +63,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 /*
  * A record still unsent 30 days after it was saved is deleted when the app
- * next starts (D-279), so a stuck one says when, before it goes. Not shown
- * for one that is still retrying by itself: it is sent, or becomes stuck.
+ * next starts (D-279), whatever it is stuck on, so every unsent row says
+ * when, before it goes - from the day it is saved, so the date is never a
+ * surprise.
  */
 export function deleteNote(record: QueuedVisit): string | null {
-  if (record.state !== "held" && record.state !== "quarantined") return null;
+  if (record.state === "synced") return null;
   if (record.enqueuedAt <= 0) return "Deleted from this phone the next time the app opens.";
   const on = formatDay(record.enqueuedAt + RETENTION_PERIODS.unsentRecordDays * DAY_MS);
   return `Deleted from this phone on ${on} if not sent.`;

@@ -257,8 +257,8 @@ describe("a record not kept, and the day a stuck one goes (#279)", () => {
     expect(sheet).toHaveTextContent("Deleted from this phone on 14 Nov 2026 if not sent.");
   });
 
-  it("says nothing of deletion for a record that is still retrying", () => {
+  it("tells a record that is still retrying too, since the purge deletes it as well", () => {
     const { sheet } = open(queue({ records: [record("#05-12")] }));
-    expect(sheet).not.toHaveTextContent("Deleted from this phone");
+    expect(sheet).toHaveTextContent("Deleted from this phone on");
   });
 });

@@ -72,9 +72,11 @@ describe("readRecord", () => {
     expect(isCorrupt(readRecord({ ...good, skewCount: null }))).toBe(false);
   });
 
-  it("keeps a salvaged record's place in the queue only when its time is readable", () => {
-    expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(NOW);
-    expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(0);
+  it("ages a salvaged record from its knock, so damaged bookkeeping never makes it look ancient", () => {
+    const saved = Date.parse(good.item.clientCreatedAt);
+    expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(saved);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(saved);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: 0 }).enqueuedAt).toBe(saved);
   });
 
   it("does not salvage a record whose owner is lost, so it is never sent as anyone", () => {

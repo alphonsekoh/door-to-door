@@ -43,12 +43,18 @@ info:
     householder's; only an admin may log an account's) and carried out by an
     admin with `POST /erasure-requests/{id}/erase`. The retention job,
     `GET /retention/run`, erases households 24 months after their last visit
-    or follow-up activity, deletes accounts 12 months after they left, and
-    deletes sign-ins 30 days after their last use.
+    or follow-up activity, anonymises accounts 12 months after they left
+    (a sign-up request 12 months after it was turned down, put back to
+    waiting, or made), and deletes sign-ins 30 days after their last use.
 
     Nothing recreates an erased household from what was recorded before it
-    was erased: a visit whose `clientCreatedAt` is earlier than the erasure
-    is refused `household_erased`, by `POST /visits` and per item by
+    was erased. The household keeps an erasure time (`erased_at`): when an
+    admin carried out a request, or when the job met an open request; for an
+    erasure purely at the end of the retention period, the cutoff, 24 months
+    before that run, so a record saved since then and synced late is kept.
+    (Its `updated_at` holds when the erasure actually happened.) A visit
+    whose `clientCreatedAt` is earlier than that time is refused
+    `household_erased`, by `POST /visits` and per item by
     `POST /visits/sync`. A visit recorded after it is a new knock and is
     stored as any other.
 
@@ -2758,7 +2764,8 @@ paths:
         added, edited, listed, marked done, reopened or removed) is more than
         24 months old, and closes its open request; erases each account 12
         months after it left (deactivated, or turned down) or asked to join
-        and was never answered; deletes each sign-in 30 days and 15 minutes
+        and was never answered, counted from when it was last put back to
+        waiting if an admin unblocked it; deletes each sign-in 30 days and 15 minutes
         after its last use. Each erasure is its own transaction. The run's
         counts are kept and shown to admins.
       security:
@@ -2840,9 +2847,10 @@ paths:
         author's: an admin may record anywhere in the session's blocks,
         including on a member's behalf.
 
-        A visit whose `clientCreatedAt` is earlier than its unit's erasure is
-        `409 household_erased`, for every caller: what was learnt before the
-        person asked to be erased is not stored again. One with no
+        A visit whose `clientCreatedAt` is earlier than its unit's erasure
+        time (see "Erasure and retention") is `409 household_erased`, for
+        every caller: what was learnt before the person asked to be erased is
+        not stored again. One with no
         `clientCreatedAt` is recorded now, after any erasure.
 
         Recording a visit at a household on a running `follow_up` session's
@@ -2887,8 +2895,8 @@ paths:
             deactivated (`conflict`), or no session is active
             (`session_not_active`), or the block is not attached to the active
             session, or a member is recording an unlisted unit in a follow-up
-            session (`not_on_follow_up_list`), or the unit was erased after
-            `clientCreatedAt` (`household_erased`; see "Erasure and
+            session (`not_on_follow_up_list`), or the unit's erasure time is
+            after `clientCreatedAt` (`household_erased`; see "Erasure and
             retention").
           content:
             application/json:
@@ -2995,8 +3003,8 @@ paths:
         hold it and try again now and then rather than discard it. Amending a
         record already stored is never refused for this reason.
 
-        An item recorded at a unit erased since (its `clientCreatedAt` earlier
-        than the erasure), whether new or an amend of a visit the erasure
+        An item recorded at a unit whose erasure time is later than its
+        `clientCreatedAt` (see "Erasure and retention"), whether new or an amend of a visit the erasure
         deleted, is `rejected` with error code `household_erased`, for every
         caller. It will never be accepted: a queue should delete what it
         holds of it and tell the member, not hold or retry it.

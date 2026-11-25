@@ -6,7 +6,9 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import type { Clock } from "@/lib/clock";
 import { RETENTION_PERIODS } from "@/lib/privacy/policy";
 import { EXPIRES_AFTER_SECONDS } from "@/server/auth/sign-ins";
-import { assertRecordedAfterErasure } from "@/server/visits/service";
+import { unblockUser } from "@/server/users/service";
+import { assertRecordedAfterErasure, createVisit } from "@/server/visits/service";
+import { syncVisits } from "@/server/visits/sync";
 import { MAX_ERASURES_PER_RUN, runRetention } from "@/server/privacy/retention";
 
 /*
@@ -152,6 +154,18 @@ describe("households", () => {
     expect(again).toMatchObject({ households: 0, accounts: 0, signIns: 0 });
   });
 
+  it("erases a unit that holds only a visit, or only a note, with no identity", async () => {
+    await household(H1, "#01-01", null);
+    await visitAt("01960000-0000-7000-8279-000000000001", H1, new Date("2020-01-01T00:00:00Z"));
+    await household(H2, "#01-02", null);
+    await note(H2, {});
+    expect((await runRetention(db, clock)).households).toBe(2);
+    expect(await erased(H1)).toBe(true);
+    expect(await erased(H2)).toBe(true);
+    expect(await count("visits")).toBe(0);
+    expect(await count("follow_ups")).toBe(0);
+  });
+
   it("carries out the household's open request, by nobody", async () => {
     await household(H1, "#01-01");
     await visitAt("01960000-0000-7000-8279-000000000001", H1, new Date("2020-01-01T00:00:00Z"));
@@ -196,7 +210,7 @@ describe("accounts", () => {
         email,
         approval,
         columns.deactivated ?? null,
-        columns.updated ?? NOW,
+        columns.updated ?? columns.created ?? NOW,
         columns.created ?? NOW,
       ],
     );
@@ -229,6 +243,21 @@ describe("accounts", () => {
     expect((await runRetention(db, clock)).accounts).toBe(1);
     // Never marked as deactivated: the table's check forbids it for these.
     expect(await count("users", `erased_at IS NOT NULL AND deactivated_at IS NULL`)).toBe(1);
+  });
+
+  it("starts a turned-down request's 12 months over when an admin unblocks it", async () => {
+    // Made and turned down long before the cutoff.
+    await user("back@t.local", "blocked", {
+      created: new Date("2025-10-01T00:00:00Z"),
+      updated: new Date("2025-12-01T00:00:00Z"),
+    });
+    const { rows } = await pool.query<{ id: string }>(
+      `SELECT id FROM users WHERE email = 'back@t.local'`,
+    );
+    await unblockUser(db, rows[0]?.id ?? "");
+
+    expect((await runRetention(db, clock)).accounts).toBe(0);
+    expect(await left("back@t.local")).toBe(false);
   });
 
   it("carries out the account's open request, by nobody", async () => {
@@ -265,6 +294,47 @@ describe("accounts", () => {
       },
     });
     await expect(runRetention(broken, clock)).rejects.toBe(failure);
+    expect(await count("users", `erased_at IS NOT NULL`)).toBe(0);
+  });
+
+  /* An admin's change that lands while the job waits on the account's lock. */
+  const changedWhileParked = async (email: string, change: string) => {
+    const { rows } = await pool.query<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [
+      email,
+    ]);
+    const target = rows[0]?.id ?? "";
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT id FROM users WHERE id = $1 FOR UPDATE`, [target]);
+      const run = runRetention(db, clock);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await holder.query(change, [target, NOW]);
+      await holder.query("COMMIT");
+      return (await run).accounts;
+    } finally {
+      holder.release();
+    }
+  };
+
+  it("is spared when an admin reactivated the member while the job waited on its lock", async () => {
+    await user("gone@t.local", "approved", { deactivated: ms(ACCOUNT_CUTOFF, -1) });
+    const erasedCount = await changedWhileParked(
+      "gone@t.local",
+      `UPDATE users SET deactivated_at = NULL, updated_at = $2 WHERE id = $1`,
+    );
+    expect(erasedCount).toBe(0);
+    expect(await left("gone@t.local")).toBe(false);
+    expect(await count("users", `erased_at IS NOT NULL`)).toBe(0);
+  });
+
+  it("is spared when an admin approved the request while the job waited on its lock", async () => {
+    await user("ask@t.local", "pending", { created: ms(ACCOUNT_CUTOFF, -1) });
+    const erasedCount = await changedWhileParked(
+      "ask@t.local",
+      `UPDATE users SET approval = 'approved', updated_at = $2 WHERE id = $1`,
+    );
+    expect(erasedCount).toBe(0);
     expect(await count("users", `erased_at IS NOT NULL`)).toBe(0);
   });
 
@@ -354,6 +424,57 @@ describe("what a retention erasure refuses afterwards", () => {
     expect(() => {
       assertRecordedAfterErasure({ erasedAt }, ms(HOUSEHOLD_CUTOFF, -1));
     }).toThrow(/erased/);
+  });
+
+  describe("with a request open when the job meets the household", () => {
+    const OLD_VISIT = "01960000-0000-7000-8279-000000000001";
+    const SAVED = ms(NOW, -10 * 86_400_000);
+
+    beforeEach(async () => {
+      await household(H1, "#01-01");
+      await visitAt(OLD_VISIT, H1, new Date("2020-01-01T00:00:00Z"));
+      await pool.query(
+        `UPDATE outing_sessions SET status = 'active', started_at = $2 WHERE id = $1`,
+        [SESSION, new Date("2020-01-01T00:00:00Z")],
+      );
+      await pool.query(`INSERT INTO session_blocks (session_id, block_id) VALUES ($1,$2)`, [
+        SESSION,
+        BLOCK,
+      ]);
+      await pool.query(
+        `INSERT INTO erasure_requests (household_id, requested_at, logged_by) VALUES ($1,$2,$3)`,
+        [H1, new Date("2026-11-20T00:00:00Z"), ADMIN],
+      );
+      await runRetention(db, clock);
+    });
+
+    const item = {
+      id: "01960000-0000-7000-8279-000000000002",
+      blockId: BLOCK,
+      unitNumber: "#01-01",
+      interestLevel: "high" as const,
+      name: "Mr Tan",
+      clientCreatedAt: SAVED.toISOString(),
+      updatedAt: SAVED.toISOString(),
+    };
+
+    it("is dated at the run, not the cutoff", async () => {
+      expect(await erasedAtOf(H1)).toEqual(NOW);
+    });
+
+    it("refuses an offline knock saved before the run and synced after it", async () => {
+      const [outcome] = await syncVisits(db, [item], { id: ALICE, role: "member" }, clock);
+      expect(outcome).toMatchObject({ status: "rejected", error: { code: "household_erased" } });
+      expect(await count("visits", `household_id = '${H1}'`)).toBe(0);
+    });
+
+    it("refuses the same knock sent on its own", async () => {
+      await expect(
+        createVisit(db, { ...item, memberId: ALICE, clientCreatedAt: SAVED.toISOString() }, clock, {
+          role: "member",
+        }),
+      ).rejects.toMatchObject({ code: "household_erased" });
+    });
   });
 
   it("never moves an earlier on-request erasure backward", async () => {

@@ -16,9 +16,10 @@ import { hashPassword } from "@/server/password";
 /*
  * The team.
  *
- * Deactivated users are excluded from listings by default but never deleted:
- * their records stay attributed to them, because history has to survive
- * someone leaving. So is everyone not approved (#249): the team, its pickers
+ * Deactivated users are excluded from listings by default and not deleted
+ * when they leave: their records stay attributed to them, because history has
+ * to survive someone leaving. Only erasure (#279) anonymises one, and the
+ * records stay then too. So is everyone not approved (#249): the team, its pickers
  * and its counts are the approved accounts, and the queue is asked for by
  * name.
  */
