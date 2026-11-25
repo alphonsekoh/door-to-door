@@ -191,4 +191,55 @@ describe("a unit's thread", () => {
     await user.click(screen.getByRole("button", { name: "Show earlier visits" }));
     expect(await screen.findByText("Could not load earlier visits.")).toBeInTheDocument();
   });
+
+  describe("with the unit on the running session's list but the session unknown", () => {
+    const owed: FollowUp = {
+      id: "f2",
+      householdId: "h1",
+      blockId: "b1",
+      blockName: "123",
+      unitNumber: "#05-01",
+      visitId: null,
+      status: "listed",
+      author: { id: "u2", name: "Ben", image: null },
+      note: "Bring the booklet",
+      dueDate: null,
+      doneAt: null,
+      doneBy: null,
+      listedAt: at(8),
+      listedBy: null,
+      deletedAt: null,
+      deletedBy: null,
+      deleteReason: null,
+      waitingSuggestionBy: null,
+      createdAt: at(8),
+    };
+    const withNote = { ...history(1), followUps: [owed] };
+
+    it.each([
+      ["a member", false],
+      ["an admin", true],
+    ])("tells %s saving marks it done, with no locked line and no Mark done", (_, isAdmin) => {
+      useRole.mockReturnValue({ userId: "u1", isAdmin });
+      render(
+        <HouseholdHistoryPanel
+          history={withNote}
+          active={null}
+          onChanged={noop}
+          atDoor
+          onSessionList
+          thread={NONE}
+        />,
+      );
+      expect(screen.getByText("Saving your visit marks this done.")).toBeInTheDocument();
+      expect(screen.queryByText(/You can mark this done during/)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+    });
+
+    it("still tells a member off the list when it is not said to be on it", () => {
+      mount(withNote);
+      expect(screen.getByText(/You can mark this done during/)).toBeInTheDocument();
+      expect(screen.queryByText("Saving your visit marks this done.")).toBeNull();
+    });
+  });
 });

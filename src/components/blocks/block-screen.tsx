@@ -187,12 +187,19 @@ export function BlockScreen({
     }
   }, [followUpSession, noteRevisits]);
 
+  /* The kind another screen learnt counts until this one's own answer. */
+  const heard = useKnownSessionKind();
+
   /* The session's units' threads: kept for the form and for the offline
-     shell, read in the background as the list arrives. */
+     shell, read in the background as the list arrives. Told by the Session
+     screen that a follow-up session runs, the copy's threads are drawn with
+     the unit, not with this screen's own answer 300ms later, which pushed
+     the form down by a whole thread (#275). */
   const { threads, noteRead } = useThreadCache({
     outingId: followUpSession?.session.id ?? null,
     revisits,
     preload: true,
+    assumeCopyOuting: active === null && heard === "follow_up",
   });
 
   /*
@@ -273,7 +280,6 @@ export function BlockScreen({
    * until its answer came back told a member in weak signal the wrong thing.
    * The kind another screen learnt counts until this one's own answer.
    */
-  const heard = useKnownSessionKind();
   const kind = active === null ? heard : active.session.kind;
   const guessNext = kind === "regular" || kind === null;
 
@@ -312,7 +318,8 @@ export function BlockScreen({
           active={active}
           initialUnit={initialUnit}
           guessNext={guessNext}
-          {...(followUpSession === null ? {} : { threads, onThreadRead: noteRead })}
+          threads={threads}
+          onThreadRead={noteRead}
           unitsNote={
             known === null && error !== null
               ? "Not every unit of this block could be loaded, so one not listed here may still have been visited."

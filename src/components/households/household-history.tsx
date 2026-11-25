@@ -99,6 +99,7 @@ export function HouseholdHistoryPanel({
   onChanged,
   anchorVisits = false,
   atDoor = false,
+  onSessionList = false,
   thread,
   ref,
 }: {
@@ -109,6 +110,9 @@ export function HouseholdHistoryPanel({
   /* Offer a follow-up anchored to each visit row. */
   anchorVisits?: boolean;
   atDoor?: boolean;
+  /* This unit is on the running follow-up session's list, though `active` may
+     be unknown: the offline shell's thread. Saving marks its owed notes done. */
+  onSessionList?: boolean;
   thread?: Thread;
   ref?: Ref<HistoryPanelHandle>;
 }) {
@@ -145,7 +149,9 @@ export function HouseholdHistoryPanel({
     setEarlier((current) => keepFirstPage(current, shownFirst));
   }
   const owed = sortOutstanding(followUps.filter(isOwed));
-  const markedOnSave = atDoor ? owed.filter((note) => marksDoneOnSave(note, active)).length : 0;
+  const markedOnSave = atDoor
+    ? owed.filter((note) => onSessionList || marksDoneOnSave(note, active)).length
+    : 0;
   const waiting = followUps.filter(awaitsReview);
   const held = holdVisits(history, earlier);
   /* Still oldest first, so the trajectory reads down to the newest knock. */
@@ -219,6 +225,7 @@ export function HouseholdHistoryPanel({
       now={now}
       active={active}
       atDoor={atDoor}
+      onSessionList={onSessionList}
       onChanged={onChanged}
       onEdit={edit}
       onPromoted={setSent}

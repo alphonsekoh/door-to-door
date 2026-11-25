@@ -13,9 +13,39 @@ import { loadLocalCopy, updateLocalCopy } from "@/lib/offline/local-copy-store";
 import { readThread } from "@/lib/offline/read-thread";
 import { PRELOAD_AT_ONCE, staleThreads } from "@/lib/offline/threads";
 
-type Stored = { outingId: string | null; threads: readonly LocalThread[] };
+type Stored = {
+  outingId: string | null;
+  /* The copy's list: what is on the list while the screen's own is unread. */
+  revisits: readonly RevisitEntry[] | null;
+  threads: readonly LocalThread[];
+};
 
-const NONE: Stored = { outingId: null, threads: [] };
+const NONE: Stored = { outingId: null, revisits: null, threads: [] };
+
+/* What this page last held, for the member it was read for. A screen opened
+   from another starts from it: reading the copy from IndexedDB lands a frame
+   after the first paint, which on an iPhone is enough to push the form down
+   under a thumb. In memory only, so a reload reads the copy as before. */
+let remembered: { userId: string; stored: Stored } | null = null;
+
+/* For tests: a fresh page. */
+export function forgetThreads(): void {
+  remembered = null;
+}
+
+function fromCopy(copy: LocalCopy): Stored {
+  return { outingId: copy.outing?.id ?? null, revisits: copy.revisits, threads: copy.threads };
+}
+
+/* The households on the newest list known: the screen's own once read, else
+   the copy's. Null when neither is, and then nothing is kept or shown. */
+function listedIn(
+  revisits: readonly RevisitEntry[] | null | undefined,
+  stored: Stored | null,
+): ReadonlySet<string> | null {
+  const list = revisits ?? stored?.revisits ?? null;
+  return list === null ? null : new Set(list.map((entry) => entry.household.id));
+}
 
 export type ThreadCache = {
   /* The stored threads of the households on the session's list. */
@@ -33,28 +63,41 @@ export type ThreadCache = {
  * loaded one (the offline shell), saves reading it again.
  */
 export function useThreadCache({
-  outingId,
+  outingId: given,
   revisits,
   preload,
   copy,
+  assumeCopyOuting = false,
 }: {
+  /* Null until the session is known. */
   outingId: string | null;
   /* Undefined or null while the list is unread or failed. */
   revisits: readonly RevisitEntry[] | null | undefined;
   preload: boolean;
   copy?: LocalCopy;
+  /* Until the session answers, take the copy's outing as the one running, for
+     a screen already told it is a follow-up session, so the threads are there
+     on the first paint (#275). The answer replaces it. */
+  assumeCopyOuting?: boolean;
 }): ThreadCache {
   const { userId } = useRole();
-  const [stored, setStored] = useState<Stored | null>(
-    copy === undefined ? null : { outingId: copy.outing?.id ?? null, threads: copy.threads },
-  );
+  const [stored, setStored] = useState<Stored | null>(() => {
+    if (copy !== undefined) return fromCopy(copy);
+    return remembered !== null && remembered.userId === userId ? remembered.stored : null;
+  });
+  const outingId = given ?? (assumeCopyOuting ? (stored?.outingId ?? null) : null);
+  const revisitsRef = useRef(revisits);
   const storedRef = useRef<Stored>(stored ?? NONE);
   const alive = useRef(true);
   const running = useRef(false);
 
   useEffect(() => {
     storedRef.current = stored ?? NONE;
-  }, [stored]);
+    if (stored !== null && userId !== undefined) remembered = { userId, stored };
+  }, [stored, userId]);
+  useEffect(() => {
+    revisitsRef.current = revisits;
+  }, [revisits]);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -69,11 +112,7 @@ export function useThreadCache({
       .catch(() => null)
       .then((loaded) => {
         if (!alive.current) return;
-        setStored(
-          loaded?.member.id === userId
-            ? { outingId: loaded.outing?.id ?? null, threads: loaded.threads }
-            : NONE,
-        );
+        setStored(loaded?.member.id === userId ? fromCopy(loaded) : NONE);
       });
   }, [copy, userId]);
 
@@ -85,10 +124,19 @@ export function useThreadCache({
         () => undefined,
       );
       if (!alive.current) return;
-      setStored((current) => ({
-        outingId,
-        threads: withThreads(current?.outingId === outingId ? current.threads : [], histories, now),
-      }));
+      /* Only a unit on the list, as the copy keeps them: one off it must not
+         open as a thread before the list says so. */
+      setStored((current) => {
+        const listed = listedIn(revisitsRef.current, current);
+        const fresh = listed === null ? [] : histories.filter((h) => listed.has(h.household.id));
+        if (fresh.length === 0) return current;
+        const same = current?.outingId === outingId;
+        return {
+          outingId,
+          revisits: same ? current.revisits : null,
+          threads: withThreads(same ? current.threads : [], fresh, now),
+        };
+      });
     },
     [outingId],
   );
@@ -115,8 +163,8 @@ export function useThreadCache({
 
   const threads = useMemo(() => {
     if (stored === null || outingId === null || stored.outingId !== outingId) return [];
-    if (revisits == null) return stored.threads;
-    const listed = new Set(revisits.map((entry) => entry.household.id));
+    const listed = listedIn(revisits, stored);
+    if (listed === null) return [];
     return stored.threads.filter((thread) => listed.has(thread.history.household.id));
   }, [stored, outingId, revisits]);
 

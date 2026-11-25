@@ -969,6 +969,41 @@ describe("OfflineShell, from a follow-up session's list", () => {
     );
   });
 
+  it("says saving marks the unit's owed note done, and offers no Mark done, with no session known", async () => {
+    const base = { ...history(1), household: household.household };
+    const owed = {
+      id: "0190a000-0000-7000-8000-0000000000f1",
+      householdId: base.household.id,
+      blockId: base.household.blockId,
+      status: "listed" as const,
+      listedAt: base.household.createdAt,
+      listedBy: null,
+      deletedAt: null,
+      deletedBy: null,
+      deleteReason: null,
+      waitingSuggestionBy: null,
+      blockName: "123",
+      unitNumber: base.household.unitNumber,
+      visitId: null,
+      author: { id: "0190a000-0000-7000-8000-00000000000b", name: "Ben Lim" },
+      note: "Bring the booklet",
+      dueDate: null,
+      doneAt: null,
+      doneBy: null,
+      createdAt: base.household.createdAt,
+    };
+    const copy = must(noteThreads(listOnly(), OUTING, [{ ...base, followUps: [owed] }], NOW));
+    mount({ copy });
+    await continueAsAlice();
+    await user().click(within(list()).getByRole("button", { name: /^#05-01/ }));
+
+    const region = screen.getByRole("region", { name: "What we know about this unit" });
+    expect(region).toHaveTextContent("Bring the booklet");
+    expect(region).toHaveTextContent("Saving your visit marks this done.");
+    expect(region).not.toHaveTextContent("You can mark this done during");
+    expect(within(region).queryByRole("button", { name: "Mark done" })).toBeNull();
+  });
+
   it("reads the threads it lacks once the server answers, and keeps them in the copy", async () => {
     const stored = {
       ...history(1, [

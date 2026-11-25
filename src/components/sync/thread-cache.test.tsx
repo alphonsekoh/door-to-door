@@ -1,6 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useThreadCache } from "@/components/sync/thread-cache";
+import { forgetThreads, useThreadCache } from "@/components/sync/thread-cache";
 import type { HouseholdHistory } from "@/generated/types.gen";
 import type { LocalCopy } from "@/lib/offline/local-copy";
 import { entryFor, history, OUTING_ID, STAMP, thread } from "../../../test/thread-fixtures";
@@ -48,6 +48,7 @@ const ids = (threads: readonly { history: HouseholdHistory }[]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  forgetThreads();
   useRole.mockReturnValue({ userId: ALICE });
   loadLocalCopy.mockResolvedValue(null);
   updateLocalCopy.mockResolvedValue(undefined);
@@ -364,5 +365,126 @@ describe("useThreadCache, noteRead", () => {
       result.current.noteRead(history(2));
     });
     expect(ids(result.current.threads)).toEqual(["#05-02"]);
+  });
+});
+
+describe("useThreadCache, before the list is read", () => {
+  it.each([
+    ["unread", undefined],
+    ["failed", null],
+  ])(
+    "keeps a read only for a unit on the copy's list while the list is %s",
+    async (_, revisits) => {
+      loadLocalCopy.mockResolvedValue({
+        ...copyWith([]),
+        revisits: LIST.slice(0, 2),
+      });
+      const { result } = hook({ outingId: OUTING_ID, revisits, preload: false });
+      await waitFor(() => {
+        expect(loadLocalCopy).toHaveBeenCalled();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      act(() => {
+        result.current.noteRead(history(4));
+      });
+      expect(result.current.threads).toEqual([]);
+      act(() => {
+        result.current.noteRead(history(2));
+      });
+      expect(ids(result.current.threads)).toEqual(["#05-02"]);
+    },
+  );
+
+  it("keeps no read at all while neither list is known", async () => {
+    loadLocalCopy.mockResolvedValue({ ...copyWith([]), revisits: null });
+    const { result } = hook({ outingId: OUTING_ID, revisits: undefined, preload: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    act(() => {
+      result.current.noteRead(history(1));
+    });
+    expect(result.current.threads).toEqual([]);
+  });
+
+  it("shows nothing for a copy that holds no list", async () => {
+    loadLocalCopy.mockResolvedValue({ ...copyWith([thread(1, Date.now())]), revisits: null });
+    const { result } = hook({ outingId: OUTING_ID, revisits: null, preload: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.threads).toEqual([]);
+  });
+});
+
+describe("useThreadCache, taking the copy's outing", () => {
+  it("shows the copy's threads before the session answers, when told to", async () => {
+    loadLocalCopy.mockResolvedValue(copyWith([thread(1, Date.now())]));
+    const { result, rerender } = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: true,
+      assumeCopyOuting: true,
+    });
+    await waitFor(() => {
+      expect(ids(result.current.threads)).toEqual(["#05-01"]);
+    });
+    expect(readThread).not.toHaveBeenCalled();
+    rerender({ outingId: "0190a000-0000-7000-8000-0000000000ee", revisits: LIST, preload: false });
+    expect(result.current.threads).toEqual([]);
+  });
+
+  it("shows none when not told to", async () => {
+    loadLocalCopy.mockResolvedValue(copyWith([thread(1, Date.now())]));
+    const { result } = hook({ outingId: null, revisits: undefined, preload: false });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.threads).toEqual([]);
+  });
+
+  it("shows none when the copy has no outing", async () => {
+    loadLocalCopy.mockResolvedValue({ ...copyWith([thread(1, Date.now())]), outing: null });
+    const { result } = hook({
+      outingId: null,
+      revisits: undefined,
+      preload: false,
+      assumeCopyOuting: true,
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(result.current.threads).toEqual([]);
+  });
+});
+
+describe("useThreadCache, handing the threads to the next screen", () => {
+  it("has the threads on the first render of a screen opened after one that read them", async () => {
+    loadLocalCopy.mockResolvedValue(copyWith([thread(1, Date.now())]));
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
+    await waitFor(() => {
+      expect(ids(first.result.current.threads)).toEqual(["#05-01"]);
+    });
+    first.unmount();
+
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    const second = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
+    expect(ids(second.result.current.threads)).toEqual(["#05-01"]);
+  });
+
+  it("never hands one member's threads to another", async () => {
+    loadLocalCopy.mockResolvedValue(copyWith([thread(1, Date.now())]));
+    const first = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
+    await waitFor(() => {
+      expect(first.result.current.threads).toHaveLength(1);
+    });
+    first.unmount();
+
+    useRole.mockReturnValue({ userId: "someone-else" });
+    loadLocalCopy.mockReturnValue(new Promise(() => undefined));
+    const second = hook({ outingId: OUTING_ID, revisits: LIST, preload: false });
+    expect(second.result.current.threads).toEqual([]);
   });
 });

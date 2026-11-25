@@ -134,9 +134,9 @@ describe("a unit's thread in a follow-up session's form", () => {
     expect(follows(screen.getByText("Interest level"), region)).toBe(true);
   });
 
-  it("keeps the history last in a door-to-door session, whatever the phone holds", async () => {
+  it("keeps the history last in a door-to-door session, which is given no threads", async () => {
     apiFetch.mockResolvedValue(history(1));
-    mount({ followUp: false, threads: [thread(1, READ_AT)] });
+    mount({ followUp: false });
     const region = await screen.findByRole("region", { name: REGION });
     expect(follows(screen.getByText("Interest level"), region)).toBe(true);
     expect(region).not.toHaveTextContent("As last read with signal");

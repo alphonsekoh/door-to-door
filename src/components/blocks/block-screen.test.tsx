@@ -1338,11 +1338,43 @@ describe("in a follow-up session", () => {
     await waitFor(() => {
       expect(noteRead).toHaveBeenCalledWith(read);
     });
-    expect(useThreadCache).toHaveBeenLastCalledWith({
-      outingId: "s1",
-      revisits: revisits.data,
-      preload: true,
+    await waitFor(() => {
+      expect(useThreadCache).toHaveBeenLastCalledWith({
+        outingId: "s1",
+        revisits: revisits.data,
+        preload: true,
+        assumeCopyOuting: false,
+      });
     });
+  });
+
+  it("draws the copy's thread with the unit while the session has not answered", () => {
+    const household = revisits.data[0]?.household;
+    if (household === undefined) throw new Error("expected a household");
+    const stored = {
+      history: {
+        household,
+        block: followUp.blocks[0]?.block,
+        visits: [],
+        answered: false,
+        pagination: { limit: 20, offset: 0, total: 0, hasMore: false },
+        followUps: [],
+      },
+      savedAt: Date.now(),
+    };
+    useThreadCache.mockReturnValue({ threads: [stored], noteRead });
+    knownSessionKind.note("follow_up");
+    onTestFinished(() => {
+      knownSessionKind.forget();
+    });
+    apiFetch.mockReturnValue(new Promise(() => undefined));
+    render(<BlockScreen blockId="b1" initialUnit="#05-123" />);
+    expect(useThreadCache).toHaveBeenLastCalledWith(
+      expect.objectContaining({ outingId: null, assumeCopyOuting: true }),
+    );
+    expect(
+      screen.getByRole("region", { name: "What we know about this unit" }),
+    ).toBeInTheDocument();
   });
 
   it("asks for no list in a door-to-door session", async () => {

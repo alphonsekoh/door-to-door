@@ -1067,29 +1067,45 @@ test.describe("as the session answers", () => {
 
     await startFollowUpSession(adminApi);
     try {
-      /* The listed unit's thread is on top, above the interest level (#275):
-         it opens from the phone's copy, which the Session screen fills with
-         signal, so the fresh read replaces it without moving anything. */
+      /* The listed unit's thread is on top, above the interest level (#275).
+         Tapped from the Session screen, which holds it, the thread is there
+         on the first paint and nothing under it moves as the session
+         answers, bar the notice and the chips that land above it. */
       await page.unroute("**/api/sessions/active");
       await page.goto("/");
       await expect.poll(() => threadsOnPhone(page)).toBe(1);
+      const row = page
+        .getByRole("region", { name: "Households to revisit" })
+        .locator(`a[href*="?unit=${encodeURIComponent(LISTED_UNIT)}"]`);
+      await expect(row).toBeVisible();
       answer = await holdBack("**/api/sessions/active");
       const history = await holdBack("**/api/households/*");
-      await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
+      await row.click();
+      await page.waitForURL(/\/blocks\/.*\?unit=/);
       await atCap(page);
       await untilLive(page);
+      const thread = page.getByRole("region", { name: "What we know about this unit" });
+      await expect(thread).toBeVisible();
+      const medium = page.getByRole("radio", { name: "Medium" });
+      /* The notice and the chips land between the unit field and the thread
+         (#200, accepted in D-200-3): the field holds its place, and Medium
+         keeps its distance from the thread it sits under. */
+      const gapBelowThread = async () => {
+        const [at, top] = await Promise.all([medium.boundingBox(), thread.boundingBox()]);
+        if (at === null || top === null) throw new Error("No Medium or thread to measure");
+        return at.y - top.y;
+      };
       const opened = await unit.boundingBox();
-      expect(opened, "the unit field as the screen opens").not.toBeNull();
+      const gap = await gapBelowThread();
       answer();
       await expect(page.getByText(/You can record any unit in this block/)).toBeVisible();
       await expect(page.getByRole("heading", { level: 1, name: "Blk 123" })).toBeVisible();
+      await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
       expect(await unit.boundingBox(), "the unit field as a follow-up session answers").toEqual(
         opened,
       );
-
-      await expect(page.getByRole("list", { name: "On the list in this block" })).toBeVisible();
+      expect(await gapBelowThread(), "Medium under the thread as the session answers").toBe(gap);
       await expect(line).toHaveText("Checking this unit's history…");
-      const thread = page.getByRole("region", { name: "What we know about this unit" });
       await expect(thread).toBeVisible();
       await expect(thread).toContainText("Polite but not interested");
       const tapped = [
@@ -1394,9 +1410,9 @@ test.describe("a follow-up session", () => {
     await endActiveSession(adminApi);
   });
 
-  /* As a thumb does: down to the interest level. The door's history lands
-     after it, at the end of the form, so a tap made as it lands meets what
-     it aimed at (#196). */
+  /* As a thumb does: down to the interest level. The unit's thread is above
+     it (#275) and, opened cold, lands late: a spec that scrolls before it
+     does is measuring a page that then shrinks, so wait for it first. */
   async function pickMedium(page: Page): Promise<void> {
     await page.evaluate(() => {
       window.scrollTo(0, document.body.scrollHeight);
@@ -1624,6 +1640,9 @@ test.describe("a follow-up session", () => {
       await page.goto(`/blocks/${SEED_BLOCK}?unit=${encodeURIComponent(LISTED_UNIT)}`);
       await untilLive(page);
       await atCap(page);
+      await expect(
+        page.getByRole("region", { name: "What we know about this unit" }),
+      ).toBeVisible();
       /* Weak signal: the first send hangs until the test lets it go, then
          every one fails. */
       const held = Promise.withResolvers<undefined>();

@@ -416,7 +416,7 @@ export function RecordVisitForm({
    * replaces the copy, so a late arrival can push the picker down (owner, 2026-11-24).
    * Every other unit keeps the history last in the form (D-196-4).
    */
-  const cached = followUp === null ? undefined : threadAt(threads, blockId, typed);
+  const cached = threadAt(threads, blockId, typed);
   const readHere: LocalThread | null =
     here === null ? null : { history: here, savedAt: readAt.getTime() };
   const onList = followUp?.revisits != null && gate === "ok";
@@ -939,6 +939,7 @@ export function RecordVisitForm({
           history={shown.history}
           active={active}
           atDoor
+          onSessionList
           thread={thread}
           onChanged={refreshHistory}
         />
