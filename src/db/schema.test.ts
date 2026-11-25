@@ -5,12 +5,14 @@ import {
   approvalEnum,
   authSessions,
   blocks,
+  erasureRequests,
   followUpStatusEnum,
   followUps,
   households,
   interestLevelEnum,
   outingSessions,
   religionEnum,
+  retentionRuns,
   roleEnum,
   sessionBlocks,
   sessionHouseholds,
@@ -377,5 +379,61 @@ describe("sign-ins (#125)", () => {
   it("let the server pick the id, which the token then names", () => {
     expect(column(signIns, "id")?.hasDefault).toBe(true);
     expect(column(signIns, "user_agent")?.notNull).toBe(false);
+  });
+});
+
+describe("erasure (#279)", () => {
+  it("keeps the unit when its data is erased, and says when and what was withdrawn", () => {
+    expect(column(households, "erased_at")?.notNull).toBe(false);
+    expect(column(households, "contact_withdrawn_at")?.notNull).toBe(false);
+    expect(column(users, "erased_at")?.notNull).toBe(false);
+  });
+
+  it("never lets a request outlive what it names: every key restricts", () => {
+    expect(deleteActions(erasureRequests)).toEqual({
+      household_id: "restrict",
+      user_id: "restrict",
+      logged_by: "restrict",
+      erased_by: "restrict",
+    });
+  });
+
+  it("holds one open request per subject, and no personal data of its own", () => {
+    const open = config(erasureRequests).indexes.filter((i) => i.config.unique);
+    expect(open.map((i) => i.config.name).sort()).toEqual([
+      "erasure_requests_one_open_household_idx",
+      "erasure_requests_one_open_user_idx",
+    ]);
+    // Partial, or a subject could be asked about only once ever.
+    for (const index of open) expect(index.config.where).toBeDefined();
+    expect(columnNames(erasureRequests).sort()).toEqual(
+      [
+        "id",
+        "household_id",
+        "user_id",
+        "requested_at",
+        "logged_by",
+        "logged_at",
+        "erased_at",
+        "erased_by",
+      ].sort(),
+    );
+  });
+
+  it("names exactly one subject, and an eraser only once erased", () => {
+    expect(
+      config(erasureRequests)
+        .checks.map((c) => c.name)
+        .sort(),
+    ).toEqual(["erasure_requests_erased_by_check", "erasure_requests_one_subject_check"]);
+  });
+
+  it("allows one unfinished run of the retention job at a time", () => {
+    const lease = config(retentionRuns).indexes.find(
+      (i) => i.config.name === "retention_runs_one_unfinished_idx",
+    );
+    expect(lease?.config.unique).toBe(true);
+    expect(lease?.config.where).toBeDefined();
+    expect(column(retentionRuns, "finished_at")?.notNull).toBe(false);
   });
 });

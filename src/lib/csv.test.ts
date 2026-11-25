@@ -37,6 +37,7 @@ function entry(overrides: {
       unitNumber,
       name,
       contact: null,
+      contactWithdrawnAt: null,
       religion: "buddhist",
       createdAt: AT,
       updatedAt: AT,
@@ -221,6 +222,23 @@ describe("historyToCsv", () => {
     const csv = historyToCsv([]);
     expect(csv.split("\r\n")).toHaveLength(1);
     expect(csv).toContain("Block,Street,Unit");
+  });
+
+  it("marks a contact whose agreement to calls and messages was withdrawn (#279)", () => {
+    const withdrawn = entry({});
+    withdrawn.household.contactWithdrawnAt = AT;
+    const [header = "", plain = "", marked = ""] = historyToCsv([entry({}), withdrawn])
+      .split("\r\n")
+      .slice(0, 3);
+    const column = header.split(",").indexOf("No calls or messages");
+    expect(column).toBeGreaterThan(-1);
+    expect(plain.split(",")[column]).toBe("");
+    expect(marked.split(",")[column]).toBe("Yes");
+
+    // A copy of the unit from before the field existed has none, and is not marked.
+    const older = entry({});
+    delete older.household.contactWithdrawnAt;
+    expect(historyToCsv([older]).split("\r\n")[1]?.split(",")[column]).toBe("");
   });
 
   it("writes one row per visit", () => {

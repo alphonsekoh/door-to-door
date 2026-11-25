@@ -55,7 +55,9 @@ const open = (value: SyncQueueValue, onClose = vi.fn()) => {
     </>,
   );
   return {
-    sheet: screen.getByRole("dialog", { name: /^(Waiting to send|Records not sent)$/ }),
+    sheet: screen.getByRole("dialog", {
+      name: /^(Waiting to send|Records not sent|Records not kept)$/,
+    }),
     onClose,
   };
 };
@@ -208,5 +210,55 @@ describe("SyncQueueSheet", () => {
     if (backdrop === undefined) throw new Error("no backdrop");
     await userEvent.click(backdrop);
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("a record not kept, and the day a stuck one goes (#279)", () => {
+  const stub = () =>
+    record("#05-09", {
+      state: "synced",
+      syncedAt: clock,
+      lastError: { code: "household_erased" },
+    });
+
+  it("lists the stub with why it was not kept, and offers no retry for it", () => {
+    const { sheet } = open(queue({ records: [stub()] }));
+    expect(sheet).toHaveAccessibleName("Records not kept");
+    const row = within(sheet).getByText("#05-09").closest("li");
+    expect(row).toHaveTextContent("Not kept");
+    expect(row).toHaveTextContent(
+      "This unit's records were erased after you saved this, so it was not kept.",
+    );
+    expect(within(row as HTMLElement).queryByRole("button")).toBeNull();
+    expect(within(sheet).getByRole("button", { name: "Retry all" })).toBeDisabled();
+  });
+
+  it("leaves a sent record out, as before", () => {
+    const { sheet } = open(
+      queue({ records: [stub(), record("#05-10", { state: "synced", syncedAt: clock })] }),
+    );
+    expect(within(sheet).queryByText("#05-10")).toBeNull();
+  });
+
+  it("tells a held record the day it will be deleted from the phone", () => {
+    const saved = Date.parse("2026-10-15T10:00:00.000Z");
+    const { sheet } = open(
+      queue({
+        records: [
+          record("#05-11", {
+            state: "held",
+            enqueuedAt: saved,
+            lastError: { code: "conflict" },
+            nextAttemptAt: null,
+          }),
+        ],
+      }),
+    );
+    expect(sheet).toHaveTextContent("Deleted from this phone on 14 Nov 2026 if not sent.");
+  });
+
+  it("says nothing of deletion for a record that is still retrying", () => {
+    const { sheet } = open(queue({ records: [record("#05-12")] }));
+    expect(sheet).not.toHaveTextContent("Deleted from this phone");
   });
 });

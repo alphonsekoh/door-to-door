@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  CRON_PATH,
   WAITING_PATH,
+  isCronPath,
   isApiPath,
   isPrivacyPath,
   isPublicPath,
@@ -138,5 +140,19 @@ describe("signInRedirect", () => {
 
   it("sends a search on the home screen to a bare sign-in", () => {
     expect(signInRedirect("/", "?q=Tan")).toBe("/sign-in");
+  });
+});
+
+describe("isCronPath", () => {
+  it("names the retention job's trigger and nothing near it", () => {
+    expect(CRON_PATH).toBe("/api/retention/run");
+    expect(isCronPath("/api/retention/run")).toBe(true);
+    expect(isCronPath("/api/retention/run/")).toBe(false);
+    expect(isCronPath("/api/retention")).toBe(false);
+    expect(isCronPath("/api/retention/runs")).toBe(false);
+  });
+
+  it("is not a public path: the proxy skips the session check for it, nothing more", () => {
+    expect(isPublicPath(CRON_PATH)).toBe(false);
   });
 });

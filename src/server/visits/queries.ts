@@ -48,7 +48,8 @@ export type HouseholdSummaryRow = {
   household: HouseholdRow;
   visitCount: number;
   outstandingFollowUps: number;
-  latestVisit: VisitRow | null;
+  /* Always one: a unit with no visit is not listed, as an erased one is not (D-279). */
+  latestVisit: VisitRow;
 };
 
 /*
@@ -71,9 +72,13 @@ export async function listHouseholds(
    * Scoped to a session, only units recorded during it are listed: the block
    * unit list shows tonight's work, not every household ever known there.
    */
+  /* Unscoped, only units that hold a visit: an erased unit stays as a bare row, and listing it would tell members someone there asked to be erased (D-279). */
   const filter =
     options.sessionId === undefined
-      ? eq(households.blockId, options.blockId)
+      ? and(
+          eq(households.blockId, options.blockId),
+          sql`exists (select 1 from ${visits} v where v.household_id = ${households.id})`,
+        )
       : and(
           eq(households.blockId, options.blockId),
           sql`exists (select 1 from ${visits} v where v.household_id = ${households.id} and v.session_id = ${options.sessionId})`,
@@ -135,11 +140,12 @@ export async function listHouseholds(
       .select({ household: households, visitCount: tally.visitCount, latestId: latest.id })
       .from(households)
       .crossJoinLateral(tally)
-      .leftJoinLateral(latest, sql`true`)
+      /* Inner: every unit listed holds a visit (in the session, when scoped), so there is always a latest one (D-279). */
+      .innerJoinLateral(latest, sql`true`)
       .where(inArray(households.id, ids))
       .orderBy(asc(households.unitNumber));
 
-    const latestIds = summaries.flatMap((row) => (row.latestId === null ? [] : [row.latestId]));
+    const latestIds = summaries.map((row) => row.latestId);
     const latestVisits = await attachTeams(
       db,
       await db
@@ -175,8 +181,7 @@ export async function listHouseholds(
     rows: summaries.map((row) => ({
       household: row.household,
       visitCount: row.visitCount,
-      latestVisit:
-        row.latestId === null ? null : getOrThrow(visitsById, row.latestId, "the latest visit"),
+      latestVisit: getOrThrow(visitsById, row.latestId, "the latest visit"),
       outstandingFollowUps: outstandingByHousehold.get(row.household.id) ?? 0,
     })),
     total,

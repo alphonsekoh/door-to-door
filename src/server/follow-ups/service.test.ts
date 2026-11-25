@@ -12,7 +12,7 @@ function failingInsert(failure: Error): Database {
     select: () => ({
       from: () => ({
         where: () => ({
-          for: () => Promise.resolve([{ id: "h1" }]),
+          for: () => Promise.resolve([{ id: "h1", erasedAt: null }]),
           limit: () => Promise.resolve([]),
         }),
       }),

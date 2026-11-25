@@ -17,6 +17,7 @@ import type { VisitDraft } from "@/lib/sync/enqueue";
 import { isLeavingOnPurpose } from "@/lib/session/navigate";
 import { useShellState } from "@/lib/offline/shell-state";
 import { sharedQueue } from "@/lib/sync/idb-queue";
+import { purgeOnStart } from "@/lib/sync/purge-on-start";
 import { isSending } from "@/lib/sync/sync-ui";
 import { type SignedIn, fetchSignedIn, sendAs } from "@/lib/sync/signed-in";
 import { sendBatch } from "@/lib/sync/transport";
@@ -84,8 +85,10 @@ export function SyncProvider({
   openQueue = sharedQueue,
   send = sendBatch,
   signedIn = fetchSignedIn,
+  purge = purgeOnStart,
 }: {
   children: ReactNode;
+  purge?: () => Promise<void>;
   openQueue?: () => Promise<SyncQueue | null>;
   send?: Send;
   signedIn?: () => Promise<SignedIn>;
@@ -113,6 +116,11 @@ export function SyncProvider({
       : (userId ?? confirmed);
   if (ownerId !== confirmed) setConfirmed(ownerId);
   const [live, setLive] = useState<Live | null>(null);
+
+  /* Once per page load, signed in or not: the policy's limits on what stays on the phone. */
+  useEffect(() => {
+    void purge();
+  }, [purge]);
 
   useEffect(() => {
     if (ownerId === undefined) return;

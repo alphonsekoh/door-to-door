@@ -1,6 +1,6 @@
 import type { VisitSyncResult } from "@/generated/types.gen";
 import { MAX_ATTEMPTS, PROBE_MS, RATE_LIMIT_MS, retryDelay } from "@/lib/sync/backoff";
-import { isCorrupt } from "@/lib/sync/record";
+import { HOUSEHOLD_ERASED, isCorrupt } from "@/lib/sync/record";
 import type { QueuedVisit, SendOutcome } from "@/lib/sync/types";
 
 /*
@@ -96,6 +96,32 @@ function restamp(record: QueuedVisit, now: number): QueuedVisit {
   };
 }
 
+/*
+ * Nothing of the knock is kept: the unit, the session and the times say what
+ * it was, and the placeholder interest is the corrupt record's. The identity
+ * and the notes are exactly what was erased.
+ */
+function eraseStub(record: QueuedVisit, now: number): QueuedVisit {
+  const { id, blockId, unitNumber, sessionId, clientCreatedAt, updatedAt } = record.item;
+  return {
+    ...record,
+    item: {
+      id,
+      blockId,
+      unitNumber,
+      sessionId,
+      clientCreatedAt,
+      updatedAt,
+      interestLevel: "no_response",
+    },
+    state: "synced",
+    nextAttemptAt: null,
+    lastError: { code: HOUSEHOLD_ERASED },
+    syncedAt: now,
+    serverVisit: null,
+  };
+}
+
 /* A sent record the response did not mention is treated as failed: the
    server may have stored it, and a replay is answered `unchanged`. */
 export function applyResult(
@@ -123,6 +149,9 @@ export function applyResult(
       return failAttempt(record, code, now, random);
     case "clock_skew":
       return restamp(record, now);
+    /* Never accepted, however often it is sent: not held, not retried. */
+    case HOUSEHOLD_ERASED:
+      return eraseStub(record, now);
     /* An admin reopening the outing lets it through (D-21-4), as an admin
        adding the unit to the follow-up list lets the other through. */
     case "session_not_active":

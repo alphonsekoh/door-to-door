@@ -1,4 +1,4 @@
-import { isExpired, isSent, readRecord } from "@/lib/sync/record";
+import { isExpired, isSent, isUnsentBefore, readRecord } from "@/lib/sync/record";
 import type { QueuedVisit, SyncQueue } from "@/lib/sync/types";
 
 /*
@@ -47,6 +47,9 @@ export function createMemoryQueue(initial: readonly unknown[] = []): SyncQueue &
     },
     deleteSyncedBefore(before) {
       return remove((record) => isExpired(record, before));
+    },
+    deleteUnsentBefore(before) {
+      return remove((record) => isUnsentBefore(record, before));
     },
     deleteSentBy(ownerId) {
       return remove((record) => record.ownerId === ownerId && isSent(record));

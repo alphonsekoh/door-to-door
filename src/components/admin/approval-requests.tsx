@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { User, UserList } from "@/generated/types.gen";
@@ -151,7 +152,14 @@ export function ApprovalRequests({
               {/* Wrapped, never cut: the end of a long address is its
                   domain, what tells a gmail.com account from a Workspace
                   one, and cut short two requests read the same. */}
-              <span className="block text-body font-semibold break-words">{named(user)}</span>
+              {/* To their page, where an admin can erase the account: a request
+                  left unanswered is erased after 12 months, or on request. */}
+              <Link
+                href={`/admin/team/${user.id}`}
+                className="block text-body font-semibold break-words btn-text"
+              >
+                {named(user)}
+              </Link>
               <span className="block text-caption break-words text-foreground-muted">
                 {user.email}
               </span>

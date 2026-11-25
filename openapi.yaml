@@ -25,6 +25,32 @@ info:
     visit, waiting for an admin to review). Removing a follow-up is a soft
     delete: the row stays, with who removed it, when and why, and only an
     admin's audit view (and the author, for their own notes) can read it.
+    Erasure (below) is the one exception to all three rules.
+
+    ## Erasure and retention
+
+    Personal data is erased when the person asks, or when its retention
+    period ends, whether or not anyone asked. Erasing a **household** deletes
+    its name, contact and religion, every visit recorded there, and every
+    follow-up note there, removed ones and their reasons included. Only the
+    unit itself (`blockId`, `unitNumber`) is kept, with when it was erased; a
+    session that picked it keeps the pick. Erasing an **account** removes its
+    name, email, Google link, password and sign-ins; the visits and notes it
+    recorded stay, as the households' history, under no name
+    (`UserSummary.name` null), and the account is never listed again.
+
+    A request is logged with `POST /erasure-requests` (a member may pass on a
+    householder's; only an admin may log an account's) and carried out by an
+    admin with `POST /erasure-requests/{id}/erase`. The retention job,
+    `GET /retention/run`, erases households 24 months after their last visit
+    or follow-up activity, deletes accounts 12 months after they left, and
+    deletes sign-ins 30 days after their last use.
+
+    Nothing recreates an erased household from what was recorded before it
+    was erased: a visit whose `clientCreatedAt` is earlier than the erasure
+    is refused `household_erased`, by `POST /visits` and per item by
+    `POST /visits/sync`. A visit recorded after it is a new knock and is
+    stored as any other.
 
     ## Sessions
 
@@ -49,7 +75,9 @@ info:
 
     ## Authorization
 
-    Every operation requires an authenticated session. Operations marked
+    Every operation requires an authenticated session, except
+    `GET /retention/run`, which takes the scheduler's secret instead
+    (`cronSecret`). Operations marked
     **Requires: admin** reject members with `403`. Authorization is always
     re-checked server-side; client-side role checks are for UI affordance only.
 
@@ -134,6 +162,8 @@ tags:
     description: Member and role management
   - name: Teams
     description: Joining an outing and working it as a pair or small group
+  - name: Privacy
+    description: Erasure requests, withdrawn agreement to calls or messages, and retention
 
 components:
   securitySchemes:
@@ -152,6 +182,15 @@ components:
         sees behind its TLS proxy. Only a server configured with
         `auth.secureCookies: false` (a local plain-http run, the E2E suite) names
         it `authjs.session-token`, without `Secure`.
+    cronSecret:
+      type: http
+      scheme: bearer
+      description: |
+        The scheduler's secret, `CRON_SECRET` (or `CRON_SECRET_FILE`) in the
+        server's environment, sent as `Authorization: Bearer <secret>`, as
+        Vercel Cron sends it. Only `GET /retention/run` takes it, and it takes
+        nothing else: no session cookie is read. With no secret configured,
+        every call is `401`.
 
   schemas:
     # ------------------------------------------------------------ enumerations
@@ -226,6 +265,7 @@ components:
         - block_in_use
         - not_on_follow_up_list
         - follow_up_exists
+        - household_erased
         - rate_limited
         - unsupported_media_type
         - content_too_large
@@ -310,7 +350,9 @@ components:
           format: date-time
           description: |
             Deactivated users cannot sign in, but their records stay attributed
-            to them — history must survive someone leaving the team.
+            to them — history must survive someone leaving the team. Twelve
+            months later, or sooner if they ask, the account is erased: its
+            records stay, under no name, and the account is never listed again.
         lastRecordedAt:
           type: [string, "null"]
           format: date-time
@@ -439,6 +481,17 @@ components:
           oneOf:
             - $ref: "#/components/schemas/Religion"
             - type: "null"
+        contactWithdrawnAt:
+          type: [string, "null"]
+          format: date-time
+          description: |
+            When someone marked that the person withdrew their agreement to be
+            called or messaged at `contact`; null when nobody has. A later
+            visit recording a contact does not clear it: only an admin does.
+            Cleared when the household is erased.
+
+            The server always sends it. It is not `required` only so a copy
+            of a unit saved on a phone before it existed still reads.
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -706,9 +759,10 @@ components:
             One page of the unit's visits, newest first: by `createdAt`, then
             `id`, both descending, so visits stored at the same instant keep
             one order across pages. `pagination.total` counts every visit
-            here. Visits are never removed, so one stored between two reads
-            can make the next page repeat a visit, never skip one: keep each
-            once, by `id`.
+            here. Visits are removed only by erasing the unit, which removes
+            them all at once, so one stored between two reads can make the
+            next page repeat a visit, never skip one: keep each once, by `id`.
+            An erased unit has none, and `total` is 0.
           items: { $ref: "#/components/schemas/Visit" }
         answered:
           type: boolean
@@ -1043,7 +1097,10 @@ components:
       description: |
         `applied` — written. `unchanged` — already present and identical, the
         normal result of a replay. `stale` — an older edit, acknowledged but not
-        applied. `rejected` — invalid; see `error`.
+        applied. `rejected` — invalid; see `error`. A `rejected` item with
+        error code `household_erased` will never be accepted: its unit was
+        erased after it was recorded, and a client should delete what it
+        holds of it and tell the member.
       enum: [applied, unchanged, stale, rejected]
 
     VisitSyncResult:
@@ -1076,6 +1133,124 @@ components:
         results:
           type: array
           items: { $ref: "#/components/schemas/VisitSyncResult" }
+
+    # ---------------------------------------------------------------- privacy
+
+    ErasureSubjectKind:
+      type: string
+      description: |
+        Whose data a request is for: a `household` (the people at a unit) or
+        a member's `account`.
+      enum: [household, account]
+
+    ErasureRequest:
+      description: |
+        A person's request to have their data erased, and, once an admin has
+        carried it out, the record that it was: when and by whom. It holds no
+        personal data of its own: who asked is the subject itself, never a
+        name.
+      type: object
+      additionalProperties: false
+      required:
+        [id, kind, household, block, account, requestedAt, loggedBy, loggedAt, erasedAt, erasedBy]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/ErasureSubjectKind" }
+        household:
+          description: |
+            For a `household` request, the unit as it is now: once erased,
+            the unit alone. Null for an `account` request.
+          oneOf:
+            - $ref: "#/components/schemas/Household"
+            - type: "null"
+        block:
+          description: The household's block; null for an `account` request.
+          oneOf:
+            - $ref: "#/components/schemas/Block"
+            - type: "null"
+        account:
+          description: |
+            For an `account` request, the account; its `name` is null once
+            erased. Null for a `household` request.
+          oneOf:
+            - $ref: "#/components/schemas/UserSummary"
+            - type: "null"
+        requestedAt:
+          type: string
+          format: date-time
+          description: When the person asked, as whoever logged it said.
+        loggedBy:
+          allOf: [{ $ref: "#/components/schemas/UserSummary" }]
+          description: Who recorded the request, a member passing it on or an admin.
+        loggedAt: { type: string, format: date-time }
+        erasedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the data was erased; null while the request is open.
+        erasedBy:
+          description: |
+            The admin who carried it out. Null while open, and when the
+            retention job erased the same data first.
+          oneOf:
+            - $ref: "#/components/schemas/UserSummary"
+            - type: "null"
+
+    ErasureRequestList:
+      type: object
+      additionalProperties: false
+      required: [data, pagination, lastRetentionRun]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/ErasureRequest" }
+        pagination: { $ref: "#/components/schemas/PaginationMeta" }
+        lastRetentionRun:
+          description: |
+            The retention job's latest run, or null if it has never run, so
+            an admin can see that it is running.
+          oneOf:
+            - $ref: "#/components/schemas/RetentionRun"
+            - type: "null"
+
+    CreateErasureRequestRequest:
+      type: object
+      additionalProperties: false
+      required: [kind, id]
+      properties:
+        kind: { $ref: "#/components/schemas/ErasureSubjectKind" }
+        id:
+          type: string
+          format: uuid
+          description: The household's id, or the account's.
+        requestedAt:
+          type: string
+          format: date-time
+          description: |
+            When the person asked; now when left out. Later than the
+            server's clock (beyond `sync.clockSkewToleranceSeconds`) is
+            `400`.
+
+    RetentionRun:
+      description: What one run of the retention job did. Counts only.
+      type: object
+      additionalProperties: false
+      required: [ranAt, households, accounts, signIns, more]
+      properties:
+        ranAt: { type: string, format: date-time }
+        households:
+          type: integer
+          description: Households erased, 24 months after their last activity.
+        accounts:
+          type: integer
+          description: Accounts erased, 12 months after they left.
+        signIns:
+          type: integer
+          description: Sign-ins deleted, 30 days after their last use.
+        more:
+          type: boolean
+          description: |
+            A run erases a bounded number of households and accounts; true
+            when more were due, and the next run carries on.
 
     CreateFollowUpRequest:
       type: object
@@ -2320,6 +2495,9 @@ paths:
         which is what the block unit list renders. Ordered by unit number. A
         block may hold more units than one page: a client that needs them all
         reads every page until `hasMore` is false.
+
+        Only units with at least one visit are listed, so an erased unit with
+        nothing recorded since is left out.
       parameters:
         - name: blockId
           in: query
@@ -2411,6 +2589,201 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /households/{id}/contact-withdrawal:
+    post:
+      tags: [Privacy, Households]
+      operationId: markContactWithdrawn
+      summary: Mark that the person withdrew agreement to calls or messages
+      description: |
+        Any member or admin may mark it, at the door or after: it only ever
+        stops the team from using the contact. Marking a unit already marked
+        changes nothing and keeps the first time.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The household, with `contactWithdrawnAt` set.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Household" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: "`conflict`: no contact is recorded for this unit."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    delete:
+      tags: [Privacy, Households]
+      operationId: clearContactWithdrawn
+      summary: Clear a withdrawal, once the person agrees again
+      description: |
+        **Requires: admin.** Clearing a unit that is not marked changes
+        nothing.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The household, with `contactWithdrawnAt` null.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Household" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ============================================================== Privacy
+  /erasure-requests:
+    get:
+      tags: [Privacy]
+      operationId: listErasureRequests
+      summary: Requests to erase data, waiting or carried out
+      description: |
+        **Requires: admin.** `open` requests oldest first by `requestedAt`,
+        since the oldest is the nearest to its deadline; `erased` ones most
+        recently erased first. The id settles a tie.
+      parameters:
+        - name: status
+          in: query
+          description: Waiting (`open`) or carried out (`erased`).
+          schema: { type: string, enum: [open, erased], default: open }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: A page of requests, and the retention job's latest run.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErasureRequestList" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Privacy]
+      operationId: createErasureRequest
+      summary: Log a request to erase a household's or an account's data
+      description: |
+        A member may pass on a household's request, heard at the door; only
+        an admin may log an account's (a member asks the operator or an
+        admin). Nothing is erased yet: an admin carries it out with
+        `POST /erasure-requests/{id}/erase`.
+
+        A subject has at most one open request. Asking again while one is
+        open answers `200` with that request, unchanged.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateErasureRequestRequest" }
+      responses:
+        "201":
+          description: The request, logged and open.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErasureRequest" }
+        "200":
+          description: An open request for the same subject, already logged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErasureRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403":
+          description: |
+            `forbidden`: a member logging an account's request. Also every
+            refusal of the shared `Forbidden` response.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          description: No such household, or no such account (an erased account is gone).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `household_erased`: the household was erased and nothing has been
+            recorded there since, so nothing is held to erase.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "413": { $ref: "#/components/responses/ContentTooLarge" }
+        "415": { $ref: "#/components/responses/UnsupportedMediaType" }
+
+  /erasure-requests/{id}/erase:
+    post:
+      tags: [Privacy]
+      operationId: eraseErasureRequest
+      summary: Carry out a request
+      description: |
+        **Requires: admin.** Erases the subject's data in one transaction
+        (see "Erasure and retention") and records when and by whom. Cannot
+        be undone.
+
+        For an account, the rules of deactivating apply: an admin cannot
+        erase their own account, and nobody can erase the last active admin.
+        The account is deactivated with it, if it was not already, which
+        ends every one of its sign-ins.
+      parameters: [{ $ref: "#/components/parameters/PathId" }]
+      responses:
+        "200":
+          description: The request, carried out.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErasureRequest" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthenticated" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            `conflict`: the request was already carried out, or it is the
+            caller's own account, or the account is the last active admin.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /retention/run:
+    get:
+      tags: [Privacy]
+      operationId: runRetention
+      summary: Run the retention job
+      description: |
+        Called once a day by the scheduler (Vercel Cron in production), never
+        by the app. A `GET` because that is what Vercel Cron sends; it is
+        not safe to repeat for free, but repeating it erases nothing twice.
+
+        Erases each household whose last visit or follow-up activity (a note
+        added, edited, listed, marked done, reopened or removed) is more than
+        24 months old, and closes its open request; erases each account 12
+        months after it left (deactivated, or turned down) or asked to join
+        and was never answered; deletes each sign-in 30 days and 15 minutes
+        after its last use. Each erasure is its own transaction. The run's
+        counts are kept and shown to admins.
+      security:
+        - cronSecret: []
+      responses:
+        "200":
+          description: What the run did.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RetentionRun" }
+        "401":
+          description: |
+            `unauthenticated`: no bearer, the wrong one, or no secret
+            configured on the server. Nothing was read or erased.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "409":
+          description: |
+            `conflict`: another run is under way (a scheduler may deliver one
+            call twice). Nothing was done; the run under way does the work.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   # ================================================================ Visits
   /visits:
     get:
@@ -2467,6 +2840,11 @@ paths:
         author's: an admin may record anywhere in the session's blocks,
         including on a member's behalf.
 
+        A visit whose `clientCreatedAt` is earlier than its unit's erasure is
+        `409 household_erased`, for every caller: what was learnt before the
+        person asked to be erased is not stored again. One with no
+        `clientCreatedAt` is recorded now, after any erasure.
+
         Recording a visit at a household on a running `follow_up` session's
         list also marks every outstanding listed note there done, in the same
         transaction, credited to the visit's author; `followUpsMarkedDone`
@@ -2509,7 +2887,9 @@ paths:
             deactivated (`conflict`), or no session is active
             (`session_not_active`), or the block is not attached to the active
             session, or a member is recording an unlisted unit in a follow-up
-            session (`not_on_follow_up_list`).
+            session (`not_on_follow_up_list`), or the unit was erased after
+            `clientCreatedAt` (`household_erased`; see "Erasure and
+            retention").
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2559,7 +2939,13 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          description: |
+            No such visit, including one erased with its unit, even while this
+            amend was waiting for the erasure to finish.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "409":
           description: |
             The session has ended, so a member can no longer amend. An admin may
@@ -2608,6 +2994,12 @@ paths:
         household to the list lets the same item through, so a queue should
         hold it and try again now and then rather than discard it. Amending a
         record already stored is never refused for this reason.
+
+        An item recorded at a unit erased since (its `clientCreatedAt` earlier
+        than the erasure), whether new or an amend of a visit the erasure
+        deleted, is `rejected` with error code `household_erased`, for every
+        caller. It will never be accepted: a queue should delete what it
+        holds of it and tell the member, not hold or retry it.
 
         A new record stored in a running `follow_up` session at a household on
         its list marks that household's outstanding listed notes done, exactly
@@ -2793,6 +3185,9 @@ paths:
             `follow_up_exists`: a member suggesting a household that is already
             on the follow-up list or already has a suggestion waiting, or an
             admin adding a household whose suggestion is waiting for review.
+            `household_erased`: the household was erased and nothing has been
+            recorded there since, so a screen read before the erasure cannot
+            put a note back.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -3044,7 +3439,8 @@ paths:
         **Requires: admin.** By default only `approved` users, by name: the
         team, and what every picker offers. `approval=pending` is the queue
         waiting for approval and `approval=blocked` those rejected, each
-        oldest first; `pagination.total` is how many there are.
+        oldest first; `pagination.total` is how many there are. An erased
+        account is never listed, whatever the filters.
       parameters:
         - name: role
           in: query
@@ -3197,7 +3593,7 @@ paths:
       tags: [Users]
       operationId: getUser
       summary: One member of the team
-      description: "**Requires: admin.** Deactivated users included."
+      description: "**Requires: admin.** Deactivated users included; an erased account is `404`."
       parameters: [{ $ref: "#/components/parameters/PathId" }]
       responses:
         "200":

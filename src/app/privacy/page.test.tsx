@@ -18,7 +18,7 @@ describe("privacy page", () => {
   it("renders the title, the date and every section in order", async () => {
     render(await PrivacyPage());
     expect(screen.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeInTheDocument();
-    expect(screen.getByText("Last updated 23 Nov 2026")).toBeInTheDocument();
+    expect(screen.getByText("Last updated 25 Nov 2026")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(
       POLICY_SECTIONS.map(({ heading }) => heading),
     );
@@ -36,7 +36,9 @@ describe("privacy page", () => {
     const purposes = screen.getByRole("region", { name: "Why we record it" });
     expect(purposes.textContent).toContain("call or text you");
     expect(purposes.textContent).not.toContain("do not use it for marketing");
-    expect(document.body.textContent).toContain("Records not yet sent stay until they are sent.");
+    expect(document.body.textContent).toContain(
+      "Records not yet sent stay until they are sent, for 30 days at most.",
+    );
   });
 
   it("offers a way back, and reads per request", async () => {
@@ -52,6 +54,9 @@ describe("privacy page", () => {
       "only after asking the person and getting their agreement",
     );
     expect(container.textContent).toContain("The app does not record that agreement.");
+    expect(container.textContent).toContain(
+      "If you withdraw it, we mark your contact so the team does not call or message it.",
+    );
     expect(container.textContent).not.toMatch(/organisation/i);
   });
 });

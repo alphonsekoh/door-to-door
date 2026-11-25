@@ -319,7 +319,7 @@ describe("listing households in a block", () => {
     expect(total).toBe(2);
     const first = rows.find((r) => r.household.unitNumber === "#05-123");
     expect(first?.visitCount).toBe(2);
-    expect(first?.latestVisit?.interestLevel).toBe("high");
+    expect(first?.latestVisit.interestLevel).toBe("high");
   });
 
   it("orders by unit number", async () => {
@@ -613,14 +613,12 @@ describe("coverage of the remaining paths", () => {
     expect(visit.clientCreatedAt).toBeInstanceOf(Date);
   });
 
-  it("lists a household that has no visits at all", async () => {
-    // Created by an upsert without a visit; the summary must not blow up.
+  it("does not list a household that has no visits at all, nor count it (#279)", async () => {
+    // What an erasure leaves: the unit alone. Listing it would tell members someone there asked.
     await upsertHousehold(db, { blockId: BLOCK, unitNumber: "#10-10" });
-    const { rows } = await listHouseholds(db, { blockId: BLOCK, limit: 50, offset: 0 });
-    expect(rows[0]).toMatchObject({
-      visitCount: 0,
-      latestVisit: null,
-      outstandingFollowUps: 0,
+    expect(await listHouseholds(db, { blockId: BLOCK, limit: 50, offset: 0 })).toEqual({
+      rows: [],
+      total: 0,
     });
   });
 

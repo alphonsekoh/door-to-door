@@ -261,3 +261,30 @@ describe("sharedQueue", () => {
     expect(sharedQueue()).toBe(sharedQueue());
   });
 });
+
+describe("deleteUnsentBefore (#279)", () => {
+  it("deletes unsent records saved at or before the cut-off, of any owner, and no sent ones", async () => {
+    const queue = await open();
+    const old = { ...record("ann", "#05-01"), enqueuedAt: NOW - 10 };
+    const held = { ...record("ben", "#05-02"), enqueuedAt: NOW - 1, state: "held" as const };
+    const recent = { ...record("ann", "#05-03"), enqueuedAt: NOW };
+    const sent = {
+      ...record("ann", "#05-04"),
+      enqueuedAt: 1,
+      state: "synced" as const,
+      syncedAt: NOW,
+    };
+    await queue.putMany([old, held, recent, sent]);
+
+    expect(await queue.deleteUnsentBefore(NOW - 1)).toBe(2);
+    expect((await queue.listAll()).map((r) => r.id).sort()).toEqual([recent.id, sent.id].sort());
+  });
+
+  it("deletes an unreadable record whose saved time cannot be read", async () => {
+    const queue = await open();
+    const damaged = { id: "x", ownerId: "ann", state: "synced", item: 5 };
+    await queue.put(damaged as unknown as QueuedVisit);
+    expect(await queue.deleteUnsentBefore(NOW)).toBe(1);
+    expect(await queue.listAll()).toEqual([]);
+  });
+});

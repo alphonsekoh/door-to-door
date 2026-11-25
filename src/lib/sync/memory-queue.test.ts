@@ -65,3 +65,21 @@ describe("createMemoryQueue", () => {
     );
   });
 });
+
+describe("deleteUnsentBefore (#279)", () => {
+  it("deletes unsent records saved at or before the cut-off, whoever's, and no sent ones", async () => {
+    const old = { ...record("ann", "#01-01"), enqueuedAt: NOW - 10 };
+    const edge = { ...record("ben", "#01-02"), enqueuedAt: NOW - 1, state: "held" as const };
+    const recent = { ...record("ann", "#01-03"), enqueuedAt: NOW };
+    const sent = {
+      ...record("ann", "#01-04"),
+      enqueuedAt: 1,
+      state: "synced" as const,
+      syncedAt: NOW,
+    };
+    const queue = createMemoryQueue([old, edge, recent, sent]);
+
+    expect(await queue.deleteUnsentBefore(NOW - 1)).toBe(2);
+    expect((await queue.listAll()).map((r) => r.id).sort()).toEqual([recent.id, sent.id].sort());
+  });
+});

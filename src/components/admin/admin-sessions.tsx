@@ -17,6 +17,7 @@ const ADMIN_SCREENS = [
   { href: "/admin/attention", label: "Needs a return visit" },
   { href: "/admin/history", label: "All records" },
   { href: "/admin/team", label: "Team" },
+  { href: "/admin/privacy", label: "Erasure requests" },
 ] as const;
 
 type State =

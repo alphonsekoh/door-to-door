@@ -205,9 +205,10 @@ describe("the count and the latest visit", () => {
     expect(history.visits.map((v) => v.id)).toEqual([visitId(2), visitId(1)]);
   });
 
-  it("are none for a household no visit is left at", async () => {
+  it("are not listed for a household no visit is left at (#279)", async () => {
     const page = await list(`blockId=${BLOCK}`);
-    expect(page.data[0]).toMatchObject({ visitCount: 0, latestVisit: null });
+    expect(page.data).toEqual([]);
+    expect(page.pagination.total).toBe(0);
   });
 });
 
@@ -242,7 +243,7 @@ describe("a block of more units than one page (#127)", () => {
   it("takes an offset of up to 10,000, and refuses one past it", async () => {
     const deepest = await list(`blockId=${BLOCK}&offset=10000`);
     expect(deepest.data).toEqual([]);
-    expect(deepest.pagination).toMatchObject({ offset: 10_000, total: 1, hasMore: false });
+    expect(deepest.pagination).toMatchObject({ offset: 10_000, total: 0, hasMore: false });
 
     const response = await GET(
       new Request(`https://test.local/api/households?blockId=${BLOCK}&offset=10001`),

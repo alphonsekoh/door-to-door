@@ -1097,3 +1097,57 @@ describe("older visits (#160)", () => {
     expect(field).toHaveValue("#05-1234");
   });
 });
+
+describe("when the unit's people ask for something (#279)", () => {
+  it("marks a contact that was withdrawn, beside the contact", () => {
+    render(
+      <Panel
+        over={{
+          household: {
+            ...history().household,
+            contactWithdrawnAt: "2026-03-15T10:00:00.000Z",
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("No calls or messages")).toBeVisible();
+  });
+
+  it("offers a member to pass on a request, and an admin on the page to erase", () => {
+    const { unmount } = render(<Panel />);
+    expect(
+      screen.getByRole("button", { name: "They asked us to delete their data" }),
+    ).toBeVisible();
+    unmount();
+
+    asViewer("admin", true);
+    render(<Panel />);
+    expect(screen.getByRole("button", { name: "Erase this unit's data…" })).toBeVisible();
+  });
+
+  it("reads the unit again once something was passed on", async () => {
+    const user = userEvent.setup();
+    const onChanged = vi.fn();
+    render(<Panel onChanged={onChanged} />);
+    await user.click(
+      screen.getByRole("button", { name: "Withdrew agreement to calls or messages" }),
+    );
+    await waitFor(() => {
+      expect(onChanged).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("offers nothing for a unit erased and not visited since", () => {
+    render(
+      <Panel
+        over={{
+          household: { ...history().household, name: null, contact: null, religion: null },
+          visits: [],
+          answered: false,
+        }}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /delete their data/ })).toBeNull();
+    expect(screen.getByText("Nobody has answered here yet")).toBeVisible();
+  });
+});

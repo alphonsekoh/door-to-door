@@ -8,7 +8,8 @@ import type * as ApiClientModule from "@/lib/api-client";
 import { formatDayTime } from "@/lib/history/dates";
 import { focusDropped, pressByKey } from "../../../test/focus-dropped";
 
-const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
+const { apiFetch, useRole } = vi.hoisted(() => ({ apiFetch: vi.fn(), useRole: vi.fn() }));
+vi.mock("@/lib/hooks/use-role", () => ({ useRole }));
 vi.mock("@/lib/api-client", async () => {
   const actual = await vi.importActual<typeof ApiClientModule>("@/lib/api-client");
   return { ...actual, apiFetch };
@@ -91,6 +92,7 @@ function card(device: string): HTMLElement {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  useRole.mockReturnValue({ userId: "admin-1", isAdmin: true });
 });
 
 describe("MemberDetail (#125)", () => {
@@ -602,6 +604,10 @@ describe("MemberDetail (#125)", () => {
   });
 
   describe("on your own page", () => {
+    beforeEach(() => {
+      useRole.mockReturnValue({ userId: "u1", isAdmin: true });
+    });
+
     it("tags this phone, offers it no Sign out, and signs out only your other devices", async () => {
       const user = userEvent.setup();
       serve({ ...alice, role: "admin" }, [
@@ -625,6 +631,7 @@ describe("MemberDetail (#125)", () => {
       serve(alice, [signIn("s1", "Safari on iPhone", true)]);
       render(<MemberDetail userId="u1" />);
       await screen.findByText("This phone");
+      // Not even to erase: nobody erases their own account here.
       expect(screen.queryByRole("button")).not.toBeInTheDocument();
     });
   });
@@ -666,5 +673,35 @@ describe("MemberDetail (#125)", () => {
     apiFetch.mockRejectedValue("boom");
     render(<MemberDetail userId="u1" />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Could not load this member.");
+  });
+
+  describe("erasing the account (#279)", () => {
+    it("erases it after the sheet, then says so and offers nothing more", async () => {
+      const user = userEvent.setup();
+      serve(alice, []);
+      render(<MemberDetail userId="u1" />);
+      await user.click(await screen.findByRole("button", { name: "Erase this account…" }));
+      apiFetch.mockImplementation((path: string) =>
+        Promise.resolve(path === "/erasure-requests" ? { id: "r1" } : {}),
+      );
+      await user.click(screen.getByRole("button", { name: "Erase" }));
+
+      expect(await screen.findByRole("status")).toHaveTextContent("Erased.");
+      expect(apiFetch).toHaveBeenCalledWith(
+        "/erasure-requests/r1/erase",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(screen.queryByRole("button", { name: "Erase this account…" })).toBeNull();
+    });
+
+    it("leaves the account as it is when the sheet is closed", async () => {
+      const user = userEvent.setup();
+      serve(alice, []);
+      render(<MemberDetail userId="u1" />);
+      await user.click(await screen.findByRole("button", { name: "Erase this account…" }));
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      expect(screen.queryByRole("dialog")).toBeNull();
+      expect(screen.getByRole("heading", { level: 1, name: "Alice" })).toBeInTheDocument();
+    });
   });
 });

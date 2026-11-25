@@ -76,6 +76,21 @@ describe("PWA files", () => {
   );
 });
 
+describe("the retention job's trigger (#279)", () => {
+  it("is answered by its own handler with no session, since it takes a bearer secret", async () => {
+    // Sent no cookie, the scheduler would be turned away with a 401 before its secret was read.
+    const response = await proxy(request("/api/retention/run"));
+    expect(response.status).toBe(200);
+    expect(response.headers.has("set-cookie")).toBe(false);
+  });
+
+  it("is that one path only", async () => {
+    for (const path of ["/api/retention", "/api/retention/run/more", "/api/erasure-requests"]) {
+      expect((await proxy(request(path))).status, path).toBe(401);
+    }
+  });
+});
+
 describe("unauthenticated visitors", () => {
   it("redirects a page request to sign-in", async () => {
     const response = await proxy(request("/history"));

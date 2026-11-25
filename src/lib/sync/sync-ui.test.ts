@@ -3,6 +3,7 @@ import { buildQueuedVisit } from "@/lib/sync/enqueue";
 import {
   barSummary,
   blockReason,
+  deleteNote,
   isSending,
   quietText,
   recordReason,
@@ -189,5 +190,74 @@ describe("savedOnPhoneText", () => {
     expect(savedOnPhoneText([record({ state: "synced" })])).toBe(
       "Nothing is waiting to send on this phone.",
     );
+  });
+});
+
+describe("a record not kept because its unit was erased (#279)", () => {
+  const stub = (overrides: Partial<QueuedVisit> = {}) =>
+    record({
+      state: "synced",
+      syncedAt: NOW,
+      lastError: { code: "household_erased" },
+      ...overrides,
+    });
+
+  it("is labelled, and explained", () => {
+    expect(stateLabel(stub(), none)).toBe("Not kept");
+    expect(recordReason(stub())).toBe(
+      "This unit's records were erased after you saved this, so it was not kept.",
+    );
+    // A record that was sent is still just sent.
+    expect(stateLabel(record({ state: "synced", syncedAt: NOW }), none)).toBe("Sent");
+  });
+
+  it("is what the bar says when nothing is unsent", () => {
+    expect(barSummary([stub(), stub({ id: "b" })], none)).toEqual({ count: 2, text: "2 not kept" });
+    expect(barSummary([stub()], none)).toEqual({ count: 1, text: "1 not kept" });
+  });
+
+  it("leaves the bar to the unsent ones, when there are some", () => {
+    expect(barSummary([stub(), record({ id: "q" })], none)).toEqual({
+      count: 1,
+      text: "1 waiting to send",
+    });
+  });
+
+  it("waits for the first send to be over, as a saved record does", () => {
+    const saved = stub();
+    expect(barSummary([saved], new Set([saved.id]))).toBeNull();
+  });
+
+  it("titles the sheet by what it lists", () => {
+    expect(queueTitle([stub()])).toBe("Records not kept");
+    expect(queueTitle([stub(), record({ state: "held" })])).toBe("Records not sent");
+    expect(queueTitle([stub(), record()])).toBe("Waiting to send");
+    expect(queueTitle([])).toBe("Waiting to send");
+  });
+});
+
+describe("deleteNote", () => {
+  const day = (iso: string) => Date.parse(iso);
+
+  it("tells a held or stopped record the day it goes, 30 days after it was saved", () => {
+    const saved = day("2026-10-15T10:00:00.000Z");
+    expect(deleteNote(record({ state: "held", enqueuedAt: saved }))).toBe(
+      "Deleted from this phone on 14 Nov 2026 if not sent.",
+    );
+    expect(deleteNote(record({ state: "quarantined", enqueuedAt: saved }))).toBe(
+      "Deleted from this phone on 14 Nov 2026 if not sent.",
+    );
+  });
+
+  it("says it goes at the next start when its saved time cannot be read", () => {
+    expect(deleteNote(record({ state: "quarantined", enqueuedAt: 0 }))).toBe(
+      "Deleted from this phone the next time the app opens.",
+    );
+  });
+
+  it("says nothing of a record that is still retrying, or sent", () => {
+    for (const state of ["queued", "failed", "synced"] as const) {
+      expect(deleteNote(record({ state }))).toBeNull();
+    }
   });
 });

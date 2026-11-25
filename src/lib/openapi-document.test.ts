@@ -13,6 +13,10 @@ import { listOperations, loadOpenApiDocument, schemaEnum } from "@/lib/openapi-d
 const doc = loadOpenApiDocument();
 const operations = listOperations(doc);
 
+/* Secured by the scheduler's secret alone (#279), not by an account's session. */
+const isCronOperation = (operation: Record<string, unknown>) =>
+  JSON.stringify(operation["security"]) === JSON.stringify([{ cronSecret: [] }]);
+
 describe("document", () => {
   it("declares OpenAPI 3.1", () => {
     expect(doc.openapi.startsWith("3.1")).toBe(true);
@@ -58,6 +62,14 @@ describe("schemaEnum", () => {
   });
 });
 
+describe("the scheduler's secret", () => {
+  it("secures the retention job alone", () => {
+    const secured = operations.filter(({ operation }) => isCronOperation(operation));
+    expect(secured.map(({ operation }) => operation["operationId"])).toEqual(["runRetention"]);
+    expect(doc.components.securitySchemes).toHaveProperty("cronSecret");
+  });
+});
+
 describe("every operation", () => {
   it("has a unique operationId", () => {
     const ids = operations.map((o) => o.operation["operationId"]);
@@ -88,6 +100,8 @@ describe("every operation", () => {
 
   it("documents a 403, since every operation refuses a deactivated or unapproved account", () => {
     for (const { path, method, operation } of operations) {
+      // The scheduler's route has no account to refuse: its secret is all it takes.
+      if (isCronOperation(operation)) continue;
       const responses = operation["responses"] as Record<string, unknown>;
       expect(Object.keys(responses), `${method.toUpperCase()} ${path}`).toContain("403");
     }

@@ -60,9 +60,29 @@ export type HouseholdRow = {
   name: string | null;
   contact: string | null;
   religion: Religion | null;
+  contactWithdrawnAt: Date | null;
+  erasedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
+
+/*
+ * What was recorded before a household was erased must not recreate it, so a
+ * visit stamped earlier than the erasure is refused (#279). Judged on the
+ * upserted row, so under the household's lock: an erasure that was waiting
+ * for this write has committed by the time it reads.
+ */
+export function assertRecordedAfterErasure(
+  household: { erasedAt: Date | null },
+  recordedAt: Date,
+): void {
+  if (household.erasedAt !== null && household.erasedAt > recordedAt) {
+    throw new ConflictError(
+      "household_erased",
+      "This unit's records were erased after this was recorded, so it was not kept.",
+    );
+  }
+}
 
 export async function upsertHousehold(
   db: Database,
@@ -130,7 +150,7 @@ export function foldHouseholds(places: readonly HouseholdPlace[]): FoldedHouseho
 export async function upsertHouseholds(
   db: Database,
   places: readonly HouseholdPlace[],
-): Promise<Map<string, string>> {
+): Promise<Map<string, { id: string; erasedAt: Date | null }>> {
   const upserted = await db
     .insert(households)
     .values(foldHouseholds(places))
@@ -149,9 +169,15 @@ export async function upsertHouseholds(
       id: households.id,
       blockId: households.blockId,
       unitNumber: households.unitNumber,
+      erasedAt: households.erasedAt,
     });
 
-  return new Map(upserted.map((row) => [placeKey(row.blockId, row.unitNumber), row.id]));
+  return new Map(
+    upserted.map((row) => [
+      placeKey(row.blockId, row.unitNumber),
+      { id: row.id, erasedAt: row.erasedAt },
+    ]),
+  );
 }
 
 export type VisitBase = {
@@ -253,7 +279,10 @@ async function requireActiveSessionWithBlock(
   return session;
 }
 
-/* Only ever reads back a visit the caller has just stored or found; none is ever deleted. */
+/*
+ * Reads back a visit the caller has just stored or found. An erasure can
+ * delete it in between, which answers 404 (D-279, superseding D-123-6).
+ */
 export async function getVisit(db: Database, id: string): Promise<VisitRow> {
   const rows = await db
     .select(visitColumns)
@@ -262,7 +291,10 @@ export async function getVisit(db: Database, id: string): Promise<VisitRow> {
     .where(eq(visits.id, id))
     .limit(1);
 
-  const visit = firstOrThrow(rows, "the visit just written");
+  const visit = rows[0];
+  if (!visit) {
+    throw new NotFoundError("No such visit.");
+  }
   return firstOrThrow(await attachTeams(db, [visit]), "the visit's team");
 }
 
@@ -330,6 +362,11 @@ export async function createVisit(
       contact: input.contact,
       religion: input.religion,
     });
+    // With no time sent the device time is now, which no erasure is later than.
+    assertRecordedAfterErasure(
+      household,
+      input.clientCreatedAt === undefined ? clock.now : new Date(input.clientCreatedAt),
+    );
 
     /*
      * The team is the AUTHOR's, so an admin recording on someone's behalf
@@ -412,9 +449,14 @@ async function lockForAmend(tx: Database, id: string): Promise<LockedVisit> {
     .from(visits)
     .where(eq(visits.id, id))
     .for("no key update");
+  /* An erasure that held the household's lock has deleted the visit by now. */
+  const locked = visit[0];
+  if (!locked) {
+    throw new NotFoundError("No such visit.");
+  }
 
   return {
-    ...firstOrThrow(visit, "the visit lock"),
+    ...locked,
     householdId: place.householdId,
     sessionStatus: firstOrThrow(session, "the session lock").status,
   };

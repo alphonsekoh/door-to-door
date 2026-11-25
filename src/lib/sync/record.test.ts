@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
-import { CORRUPT, isCorrupt, isExpired, isSent, readRecord } from "@/lib/sync/record";
+import {
+  CORRUPT,
+  HOUSEHOLD_ERASED,
+  isCorrupt,
+  isErased,
+  isExpired,
+  isSent,
+  isUnsentBefore,
+  readRecord,
+} from "@/lib/sync/record";
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 
@@ -128,5 +137,34 @@ describe("isSent", () => {
     for (const state of ["queued", "failed", "held", "quarantined"] as const) {
       expect(isSent({ ...sent, state })).toBe(false);
     }
+  });
+});
+
+describe("isErased and isUnsentBefore (#279)", () => {
+  const stub = {
+    ...good,
+    state: "synced" as const,
+    syncedAt: NOW,
+    lastError: { code: HOUSEHOLD_ERASED },
+  };
+
+  it("knows a stub by its state and its refusal, and a sent record is not one", () => {
+    expect(isErased(stub)).toBe(true);
+    expect(isErased({ ...stub, lastError: null })).toBe(false);
+    expect(isErased({ ...stub, state: "held" })).toBe(false);
+  });
+
+  it("expires a stub with the sent records, after their 24 hours", () => {
+    expect(isExpired(stub, NOW + 1)).toBe(true);
+    expect(isExpired(stub, NOW)).toBe(false);
+    expect(isSent(stub)).toBe(true);
+  });
+
+  it("counts a record unsent in any state but sent, up to and including the time", () => {
+    for (const state of ["queued", "failed", "held", "quarantined"] as const) {
+      expect(isUnsentBefore({ ...good, state, enqueuedAt: NOW }, NOW)).toBe(true);
+      expect(isUnsentBefore({ ...good, state, enqueuedAt: NOW + 1 }, NOW)).toBe(false);
+    }
+    expect(isUnsentBefore({ ...good, state: "synced", enqueuedAt: 0 }, NOW)).toBe(false);
   });
 });

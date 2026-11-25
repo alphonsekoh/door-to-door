@@ -48,6 +48,7 @@ const HEADERS = [
   "Unit",
   "Name",
   "Contact",
+  "No calls or messages",
   "Religion",
   "Interest",
   "Notes",
@@ -65,6 +66,8 @@ export function historyToCsv(entries: HistoryEntry[]): string {
     entry.household.unitNumber,
     entry.household.name ?? "",
     entry.household.contact ?? "",
+    /* So a file passed on does not put a withdrawn contact back in use. */
+    entry.household.contactWithdrawnAt == null ? "" : "Yes",
     entry.household.religion ?? "",
     entry.visit.interestLevel,
     entry.visit.description,

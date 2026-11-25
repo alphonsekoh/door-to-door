@@ -1,4 +1,4 @@
-import { and, eq, inArray, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import type { InterestLevel, Role, SessionKind, SessionStatus } from "@/db/schema";
 import { blocks, households, outingSessions, sessionBlocks, visits } from "@/db/schema";
@@ -29,7 +29,12 @@ import { ApiError, ConflictError, InternalError, NotFoundError } from "@/server/
 import { requireText } from "@/server/http/text";
 import { createThrottledLog, summarizeError } from "@/server/logging/error-log";
 import type { HouseholdIdentity, VisitRow } from "@/server/visits/service";
-import { getVisits, upsertHousehold, upsertHouseholds } from "@/server/visits/service";
+import {
+  assertRecordedAfterErasure,
+  getVisits,
+  upsertHousehold,
+  upsertHouseholds,
+} from "@/server/visits/service";
 
 /*
  * Flushing the offline queue.
@@ -117,6 +122,8 @@ type SessionRow = {
 
 type BatchReads = {
   blocks: Set<string>;
+  /* When each erased unit the batch names was erased, by placeKey. */
+  erased: Map<string, Date>;
   stored: Map<string, StoredVisit>;
   sessions: SessionRow[];
 };
@@ -129,11 +136,37 @@ type BatchReads = {
  */
 async function readBatch(db: Database, items: readonly SyncItem[]): Promise<BatchReads> {
   const blockIds = distinctUuidsInOrder(items.map((item) => item.blockId));
-  const foundBlocks = await db
-    .select({ id: blocks.id })
-    .from(blocks)
-    .where(inArray(blocks.id, blockIds))
-    .limit(blockIds.length);
+  /*
+   * Read with the blocks, not after them (D-279): one more statement per
+   * batch whatever its size, and the check judgeItem makes needs nothing the
+   * blocks say. A superset (every named block with every named unit) is read
+   * and matched exactly in memory.
+   */
+  const [foundBlocks, erasedPlaces] = await Promise.all([
+    db
+      .select({ id: blocks.id })
+      .from(blocks)
+      .where(inArray(blocks.id, blockIds))
+      .limit(blockIds.length),
+    db
+      .select({
+        blockId: households.blockId,
+        unitNumber: households.unitNumber,
+        // Never null: only erased units are read, and the decoder keeps it a Date.
+        erasedAt: sql`${households.erasedAt}`.mapWith(households.erasedAt).as("erased_at"),
+      })
+      .from(households)
+      .where(
+        and(
+          isNotNull(households.erasedAt),
+          inArray(households.blockId, blockIds),
+          inArray(
+            households.unitNumber,
+            items.map((item) => item.unitNumber),
+          ),
+        ),
+      ),
+  ]);
 
   const stored = await db
     .select({
@@ -170,6 +203,9 @@ async function readBatch(db: Database, items: readonly SyncItem[]): Promise<Batc
 
   return {
     blocks: new Set(foundBlocks.map((block) => block.id)),
+    erased: new Map(
+      erasedPlaces.map((place) => [placeKey(place.blockId, place.unitNumber), place.erasedAt]),
+    ),
     stored: new Map(stored.map((visit) => [visit.id, visit])),
     sessions,
   };
@@ -253,6 +289,16 @@ async function judgeItem(
       return { kind: "answered", status: "unchanged" };
     }
   }
+
+  /*
+   * A record with no stored visit is a new knock, or an amend of a visit an
+   * erasure deleted: either way it must not bring back what was erased. Before
+   * the clock bounds, so a restamp after a skew refusal cannot slip past it.
+   */
+  assertRecordedAfterErasure(
+    { erasedAt: reads.erased.get(placeKey(item.blockId, item.unitNumber)) ?? null },
+    incomingCreatedAt,
+  );
 
   /*
    * After the replay short-circuit, so a stored record is never re-judged (a
@@ -412,19 +458,25 @@ async function insertRun(
   writes: readonly Write[],
   caller: SyncCaller,
 ): Promise<void> {
-  const householdIds = await upsertHouseholds(
+  const placed = await upsertHouseholds(
     tx,
     writes.map((write) => write.item),
   );
   const teamId = await teamIdFor(tx, caller.id, session.id);
 
-  const rows = writes.map(({ item, createdAt, updatedAt }, order) => ({
-    id: item.id,
-    householdId: getOrThrow(
-      householdIds,
+  const placedWrites = writes.map(({ item, createdAt, updatedAt }, order) => {
+    const household = getOrThrow(
+      placed,
       placeKey(item.blockId, item.unitNumber),
       "the record's household",
-    ),
+    );
+    /* An erasure landed since the batch read: the run rolls back and each record is judged alone. */
+    assertRecordedAfterErasure(household, createdAt);
+    return { household, item, createdAt, updatedAt, order };
+  });
+  const rows = placedWrites.map(({ household, item, createdAt, updatedAt, order }) => ({
+    id: item.id,
+    householdId: household.id,
     sessionId: session.id,
     memberId: caller.id,
     teamId,
@@ -538,6 +590,7 @@ async function persist(db: Database, write: Write): Promise<WriteStatus> {
         contact: item.contact,
         religion: item.religion,
       });
+      assertRecordedAfterErasure(household, createdAt);
       const teamId = await teamIdFor(tx, memberId, sessionId);
       const description = item.description ?? "";
 

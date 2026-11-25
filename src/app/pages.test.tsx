@@ -8,6 +8,7 @@ import SessionHistoryPage from "@/app/history/[sessionId]/page";
 import AdminSessionPage from "@/app/admin/sessions/[id]/page";
 import AdminAttentionPage from "@/app/admin/attention/page";
 import AdminFollowUpsPage from "@/app/admin/follow-ups/page";
+import AdminPrivacyPage from "@/app/admin/privacy/page";
 import AdminHistoryPage from "@/app/admin/history/page";
 import AdminRecordsPage from "@/app/admin/records/page";
 import AdminTeamPage from "@/app/admin/team/page";
@@ -211,6 +212,17 @@ describe("admin screens", () => {
     const heading = screen.getByRole("heading", { level: 1, name: "Follow-up list" });
     // At large text "Follow-" over "up" read as two words (#196).
     expect(within(heading).getByText("Follow-up")).toHaveClass("whole-word");
+    expect(screen.getByRole("link", { name: "Back to Sessions" })).toHaveAttribute(
+      "href",
+      "/admin/sessions",
+    );
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+  });
+
+  it("guards the erasure requests before rendering them (#279)", async () => {
+    render(await AdminPrivacyPage());
+    expect(requireAdminPage).toHaveBeenCalled();
+    expect(screen.getByRole("heading", { level: 1, name: "Erasure requests" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to Sessions" })).toHaveAttribute(
       "href",
       "/admin/sessions",

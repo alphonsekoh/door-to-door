@@ -86,6 +86,8 @@ export async function listUsers(
   },
 ): Promise<{ rows: UserRow[]; total: number }> {
   const filter = and(
+    // An erased account is anonymised in place and never listed again (D-279).
+    isNull(users.erasedAt),
     eq(users.approval, options.approval),
     ...(options.role === undefined ? [] : [eq(users.role, options.role)]),
     ...(options.includeDeactivated ? [] : [isNull(users.deactivatedAt)]),
@@ -123,7 +125,9 @@ export async function getUser(
   id: string,
   notFound = "No such user.",
 ): Promise<UserRow> {
-  const rows = await selectUsers(db).where(eq(users.id, id)).limit(1);
+  const rows = await selectUsers(db)
+    .where(and(eq(users.id, id), isNull(users.erasedAt)))
+    .limit(1);
   const found = rows[0];
   if (!found) {
     throw new NotFoundError(notFound);
@@ -202,6 +206,47 @@ async function takenMessage(db: Database, email: string): Promise<string> {
 }
 
 /*
+ * What an admin's change to an account is judged on: the target and every
+ * active admin in one statement, FOR NO KEY UPDATE in id order. Shared with
+ * erasing an account, which is a deactivation and holds the same rules. An
+ * erased account is gone: it answers as no such user.
+ */
+export type LockedAccount = {
+  id: string;
+  role: Role;
+  approval: Approval;
+  deactivatedAt: Date | null;
+  erasedAt: Date | null;
+};
+
+export async function lockAccountChange(
+  tx: Database,
+  id: string,
+): Promise<{ locked: LockedAccount[]; current: LockedAccount }> {
+  const locked = await tx
+    .select({
+      id: users.id,
+      role: users.role,
+      approval: users.approval,
+      deactivatedAt: users.deactivatedAt,
+      erasedAt: users.erasedAt,
+    })
+    .from(users)
+    .where(or(eq(users.id, id), and(eq(users.role, "admin"), isNull(users.deactivatedAt))))
+    .orderBy(asc(users.id))
+    .for("no key update");
+
+  /* The path's id may be in capitals (R-161). Each comparison below takes
+     either case, or a capitalised id would skip the self rules, and count
+     the target itself as another admin. */
+  const current = locked.find((row) => sameUuid(row.id, id));
+  if (current?.erasedAt !== null) {
+    throw new NotFoundError("No such user.");
+  }
+  return { locked, current };
+}
+
+/*
  * An admin may not demote or deactivate themselves, and nobody may demote or
  * deactivate the last active admin. With one admin on the team - the normal
  * case - either move locks every admin out of the app with no way back in
@@ -225,25 +270,7 @@ export async function updateUser(
   actorId: string,
 ): Promise<UserRow> {
   await db.transaction(async (tx) => {
-    const locked = await tx
-      .select({
-        id: users.id,
-        role: users.role,
-        approval: users.approval,
-        deactivatedAt: users.deactivatedAt,
-      })
-      .from(users)
-      .where(or(eq(users.id, id), and(eq(users.role, "admin"), isNull(users.deactivatedAt))))
-      .orderBy(asc(users.id))
-      .for("no key update");
-
-    /* The path's id may be in capitals (R-161). Each comparison below takes
-       either case, or a capitalised id would skip the self rules, and count
-       the target itself as another admin. */
-    const current = locked.find((row) => sameUuid(row.id, id));
-    if (!current) {
-      throw new NotFoundError("No such user.");
-    }
+    const { locked, current } = await lockAccountChange(tx, id);
     /* A role or deactivation would skip the queue; the check constraint
        would refuse either, but with a constraint name for a message. */
     if (current.approval !== "approved") {
@@ -324,13 +351,13 @@ async function moveApproval(
   const moved = await db
     .update(users)
     .set({ approval: to, updatedAt: new Date() })
-    .where(and(eq(users.id, id), eq(users.approval, from)))
+    .where(and(eq(users.id, id), eq(users.approval, from), isNull(users.erasedAt)))
     .returning({ id: users.id });
   if (moved.length === 0) {
     const found = await db
       .select({ approval: users.approval })
       .from(users)
-      .where(eq(users.id, id))
+      .where(and(eq(users.id, id), isNull(users.erasedAt)))
       .limit(1);
     const current = found[0];
     if (!current) {

@@ -330,7 +330,7 @@ describe("households over HTTP", () => {
     expect(((await response.json()) as { data: unknown[] }).data).toHaveLength(1);
   });
 
-  it("lists a unit that has no visits in the scope, with a null latest visit", async () => {
+  it("does not list a unit with no visit at all, as an erased one is (#279)", async () => {
     asAlice();
     await record("#05-123");
     await pool.query(`INSERT INTO households (block_id, unit_number) VALUES ($1, '#09-99')`, [
@@ -341,8 +341,7 @@ describe("households over HTTP", () => {
       await listHouseholdsRoute(new Request(`https://test.local/api/households?blockId=${BLOCK}`))
     ).json()) as { data: { household: { unitNumber: string }; latestVisit: unknown }[] };
 
-    const untouched = body.data.find((d) => d.household.unitNumber === "#09-99");
-    expect(untouched?.latestVisit).toBeNull();
+    expect(body.data.map((d) => d.household.unitNumber)).toEqual(["#05-123"]);
   });
 
   it("requires a blockId", async () => {

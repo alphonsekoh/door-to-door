@@ -368,3 +368,18 @@ describe("ApprovalRequests, not approved (#249)", () => {
     expect(await screen.findByText("Could not check who wasn't approved.")).toBeInTheDocument();
   });
 });
+
+describe("ApprovalRequests, to their page (#279)", () => {
+  it("links each name to the member's page, where an admin can erase the account", async () => {
+    serve({ pending: [PAT, QUINN] });
+    render(<ApprovalRequests approval="pending" version={0} onChanged={vi.fn()} />);
+    expect(await screen.findByRole("link", { name: "Pat" })).toHaveAttribute(
+      "href",
+      "/admin/team/pat",
+    );
+    expect(screen.getByRole("link", { name: "No name given" })).toHaveAttribute(
+      "href",
+      "/admin/team/quinn",
+    );
+  });
+});
