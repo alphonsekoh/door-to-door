@@ -30,15 +30,22 @@ import { lockAccountChange } from "@/server/users/service";
  * then its notes, then its visits. A write waiting on the household finds the
  * erasure committed; an erasure waiting behind a write deletes what it stored.
  */
-export async function eraseHousehold(tx: Database, id: string, now: Date): Promise<void> {
+export async function eraseHousehold(
+  tx: Database,
+  id: string,
+  now: Date,
+  /* Sync refuses records saved before this; the retention job passes its cutoff. */
+  erasedAt: Date = now,
+): Promise<void> {
   const locked = await tx
-    .select({ id: households.id })
+    .select({ id: households.id, erasedAt: households.erasedAt })
     .from(households)
     .where(eq(households.id, id))
     .for("update");
   if (locked.length === 0) {
     throw new NotFoundError("No such household.");
   }
+  const previous = locked[0]?.erasedAt ?? null;
   // Removed notes and their reasons too: erasure is not a soft delete.
   await tx.delete(followUps).where(eq(followUps.householdId, id));
   // Their teammate snapshots go with them (cascade).
@@ -50,7 +57,8 @@ export async function eraseHousehold(tx: Database, id: string, now: Date): Promi
       contact: null,
       religion: null,
       contactWithdrawnAt: null,
-      erasedAt: now,
+      // Never backward over an earlier on-request erasure.
+      erasedAt: previous !== null && previous > erasedAt ? previous : erasedAt,
       updatedAt: now,
     })
     .where(eq(households.id, id));

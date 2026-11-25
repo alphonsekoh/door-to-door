@@ -149,7 +149,7 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
       <>
         <P>
           We keep each kind of data for no longer than this. A daily job erases or deletes each item
-          within a day after its period ends.
+          once its period ends, and a large backlog can take it a few days.
         </P>
         <ul className="space-y-2">
           {RETENTION.map(({ id, what, keep }) => (

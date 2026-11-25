@@ -108,6 +108,32 @@ async function activeSince(tx: Database, householdId: string, cutoff: Date): Pro
   return visit.length > 0 || note.length > 0;
 }
 
+async function holdsSomething(tx: Database, householdId: string): Promise<boolean> {
+  const [household, visit, note] = await Promise.all([
+    tx
+      .select({ id: households.id })
+      .from(households)
+      .where(
+        and(
+          eq(households.id, householdId),
+          or(
+            isNotNull(households.name),
+            isNotNull(households.contact),
+            isNotNull(households.religion),
+          ),
+        ),
+      )
+      .limit(1),
+    tx.select({ id: visits.id }).from(visits).where(eq(visits.householdId, householdId)).limit(1),
+    tx
+      .select({ id: followUps.id })
+      .from(followUps)
+      .where(eq(followUps.householdId, householdId))
+      .limit(1),
+  ]);
+  return household.length + visit.length + note.length > 0;
+}
+
 async function eraseDueHousehold(
   db: Database,
   id: string,
@@ -123,7 +149,10 @@ async function eraseDueHousehold(
       .for("update");
     // Activity that landed after the list was read saves it.
     if (await activeSince(tx, id, cutoff)) return false;
-    await eraseHousehold(tx, id, now);
+    // One an on-request erasure emptied meanwhile has nothing left to erase.
+    if (!(await holdsSomething(tx, id))) return false;
+    // Stamped at the cutoff, not the run: a record saved since then and synced late is new fieldwork.
+    await eraseHousehold(tx, id, now, cutoff);
     /* The job erased it first, so any open request is carried out too, by nobody. */
     await tx
       .update(erasureRequests)

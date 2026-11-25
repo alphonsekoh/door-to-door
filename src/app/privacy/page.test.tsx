@@ -50,6 +50,12 @@ describe("privacy page", () => {
     expect(connection).toHaveBeenCalled();
   });
 
+  it("does not promise erasure within a day: a run's cap can leave a backlog for a few days", async () => {
+    render(await PrivacyPage());
+    expect(screen.getByText(/a large backlog can take it a few days/)).toBeInTheDocument();
+    expect(screen.queryByText(/within a day/)).toBeNull();
+  });
+
   it("promises no consent record, and says the team asks before it calls", async () => {
     const { container } = render(await PrivacyPage());
     expect(container.textContent).toContain("The app itself never calls or messages anyone.");

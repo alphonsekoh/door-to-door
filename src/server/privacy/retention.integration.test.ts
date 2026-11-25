@@ -6,6 +6,7 @@ import { createTestPool, truncateAll } from "@/db/testing";
 import type { Clock } from "@/lib/clock";
 import { RETENTION_PERIODS } from "@/lib/privacy/policy";
 import { EXPIRES_AFTER_SECONDS } from "@/server/auth/sign-ins";
+import { assertRecordedAfterErasure } from "@/server/visits/service";
 import { MAX_ERASURES_PER_RUN, runRetention } from "@/server/privacy/retention";
 
 /*
@@ -327,6 +328,63 @@ describe("a household recorded at while the job ran", () => {
     }
     expect(await erased(H1)).toBe(false);
     expect(await count("visits", `household_id = '${H1}'`)).toBe(2);
+  });
+});
+
+describe("what a retention erasure refuses afterwards", () => {
+  const erasedAtOf = async (id: string): Promise<Date> => {
+    const row = (
+      await pool.query<{ erased_at: Date }>(`SELECT erased_at FROM households WHERE id = $1`, [id])
+    ).rows[0];
+    if (!row) throw new Error("no such household");
+    return row.erased_at;
+  };
+
+  it("is dated at the cutoff, so a record saved since then and synced late is kept", async () => {
+    await household(H1, "#01-01");
+    await visitAt("01960000-0000-7000-8279-000000000001", H1, new Date("2020-01-01T00:00:00Z"));
+    await runRetention(db, clock);
+
+    const erasedAt = await erasedAtOf(H1);
+    expect(erasedAt).toEqual(HOUSEHOLD_CUTOFF);
+    // Saved ten days ago, synced after the run: new fieldwork.
+    expect(() => {
+      assertRecordedAfterErasure({ erasedAt }, ms(NOW, -10 * 86_400_000));
+    }).not.toThrow();
+    expect(() => {
+      assertRecordedAfterErasure({ erasedAt }, ms(HOUSEHOLD_CUTOFF, -1));
+    }).toThrow(/erased/);
+  });
+
+  it("never moves an earlier on-request erasure backward", async () => {
+    await household(H1, "#01-01");
+    await visitAt("01960000-0000-7000-8279-000000000001", H1, new Date("2020-01-01T00:00:00Z"));
+    const earlier = new Date("2026-11-01T00:00:00Z");
+    await pool.query(`UPDATE households SET erased_at = $2 WHERE id = $1`, [H1, earlier]);
+    await runRetention(db, clock);
+    expect(await erasedAtOf(H1)).toEqual(earlier);
+  });
+
+  it("skips a unit an on-request erasure emptied between the list and its lock", async () => {
+    await household(H1, "#01-01");
+    await visitAt("01960000-0000-7000-8279-000000000001", H1, new Date("2020-01-01T00:00:00Z"));
+
+    const holder = await pool.connect();
+    try {
+      await holder.query("BEGIN");
+      await holder.query(`SELECT id FROM households WHERE id = $1 FOR UPDATE`, [H1]);
+      const run = runRetention(db, clock);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      await holder.query(`DELETE FROM visits WHERE household_id = $1`, [H1]);
+      await holder.query(`UPDATE households SET name = NULL, erased_at = $2 WHERE id = $1`, [
+        H1,
+        ms(NOW, -1000),
+      ]);
+      await holder.query("COMMIT");
+      expect((await run).households).toBe(0);
+    } finally {
+      holder.release();
+    }
   });
 });
 
