@@ -38,7 +38,8 @@ The household/visit split is the heart of the app and the thing most likely to b
   Only an admin puts one on the **follow-up list** (`listed`); a member's is a `suggested`
   return visit for an admin to add or dismiss. Removing a follow-up is always a soft
   delete with a required reason (who, when, why), and removed ones leave every list,
-  count and check (D-117-4, D-117-33).
+  count and check (D-117-4, D-117-33). Erasure on request or at expiry is the exception:
+  it deletes a household's identity, visits and notes for good (D-273-11, D-279-1).
 - **One session is active app-wide at a time**, enforced by a partial unique index.
   Admins attach blocks to a live door-to-door session; members self-select a block.
   Blocks are shared, never locked.

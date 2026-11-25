@@ -51,7 +51,7 @@ well." (D-117-62 onwards).
   `listed`, member `suggested`. `listed_at`/`listed_by` name the admin who listed it and
   are null for backfilled notes, whose byline reads "Added by" as before. _Why:_ notes
   members already wrote stay on the list and readable.
-- **D-117-4 · Every removal is soft (owner, E).** _Superseded in part by D-273-11 (erasure of personal data, effective with the erasure PR)._ `deleted_at`, `deleted_by`,
+- **D-117-4 · Every removal is soft (owner, E).** _Superseded in part by D-273-11 (erasure of personal data); applied by D-279-1._ `deleted_at`, `deleted_by`,
   `delete_reason`, set by ~~`DELETE /follow-ups/{id}?reason=` (at most 500, trimmed, blank
   stored as null)~~. A removed note leaves every list, count, duplicate check and the
   recording rule, is `404` to PATCH and ~~DELETE~~ removal, and cannot be restored; an
@@ -247,7 +247,7 @@ well." (D-117-62 onwards).
   _Why:_ a reopened note beside a waiting suggestion is the state D-117-8 refuses, and
   dismissing the suggestion would tell its author "declined" when it was not. _Refined by
   D-117-57:_ the stale Reopen's alert is "Not reopened."; one sentence and name rule.
-- **D-117-33 · Every removal needs a reason (owner).** _Superseded in part by D-273-11 (a reason's personal data is erased on request or expiry, effective with the erasure PR)._ Dismiss, remove and withdraw: 1 to
+- **D-117-33 · Every removal needs a reason (owner).** _Superseded in part by D-273-11 (a reason's personal data is erased on request or expiry); applied by D-279-1._ Dismiss, remove and withdraw: 1 to
   500 characters, not only spaces, stored trimmed, else `400`. The button waits with
   "Write a reason to continue." and the sheet says who will read it. Supersedes
   D-117-4's optional reason. _Why:_ the owner asked for one; an author told of a removal

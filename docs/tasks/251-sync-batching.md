@@ -18,7 +18,7 @@ replays fixed, keeps every sync rule exactly, and lowers the client's batch size
   results, statuses and codes stay the same. _Why:_ installed clients still send up to
   100, and the queue relies on per-item results (D-33-16).
 - **D-251-2 · What judging needs is read once per batch, then each item is judged in
-  request order, in the old check order.** There are three reads: blocks, stored visits
+  request order, in the old check order.** _Refined by D-279-7: a fourth read, the erased places, runs in parallel with the blocks read._ There are three reads: blocks, stored visits
   with their household, and sessions (those named, those of the stored visits, and the
   active one). Each is keyed by the lower-cased id (D-193-1). The order stays: block
   `404`, `canAmend`, move, stale/unchanged, the future bound, session `404`/`409`, then

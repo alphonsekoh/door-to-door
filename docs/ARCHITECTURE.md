@@ -44,6 +44,7 @@ flowchart LR
 | `src/server/auth/`    | Auth.js config, sign-ins and sign-out, headers, guards, limits  | 100%     | `requireUser`, `requireRole`, `resolveMemberScope`.                                   |
 | `src/auth/`           | Auth.js entrypoint (`@/auth`); Google sign-in (`google.ts`)     | 100%     | Server-only (D-14-18); `@/auth` only in `session.ts` and the auth route (D-83-12).    |
 | `src/server/<domain>` | Services, queries, serialisers per domain                       | 100%     | sessions, blocks, visits (incl. sync), follow-ups, history, users, teams, integrity.  |
+| `src/server/privacy/` | Erasure, requests, retention job, cron bearer, withdrawal       | 100%     | One transaction per erased subject; the job runs from `GET /api/retention/run`.       |
 | `src/db/`             | Drizzle schema, client, test env, seed data and its guard       | 100%     | Constraints carry the invariants the API cannot race.                                 |
 | `src/db/stage-seed*`  | The stage stack's year of records and its guards                | 100%     | Never the demo seed; refuses all but the stack's own empty database (D-244-16).       |
 | `src/server/stage/`   | The stage check: HTTP client, percentiles, toxiproxy            | 100%     | Tooling for `npm run stage:perf`; nothing in the app imports it (D-244-27).           |
@@ -101,6 +102,16 @@ users ─< sign_ins (one per device signed in; cascade on delete)
   visit at a household on the list marks its owed listed notes done in the same
   transaction, and `done_visit_id` keeps which visit did (D-117-65, D-117-67). Removing a
   note never changes picks (D-117-41).
+- **Erasure and retention** (#279, `src/server/privacy/`): erasing a household keeps the
+  row as the unit with `erased_at` and hard-deletes its identity, visits and follow-up
+  notes; an account is anonymised in place (D-279-1, D-279-11). `erasure_requests` records
+  who asked and who acted, with no personal data. Sync and `POST /visits` refuse a record
+  saved before `erased_at` (`household_erased`, D-279-6). A daily Vercel Cron (`vercel.json`,
+  `0 18 * * *` UTC) calls `GET /api/retention/run` with the bearer `CRON_SECRET` (the
+  `cronSecret` scheme, read per request, D-279-15); `retention_runs` holds a lease row, one
+  unfinished at a time, closed after 1 hour (D-279-14). It erases due households and
+  accounts (200 each per run) and deletes expired sign-ins. Phones purge at app start
+  (D-279-17).
 - **Blocks** are shared across members and sessions, never locked.
 - **Sign-in** (`sign_ins`): one row per device or browser signed in, named by the session
   token's `signInId` claim. Deleting it ends that sign-in (D-125-2). At most 50 per
@@ -207,7 +218,8 @@ authoritative, and a change to any of them needs the owner.
    rebinding that a production build drops (D-124-8). `/privacy` is public but not a PWA
    path: `auth()` still runs and the answer is `no-store`; the page renders per request
    because the operator comes from `privacy` in the config (D-273-9). The PWA files (`/serwist/*`,
-   manifest, `/offline`) return before `auth()` runs (D-32-19). On every path it matches
+   manifest, `/offline`) and `/api/retention/run` (`CRON_PATH`, `src/server/auth/routes.ts`)
+   return before `auth()` runs (D-32-19, D-279-15); the cron route checks its own bearer. On every path it matches
    (all but static files), Next buffers at most 2 MiB of the body and hands the handler
    that much: a longer body is cut short, not refused
    (`experimental.proxyClientMaxBodySize`, set from `PROXY_BODY_LIMIT_BYTES`, D-120-7).

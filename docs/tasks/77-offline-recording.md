@@ -36,7 +36,7 @@ Owner decisions are marked **(owner)**.
   Other errors write nothing. _Why:_ "blocks opened tonight" means this outing's, and the
   shell must not offer a block `/visits/sync` would refuse. _Refined by D-117-48:_ with a
   follow-up session's list saved, the shell offers the list's blocks only.
-- **D-77-5 · Usable for 12 h from the last write (owner).** Exactly 12 h is usable.
+- **D-77-5 · Usable for 12 h from the last write (owner).** _Refined by D-279-17: an expired copy is purged at app start for every owner._ Exactly 12 h is usable.
   _Why:_ an evening's outing, inside D-33-9's 24 h, so sent records are still there to
   list. _Refined by D-129-8:_ a copy past its 12 h is deleted when it is read.
 - **D-77-6 · Cleared on every sign-in and sign-out, and whenever a signed-in page sees
