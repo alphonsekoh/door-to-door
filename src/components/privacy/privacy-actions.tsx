@@ -38,7 +38,8 @@ export function PrivacyActions({
   const [failure, setFailure] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (!holdsData) return null;
+  /* The notice outlives the data it reports erased. */
+  if (!holdsData && notice === null) return null;
 
   const eraseHere = isAdmin && !atDoor;
   const withdrawn = household.contactWithdrawnAt != null;
@@ -72,7 +73,7 @@ export function PrivacyActions({
           {failure}
         </p>
       )}
-      {household.contact !== null && !withdrawn ? (
+      {holdsData && household.contact !== null && !withdrawn ? (
         <button
           type="button"
           disabled={busy}
@@ -82,7 +83,7 @@ export function PrivacyActions({
           Withdrew agreement to calls or messages
         </button>
       ) : null}
-      {withdrawn && isAdmin ? (
+      {holdsData && withdrawn && isAdmin ? (
         <button
           type="button"
           disabled={busy}
@@ -92,7 +93,7 @@ export function PrivacyActions({
           Allow calls or messages again
         </button>
       ) : null}
-      {eraseHere ? (
+      {!holdsData ? null : eraseHere ? (
         <button
           type="button"
           onClick={() => {

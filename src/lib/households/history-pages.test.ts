@@ -145,6 +145,12 @@ describe("addEarlier", () => {
     expect(behind).toMatchObject({ next: 15, total: 30 });
   });
 
+  it("drops what is held for a unit that now reads as having no visits", () => {
+    const held = addEarlier(null, page(run(10, 6), 5, 10));
+    expect(addEarlier(held, page([], 0, 0))).toMatchObject({ visits: [], next: 0, total: 0 });
+    expect(keepFirstPage(held, page([], 0, 0))).toMatchObject({ visits: [], total: 0 });
+  });
+
   it("ends on an empty read", () => {
     const earlier = addEarlier(null, page([], 5, 9));
     expect(earlier).toMatchObject({ next: 5, ended: true });
@@ -202,6 +208,16 @@ describe("keepFirstPage", () => {
 });
 
 describe("holdVisits", () => {
+  it("shows nothing of an erased unit's earlier visits", () => {
+    const earlier = addEarlier(null, page(run(10, 6), 5, 10));
+    expect(holdVisits(page([], 0, 0), earlier)).toEqual({
+      visits: [],
+      next: 0,
+      total: 0,
+      more: false,
+    });
+  });
+
   it("holds the first page alone, with more to read while its total says so", () => {
     expect(holdVisits(page(run(10, 6), 0, 10), null)).toEqual({
       visits: run(10, 6),

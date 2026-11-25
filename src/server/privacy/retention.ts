@@ -202,7 +202,14 @@ export async function runRetention(db: Database, clock: Clock): Promise<Retentio
     counts.more ||= accountIds.length > MAX_ERASURES_PER_RUN;
     for (const id of accountIds.slice(0, MAX_ERASURES_PER_RUN)) {
       try {
-        await db.transaction((tx) => eraseAccount(tx, id, null, now));
+        await db.transaction(async (tx) => {
+          await eraseAccount(tx, id, null, now);
+          /* As for a household: the job met any open request for it, by nobody. */
+          await tx
+            .update(erasureRequests)
+            .set({ erasedAt: now })
+            .where(and(eq(erasureRequests.userId, id), isNull(erasureRequests.erasedAt)));
+        });
         counts.accounts += 1;
       } catch (error) {
         // An admin erased it between the list and its lock: nothing left to do.

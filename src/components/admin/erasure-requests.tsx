@@ -131,7 +131,7 @@ export function ErasureRequests() {
 
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Requests" className="flex gap-2">
+      <div role="tablist" aria-label="Requests" className="flex flex-wrap gap-2">
         {TABS.map(({ id, label }) => (
           <button
             key={id}

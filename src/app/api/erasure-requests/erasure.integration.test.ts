@@ -689,9 +689,17 @@ describe("erasing an account", () => {
     ).toEqual({ deactivated_at: null, name: null });
   });
 
-  it("answers 404 to an account request whose account was erased meanwhile", async () => {
+  it("closes an account request whose account was erased meanwhile", async () => {
     const id = await requestFor(BEN);
     await pool.query(`UPDATE users SET erased_at = now() WHERE id = $1`, [BEN]);
-    expect((await erase(id)).status).toBe(404);
+    expect((await erase(id)).status).toBe(200);
+    expect(
+      (
+        await row<{ erased_at: Date | null }>(
+          `SELECT erased_at FROM erasure_requests WHERE id = $1`,
+          [id],
+        )
+      ).erased_at,
+    ).not.toBeNull();
   });
 });

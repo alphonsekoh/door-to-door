@@ -185,9 +185,7 @@ describe("passing on a request", () => {
     const user = userEvent.setup();
     show({ name: null });
     await user.click(screen.getByRole("button", { name: "They asked us to delete their data" }));
-    expect(screen.getByRole("dialog")).toHaveAccessibleName(
-      "Pass on a request to delete their data, #05-123",
-    );
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Pass on a deletion request, #05-123");
   });
 
   it("closes without sending anything", async () => {
@@ -229,6 +227,27 @@ describe("erasing the unit, as an admin", () => {
     ]);
     expect(await screen.findByRole("status")).toHaveTextContent("Erased.");
     expect(onChanged).toHaveBeenCalledOnce();
+  });
+
+  it("keeps its notice when the unit's data is gone, without offering anything more", async () => {
+    const user = userEvent.setup();
+    admin();
+    const view = render(
+      <PrivacyActions household={household()} holdsData atDoor={false} onChanged={vi.fn()} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Erase this unit's data…" }));
+    await user.click(screen.getByRole("button", { name: "Erase" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Erased.");
+    view.rerender(
+      <PrivacyActions
+        household={household()}
+        holdsData={false}
+        atDoor={false}
+        onChanged={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Erased.");
+    expect(screen.queryByRole("button", { name: /Erase this unit/ })).toBeNull();
   });
 
   it("leaves the request open for an admin to finish when the erasure itself fails", async () => {

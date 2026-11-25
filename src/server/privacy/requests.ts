@@ -211,7 +211,12 @@ export async function eraseRequest(
       await eraseHousehold(tx, request.householdId, now);
     } else {
       // A request with no household names a user: the table's check says so.
-      await eraseAccount(tx, presentOrThrow(request.userId, "the account"), actor.id, now);
+      try {
+        await eraseAccount(tx, presentOrThrow(request.userId, "the account"), actor.id, now);
+      } catch (error) {
+        // The retention job or another path erased it first: the request is met, so close it.
+        if (!(error instanceof NotFoundError)) throw error;
+      }
     }
     const stamped = await tx
       .update(erasureRequests)

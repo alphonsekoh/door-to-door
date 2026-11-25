@@ -134,7 +134,8 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
             A record not yet sent from a phone, for a unit erased since, is deleted when the phone
             next sends it, and the member is told. A phone&apos;s copy of the session&apos;s units
             goes within {hours(LOCAL_COPY_HOURS)}, and a record never sent goes after{" "}
-            {RETENTION_PERIODS.unsentRecordDays} days at most.
+            {RETENTION_PERIODS.unsentRecordDays} days at most, each deleted the next time the app is
+            opened after that.
           </li>
           <li>Copies exported as CSV files are deleted too. Logs are deleted as they expire.</li>
           <li>
@@ -170,7 +171,8 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
         <li>
           Signing out drops that member&apos;s sent records and the session&apos;s units, with their
           earlier visits, from the phone. Records not yet sent stay until they are sent, for{" "}
-          {RETENTION_PERIODS.unsentRecordDays} days at most.
+          {RETENTION_PERIODS.unsentRecordDays} days at most, deleted the next time the app is opened
+          after that.
         </li>
         <li>We keep the latest details we know, and anyone can ask for a correction.</li>
       </List>

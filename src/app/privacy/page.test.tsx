@@ -37,7 +37,10 @@ describe("privacy page", () => {
     expect(purposes.textContent).toContain("call or text you");
     expect(purposes.textContent).not.toContain("do not use it for marketing");
     expect(document.body.textContent).toContain(
-      "Records not yet sent stay until they are sent, for 30 days at most.",
+      "Records not yet sent stay until they are sent, for 30 days at most, deleted the next time the app is opened after that.",
+    );
+    expect(document.body.textContent).toContain(
+      "a record never sent goes after 30 days at most, each deleted the next time the app is opened after that.",
     );
   });
 

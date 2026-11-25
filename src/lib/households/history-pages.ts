@@ -41,7 +41,11 @@ function gather(
   at: "above" | "below",
   ended: (same: EarlierVisits | null) => boolean,
 ): EarlierVisits {
-  const same = current !== null && current.householdId === page.household.id ? current : null;
+  /* An erased unit reads as no visits at all: what is held is stale. A smaller total alone is only a late answer. */
+  const same =
+    current !== null && current.householdId === page.household.id && page.pagination.total > 0
+      ? current
+      : null;
   const held = same?.visits ?? [];
   return {
     householdId: page.household.id,
@@ -85,7 +89,7 @@ const newer = (a: Visit, b: Visit) => Date.parse(a.updatedAt) > Date.parse(b.upd
 /*
  * The first page and the older pages as one list. A visit stored between two
  * reads shifts every offset by one, so a page can repeat a visit but never
- * skip one (visits are never removed): each is kept once, the copy amended
+ * skip one (unless the unit is erased, handled above): each is kept once, the copy amended
  * last, and the first page's on a tie. The order is for showing only; the
  * next offset comes from what each read received, never from this list.
  *
@@ -95,7 +99,10 @@ const newer = (a: Visit, b: Visit) => Date.parse(a.updatedAt) > Date.parse(b.upd
  * door, need not follow it.
  */
 export function holdVisits(first: HouseholdHistory, earlier: EarlierVisits | null): HeldVisits {
-  const older = earlier !== null && earlier.householdId === first.household.id ? earlier : null;
+  const older =
+    earlier !== null && earlier.householdId === first.household.id && first.pagination.total > 0
+      ? earlier
+      : null;
   const byId = new Map<string, Visit>();
   for (const visit of [...first.visits, ...(older?.visits ?? [])]) {
     const held = byId.get(visit.id);

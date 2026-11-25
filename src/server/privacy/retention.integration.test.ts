@@ -230,6 +230,19 @@ describe("accounts", () => {
     expect(await count("users", `erased_at IS NOT NULL AND deactivated_at IS NULL`)).toBe(1);
   });
 
+  it("carries out the account's open request, by nobody", async () => {
+    await user("gone@t.local", "approved", { deactivated: ms(ACCOUNT_CUTOFF, -1) });
+    await pool.query(
+      `INSERT INTO erasure_requests (user_id, requested_at, logged_by)
+       SELECT id, $1, $2 FROM users WHERE email = 'gone@t.local'`,
+      [new Date("2026-11-20T00:00:00Z"), ALICE],
+    );
+    await runRetention(db, clock);
+    expect((await pool.query(`SELECT erased_at, erased_by FROM erasure_requests`)).rows[0]).toEqual(
+      { erased_at: NOW, erased_by: null },
+    );
+  });
+
   it("deletes the sign-ins of an erased account, and leaves another's", async () => {
     await user("gone@t.local", "approved", { deactivated: ms(ACCOUNT_CUTOFF, -1) });
     await pool.query(

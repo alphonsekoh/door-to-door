@@ -21,7 +21,7 @@ const COPY = {
       says: "This deletes the name, contact and religion, every visit and its notes, and every follow-up note, removed ones included. The unit stays, with the date it was erased. It cannot be undone.",
     },
     passOn: {
-      title: "Pass on a request to delete their data",
+      title: "Pass on a deletion request",
       says: "An admin will erase what we hold about this unit. Nothing is deleted until they do.",
     },
   },
@@ -31,7 +31,7 @@ const COPY = {
       says: "This deletes the name, email, Google link, password and sign-ins, and signs them out everywhere. The visits and notes they recorded stay, under no name. It cannot be undone.",
     },
     passOn: {
-      title: "Pass on a request to delete this account",
+      title: "Pass on an account deletion",
       says: "An admin will erase this account. Nothing is deleted until they do.",
     },
   },
@@ -103,16 +103,8 @@ export function EraseSheet({
   }
 
   return (
-    <Sheet
-      label={`${copy.title}, ${subject.label}`}
-      title={
-        <>
-          {copy.title}
-          <span className="block text-body font-normal text-foreground-muted">{subject.label}</span>
-        </>
-      }
-      onClose={onClose}
-    >
+    <Sheet label={`${copy.title}, ${subject.label}`} title={copy.title} onClose={onClose}>
+      <p className="mt-2 text-body font-medium">{subject.label}</p>
       <p className="mt-2 text-body text-foreground-muted">{copy.says}</p>
       {erasing && subject.kind === "household" ? (
         <p className="mt-2 text-body text-foreground-muted">
