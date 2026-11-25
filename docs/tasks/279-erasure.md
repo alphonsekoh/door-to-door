@@ -55,8 +55,11 @@ _(owner)_.
   account is on no list and `GET /users/{id}` answers 404. A later Google sign-in with the
   same email makes a new pending account. Supersedes D-29-3. _(owner, Q1 and Q5.)_
 - **D-279-12 · Account periods.** Approved: 12 months from `deactivated_at`. Blocked: from
-  `updated_at`. Pending (never answered): from `created_at`. Sign-ins: D-125-7's bound,
-  now also deleted by the job. Constants live in `src/lib/privacy/policy.ts` (extends
+  `updated_at`. Pending: from `updated_at`, which is `created_at` until an admin turns
+  the request down and puts it back to waiting, so reopening starts the 12 months over.
+  The job re-checks each account under its lock (`accountDue`) and spares one an admin
+  reactivated, approved or reopened while it ran. Sign-ins: D-125-7's bound, now also
+  deleted by the job. Constants live in `src/lib/privacy/policy.ts` (extends
   D-273-14). Refines D-125-7. _(owner, Q1: turned-down and unanswered sign-ups go too.)_
 - **D-279-13 · The job takes its time from an injected `Clock`,** one transaction per
   subject, at most 200 households and 200 accounts per run; `more` is set when capped, and
@@ -82,7 +85,8 @@ _(owner)_.
   from `SyncProvider`'s mount): sent records and stubs older than 24 hours; any record
   still unsent 30 days after it was saved, held, stopped and unreadable ones included (or
   at once when its time cannot be read); an expired copy, by calling `loadLocalCopy`.
-  Only held and stopped records show "Deleted from this phone on <date> if not sent".
+  Every unsent record shows "Deleted from this phone on <date> if not sent" from the day
+  it is saved; a salvaged record's age is its `clientCreatedAt`.
   Supersedes D-33-2 in part, D-33-8 and D-34-8; refines D-33-9 and D-77-5. _(owner, Q2.)_
 - **D-279-18 · Contact withdrawal is a timestamp** (`contact_withdrawn_at`). A member or an
   admin marks it (409 when no contact is recorded); only an admin clears it; a new contact
@@ -106,9 +110,11 @@ _(owner)_.
   wait for an erasure that already happened.
 - **D-279-24 · CSV exports are the admin's to clean.** The erase sheet reminds the admin to
   delete exports that hold the unit; retention erasures prompt nothing. _(owner, Q8.)_
-- **D-279-25 · A retention erasure is dated at its cutoff,** never moving an earlier
+- **D-279-25 · A retention erasure for age alone is dated at its cutoff;** one that meets
+  an open request is dated at the run, as an admin's erasure is. Neither moves an earlier
   `erased_at` back; `updated_at` and the run row hold when it happened. _Why:_ a record
-  saved since the cutoff and synced late is new fieldwork, not erased data.
+  saved since the cutoff and synced late is new fieldwork, not erased data; but once the
+  person has asked, nothing recorded before the erasure may come back.
 - **D-279-26 · Code comments cite "D-279" with no number.** Numbering them means editing
   those comments later.
 
@@ -124,11 +130,6 @@ _(owner)_.
 
 ## Known limits
 
-- **Open: a request met by the job is dated at the cutoff** (D-279-25), so a knock saved
-  on a phone before that run and synced after comes back, though the request shows
-  carried out. An erasure on a request should be dated at the run. Found by the verifier
-  (r2, should-fix 1) and not fixed in this PR; the rule to adopt once it is: dated at the
-  run when an open request exists, at the cutoff only for age alone.
 - Team names are not erased.
 - A record restamped after a clock-skew refusal can come back after an erasure.
 - Retention erasures prompt no deletion of CSV exports, though the policy says exported
@@ -154,4 +155,4 @@ on d8b2ffd, so the publish step's full Linux E2E run is the one that counts.
 
 ## Open questions
 
-None for the owner. The known limit above is a bug to fix, not a decision.
+None for the owner.
