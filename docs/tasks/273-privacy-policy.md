@@ -2,7 +2,7 @@
 
 - **Status:** In progress (draft PR into `dev`; not to merge until the erasure PR is ready)
 - **Phase:** Cross-cutting
-- **Depends on:** the erasure issue (not yet filed), which must merge to `dev` with this PR
+- **Depends on:** #279 (erasure and retention), which must merge to `dev` with this PR
 
 ## Task
 
@@ -93,14 +93,9 @@ D-249-10, D-249-11, D-249-22, D-249-36.
 
 ## Open questions
 
-- **Conflicts the owner has not yet agreed to supersede.** The policy and erasure text
-  contradict, and D-273-11 does not cover:
-  - D-29-3, "deactivated users excluded unless asked for, never deleted", against the policy
-    deleting an account 12 months after the member leaves.
-  - D-33-2, "nothing unsent is ever dropped", against erasure "covering copies on phones".
-  - D-123-6's premise, "nothing deletes a visit", against erasure deleting visits.
-    If both stand the erasure PR breaks these; each needs a `Supersedes` from the owner, or a
-    carve-out stated in D-273-11. They are not struck yet.
+- Resolved by the owner on 2026-11-25 and recorded in #279: D-29-3 is superseded (D-279-11,
+  D-279-12), D-33-2 is superseded in part with D-33-8 and D-34-8 (D-279-16, D-279-17), and
+  D-123-6 is superseded (D-279-8). D-273-11 stands as written.
 - The builder's list of decisions 1 to 9 was not supplied to this step; D-273-8 to D-273-15
   are taken from the three commits. The builder should check them.
 - The DNC evidence question (D-273-2).

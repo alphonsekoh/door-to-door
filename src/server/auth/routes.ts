@@ -20,6 +20,17 @@ export const PRIVACY_PATH = "/privacy";
 export const PUBLIC_PATHS = ["/sign-in", PRIVACY_PATH, ...PWA_PATHS] as const;
 
 /*
+ * The retention job's trigger (#279). It carries a bearer secret, never a
+ * cookie, so the session check has nothing to say about it and would only mint
+ * a CSRF cookie on a cookieless call; the handler checks the secret itself.
+ */
+export const CRON_PATH = "/api/retention/run";
+
+export function isCronPath(pathname: string): boolean {
+  return pathname === CRON_PATH;
+}
+
+/*
  * Where an account waiting for an admin's approval, or rejected, is kept
  * (#249). Not public: only someone signed in has a request to wait on.
  */

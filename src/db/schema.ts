@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   foreignKey,
   index,
@@ -58,6 +59,17 @@ export const users = pgTable(
     // Deactivated users cannot sign in, but their records stay attributed to
     // them - history must survive someone leaving the team.
     deactivatedAt: timestamp("deactivated_at", { withTimezone: true, mode: "date" }),
+    /*
+     * When the account was erased (#279): the row stays, anonymised, because
+     * the visits and notes it recorded still point at it.
+     */
+    erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }),
+    /*
+     * When an admin moved a turned-down request back to waiting (#279). Only
+     * that sets it: updated_at moves on any save, so a request left waiting
+     * could never age out if it were judged from there.
+     */
+    reopenedAt: timestamp("reopened_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
@@ -290,6 +302,17 @@ export const households = pgTable(
     name: text("name"),
     contact: text("contact"),
     religion: religionEnum("religion"),
+    /*
+     * Set when the household's data was erased (#279): the row stays as the
+     * unit alone, so a record made before this moment is refused rather than
+     * recreating it. The time an admin carried out a request, or the job met
+     * an open request; for an erasure purely at the end of the retention
+     * period, the cutoff 24 months before the run. `updated_at` holds when
+     * the erasure actually happened.
+     */
+    erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }),
+    // When someone marked the contact as not to be called or messaged.
+    contactWithdrawnAt: timestamp("contact_withdrawn_at", { withTimezone: true, mode: "date" }),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   },
@@ -462,6 +485,71 @@ export const followUps = pgTable(
   ],
 );
 
+/* ----------------------------------------------------------------- privacy */
+
+/*
+ * A request to erase a household's or an account's data, and once carried out
+ * the record that it was. Holds no personal data: who asked is the subject
+ * itself, and there is no free text.
+ */
+export const erasureRequests = pgTable(
+  "erasure_requests",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    householdId: uuid("household_id").references(() => households.id, { onDelete: "restrict" }),
+    userId: uuid("user_id").references(() => users.id, { onDelete: "restrict" }),
+    requestedAt: timestamp("requested_at", { withTimezone: true, mode: "date" }).notNull(),
+    loggedBy: uuid("logged_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    loggedAt: timestamp("logged_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }),
+    erasedBy: uuid("erased_by").references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [
+    check(
+      "erasure_requests_one_subject_check",
+      sql`(${table.householdId} IS NULL) <> (${table.userId} IS NULL)`,
+    ),
+    check(
+      "erasure_requests_erased_by_check",
+      sql`${table.erasedBy} IS NULL OR ${table.erasedAt} IS NOT NULL`,
+    ),
+    // One open request per subject, held here so two admins cannot both log it.
+    uniqueIndex("erasure_requests_one_open_household_idx")
+      .on(table.householdId)
+      .where(sql`${table.erasedAt} IS NULL`),
+    uniqueIndex("erasure_requests_one_open_user_idx")
+      .on(table.userId)
+      .where(sql`${table.erasedAt} IS NULL`),
+    index("erasure_requests_erased_idx").on(table.erasedAt),
+  ],
+);
+
+/*
+ * One row per run of the retention job: its counts, and the lease that keeps
+ * two runs from overlapping (an advisory lock does not hold through a
+ * transaction-mode pooler).
+ */
+export const retentionRuns = pgTable(
+  "retention_runs",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    startedAt: timestamp("started_at", { withTimezone: true, mode: "date" }).notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true, mode: "date" }),
+    households: integer("households").notNull().default(0),
+    accounts: integer("accounts").notNull().default(0),
+    signIns: integer("sign_ins").notNull().default(0),
+    more: boolean("more").notNull().default(false),
+  },
+  (table) => [
+    // At most one unfinished run: every such row indexes the same value.
+    uniqueIndex("retention_runs_one_unfinished_idx")
+      .on(sql`(true)`)
+      .where(sql`${table.finishedAt} IS NULL`),
+  ],
+);
+
 /* ------------------------------------------------------------------ types */
 
 export type User = typeof users.$inferSelect;
@@ -477,6 +565,9 @@ export type NewVisit = typeof visits.$inferInsert;
 export type SessionTeam = typeof sessionTeams.$inferSelect;
 export type FollowUp = typeof followUps.$inferSelect;
 export type NewFollowUp = typeof followUps.$inferInsert;
+
+export type ErasureRequestRow = typeof erasureRequests.$inferSelect;
+export type RetentionRunRow = typeof retentionRuns.$inferSelect;
 
 export type Role = (typeof roleEnum.enumValues)[number];
 export type Religion = (typeof religionEnum.enumValues)[number];

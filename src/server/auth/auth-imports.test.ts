@@ -80,10 +80,25 @@ describe("the raw Auth.js session", () => {
   });
 });
 
+/*
+ * The one route with no caller: the retention job's trigger takes the
+ * scheduler's bearer secret instead (#279), and reads no session at all.
+ */
+const CRON_ROUTE = "src/app/api/retention/run/route.ts";
+
 describe("every API route resolves its caller through the database", () => {
   const routes = files.filter(
-    (file) => /^src\/app\/api\/.*\/route\.[a-z]+$/.test(rel(file)) && !ALLOWED.has(rel(file)),
+    (file) =>
+      /^src\/app\/api\/.*\/route\.[a-z]+$/.test(rel(file)) &&
+      !ALLOWED.has(rel(file)) &&
+      rel(file) !== CRON_ROUTE,
   );
+
+  it("checks the scheduler's secret on the one route that has no caller", () => {
+    const text = readFileSync(resolve(ROOT, CRON_ROUTE), "utf8");
+    expect(text).toMatch(/from "@\/server\/privacy\/cron"/);
+    expect(text).not.toMatch(/server\/auth\/session/);
+  });
 
   it("finds the route files", () => {
     expect(routes.length).toBeGreaterThan(20);

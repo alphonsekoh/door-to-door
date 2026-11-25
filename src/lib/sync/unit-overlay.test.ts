@@ -112,3 +112,17 @@ describe("overlayQueued", () => {
     expect(overlayQueued([], [sent, elsewhere], BLOCK, TONIGHT)).toEqual([]);
   });
 });
+
+describe("an erased stub (#279)", () => {
+  it("is laid over nothing: it holds no unit, and was never sent as one", () => {
+    const stub: QueuedVisit = {
+      ...queued("#05-02"),
+      state: "synced",
+      syncedAt: NOW,
+      lastError: { code: "household_erased" },
+    };
+    expect(overlayQueued([server("#05-01")], [stub], BLOCK, TONIGHT, () => true)).toHaveLength(1);
+    // A unit only this phone knew is not drawn for it either.
+    expect(overlayQueued([], [stub], BLOCK, TONIGHT)).toEqual([]);
+  });
+});

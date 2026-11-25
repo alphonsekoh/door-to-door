@@ -44,9 +44,11 @@ export type SyncQueue = {
   get: (id: string) => Promise<QueuedVisit | undefined>;
   listByOwner: (ownerId: string) => Promise<QueuedVisit[]>;
   listAll: () => Promise<QueuedVisit[]>;
-  /* The only deletes there are, and both take sent records alone: nothing
-     unsent is ever removed (D-33-2). */
+  /* Sent records, and the stubs of erased ones, saved before this time. */
   deleteSyncedBefore: (before: number) => Promise<number>;
+  /* Records still unsent, whoever saved them, enqueued before this time: the
+     30 days an unsent record is kept at most (D-279, refining D-33-2). */
+  deleteUnsentBefore: (before: number) => Promise<number>;
   /* Every record this member has sent, however recently: what their sign-out
      takes with it. Nobody else's. */
   deleteSentBy: (ownerId: string) => Promise<number>;

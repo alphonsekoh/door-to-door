@@ -1,7 +1,13 @@
 import NextAuth from "next-auth";
 import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { buildBaseAuthConfig } from "@/server/auth/base-config";
-import { isApiPath, isPublicPath, isPwaPath, signInRedirect } from "@/server/auth/routes";
+import {
+  isApiPath,
+  isCronPath,
+  isPublicPath,
+  isPwaPath,
+  signInRedirect,
+} from "@/server/auth/routes";
 import { getConfig } from "@/server/config";
 import { isLoopbackHost } from "@/server/http/dev-hosts";
 
@@ -93,7 +99,7 @@ export default async function proxy(request: NextRequest, event: NextFetchEvent)
    * MissingCSRF. /sign-in still goes through: its cookie arriving with the page
    * is what stops the form's first auth requests each minting their own.
    */
-  if (isPwaPath(request.nextUrl.pathname)) {
+  if (isPwaPath(request.nextUrl.pathname) || isCronPath(request.nextUrl.pathname)) {
     return NextResponse.next();
   }
   const middleware = (await Promise.resolve(guard)) as unknown as AuthWrapped;

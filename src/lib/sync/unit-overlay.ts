@@ -1,4 +1,5 @@
 import type { HouseholdSummary, InterestLevel } from "@/generated/types.gen";
+import { isErased } from "@/lib/sync/record";
 import type { QueuedVisit } from "@/lib/sync/types";
 import type { UnitLike } from "@/lib/units/unit-list";
 import { normaliseUnitNumber } from "@/lib/units/unit-number";
@@ -33,7 +34,8 @@ export function overlayQueued(
   /* Newest last, so the map keeps the latest record for each unit. */
   const pending = new Map<string, QueuedVisit>();
   for (const record of [...records].sort((a, b) => a.enqueuedAt - b.enqueuedAt)) {
-    if (!overlays(record) || record.item.blockId !== blockId) continue;
+    /* An erased stub holds nothing of the unit: it is not "sent", it is gone. */
+    if (isErased(record) || !overlays(record) || record.item.blockId !== blockId) continue;
     pending.set(normaliseUnitNumber(record.item.unitNumber), record);
   }
 

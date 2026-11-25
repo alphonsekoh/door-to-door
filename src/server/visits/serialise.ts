@@ -25,6 +25,7 @@ export function toHousehold(row: HouseholdRow): Household {
     name: row.name,
     contact: row.contact,
     religion: row.religion,
+    contactWithdrawnAt: row.contactWithdrawnAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -91,7 +92,7 @@ export function toHouseholdSummary(row: HouseholdSummaryRow): HouseholdSummary {
   return {
     household: toHousehold(row.household),
     visitCount: row.visitCount,
-    latestVisit: row.latestVisit === null ? null : toVisit(row.latestVisit),
+    latestVisit: toVisit(row.latestVisit),
     outstandingFollowUps: row.outstandingFollowUps,
   };
 }

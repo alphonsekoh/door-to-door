@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import {
+  LOCAL_COPY_HOURS,
   POLICY_SECTIONS,
   RESPONSE_TIMES,
   RESTORE_WINDOW_HOURS,
   RETENTION,
+  RETENTION_PERIODS,
   hours,
   type PrivacyContact,
   type SectionId,
@@ -119,12 +121,23 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           <li>We stop using it within {RESPONSE_TIMES.withdrawal}.</li>
           <li>We erase it within {RESPONSE_TIMES.erasure}.</li>
           <li>
-            Erasing a household deletes its name, contact and religion, its follow-up notes and
-            removal reasons, and deletes the visit notes or detaches them from the unit. We keep
-            only a note that it was erased, and when and by whom.
+            Erasing a household deletes its name, contact and religion, its visits with their notes,
+            and its follow-up notes and removal reasons. We keep the unit, and when and by whom it
+            was erased.
+          </li>
+          <li>
+            Erasing a member&apos;s account deletes their name, email, Google link, password and
+            sign-ins. The visits they recorded stay, as the household&apos;s history, under no name.
           </li>
           <li>A member who withdraws can no longer use the app.</li>
-          <li>It also covers copies on phones and in logs.</li>
+          <li>
+            A record not yet sent from a phone, for a unit erased since, is deleted when the phone
+            next sends it, and the member is told. A phone&apos;s copy of the session&apos;s units
+            goes within {hours(LOCAL_COPY_HOURS)}, and a record never sent goes after{" "}
+            {RETENTION_PERIODS.unsentRecordDays} days at most, each deleted the next time the app is
+            opened after that.
+          </li>
+          <li>Copies exported as CSV files are deleted too. Logs are deleted as they expire.</li>
           <li>
             Our database provider can restore it as it was up to {hours(RESTORE_WINDOW_HOURS)} back,
             so erased data can remain in that history until then.
@@ -134,7 +147,10 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
     ),
     retention: (
       <>
-        <P>We keep each kind of data for no longer than this.</P>
+        <P>
+          We keep each kind of data for no longer than this. A daily job erases or deletes each item
+          once its period ends, and a large backlog can take it a few days.
+        </P>
         <ul className="space-y-2">
           {RETENTION.map(({ id, what, keep }) => (
             <li key={id} className="rounded-lg border border-border bg-surface px-3 py-2 text-body">
@@ -154,7 +170,9 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
         </li>
         <li>
           Signing out drops that member&apos;s sent records and the session&apos;s units, with their
-          earlier visits, from the phone. Records not yet sent stay until they are sent.
+          earlier visits, from the phone. Records not yet sent stay until they are sent, for{" "}
+          {RETENTION_PERIODS.unsentRecordDays} days at most, deleted the next time the app is opened
+          after that.
         </li>
         <li>We keep the latest details we know, and anyone can ask for a correction.</li>
       </List>
@@ -187,7 +205,8 @@ function bodies({ organisation, dpoEmail }: PrivacyContact): Record<SectionId, R
           Our team may call or text a contact we hold, to arrange a visit or to send an invitation
           or another message, but only after asking the person and getting their agreement. You can
           withdraw that agreement at any time, by telling us or by emailing {dpoEmail}. The app does
-          not record that agreement.
+          not record that agreement. If you withdraw it, we mark your contact so the team does not
+          call or message it.
         </P>
       </>
     ),

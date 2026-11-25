@@ -6,6 +6,7 @@ import { waitingSentence } from "@/lib/follow-ups/waiting";
 import { firstName } from "@/lib/session/own-name";
 import { sameUuid } from "@/lib/uuid";
 import { firstOrThrow, isConstraintViolation } from "@/server/db-utils";
+import { assertHoldsSomething } from "@/server/privacy/erasure";
 import { isNoteOnActiveRevisitList, liveFollowUp } from "@/server/follow-ups/list-rule";
 import {
   ConflictError,
@@ -160,15 +161,20 @@ async function hasOpenNote(
  * suggesting it at once each find nothing and both write, leaving it listed
  * with a suggestion waiting beside it.
  */
-async function lockHousehold(tx: Database, householdId: string): Promise<void> {
+async function lockHousehold(
+  tx: Database,
+  householdId: string,
+): Promise<{ erasedAt: Date | null }> {
   const found = await tx
-    .select({ id: households.id })
+    .select({ id: households.id, erasedAt: households.erasedAt })
     .from(households)
     .where(eq(households.id, householdId))
     .for("update");
-  if (found.length === 0) {
+  const household = found[0];
+  if (!household) {
     throw new NotFoundError("No such household.");
   }
+  return household;
 }
 
 export type NewFollowUp = {
@@ -196,7 +202,8 @@ async function insertFollowUp(
   input: NewFollowUp,
   actor: Actor,
 ): Promise<FollowUpRow> {
-  await lockHousehold(db, input.householdId);
+  const household = await lockHousehold(db, input.householdId);
+  await assertHoldsSomething(db, input.householdId, household);
 
   if (input.visitId != null) {
     const visit = await db

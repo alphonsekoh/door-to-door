@@ -44,7 +44,7 @@ Owner decisions are marked **(owner)**.
   A store missing `visits`, a newer version on disk or a closed connection reject per
   call and fall back to the direct save (D-33-10); never a delete, a downgrade or a
   version bump. The provider renders with a queue it cannot read. _Why:_ D-33-2, D-77-2.
-- **D-34-8 · Salvage a record whose only damage is its bookkeeping (owner, option B).**
+- **D-34-8 · Salvage a record whose only damage is its bookkeeping (owner, option B).** _Superseded in part by D-279-17: an unreadable record is deleted at 30 days._
   A stored record failing the check whose `item` (with `sessionId`) and `ownerId` still
   pass the schema reads back as a fresh `queued` record (attempts 0, no error, due now,
   `enqueuedAt` kept when readable) and is sent; a replay the server holds answers

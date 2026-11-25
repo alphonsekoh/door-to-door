@@ -34,9 +34,9 @@ function field(raw: unknown, key: string): unknown {
 }
 
 /*
- * A record that fails the check is never thrown and never deleted (D-33-8):
- * one bad row must not take the whole list down, and deleting it would
- * silently drop what may be a real knock.
+ * A record that fails the check is never thrown (D-33-8): one bad row must
+ * not take the whole list down. It is not deleted here either, though one
+ * that stays unreadable is purged with the other unsent ones (D-279).
  *
  * When only the bookkeeping is damaged, and the item and its owner still
  * pass, it comes back as a fresh queued record and is sent; a replay of one
@@ -61,6 +61,11 @@ export function readRecord(raw: unknown): QueuedVisit {
 
   const salvage = zSalvageable.safeParse(raw);
   if (salvage.success && salvage.data.id === salvage.data.item.id) {
+    /* Its age from the knock, which was validated, and from the stored stamp
+       only when that is older: an unreadable or zero stamp must not read as
+       1970 (the next purge would delete a sendable record), nor a restamp
+       outlive the 30 days. */
+    const savedAt = Date.parse(salvage.data.item.clientCreatedAt);
     return {
       id: salvage.data.id,
       ownerId: salvage.data.ownerId,
@@ -70,7 +75,7 @@ export function readRecord(raw: unknown): QueuedVisit {
       skewCount: 0,
       nextAttemptAt: 0,
       lastError: null,
-      enqueuedAt,
+      enqueuedAt: typeof stamp === "number" && stamp > 0 ? Math.min(stamp, savedAt) : savedAt,
       syncedAt: null,
       serverVisit: null,
     };
@@ -99,6 +104,18 @@ export function readRecord(raw: unknown): QueuedVisit {
   };
 }
 
+export const HOUSEHOLD_ERASED = "household_erased";
+
+/*
+ * A record the server refused because its unit was erased after it was saved
+ * (#279). It is settled, not unsent: it is kept as a stub with no data, in
+ * state "synced", so that everything that treats a sent record as done (the
+ * 24-hour expiry, sign-out, the update gate, the overlays) treats it so too.
+ */
+export function isErased(record: QueuedVisit): boolean {
+  return record.state === "synced" && record.lastError?.code === HOUSEHOLD_ERASED;
+}
+
 export function isCorrupt(record: QueuedVisit): boolean {
   return record.lastError?.code === CORRUPT;
 }
@@ -113,4 +130,9 @@ export function isExpired(record: QueuedVisit, before: number): boolean {
 /* Sent at any time, judged as above. */
 export function isSent(record: QueuedVisit): boolean {
   return isExpired(record, Number.POSITIVE_INFINITY);
+}
+
+/* Not sent, whatever it is stuck on: enqueued at or before `before`. */
+export function isUnsentBefore(record: QueuedVisit, before: number): boolean {
+  return record.state !== "synced" && record.enqueuedAt <= before;
 }

@@ -87,7 +87,7 @@ afterAll(async () => {
 describe("a block's unit list", () => {
   it("waits on four round trips for its eight queries", async () => {
     const { rows } = await listHouseholds(db, { blockId: BLOCK, limit: 100, offset: 0 });
-    expect(rows[0]?.latestVisit?.team?.members).toEqual([{ id: BEN, name: "Ben", image: null }]);
+    expect(rows[0]?.latestVisit.team?.members).toEqual([{ id: BEN, name: "Ben", image: null }]);
     // The block, the page and the total; the summaries and what is owed;
     // the latest visits; their teams.
     expect(trips.sent).toBe(8);

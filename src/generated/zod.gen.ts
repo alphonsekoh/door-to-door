@@ -83,6 +83,7 @@ export const zErrorCode = z.enum([
     'block_in_use',
     'not_on_follow_up_list',
     'follow_up_exists',
+    'household_erased',
     'rate_limited',
     'unsupported_media_type',
     'content_too_large',
@@ -180,6 +181,7 @@ export const zHousehold = z.object({
     name: z.string().max(160).nullable(),
     contact: z.string().max(64).nullable(),
     religion: zReligion.nullable(),
+    contactWithdrawnAt: z.iso.datetime().nullish(),
     createdAt: z.iso.datetime(),
     updatedAt: z.iso.datetime()
 });
@@ -416,7 +418,10 @@ export const zVisitSyncRequest = z.object({
 /**
  * `applied` — written. `unchanged` — already present and identical, the
  * normal result of a replay. `stale` — an older edit, acknowledged but not
- * applied. `rejected` — invalid; see `error`.
+ * applied. `rejected` — invalid; see `error`. A `rejected` item with
+ * error code `household_erased` will never be accepted: its unit was
+ * erased after it was recorded, and a client should delete what it
+ * holds of it and tell the member.
  *
  */
 export const zVisitSyncResultStatus = z.enum([
@@ -440,6 +445,56 @@ export const zVisitSyncResult = z.object({
  */
 export const zVisitSyncResponse = z.object({
     results: z.array(zVisitSyncResult)
+});
+
+/**
+ * Whose data a request is for: a `household` (the people at a unit) or
+ * a member's `account`.
+ *
+ */
+export const zErasureSubjectKind = z.enum(['household', 'account']);
+
+/**
+ * A person's request to have their data erased, and, once an admin has
+ * carried it out, the record that it was: when and by whom. It holds no
+ * personal data of its own: who asked is the subject itself, never a
+ * name.
+ *
+ */
+export const zErasureRequest = z.object({
+    id: z.uuid(),
+    kind: zErasureSubjectKind,
+    household: zHousehold.nullable(),
+    block: zBlock.nullable(),
+    account: zUserSummary.nullable(),
+    requestedAt: z.iso.datetime(),
+    loggedBy: zUserSummary,
+    loggedAt: z.iso.datetime(),
+    erasedAt: z.iso.datetime().nullable(),
+    erasedBy: zUserSummary.nullable()
+});
+
+export const zCreateErasureRequestRequest = z.object({
+    kind: zErasureSubjectKind,
+    id: z.uuid(),
+    requestedAt: z.iso.datetime().optional()
+});
+
+/**
+ * What one run of the retention job did. Counts only.
+ */
+export const zRetentionRun = z.object({
+    ranAt: z.iso.datetime(),
+    households: z.int(),
+    accounts: z.int(),
+    signIns: z.int(),
+    more: z.boolean()
+});
+
+export const zErasureRequestList = z.object({
+    data: z.array(zErasureRequest),
+    pagination: zPaginationMeta,
+    lastRetentionRun: zRetentionRun.nullable()
 });
 
 export const zCreateFollowUpRequest = z.object({
@@ -918,6 +973,56 @@ export const zGetHouseholdHistoryQuery = z.object({
  * The unit, its notes, and a page of its visits.
  */
 export const zGetHouseholdHistoryResponse = zHouseholdHistory;
+
+export const zClearContactWithdrawnPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The household, with `contactWithdrawnAt` null.
+ */
+export const zClearContactWithdrawnResponse = zHousehold;
+
+export const zMarkContactWithdrawnPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The household, with `contactWithdrawnAt` set.
+ */
+export const zMarkContactWithdrawnResponse = zHousehold;
+
+export const zListErasureRequestsQuery = z.object({
+    status: z.enum(['open', 'erased']).optional().default('open'),
+    limit: z.int().gte(1).lte(100).optional().default(50),
+    offset: z.int().gte(0).lte(10000).optional().default(0)
+});
+
+/**
+ * A page of requests, and the retention job's latest run.
+ */
+export const zListErasureRequestsResponse = zErasureRequestList;
+
+export const zCreateErasureRequestBody = zCreateErasureRequestRequest;
+
+/**
+ * An open request for the same subject, already logged.
+ */
+export const zCreateErasureRequestResponse = zErasureRequest;
+
+export const zEraseErasureRequestPath = z.object({
+    id: z.uuid()
+});
+
+/**
+ * The request, carried out.
+ */
+export const zEraseErasureRequestResponse = zErasureRequest;
+
+/**
+ * What the run did.
+ */
+export const zRunRetentionResponse = zRetentionRun;
 
 export const zListVisitsQuery = z.object({
     sessionId: z.uuid().optional(),

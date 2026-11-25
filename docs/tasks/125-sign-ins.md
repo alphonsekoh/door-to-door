@@ -56,7 +56,7 @@ fixes #162. The issue's password features are dropped (D-125-1). The owner's rul
   throttle it).** The write is a conditional UPDATE (`last_used_at < now() - 15 min`)
   after the check, on Postgres's clock. _Why:_ a request seldom writes, two requests at
   once write it once, and several app servers agree on the time.
-- **D-125-7 · A sign-in unused for 30 days plus 15 minutes has ended.** The per-request
+- **D-125-7 · A sign-in unused for 30 days plus 15 minutes has ended.** _Refined by D-279-12: the retention job also deletes such rows._ The per-request
   check and the admin list use the same bound. Such rows are deleted at that member's
   next sign-in. The 30 days is `SESSION_MAX_AGE_SECONDS` (`src/server/auth/lifetime.ts`),
   which Auth.js's `maxAge` also uses. _Why:_ no token naming the row can still be valid,

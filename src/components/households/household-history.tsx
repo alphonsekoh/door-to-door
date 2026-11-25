@@ -10,6 +10,8 @@ import {
 } from "react";
 import { FollowUpItem } from "@/components/follow-ups/follow-up-item";
 import { FollowUpSheet, type FollowUpSheetMode } from "@/components/follow-ups/follow-up-sheet";
+import { ContactLine } from "@/components/privacy/contact-line";
+import { PrivacyActions } from "@/components/privacy/privacy-actions";
 import { VisitByline } from "@/components/visits/visit-byline";
 import type { ActiveSession, FollowUp, HouseholdHistory, Visit } from "@/generated/types.gen";
 import { apiFetch } from "@/lib/api-client";
@@ -222,9 +224,7 @@ export function HouseholdHistoryPanel({
       <p ref={firstLine} tabIndex={atDoor ? -1 : undefined} className="text-body font-semibold">
         {household.name ?? (history.answered ? "Name not known" : "Nobody has answered here yet")}
       </p>
-      {household.contact === null ? null : (
-        <p className="text-caption text-foreground-muted">{household.contact}</p>
-      )}
+      <ContactLine household={household} />
 
       {sent === null ? null : (
         <p role="status" className="mt-3 notice-success">
@@ -331,6 +331,19 @@ export function HouseholdHistoryPanel({
           )}
         </ol>
       ) : null}
+
+      <PrivacyActions
+        household={household}
+        holdsData={
+          household.name !== null ||
+          household.contact !== null ||
+          household.religion !== null ||
+          history.pagination.total > 0 ||
+          followUps.length > 0
+        }
+        atDoor={atDoor}
+        onChanged={onChanged}
+      />
 
       <SheetPresence>
         {sheet === null ? null : (

@@ -3,8 +3,15 @@
 import { InterestChip } from "@/components/ui/interest-chip";
 import { useSyncQueue } from "@/components/sync/sync-provider";
 import { canRetry } from "@/lib/sync/classify";
-import { isCorrupt } from "@/lib/sync/record";
-import { QUEUE_NOTE, blockReason, queueTitle, recordReason, stateLabel } from "@/lib/sync/sync-ui";
+import { isCorrupt, isErased } from "@/lib/sync/record";
+import {
+  QUEUE_NOTE,
+  blockReason,
+  deleteNote,
+  queueTitle,
+  recordReason,
+  stateLabel,
+} from "@/lib/sync/sync-ui";
 import { Sheet, SheetActions, SheetPresence } from "@/components/ui/sheet";
 import { formatDayTime } from "@/lib/history/dates";
 import { UnitNumber } from "@/components/ui/unit-number";
@@ -23,8 +30,10 @@ export function SyncQueuePresence({ open, onClose }: { open: boolean; onClose: (
 export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
   const { records, inFlight, block, retry, retryAll } = useSyncQueue();
   const unsent = records.filter((record) => record.state !== "synced");
+  /* Erased stubs stay listed for the day they are kept, so the member can read why. */
+  const shown = records.filter((record) => record.state !== "synced" || isErased(record));
   const why = blockReason(block);
-  const title = queueTitle(unsent);
+  const title = queueTitle(shown);
   /* With no signal Retry all cannot succeed, so it is not the loud action;
      it stays available, because one bar can read as none. */
   const offline = block?.reason === "offline";
@@ -38,12 +47,13 @@ export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
         </p>
       )}
 
-      {unsent.length === 0 ? (
+      {shown.length === 0 ? (
         <p className="mt-4 text-body text-foreground-muted">Everything has been sent.</p>
       ) : (
         <ul className="mt-3 overflow-hidden rounded-xl border border-border bg-surface">
-          {unsent.map((record) => {
+          {shown.map((record) => {
             const reason = recordReason(record);
+            const deletion = deleteNote(record);
             const sending = inFlight.has(record.id);
             return (
               <li
@@ -67,6 +77,9 @@ export function SyncQueueSheet({ onClose }: { onClose: () => void }) {
                     {stateLabel(record, inFlight)} · saved {formatDayTime(record.enqueuedAt)}
                   </span>
                   {reason === null ? null : <span className="block text-caption">{reason}</span>}
+                  {deletion === null ? null : (
+                    <span className="block text-caption text-foreground-muted">{deletion}</span>
+                  )}
                 </span>
                 {sending || !canRetry(record) ? null : (
                   <button

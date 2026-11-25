@@ -120,6 +120,29 @@ describe("SyncProvider", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("purges what the phone may no longer hold at start, signed in or not (#279)", () => {
+    const purge = vi.fn(() => Promise.resolve());
+    usePathname.mockReturnValue("/sign-in");
+    useRole.mockReturnValue({ userId: undefined });
+    const view = render(
+      <SyncProvider openQueue={() => Promise.resolve(null)} purge={purge}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(text("active")).toBe("off");
+    expect(purge).toHaveBeenCalledOnce();
+
+    // Once per page load: a rerender, or someone signing in, does not purge again.
+    useRole.mockReturnValue({ userId: "ann" });
+    usePathname.mockReturnValue("/blocks/b1");
+    view.rerender(
+      <SyncProvider openQueue={() => Promise.resolve(null)} purge={purge}>
+        <Probe />
+      </SyncProvider>,
+    );
+    expect(purge).toHaveBeenCalledOnce();
+  });
+
   it("is off on a public page", () => {
     usePathname.mockReturnValue("/sign-in");
     mount();

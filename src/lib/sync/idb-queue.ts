@@ -1,5 +1,5 @@
 import { type DBSchema, type IDBPDatabase, openDB } from "idb";
-import { isExpired, isSent, readRecord } from "@/lib/sync/record";
+import { isExpired, isSent, isUnsentBefore, readRecord } from "@/lib/sync/record";
 import type { QueuedVisit, SyncQueue } from "@/lib/sync/types";
 
 /*
@@ -42,6 +42,18 @@ function wrap(db: IDBPDatabase<Schema>): SyncQueue {
       let removed = 0;
       for await (const cursor of tx.store) {
         if (isExpired(readRecord(cursor.value), before)) {
+          await cursor.delete();
+          removed += 1;
+        }
+      }
+      await tx.done;
+      return removed;
+    },
+    async deleteUnsentBefore(before) {
+      const tx = db.transaction(STORE, "readwrite");
+      let removed = 0;
+      for await (const cursor of tx.store) {
+        if (isUnsentBefore(readRecord(cursor.value), before)) {
           await cursor.delete();
           removed += 1;
         }

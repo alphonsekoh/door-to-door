@@ -23,9 +23,10 @@ export type HistorySummary = {
   visits: string;
 };
 
-/* Never none: a household is made by its first visit, and no visit is
-   deleted. */
+/* None only for a unit erased and not visited since (#279): its row stays as
+   the unit alone. */
 export function visitCount(total: number): string {
+  if (total === 0) return "No visits";
   return total === 1 ? "1 visit" : `${String(total)} visits`;
 }
 

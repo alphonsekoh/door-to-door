@@ -639,6 +639,7 @@ describe("follow-up sessions and the list", () => {
       ["Needs a return visit", "/admin/attention"],
       ["All records", "/admin/history"],
       ["Team", "/admin/team"],
+      ["Erasure requests", "/admin/privacy"],
     ]);
   });
 

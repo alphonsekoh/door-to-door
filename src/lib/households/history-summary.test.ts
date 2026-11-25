@@ -138,3 +138,9 @@ describe("historyLine", () => {
     expect(historyLine(typed({ matched: false }), NOW)).toBeNull();
   });
 });
+
+describe("visitCount of a unit erased and not visited since (#279)", () => {
+  it("says there are none", () => {
+    expect(visitCount(0)).toBe("No visits");
+  });
+});

@@ -42,7 +42,7 @@ in a block no longer attached. Found by a security audit.
   row first.
 - **D-123-5 · An amend still marks no follow-up done.** Keeps D-117-65. _Why:_ only a
   new visit marks, and an amend now shares that write's locks, not its effects.
-- **D-123-6 · `getVisit`'s not-found branch is an `InternalError` (`firstOrThrow`).**
+- ~~**D-123-6 · `getVisit`'s not-found branch is an `InternalError` (`firstOrThrow`).**~~ _Superseded by D-279-8: `getVisit` and the amend lock answer 404 for a visit erased meanwhile._
   PATCH's `404` now comes from the locking read. _Why:_ every caller reads back a visit
   it has just stored or found, and nothing deletes one: `visits.deleted_at` is never
   set, and households, which cascade to visits, are never deleted. _Trade-off:_ a

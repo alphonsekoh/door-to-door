@@ -3371,6 +3371,18 @@ false`) on that date.
 - **Finding:** Neon is in ap-southeast-1 (Singapore) and the functions run in `sin1`
   (ARCHITECTURE, Production database). Vercel is a US company whose network and logs may
   process requests elsewhere. Neon's restore history window is not verified: 1 day is a
-  placeholder the owner is confirming in the Neon console.
+  placeholder the owner is confirming in the Neon console. Vercel's log retention for the
+  plan in use is also unverified; the policy's 30-day log period rests on it (#279).
 - **Source:** owner ruling 2026-11-23; Neon console (pending).
 - **Used by:** D-273-5, D-273-6
+
+### R-261 · Vercel Cron: a daily GET with a bearer secret, UTC, allowed on Hobby (as cited in the #279 plan; not re-verified)
+
+- **Finding:** Vercel Cron calls a path in `vercel.json` with a `GET` once a schedule is
+  due, in UTC, and sends `Authorization: Bearer $CRON_SECRET` when that variable is set in
+  the project; a Hobby project may run a cron once a day. A function's `maxDuration` caps a
+  run, so the job is capped at 200 households and 200 accounts and sets `more`. Neon's
+  transaction-mode pooler does not hold session advisory locks (R-258, D-250), hence the
+  lease row.
+- **Source:** the planner's reading of Vercel's Cron Jobs documentation, 2026-11-25.
+- **Used by:** D-279-13, D-279-14, D-279-15

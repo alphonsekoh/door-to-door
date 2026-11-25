@@ -1,5 +1,7 @@
 import type { Block } from "@/lib/sync/classify";
-import { isCorrupt } from "@/lib/sync/record";
+import { formatDay } from "@/lib/history/dates";
+import { RETENTION_PERIODS } from "@/lib/privacy/policy";
+import { isCorrupt, isErased } from "@/lib/sync/record";
 import type { QueuedVisit } from "@/lib/sync/types";
 
 /*
@@ -23,7 +25,7 @@ export function stateLabel(record: QueuedVisit, inFlight: ReadonlySet<string>): 
     case "quarantined":
       return "Stopped";
     case "synced":
-      return "Sent";
+      return isErased(record) ? "Not kept" : "Sent";
   }
 }
 
@@ -32,6 +34,9 @@ const REFUSED = "The server would not accept this record. Ask an admin.";
 
 /* Why this one record is where it is, or null when its state says enough. */
 export function recordReason(record: QueuedVisit): string | null {
+  if (isErased(record)) {
+    return "This unit's records were erased after you saved this, so it was not kept.";
+  }
   if (isCorrupt(record)) return "This record could not be read on this phone.";
   const code = record.lastError?.code;
   switch (record.state) {
@@ -52,6 +57,21 @@ export function recordReason(record: QueuedVisit): string | null {
     default:
       return null;
   }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/*
+ * A record still unsent 30 days after it was saved is deleted when the app
+ * next starts (D-279), whatever it is stuck on, so every unsent row says
+ * when, before it goes - from the day it is saved, so the date is never a
+ * surprise.
+ */
+export function deleteNote(record: QueuedVisit): string | null {
+  if (record.state === "synced") return null;
+  if (record.enqueuedAt <= 0) return "Deleted from this phone the next time the app opens.";
+  const on = formatDay(record.enqueuedAt + RETENTION_PERIODS.unsentRecordDays * DAY_MS);
+  return `Deleted from this phone on ${on} if not sent.`;
 }
 
 /* Why nothing is going out at all. */
@@ -85,7 +105,11 @@ export function barSummary(
   justSaved: ReadonlySet<string>,
 ): BarSummary | null {
   const unsent = records.filter((r) => r.state !== "synced" && !justSaved.has(r.id));
-  if (unsent.length === 0) return null;
+  if (unsent.length === 0) {
+    /* Settled, but not kept: the member should hear that, for the day the stub lasts. */
+    const notKept = records.filter((r) => isErased(r) && !justSaved.has(r.id)).length;
+    return notKept === 0 ? null : { count: notKept, text: `${String(notKept)} not kept` };
+  }
   const count = unsent.length;
   const stuck = unsent.some((r) => r.state === "held" || r.state === "quarantined");
   return { count, text: stuck ? `${String(count)} not sent` : `${String(count)} waiting to send` };
@@ -95,7 +119,8 @@ export function barSummary(
    actually stuck, and only then "not sent". */
 export function queueTitle(records: readonly QueuedVisit[]): string {
   const stuck = records.some((r) => r.state === "held" || r.state === "quarantined");
-  return stuck ? "Records not sent" : "Waiting to send";
+  if (stuck) return "Records not sent";
+  return records.length > 0 && records.every(isErased) ? "Records not kept" : "Waiting to send";
 }
 
 /* What the bar reads when it has nothing to count. A record saved on this

@@ -195,7 +195,7 @@ none` where the offer sits beside the words.
   never blocks. _Why:_ it says only what is known, and a failed read is not an empty
   history. _Partly superseded by D-196-29 (owner, 2026-11-18):_ three states, and no line
   at all for any other unit; the rest stands.
-- **D-196-20 · The summary follows the panel's rules.** The first part is "On the
+- **D-196-20 · The summary follows the panel's rules.** _Refined by D-279-22: `visitCount(0)` reads "No visits"._ The first part is "On the
   follow-up list" for a listed note still owed, else "Waiting for review" for a waiting
   suggestion. Overdue counts owed notes only (D-117-6), past their day (D-35-4) as of
   when the history landed. The count is `pagination.total` (D-160-1), and `visitCount`

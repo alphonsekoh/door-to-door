@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { EraseSheet } from "@/components/privacy/erase-sheet";
 import { PageHeader } from "@/components/ui/page-header";
 import { ConfirmDialog, SheetPresence } from "@/components/ui/sheet";
 import type { SignIn, SignInList, User } from "@/generated/types.gen";
 import { ApiRequestError, apiFetch } from "@/lib/api-client";
 import { failureLine } from "@/lib/failure-line";
 import { useRefusalFocus } from "@/lib/hooks/use-refusal-focus";
+import { useRole } from "@/lib/hooks/use-role";
 import { formatDayTime } from "@/lib/history/dates";
 
 const BACK = { href: "/admin/team", label: "Team" };
@@ -20,6 +22,8 @@ const NO_ANSWER = "Could not sign out. Check your connection and try again.";
 type State =
   | { status: "loading" }
   | { status: "ready"; user: User; signIns: SignIn[] }
+  /* Erased from this page: there is nothing left of the account to read. */
+  | { status: "erased" }
   | { status: "error"; message: string };
 
 /*
@@ -38,6 +42,8 @@ export function MemberDetail({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [ending, setEnding] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [erasing, setErasing] = useState(false);
+  const { userId: callerId } = useRole();
   /*
    * Drawn just above the control pressed, where the admin is looking: at the
    * top of a long list it was off the screen. Not drawn once the list read
@@ -149,6 +155,17 @@ export function MemberDetail({ userId }: { userId: string }) {
     );
   }
 
+  if (state.status === "erased") {
+    return (
+      <>
+        <PageHeader title="Member" back={BACK} />
+        <p role="status" className="notice-success">
+          Erased. What they recorded stays, under no name.
+        </p>
+      </>
+    );
+  }
+
   if (state.status === "error") {
     return (
       <>
@@ -252,7 +269,44 @@ export function MemberDetail({ userId }: { userId: string }) {
             )}
       </section>
 
+      {/* Never your own: the server refuses it too. */}
+      {user.id === callerId ? null : (
+        <section aria-labelledby="erase-heading" className="mt-6 space-y-2">
+          <h2 id="erase-heading" className="text-title font-semibold">
+            Erase this account
+          </h2>
+          <p className="text-body text-foreground-muted">
+            Deletes their name, email, Google link, password and sign-ins. What they recorded stays,
+            under no name.
+          </p>
+          <div className="scroll-clear-nav">
+            <button
+              type="button"
+              onClick={() => {
+                setErasing(true);
+              }}
+              className="min-h-12 w-full btn-danger-outline rounded-xl text-body font-medium"
+            >
+              Erase this account…
+            </button>
+          </div>
+        </section>
+      )}
+
       <SheetPresence>
+        {erasing ? (
+          <EraseSheet
+            subject={{ kind: "account", id: user.id, label: name }}
+            mode="erase"
+            onClose={() => {
+              setErasing(false);
+            }}
+            onDone={() => {
+              setErasing(false);
+              setState({ status: "erased" });
+            }}
+          />
+        ) : null}
         {confirming ? (
           <ConfirmDialog
             title={self ? "Sign out your other devices?" : `Sign ${name} out everywhere?`}

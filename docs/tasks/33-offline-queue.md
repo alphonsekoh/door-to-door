@@ -29,7 +29,7 @@ Owner decisions are marked **(owner)**.
   _Refined by D-129-6 (owner, 2026-11-04):_ sign-out deletes the signing-out member's
   sent records and sign-in deletes none. Nothing unsent is ever cleared, and another
   member's records, sent ones included, stay on the phone, hidden.
-- **D-33-2 · No discard (owner).** Held and quarantined records cannot be discarded;
+- **D-33-2 · No discard (owner).** _Superseded in part by D-279-16 (an erased unit's record becomes a "not kept" stub) and D-279-17 (a record unsent 30 days after it was saved is deleted at app start)._ Held and quarantined records cannot be discarded;
   Retry is the only action. The only delete is the purge of sent records (D-33-9).
   _Why:_ nothing unsent is ever dropped. _Refined by D-129-6:_ a second delete, of sent
   records only, and only the signing-out member's.
@@ -58,14 +58,14 @@ Owner decisions are marked **(owner)**.
   Locks the run goes ahead in-tab. Tabs tell each other to re-read over
   `BroadcastChannel`. _Why:_ the server's idempotency keeps a double send harmless, so
   the lock is an economy, not a guarantee. _Research:_ R-45.
-- **D-33-8 · Every stored record is validated on read.** A record failing the generated
+- **D-33-8 · Every stored record is validated on read.** _"Never deleted" superseded by D-279-17: a corrupt record is deleted 30 days after it was saved, or at once if its time cannot be read._ A record failing the generated
   schema comes back quarantined as `corrupt`: never thrown, never deleted, never sent,
   not retryable. _Why:_ storage outlives the code that wrote it; deleting may drop a
   real knock.
   **Refined by D-34-8 (owner):** a record whose `item` (with `sessionId`) and `ownerId`
   still pass is salvaged as a fresh `queued` record and sent; only the rest are
   `corrupt`.
-- **D-33-9 · Sent records are kept 24 h, purged on app start.** _Why:_ the unit list
+- **D-33-9 · Sent records are kept 24 h, purged on app start.** _Refined by D-279-17: the purge covers every owner, signed in or not._ _Why:_ the unit list
   and Add follow-up need the server's row after the send. _Refined by D-129-6:_ or until
   their own member signs out on this phone, whichever comes first.
 - **D-33-10 · The form saves to the queue first.** It falls back to a direct

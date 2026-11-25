@@ -12,9 +12,9 @@ with the constraints that carry the domain rules.
 
 - **D-07-1 · Household = `(block_id, unit_number)`, unique.** Name, contact, religion are
   nullable latest-known fields, only ever updated with non-null values. _Why:_ a later
-  visit that learns nothing must not erase what an earlier one recorded. **Invariant.**
+  visit that learns nothing must not erase what an earlier one recorded. **Invariant.** _Applied exception, D-273-11 and D-279-1: erasure, on a request or at expiry, nulls the identity._
 - **D-07-2 · `interest_level` and `description` live on the visit and are never
-  overwritten.** _Why:_ the interest trajectory over time is the product. **Invariant.**
+  overwritten.** _Why:_ the interest trajectory over time is the product. **Invariant.** _Applied exception, D-273-11 and D-279-1: an erased household's visits are deleted._
 - **D-07-3 · `visits.id` has no database default; the client supplies a UUIDv7.**
   _Why:_ a default would duplicate a replayed offline write. A test asserts
   `hasDefault === false`. **Invariant.**

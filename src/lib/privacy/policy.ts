@@ -9,7 +9,7 @@
 export type PrivacyContact = { organisation: string; dpoEmail: string };
 
 /* Noon UTC, so no time zone moves the day it names. Change it with the text. */
-export const POLICY_UPDATED = "2026-11-23T12:00:00Z";
+export const POLICY_UPDATED = "2026-11-25T12:00:00Z";
 
 export const POLICY_SECTION_IDS = [
   "who",
@@ -52,24 +52,51 @@ export const POLICY_SECTIONS: readonly { id: SectionId; heading: string }[] = [
  */
 export const RESTORE_WINDOW_HOURS = 6;
 
+/*
+ * The periods the retention job and the phone's purge apply (#279), as numbers
+ * so the code and the policy's words below cannot drift: a test ties them.
+ */
+export const RETENTION_PERIODS = {
+  householdMonths: 24,
+  accountMonths: 12,
+  signInDays: 30,
+  unsentRecordDays: 30,
+} as const;
+
+/* A household's request is acted on within this many weekdays (the stricter of the two response times). */
+export const ERASE_WITHIN_WEEKDAYS = 10;
+
+/* The phone's units copy, which LOCAL_COPY_TTL_MS counts in milliseconds; a test ties them. */
+export const LOCAL_COPY_HOURS = 12;
+
 export const hours = (count: number): string =>
   `${String(count)} ${count === 1 ? "hour" : "hours"}`;
 
 export const RETENTION: readonly { id: string; what: string; keep: string }[] = [
   {
     id: "households",
-    what: "A household's name, contact, religion, and visit and follow-up notes (including removal reasons)",
+    what: "A household's name, contact, religion, visits and visit notes, and follow-up notes (including removal reasons)",
     keep: "24 months after the last visit or follow-up activity at that household, then erased",
   },
   {
     id: "accounts",
     what: "A member's account",
-    keep: "12 months after the member leaves, then deleted",
+    keep: "12 months after the member leaves, then erased: the name, email, Google link, password and sign-ins are deleted, and the visits they recorded stay, under no name",
+  },
+  {
+    id: "requests",
+    what: "A sign-up request that was turned down, or never answered",
+    keep: "12 months after it was turned down, or after it was made if nobody answered (or after it was last put back to waiting, if turned down and then reopened), then erased",
   },
   {
     id: "sign-ins",
     what: "Sign-in records and logs",
     keep: "30 days after the sign-in was last used",
+  },
+  {
+    id: "erasures",
+    what: "The record that something was erased, and when and by whom",
+    keep: "Kept: it holds no personal data beyond the unit",
   },
   {
     id: "attempts",
@@ -79,7 +106,7 @@ export const RETENTION: readonly { id: string; what: string; keep: string }[] = 
   {
     id: "phones",
     what: "Copies on a member's phone",
-    keep: "Records not yet sent, until they are sent; sent records for 24 hours or until that member signs out; the session's units, with their earlier visits, for 12 hours or until sign-out. Unsent records are not dropped by signing out",
+    keep: "Records not yet sent, until they are sent, or 30 days at most; sent records for 24 hours or until that member signs out; the session's units, with their earlier visits, for 12 hours or until sign-out. Signing out does not drop a record not yet sent. Anything past its time is deleted the next time the app is opened",
   },
 ];
 

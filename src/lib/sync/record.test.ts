@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { buildQueuedVisit } from "@/lib/sync/enqueue";
-import { CORRUPT, isCorrupt, isExpired, isSent, readRecord } from "@/lib/sync/record";
+import {
+  CORRUPT,
+  HOUSEHOLD_ERASED,
+  isCorrupt,
+  isErased,
+  isExpired,
+  isSent,
+  isUnsentBefore,
+  readRecord,
+} from "@/lib/sync/record";
 
 const NOW = Date.parse("2026-10-15T10:00:00.000Z");
 
@@ -63,9 +72,14 @@ describe("readRecord", () => {
     expect(isCorrupt(readRecord({ ...good, skewCount: null }))).toBe(false);
   });
 
-  it("keeps a salvaged record's place in the queue only when its time is readable", () => {
-    expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(NOW);
-    expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(0);
+  it("ages a salvaged record from its knock, so damaged bookkeeping never makes it look ancient", () => {
+    const saved = Date.parse(good.item.clientCreatedAt);
+    expect(readRecord({ ...good, attempts: -1 }).enqueuedAt).toBe(saved);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: "noon" }).enqueuedAt).toBe(saved);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: 0 }).enqueuedAt).toBe(saved);
+    // The older of the two, so a restamped record is not kept past its 30 days.
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: saved - 5 }).enqueuedAt).toBe(saved - 5);
+    expect(readRecord({ ...good, attempts: -1, enqueuedAt: saved + 5 }).enqueuedAt).toBe(saved);
   });
 
   it("does not salvage a record whose owner is lost, so it is never sent as anyone", () => {
@@ -128,5 +142,34 @@ describe("isSent", () => {
     for (const state of ["queued", "failed", "held", "quarantined"] as const) {
       expect(isSent({ ...sent, state })).toBe(false);
     }
+  });
+});
+
+describe("isErased and isUnsentBefore (#279)", () => {
+  const stub = {
+    ...good,
+    state: "synced" as const,
+    syncedAt: NOW,
+    lastError: { code: HOUSEHOLD_ERASED },
+  };
+
+  it("knows a stub by its state and its refusal, and a sent record is not one", () => {
+    expect(isErased(stub)).toBe(true);
+    expect(isErased({ ...stub, lastError: null })).toBe(false);
+    expect(isErased({ ...stub, state: "held" })).toBe(false);
+  });
+
+  it("expires a stub with the sent records, after their 24 hours", () => {
+    expect(isExpired(stub, NOW + 1)).toBe(true);
+    expect(isExpired(stub, NOW)).toBe(false);
+    expect(isSent(stub)).toBe(true);
+  });
+
+  it("counts a record unsent in any state but sent, up to and including the time", () => {
+    for (const state of ["queued", "failed", "held", "quarantined"] as const) {
+      expect(isUnsentBefore({ ...good, state, enqueuedAt: NOW }, NOW)).toBe(true);
+      expect(isUnsentBefore({ ...good, state, enqueuedAt: NOW + 1 }, NOW)).toBe(false);
+    }
+    expect(isUnsentBefore({ ...good, state: "synced", enqueuedAt: 0 }, NOW)).toBe(false);
   });
 });

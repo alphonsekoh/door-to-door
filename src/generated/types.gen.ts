@@ -132,6 +132,7 @@ export const ErrorCode = {
     BLOCK_IN_USE: 'block_in_use',
     NOT_ON_FOLLOW_UP_LIST: 'not_on_follow_up_list',
     FOLLOW_UP_EXISTS: 'follow_up_exists',
+    HOUSEHOLD_ERASED: 'household_erased',
     RATE_LIMITED: 'rate_limited',
     UNSUPPORTED_MEDIA_TYPE: 'unsupported_media_type',
     CONTENT_TOO_LARGE: 'content_too_large',
@@ -191,7 +192,9 @@ export type User = {
     approval: Approval;
     /**
      * Deactivated users cannot sign in, but their records stay attributed
-     * to them — history must survive someone leaving the team.
+     * to them — history must survive someone leaving the team. Twelve
+     * months later, or sooner if they ask, the account is erased: its
+     * records stay, under no name, and the account is never listed again.
      *
      */
     deactivatedAt: string | null;
@@ -297,6 +300,17 @@ export type Household = {
      * Null until someone answers the door and says.
      */
     religion: Religion | null;
+    /**
+     * When someone marked that the person withdrew their agreement to be
+     * called or messaged at `contact`; null when nobody has. A later
+     * visit recording a contact does not clear it: only an admin does.
+     * Cleared when the household is erased.
+     *
+     * The server always sends it. It is not `required` only so a copy
+     * of a unit saved on a phone before it existed still reads.
+     *
+     */
+    contactWithdrawnAt?: string | null;
     createdAt: string;
     updatedAt: string;
 };
@@ -505,9 +519,10 @@ export type HouseholdHistory = {
      * One page of the unit's visits, newest first: by `createdAt`, then
      * `id`, both descending, so visits stored at the same instant keep
      * one order across pages. `pagination.total` counts every visit
-     * here. Visits are never removed, so one stored between two reads
-     * can make the next page repeat a visit, never skip one: keep each
-     * once, by `id`.
+     * here. Visits are removed only by erasing the unit, which removes
+     * them all at once, so one stored between two reads can make the
+     * next page repeat a visit, never skip one: keep each once, by `id`.
+     * An erased unit has none, and `total` is 0.
      *
      */
     visits: Array<Visit>;
@@ -786,7 +801,10 @@ export type VisitSyncRequest = {
 /**
  * `applied` — written. `unchanged` — already present and identical, the
  * normal result of a replay. `stale` — an older edit, acknowledged but not
- * applied. `rejected` — invalid; see `error`.
+ * applied. `rejected` — invalid; see `error`. A `rejected` item with
+ * error code `household_erased` will never be accepted: its unit was
+ * erased after it was recorded, and a client should delete what it
+ * holds of it and tell the member.
  *
  */
 export const VisitSyncResultStatus = {
@@ -799,7 +817,10 @@ export const VisitSyncResultStatus = {
 /**
  * `applied` — written. `unchanged` — already present and identical, the
  * normal result of a replay. `stale` — an older edit, acknowledged but not
- * applied. `rejected` — invalid; see `error`.
+ * applied. `rejected` — invalid; see `error`. A `rejected` item with
+ * error code `household_erased` will never be accepted: its unit was
+ * erased after it was recorded, and a client should delete what it
+ * holds of it and tell the member.
  *
  */
 export type VisitSyncResultStatus = typeof VisitSyncResultStatus[keyof typeof VisitSyncResultStatus];
@@ -823,6 +844,118 @@ export type VisitSyncResult = {
  */
 export type VisitSyncResponse = {
     results: Array<VisitSyncResult>;
+};
+
+/**
+ * Whose data a request is for: a `household` (the people at a unit) or
+ * a member's `account`.
+ *
+ */
+export const ErasureSubjectKind = { HOUSEHOLD: 'household', ACCOUNT: 'account' } as const;
+
+/**
+ * Whose data a request is for: a `household` (the people at a unit) or
+ * a member's `account`.
+ *
+ */
+export type ErasureSubjectKind = typeof ErasureSubjectKind[keyof typeof ErasureSubjectKind];
+
+/**
+ * A person's request to have their data erased, and, once an admin has
+ * carried it out, the record that it was: when and by whom. It holds no
+ * personal data of its own: who asked is the subject itself, never a
+ * name.
+ *
+ */
+export type ErasureRequest = {
+    id: string;
+    kind: ErasureSubjectKind;
+    /**
+     * For a `household` request, the unit as it is now: once erased,
+     * the unit alone. Null for an `account` request.
+     *
+     */
+    household: Household | null;
+    /**
+     * The household's block; null for an `account` request.
+     */
+    block: Block | null;
+    /**
+     * For an `account` request, the account; its `name` is null once
+     * erased. Null for a `household` request.
+     *
+     */
+    account: UserSummary | null;
+    /**
+     * When the person asked, as whoever logged it said.
+     */
+    requestedAt: string;
+    /**
+     * Who recorded the request, a member passing it on or an admin.
+     */
+    loggedBy: UserSummary;
+    loggedAt: string;
+    /**
+     * When the data was erased; null while the request is open.
+     */
+    erasedAt: string | null;
+    /**
+     * The admin who carried it out. Null while open, and when the
+     * retention job erased the same data first.
+     *
+     */
+    erasedBy: UserSummary | null;
+};
+
+export type ErasureRequestList = {
+    data: Array<ErasureRequest>;
+    pagination: PaginationMeta;
+    /**
+     * The retention job's latest run, or null if it has never run, so
+     * an admin can see that it is running.
+     *
+     */
+    lastRetentionRun: RetentionRun | null;
+};
+
+export type CreateErasureRequestRequest = {
+    kind: ErasureSubjectKind;
+    /**
+     * The household's id, or the account's.
+     */
+    id: string;
+    /**
+     * When the person asked; now when left out. Later than the
+     * server's clock (beyond `sync.clockSkewToleranceSeconds`) is
+     * `400`.
+     *
+     */
+    requestedAt?: string;
+};
+
+/**
+ * What one run of the retention job did. Counts only.
+ */
+export type RetentionRun = {
+    ranAt: string;
+    /**
+     * Households erased, 24 months after their last activity.
+     */
+    households: number;
+    /**
+     * Accounts erased, 12 months after they left.
+     */
+    accounts: number;
+    /**
+     * Sign-ins deleted, 30 days after their last use.
+     */
+    signIns: number;
+    /**
+     * A run erases a bounded number of households and accounts; true
+     * when more were due, and the next run carries on.
+     *
+     */
+    more: boolean;
 };
 
 export type CreateFollowUpRequest = {
@@ -2735,6 +2868,324 @@ export type GetHouseholdHistoryResponses = {
 
 export type GetHouseholdHistoryResponse = GetHouseholdHistoryResponses[keyof GetHouseholdHistoryResponses];
 
+export type ClearContactWithdrawnData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/households/{id}/contact-withdrawal';
+};
+
+export type ClearContactWithdrawnErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+};
+
+export type ClearContactWithdrawnError = ClearContactWithdrawnErrors[keyof ClearContactWithdrawnErrors];
+
+export type ClearContactWithdrawnResponses = {
+    /**
+     * The household, with `contactWithdrawnAt` null.
+     */
+    200: Household;
+};
+
+export type ClearContactWithdrawnResponse = ClearContactWithdrawnResponses[keyof ClearContactWithdrawnResponses];
+
+export type MarkContactWithdrawnData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/households/{id}/contact-withdrawal';
+};
+
+export type MarkContactWithdrawnErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `conflict`: no contact is recorded for this unit.
+     */
+    409: Error;
+};
+
+export type MarkContactWithdrawnError = MarkContactWithdrawnErrors[keyof MarkContactWithdrawnErrors];
+
+export type MarkContactWithdrawnResponses = {
+    /**
+     * The household, with `contactWithdrawnAt` set.
+     */
+    200: Household;
+};
+
+export type MarkContactWithdrawnResponse = MarkContactWithdrawnResponses[keyof MarkContactWithdrawnResponses];
+
+export type ListErasureRequestsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Waiting (`open`) or carried out (`erased`).
+         */
+        status?: 'open' | 'erased';
+        /**
+         * Rows per page.
+         */
+        limit?: number;
+        /**
+         * Rows to skip. Past 10,000 is `400`; narrow the filter instead.
+         */
+        offset?: number;
+    };
+    url: '/erasure-requests';
+};
+
+export type ListErasureRequestsErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+};
+
+export type ListErasureRequestsError = ListErasureRequestsErrors[keyof ListErasureRequestsErrors];
+
+export type ListErasureRequestsResponses = {
+    /**
+     * A page of requests, and the retention job's latest run.
+     */
+    200: ErasureRequestList;
+};
+
+export type ListErasureRequestsResponse = ListErasureRequestsResponses[keyof ListErasureRequestsResponses];
+
+export type CreateErasureRequestData = {
+    body: CreateErasureRequestRequest;
+    path?: never;
+    query?: never;
+    url: '/erasure-requests';
+};
+
+export type CreateErasureRequestErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * `forbidden`: a member logging an account's request. Also every
+     * refusal of the shared `Forbidden` response.
+     *
+     */
+    403: Error;
+    /**
+     * No such household, or no such account (an erased account is gone).
+     */
+    404: Error;
+    /**
+     * `household_erased`: the household was erased and nothing has been
+     * recorded there since, so nothing is held to erase.
+     *
+     */
+    409: Error;
+    /**
+     * `content_too_large`: the request body is over 256 KiB (see "Request
+     * size"). Nothing was parsed or applied.
+     *
+     */
+    413: Error;
+    /**
+     * The request has a body that is not `application/json`.
+     */
+    415: Error;
+};
+
+export type CreateErasureRequestError = CreateErasureRequestErrors[keyof CreateErasureRequestErrors];
+
+export type CreateErasureRequestResponses = {
+    /**
+     * An open request for the same subject, already logged.
+     */
+    200: ErasureRequest;
+    /**
+     * The request, logged and open.
+     */
+    201: ErasureRequest;
+};
+
+export type CreateErasureRequestResponse = CreateErasureRequestResponses[keyof CreateErasureRequestResponses];
+
+export type EraseErasureRequestData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/erasure-requests/{id}/erase';
+};
+
+export type EraseErasureRequestErrors = {
+    /**
+     * The request failed validation against this contract.
+     */
+    400: Error;
+    /**
+     * No valid session. Also returned for a valid token whose account no
+     * longer exists, or whose sign-in has ended (signed out, ended by an
+     * admin, or ended by a deactivation since reversed): the account and
+     * the sign-in are looked up on every request, so such a cookie is
+     * treated as signed out.
+     *
+     */
+    401: Error;
+    /**
+     * Authenticated, but not permitted. Returned to members calling
+     * admin-only operations, to members amending another member's record,
+     * to any account deactivated after its session was issued
+     * (`account_deactivated`), and to an account waiting for approval
+     * (`account_pending`) or rejected (`account_blocked`; see "Approval").
+     * Also returned to a write sent from another origin (see "Same origin
+     * only").
+     *
+     */
+    403: Error;
+    /**
+     * No such resource, or not visible to this user.
+     */
+    404: Error;
+    /**
+     * `conflict`: the request was already carried out, or it is the
+     * caller's own account, or the account is the last active admin.
+     *
+     */
+    409: Error;
+};
+
+export type EraseErasureRequestError = EraseErasureRequestErrors[keyof EraseErasureRequestErrors];
+
+export type EraseErasureRequestResponses = {
+    /**
+     * The request, carried out.
+     */
+    200: ErasureRequest;
+};
+
+export type EraseErasureRequestResponse = EraseErasureRequestResponses[keyof EraseErasureRequestResponses];
+
+export type RunRetentionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/retention/run';
+};
+
+export type RunRetentionErrors = {
+    /**
+     * `unauthenticated`: no bearer, the wrong one, or no secret
+     * configured on the server. Nothing was read or erased.
+     *
+     */
+    401: Error;
+    /**
+     * `conflict`: another run is under way (a scheduler may deliver one
+     * call twice). Nothing was done; the run under way does the work.
+     *
+     */
+    409: Error;
+};
+
+export type RunRetentionError = RunRetentionErrors[keyof RunRetentionErrors];
+
+export type RunRetentionResponses = {
+    /**
+     * What the run did.
+     */
+    200: RetentionRun;
+};
+
+export type RunRetentionResponse = RunRetentionResponses[keyof RunRetentionResponses];
+
 export type ListVisitsData = {
     body?: never;
     path?: never;
@@ -2834,7 +3285,9 @@ export type CreateVisitErrors = {
      * deactivated (`conflict`), or no session is active
      * (`session_not_active`), or the block is not attached to the active
      * session, or a member is recording an unlisted unit in a follow-up
-     * session (`not_on_follow_up_list`).
+     * session (`not_on_follow_up_list`), or the unit's erasure time is
+     * after `clientCreatedAt` (`household_erased`; see "Erasure and
+     * retention").
      *
      */
     409: Error;
@@ -2903,7 +3356,9 @@ export type UpdateVisitErrors = {
      */
     403: Error;
     /**
-     * No such resource, or not visible to this user.
+     * No such visit, including one erased with its unit, even while this
+     * amend was waiting for the erasure to finish.
+     *
      */
     404: Error;
     /**
@@ -3135,6 +3590,9 @@ export type CreateFollowUpErrors = {
      * `follow_up_exists`: a member suggesting a household that is already
      * on the follow-up list or already has a suggestion waiting, or an
      * admin adding a household whose suggestion is waiting for review.
+     * `household_erased`: the household was erased and nothing has been
+     * recorded there since, so a screen read before the erasure cannot
+     * put a note back.
      *
      */
     409: Error;

@@ -410,11 +410,12 @@ both is a startup error (D-75-2).
 
 **Secrets** (never commit them, never put them in `config.yaml`)
 
-| Variable                             | Required                                | Read by             | Meaning                                                                                                                                                                        |
-| ------------------------------------ | --------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_USER`, `DATABASE_PASSWORD` | yes                                     | app, `db:*` scripts | Added to `database.url`, percent-encoded for you                                                                                                                               |
-| `AUTH_SECRET`                        | yes                                     | app                 | Signs session cookies. 32+ random characters, not a placeholder (D-75-6): `openssl rand -base64 32`. One marked `not-for-production`, as Compose's is, only `next dev` accepts |
-| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google OAuth client secret                                                                                                                                                     |
+| Variable                             | Required                                | Read by             | Meaning                                                                                                                                                                              |
+| ------------------------------------ | --------------------------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_USER`, `DATABASE_PASSWORD` | yes                                     | app, `db:*` scripts | Added to `database.url`, percent-encoded for you                                                                                                                                     |
+| `AUTH_SECRET`                        | yes                                     | app                 | Signs session cookies. 32+ random characters, not a placeholder (D-75-6): `openssl rand -base64 32`. One marked `not-for-production`, as Compose's is, only `next dev` accepts       |
+| `AUTH_GOOGLE_SECRET`                 | only once `auth.google.clientId` is set | app                 | Google OAuth client secret                                                                                                                                                           |
+| `CRON_SECRET`                        | to run the retention job                | app                 | The bearer secret that `GET /api/retention/run` takes, as Vercel Cron sends it. `openssl rand -base64 32`. With none set, that URL answers `401` and nothing is erased by age (#279) |
 
 **Not secret, all optional** (the test URLs carry credentials, but only for throwaway local databases)
 
@@ -884,6 +885,19 @@ docker run -p 3000:3000 \
   5. Sign in and open a block. Then run `npm run db:migrate` from a checkout, with
      `CONFIG_YAML` set to the same text and the same credentials exported: it reaches the
      direct host and prints `migrations applied`. Keep migrating that way from now on.
+
+- **Retention job (#279):** the privacy policy's periods are enforced by `GET /api/retention/run`,
+  which erases households 24 months after their last activity, accounts 12 months after
+  the member left (and sign-up requests turned down or never answered), and sign-ins 30
+  days after last use. `vercel.json` has Vercel Cron call it once a day at `0 18 * * *`
+  UTC (02:00 in Singapore), as `Authorization: Bearer $CRON_SECRET`.
+  **Before the promotion to `main`, set `CRON_SECRET` in the project's Production
+  environment variables** (`openssl rand -base64 32`); until it is set the URL answers
+  `401` and nothing is erased by age. Check **Admin → Erasure requests**: its footer says
+  when the job last ran, or warns that it never has. On a self-hosted install, call the
+  same URL from host cron with the same header, once a day:
+  `curl -fsS -H "Authorization: Bearer $(cat /run/secrets/cron_secret)" https://<host>/api/retention/run`.
+  A run erases at most 200 households and 200 accounts, so a backlog clears over a few days.
 
 - **Accounts:** admins add members on **Admin → Team**, and approve there anyone who
   asks to join with Google. A fresh database has no admin to do either, so after

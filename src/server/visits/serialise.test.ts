@@ -12,6 +12,8 @@ const household: HouseholdRow = {
   name: "Mr Tan",
   contact: "+65 9000 0000",
   religion: "buddhist",
+  contactWithdrawnAt: null,
+  erasedAt: null,
   createdAt: at,
   updatedAt: at,
 };

@@ -381,3 +381,47 @@ describe("retry", () => {
     expect(clearForRetry(out, NOW).block).toEqual(out.block);
   });
 });
+
+describe("a unit erased after the record was saved (#279)", () => {
+  const erased = () =>
+    applyResult(
+      record({
+        item: { ...record().item, description: "Wants a call", name: "Mr Tan", contact: "9123" },
+      }),
+      rejected("household_erased"),
+      NOW,
+      half,
+    );
+
+  it("turns the record into a stub with no data, settled at once, and never held or retried", () => {
+    const stub = erased();
+    expect(stub).toMatchObject({
+      state: "synced",
+      nextAttemptAt: null,
+      lastError: { code: "household_erased" },
+      syncedAt: NOW,
+      serverVisit: null,
+      item: {
+        id: record().id,
+        blockId: "b",
+        unitNumber: "#05-01",
+        sessionId: "0190a000-0000-7000-8000-0000000000cc",
+        clientCreatedAt: "2026-10-15T09:00:00.000Z",
+        updatedAt: "2026-10-15T09:00:00.000Z",
+        interestLevel: "no_response",
+      },
+    });
+  });
+
+  it("keeps none of what the household said", () => {
+    const { item } = erased();
+    expect(item).not.toHaveProperty("description");
+    expect(item).not.toHaveProperty("name");
+    expect(item).not.toHaveProperty("contact");
+    expect(item).not.toHaveProperty("religion");
+  });
+
+  it("offers no retry for it", () => {
+    expect(canRetry(erased())).toBe(false);
+  });
+});

@@ -18,7 +18,7 @@ describe("privacy page", () => {
   it("renders the title, the date and every section in order", async () => {
     render(await PrivacyPage());
     expect(screen.getByRole("heading", { level: 1, name: "Privacy policy" })).toBeInTheDocument();
-    expect(screen.getByText("Last updated 23 Nov 2026")).toBeInTheDocument();
+    expect(screen.getByText("Last updated 25 Nov 2026")).toBeInTheDocument();
     expect(screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent)).toEqual(
       POLICY_SECTIONS.map(({ heading }) => heading),
     );
@@ -36,13 +36,24 @@ describe("privacy page", () => {
     const purposes = screen.getByRole("region", { name: "Why we record it" });
     expect(purposes.textContent).toContain("call or text you");
     expect(purposes.textContent).not.toContain("do not use it for marketing");
-    expect(document.body.textContent).toContain("Records not yet sent stay until they are sent.");
+    expect(document.body.textContent).toContain(
+      "Records not yet sent stay until they are sent, for 30 days at most, deleted the next time the app is opened after that.",
+    );
+    expect(document.body.textContent).toContain(
+      "a record never sent goes after 30 days at most, each deleted the next time the app is opened after that.",
+    );
   });
 
   it("offers a way back, and reads per request", async () => {
     render(await PrivacyPage());
     expect(screen.getByRole("link", { name: "Back" })).toHaveAttribute("href", "/");
     expect(connection).toHaveBeenCalled();
+  });
+
+  it("does not promise erasure within a day: a run's cap can leave a backlog for a few days", async () => {
+    render(await PrivacyPage());
+    expect(screen.getByText(/a large backlog can take it a few days/)).toBeInTheDocument();
+    expect(screen.queryByText(/within a day/)).toBeNull();
   });
 
   it("promises no consent record, and says the team asks before it calls", async () => {
@@ -52,6 +63,9 @@ describe("privacy page", () => {
       "only after asking the person and getting their agreement",
     );
     expect(container.textContent).toContain("The app does not record that agreement.");
+    expect(container.textContent).toContain(
+      "If you withdraw it, we mark your contact so the team does not call or message it.",
+    );
     expect(container.textContent).not.toMatch(/organisation/i);
   });
 });
