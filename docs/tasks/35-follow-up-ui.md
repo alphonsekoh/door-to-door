@@ -35,7 +35,8 @@ recording form before knocking; overdue widget for admins.
   the fold at the door. _Refined by D-117-25:_ the pinned notes are two sections, "On
   the follow-up list" and "Waiting for review". _Refined by D-160-8 (#160):_ while older
   visits remain unread, a resolved note older than the oldest visit shown waits with
-  them.
+  them. _Superseded in part by D-275-4 (owner, 2026-11-23):_ in thread mode the timeline
+  runs newest first; outstanding notes stay pinned above it.
 - **D-35-7 · At the door (recording form) a resolved note is one line with no controls;
   reopen and edit live on the unit screen.** _Why:_ resolved notes accumulate without
   limit. _Extended by D-117-74:_ in a follow-up session an owed note the save will mark

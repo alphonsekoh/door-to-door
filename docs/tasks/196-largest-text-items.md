@@ -72,7 +72,9 @@ in 775137c, 6be1c93 and 5d85916, then the owner's later rulings in 22347db, 3085
   1,582px at 32px, under a thumb on its way there. _Not taken:_ (b'), under the picker,
   which still moves Add details, #181's failure. _Cost, answered by D-196-18:_ alone, it
   left 12px of the history above Save on an iPhone 13 at 16px and none at 17px, where
-  main showed 236px and 222px. _Research:_ R-205.
+  main showed 236px and 222px. _Research:_ R-205. _Superseded in part by D-275-3 (owner,
+  2026-11-23):_ at a unit on the running follow-up session's list the panel is the
+  thread, above Interest level; every other unit and door-to-door session keeps it last.
 - **D-196-5 · In a sheet, a focused input drawn inside its label brings the whole label
   tile into view (`wholeControl`, `src/lib/whole-control.ts`).** The sheet body's focus
   scroll (D-111-31) now scrolls `wholeControl(event.target)`.

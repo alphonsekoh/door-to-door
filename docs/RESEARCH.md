@@ -3354,3 +3354,20 @@ false`) on that date.
   `node_modules/pg/lib/client.js:34-36, 779-780`; #252 verifier r0 and r1; #247's
   report.
 - **Used by:** D-252-1, D-250-6 (its reasoning)
+
+### R-259 · What the #275 thread shifts at the largest text, on the normal and cold paths (measured)
+
+- **Finding:** Verifier r0 and r2 on the standalone build, Pixel 5 (Chromium) and iPhone 13
+  (WebKit), emulated latencies: session 300ms, list 500ms, units 400ms, history 900ms.
+  Shift of Medium, document px, 320x568:
+  - Normal path, copy holding the list: thread on the first frame, +0 (8 of 8).
+  - Cold link: +522 at 16px, +579 at 17px, +2,318 at 32px, when the unit's read lands.
+  - Normal path before the fix, moving at the session answer: +588 / +649 / +2,544.
+  - First open of a session (copy had no list): iPhone late in 6 of 6, +579 / +2,318.
+  - A teammate's visit after the preload: +618 at 32px.
+  - The thread is 2,298px tall at 32px (member), 2,482 (admin); D-196-4 measured the old
+    panel at 1,494 to 1,582.
+  - With the list held 4s, the panel was drawn at the end at 151 to 200ms and moved at 4.2s.
+- **Source:** #275 verifier reports r0 and r2 (device passes on both engines); not
+  re-run by the docs step. Real iPhone IndexedDB timing was not measured.
+- **Used by:** D-275-5, D-275-6, D-275-7
